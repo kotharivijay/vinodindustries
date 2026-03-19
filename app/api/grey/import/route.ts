@@ -1,0 +1,287 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { readSheet } from '@/lib/sheets'
+
+// Column indices (0-based). Row 3 = header, Row 4+ = data
+const COL = {
+  SN: 0, MONTH: 1, DATE: 2, CHALLAN: 3, PARTY: 4, QUALITY: 5,
+  WEIGHT: 6, THAN: 7, GRAY_MTR: 8, TRANSPORT: 9, TRANSPORT_LR: 10,
+  BALE: 11, BALE_NO: 12, ECH_BALE: 13, WEAVER: 14, LR_NO: 15, LOT_NO: 16,
+}
+
+// Normalize for case+space-insensitive matching
+function norm(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, ' ')
+}
+
+function parseSheetDate(val: string): Date | null {
+  if (!val || val.toLowerCase() === 'open') return null
+  // MM/DD/YY or MM/DD/YYYY
+  const parts = val.split('/')
+  if (parts.length === 3) {
+    const [m, d, y] = parts
+    const year = parseInt(y) < 100 ? 2000 + parseInt(y) : parseInt(y)
+    return new Date(year, parseInt(m) - 1, parseInt(d))
+  }
+  return null
+}
+
+// POST /api/grey/import — fetch & preview rows from Google Sheet
+export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Fetch from sheet via service account
+  const { values, error: sheetError } = await readSheet()
+  if (!values) {
+    return NextResponse.json({
+      error: 'SHEETS_ERROR',
+      message: sheetError ?? 'Failed to read sheet. Add GOOGLE_SERVICE_ACCOUNT_KEY to .env.local.',
+    }, { status: 403 })
+  }
+  if (values.length < 2) {
+    return NextResponse.json({ error: 'NO_DATA', message: 'No data found in sheet.' }, { status: 400 })
+  }
+
+  // First row = header (row 3), rest = data
+  const [, ...dataRows] = values
+
+  // Load all masters for matching
+  const [parties, qualities, weavers, transports] = await Promise.all([
+    prisma.party.findMany(),
+    prisma.quality.findMany(),
+    prisma.weaver.findMany(),
+    prisma.transport.findMany(),
+  ])
+
+  const partyMap = new Map(parties.map((p) => [norm(p.name), p]))
+  const qualityMap = new Map(qualities.map((q) => [norm(q.name), q]))
+  const weaverMap = new Map(weavers.map((w) => [norm(w.name), w]))
+  const transportMap = new Map(transports.map((t) => [norm(t.name), t]))
+
+  // Existing entries to detect duplicates (by SN or challanNo)
+  const existing = await prisma.greyEntry.findMany({ select: { sn: true, challanNo: true } })
+  const existingSNs = new Set(existing.map((e) => e.sn).filter(Boolean))
+  const existingChallans = new Set(existing.map((e) => e.challanNo))
+
+  const rows = []
+
+  for (const row of dataRows) {
+    const partyName = row[COL.PARTY]?.trim() ?? ''
+    const date = row[COL.DATE]?.trim() ?? ''
+    if (!date && !partyName) continue // skip completely empty rows
+
+    const sn = parseInt(row[COL.SN]) || null
+    const challanNo = parseInt(row[COL.CHALLAN]) || null
+    const qualityName = row[COL.QUALITY]?.trim() ?? ''
+    const weaverName = row[COL.WEAVER]?.trim() ?? ''
+    const transportName = row[COL.TRANSPORT]?.trim() ?? ''
+    const lotNo = row[COL.LOT_NO]?.trim() ?? ''
+    const than = parseInt(row[COL.THAN]) || 0
+
+    const party = partyMap.get(norm(partyName))
+    const quality = qualityMap.get(norm(qualityName))
+    const weaver = weaverMap.get(norm(weaverName))
+    const transport = transportMap.get(norm(transportName))
+
+    const missingMasters: string[] = []
+    if (partyName && !party) missingMasters.push(`Party: "${partyName}"`)
+    if (qualityName && !quality) missingMasters.push(`Quality: "${qualityName}"`)
+    if (weaverName && !weaver) missingMasters.push(`Weaver: "${weaverName}"`)
+    if (transportName && !transport && transportName.toLowerCase() !== 'open')
+      missingMasters.push(`Transport: "${transportName}"`)
+
+    const isDuplicate =
+      (sn !== null && existingSNs.has(sn)) ||
+      (challanNo !== null && existingChallans.has(challanNo))
+
+    let status: 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate'
+    if (isDuplicate) status = 'duplicate'
+    else if (missingMasters.length > 0) status = 'missing_masters'
+    else if (!lotNo) status = 'missing_lot'
+    else status = 'ready'
+
+    rows.push({
+      sn,
+      date,
+      challanNo,
+      partyName,
+      qualityName,
+      weaverName,
+      transportName,
+      lotNo,
+      than,
+      weight: row[COL.WEIGHT]?.trim() ?? '',
+      grayMtr: parseFloat(row[COL.GRAY_MTR]) || null,
+      transportLrNo: row[COL.TRANSPORT_LR]?.trim() ?? '',
+      bale: parseInt(row[COL.BALE]) || null,
+      baleNo: row[COL.BALE_NO]?.trim() ?? '',
+      echBaleThan: parseFloat(row[COL.ECH_BALE]) || null,
+      lrNo: row[COL.LR_NO]?.trim() ?? '',
+      partyId: party?.id ?? null,
+      qualityId: quality?.id ?? null,
+      weaverId: weaver?.id ?? null,
+      transportId: transport?.id ?? null,
+      missingMasters,
+      status,
+    })
+  }
+
+  const summary = {
+    total: rows.length,
+    ready: rows.filter((r) => r.status === 'ready').length,
+    missing_masters: rows.filter((r) => r.status === 'missing_masters').length,
+    missing_lot: rows.filter((r) => r.status === 'missing_lot').length,
+    duplicate: rows.filter((r) => r.status === 'duplicate').length,
+  }
+
+  return NextResponse.json({ rows, summary })
+}
+
+// PUT /api/grey/import — actually import the confirmed rows
+export async function PUT(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { rows } = await req.json()
+  let imported = 0
+  const errors: { sn: number | null; error: string }[] = []
+
+  for (const row of rows) {
+    if (row.status !== 'ready') continue
+    if (!row.partyId || !row.qualityId || !row.weaverId) continue
+    if (!row.lotNo) continue
+
+    try {
+      const date = parseSheetDate(row.date) ?? new Date()
+      // Find or default transport (some rows have "Open" transport)
+      const transportId = row.transportId ?? (await prisma.transport.findFirst())?.id
+      if (!transportId) { errors.push({ sn: row.sn, error: 'No transport found' }); continue }
+
+      await prisma.greyEntry.create({
+        data: {
+          sn: row.sn ?? undefined,
+          date,
+          challanNo: row.challanNo ?? 0,
+          partyId: row.partyId,
+          qualityId: row.qualityId,
+          weight: row.weight || undefined,
+          than: row.than,
+          grayMtr: row.grayMtr ?? undefined,
+          transportId,
+          transportLrNo: row.transportLrNo || undefined,
+          bale: row.bale ?? undefined,
+          baleNo: row.baleNo || undefined,
+          echBaleThan: row.echBaleThan ?? undefined,
+          weaverId: row.weaverId,
+          viverNameBill: row.weaverName || undefined,
+          lrNo: row.lrNo || undefined,
+          lotNo: row.lotNo,
+        },
+      })
+      imported++
+    } catch (e: any) {
+      errors.push({ sn: row.sn, error: e.message })
+    }
+  }
+
+  return NextResponse.json({ imported, errors })
+}
+
+// PATCH /api/grey/import — auto-create missing masters, return updated rows
+export async function PATCH(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { rows } = await req.json()
+  const created: Record<string, number[]> = { parties: [], qualities: [], weavers: [], transports: [] }
+
+  // Collect unique missing names (deduplicated by normalized key, keep first casing seen)
+  const missingParties = new Map<string, string>()
+  const missingQualities = new Map<string, string>()
+  const missingWeavers = new Map<string, string>()
+  const missingTransports = new Map<string, string>()
+
+  for (const row of rows) {
+    if (row.status !== 'missing_masters') continue
+    if (!row.partyId && row.partyName) missingParties.set(norm(row.partyName), row.partyName)
+    if (!row.qualityId && row.qualityName) missingQualities.set(norm(row.qualityName), row.qualityName)
+    if (!row.weaverId && row.weaverName) missingWeavers.set(norm(row.weaverName), row.weaverName)
+    if (!row.transportId && row.transportName && norm(row.transportName) !== 'open')
+      missingTransports.set(norm(row.transportName), row.transportName)
+  }
+
+  // Load existing masters to avoid creating duplicates differing only by case/spaces
+  const [existingParties, existingQualities, existingWeavers, existingTransports] = await Promise.all([
+    prisma.party.findMany(),
+    prisma.quality.findMany(),
+    prisma.weaver.findMany(),
+    prisma.transport.findMany(),
+  ])
+  const existingPartyKeys = new Set(existingParties.map((p) => norm(p.name)))
+  const existingQualityKeys = new Set(existingQualities.map((q) => norm(q.name)))
+  const existingWeaverKeys = new Set(existingWeavers.map((w) => norm(w.name)))
+  const existingTransportKeys = new Set(existingTransports.map((t) => norm(t.name)))
+
+  // Create only truly new masters
+  await Promise.all([
+    ...[...missingParties.entries()]
+      .filter(([key]) => !existingPartyKeys.has(key))
+      .map(([, name]) => prisma.party.create({ data: { name } })),
+    ...[...missingQualities.entries()]
+      .filter(([key]) => !existingQualityKeys.has(key))
+      .map(([, name]) => prisma.quality.create({ data: { name } })),
+    ...[...missingWeavers.entries()]
+      .filter(([key]) => !existingWeaverKeys.has(key))
+      .map(([, name]) => prisma.weaver.create({ data: { name } })),
+    ...[...missingTransports.entries()]
+      .filter(([key]) => !existingTransportKeys.has(key))
+      .map(([, name]) => prisma.transport.create({ data: { name } })),
+  ])
+
+  // Reload masters and re-map rows
+  const [parties, qualities, weavers, transports] = await Promise.all([
+    prisma.party.findMany(),
+    prisma.quality.findMany(),
+    prisma.weaver.findMany(),
+    prisma.transport.findMany(),
+  ])
+
+  const partyMap = new Map(parties.map((p) => [norm(p.name), p]))
+  const qualityMap = new Map(qualities.map((q) => [norm(q.name), q]))
+  const weaverMap = new Map(weavers.map((w) => [norm(w.name), w]))
+  const transportMap = new Map(transports.map((t) => [norm(t.name), t]))
+
+  const updatedRows = rows.map((row: any) => {
+    if (row.status !== 'missing_masters') return row
+    const party = partyMap.get(norm(row.partyName ?? ''))
+    const quality = qualityMap.get(norm(row.qualityName ?? ''))
+    const weaver = weaverMap.get(norm(row.weaverName ?? ''))
+    const transport = transportMap.get(norm(row.transportName ?? ''))
+
+    const newRow = {
+      ...row,
+      partyId: party?.id ?? row.partyId,
+      qualityId: quality?.id ?? row.qualityId,
+      weaverId: weaver?.id ?? row.weaverId,
+      transportId: transport?.id ?? row.transportId,
+    }
+    if (newRow.partyId && newRow.qualityId && newRow.weaverId && newRow.lotNo) {
+      newRow.missingMasters = []
+      newRow.status = 'ready'
+    }
+    return newRow
+  })
+
+  return NextResponse.json({
+    rows: updatedRows,
+    created: {
+      parties: [...missingParties.keys()].filter((k) => !existingPartyKeys.has(k)).length,
+      qualities: [...missingQualities.keys()].filter((k) => !existingQualityKeys.has(k)).length,
+      weavers: [...missingWeavers.keys()].filter((k) => !existingWeaverKeys.has(k)).length,
+      transports: [...missingTransports.keys()].filter((k) => !existingTransportKeys.has(k)).length,
+    },
+  })
+}

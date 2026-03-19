@@ -1,0 +1,417 @@
+'use client'
+
+import { useState, useMemo, useRef } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
+import DespatchImportModal from './DespatchImportModal'
+
+const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+function useDebounce(value: string, delay = 200) {
+  const [debounced, setDebounced] = useState(value)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const set = (v: string) => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => setDebounced(v), delay)
+  }
+  return [debounced, set] as const
+}
+
+interface DespatchEntry {
+  id: number
+  date: string
+  challanNo: number
+  lotNo: string
+  grayInwDate: string | null
+  jobDelivery: string | null
+  than: number
+  billNo: string | null
+  rate: number | null
+  pTotal: number | null
+  lrNo: string | null
+  bale: number | null
+  party: { name: string }
+  quality: { name: string }
+  transport: { name: string }
+}
+
+interface StockSummaryRow {
+  lotNo: string
+  party: string
+  quality: string
+  entries: number
+  totalThan: number
+  totalPTotal: number
+  lastDate: string
+}
+
+type SortField = 'date' | 'challanNo' | 'party' | 'quality' | 'lotNo' | 'than' | 'rate' | 'pTotal' | 'lrNo'
+type SortDir = 'asc' | 'desc'
+type Tab = 'entries' | 'stock'
+
+function getValue(e: DespatchEntry, field: SortField): string | number {
+  switch (field) {
+    case 'date': return new Date(e.date).getTime()
+    case 'challanNo': return e.challanNo
+    case 'party': return e.party.name.toLowerCase()
+    case 'quality': return e.quality.name.toLowerCase()
+    case 'lotNo': return e.lotNo.toLowerCase()
+    case 'than': return e.than
+    case 'rate': return e.rate ?? 0
+    case 'pTotal': return e.pTotal ?? 0
+    case 'lrNo': return (e.lrNo ?? '').toLowerCase()
+  }
+}
+
+export default function DespatchListPage() {
+  const router = useRouter()
+  const { data: entries = [], isLoading: loading, mutate } = useSWR<DespatchEntry[]>('/api/despatch', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  })
+
+  const [search, setSearchRaw] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useDebounce('')
+  const [showImport, setShowImport] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [sortField, setSortField] = useState<SortField>('date')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [tab, setTab] = useState<Tab>('entries')
+  const [stockSearch, setStockSearch] = useState('')
+  const [debouncedStockSearch, setDebouncedStockSearch] = useDebounce('')
+
+  const [filters, setFilters] = useState({ party: '', quality: '', lotNo: '', lrNo: '' })
+
+  async function handleDelete(id: number) {
+    if (!confirm('Delete this despatch entry? This cannot be undone.')) return
+    setDeletingId(id)
+    await fetch(`/api/despatch/${id}`, { method: 'DELETE' })
+    setDeletingId(null)
+    mutate()
+  }
+
+  // Stock summary — memoised
+  const stockSummary = useMemo<StockSummaryRow[]>(() => {
+    const map = new Map<string, StockSummaryRow>()
+    for (const e of entries) {
+      const existing = map.get(e.lotNo)
+      if (!existing) {
+        map.set(e.lotNo, {
+          lotNo: e.lotNo, party: e.party.name, quality: e.quality.name,
+          entries: 1, totalThan: e.than, totalPTotal: e.pTotal ?? 0, lastDate: e.date,
+        })
+      } else {
+        existing.entries++
+        existing.totalThan += e.than
+        existing.totalPTotal += e.pTotal ?? 0
+        if (new Date(e.date) > new Date(existing.lastDate)) existing.lastDate = e.date
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.lotNo.localeCompare(b.lotNo))
+  }, [entries])
+
+  const filteredStock = useMemo(() =>
+    stockSummary.filter(r => {
+      const q = debouncedStockSearch.toLowerCase()
+      return !q || r.lotNo.toLowerCase().includes(q) || r.party.toLowerCase().includes(q) || r.quality.toLowerCase().includes(q)
+    }),
+  [stockSummary, debouncedStockSearch])
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDir('asc') }
+  }
+
+  const setFilter = (key: keyof typeof filters, val: string) =>
+    setFilters(prev => ({ ...prev, [key]: val }))
+
+  // Duplicate detection — memoised
+  const dupKeys = useMemo(() => {
+    const seen = new Map<string, number>()
+    for (const e of entries) {
+      const key = `${e.challanNo}__${e.lotNo.toLowerCase()}`
+      seen.set(key, (seen.get(key) ?? 0) + 1)
+    }
+    const dups = new Set<string>()
+    for (const [key, count] of seen) { if (count > 1) dups.add(key) }
+    return dups
+  }, [entries])
+
+  const isDup = (e: DespatchEntry) => dupKeys.has(`${e.challanNo}__${e.lotNo.toLowerCase()}`)
+
+  // Filtering & sorting — memoised
+  const filtered = useMemo(() =>
+    entries
+      .filter((e) => {
+        const q = debouncedSearch.toLowerCase()
+        const matchSearch = !q || (
+          e.party.name.toLowerCase().includes(q) ||
+          e.quality.name.toLowerCase().includes(q) ||
+          e.lotNo.toLowerCase().includes(q) ||
+          String(e.challanNo).includes(q) ||
+          (e.billNo ?? '').toLowerCase().includes(q)
+        )
+        const matchParty = !filters.party || e.party.name.toLowerCase().includes(filters.party.toLowerCase())
+        const matchQuality = !filters.quality || e.quality.name.toLowerCase().includes(filters.quality.toLowerCase())
+        const matchLot = !filters.lotNo || e.lotNo.toLowerCase().includes(filters.lotNo.toLowerCase())
+        const matchLr = !filters.lrNo || (e.lrNo ?? '').toLowerCase().includes(filters.lrNo.toLowerCase())
+        return matchSearch && matchParty && matchQuality && matchLot && matchLr
+      })
+      .sort((a, b) => {
+        const av = getValue(a, sortField)
+        const bv = getValue(b, sortField)
+        const cmp = av < bv ? -1 : av > bv ? 1 : 0
+        return sortDir === 'asc' ? cmp : -cmp
+      }),
+  [entries, debouncedSearch, filters, sortField, sortDir])
+
+  function SortTh({ field, label, right }: { field: SortField; label: string; right?: boolean }) {
+    const active = sortField === field
+    return (
+      <th
+        onClick={() => toggleSort(field)}
+        className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600 group ${right ? 'text-right' : 'text-left'}`}
+      >
+        <span className={`flex items-center gap-1 ${right ? 'justify-end' : ''}`}>
+          {label}
+          <span className={`transition ${active ? 'text-indigo-600' : 'text-gray-300 group-hover:text-gray-400'}`}>
+            {active ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+          </span>
+        </span>
+      </th>
+    )
+  }
+
+  function PlainTh({ label, right }: { label: string; right?: boolean }) {
+    return <th className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap ${right ? 'text-right' : 'text-left'}`}>{label}</th>
+  }
+
+  const fi = 'w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300 mt-1'
+
+  const totalThan = stockSummary.reduce((s, r) => s + r.totalThan, 0)
+  const totalValue = stockSummary.reduce((s, r) => s + r.totalPTotal, 0)
+
+  return (
+    <div className="p-4 md:p-8">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Despatch</h1>
+          <p className="text-sm text-gray-500 mt-1">{entries.length} entries · {stockSummary.length} lots</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setShowImport(true)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
+            📊 Import from Google Sheet
+          </button>
+          <Link href="/despatch/new" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
+            + New Entry
+          </Link>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-5 border-b border-gray-200">
+        <button
+          onClick={() => setTab('entries')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === 'entries' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          All Entries
+          <span className="ml-2 bg-gray-100 text-gray-600 text-xs rounded-full px-2 py-0.5">{entries.length}</span>
+        </button>
+        <button
+          onClick={() => setTab('stock')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === 'stock' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          Lot Summary
+          <span className="ml-2 bg-gray-100 text-gray-600 text-xs rounded-full px-2 py-0.5">{stockSummary.length} lots</span>
+        </button>
+      </div>
+
+      {/* ── LOT SUMMARY TAB ── */}
+      {tab === 'stock' && (
+        <div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Lots</p>
+              <p className="text-2xl font-bold text-gray-800 mt-1">{stockSummary.length}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Despatched (Than)</p>
+              <p className="text-2xl font-bold text-orange-600 mt-1">{totalThan}</p>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Value (P.Total)</p>
+              <p className="text-2xl font-bold text-indigo-600 mt-1">₹{totalValue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</p>
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="Search lot no, party, quality..."
+              className="w-full max-w-sm border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              value={stockSearch}
+              onChange={e => { setStockSearch(e.target.value); setDebouncedStockSearch(e.target.value) }}
+            />
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            {loading ? (
+              <div className="p-12 text-center text-gray-400">Loading...</div>
+            ) : filteredStock.length === 0 ? (
+              <div className="p-12 text-center text-gray-400">No lots found.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Lot No</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Party</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Quality</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Last Date</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Entries</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Than</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredStock.map(r => (
+                      <tr key={r.lotNo} className="hover:bg-gray-50 transition">
+                        <td className="px-4 py-3 font-semibold text-indigo-700">{r.lotNo}</td>
+                        <td className="px-4 py-3 text-gray-800">{r.party}</td>
+                        <td className="px-4 py-3 text-gray-600">{r.quality}</td>
+                        <td className="px-4 py-3 text-gray-500 text-xs">{new Date(r.lastDate).toLocaleDateString('en-IN')}</td>
+                        <td className="px-4 py-3 text-right text-gray-500">{r.entries}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-orange-600">{r.totalThan}</td>
+                        <td className="px-4 py-3 text-right font-medium text-gray-800">
+                          {r.totalPTotal > 0 ? `₹${r.totalPTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                    <tr>
+                      <td colSpan={5} className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Total ({filteredStock.length} lots)</td>
+                      <td className="px-4 py-3 text-right font-bold text-orange-600">{filteredStock.reduce((s, r) => s + r.totalThan, 0)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-gray-800">
+                        ₹{filteredStock.reduce((s, r) => s + r.totalPTotal, 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── ALL ENTRIES TAB ── */}
+      {tab === 'entries' && (
+        <>
+          <div className="mb-4 flex items-center gap-3">
+            <input
+              type="text"
+              placeholder="Search by party, quality, lot no, challan, bill no..."
+              className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              value={search}
+              onChange={(e) => { setSearchRaw(e.target.value); setDebouncedSearch(e.target.value) }}
+            />
+            {(search || filters.party || filters.quality || filters.lotNo || filters.lrNo) && (
+              <button onClick={() => { setSearchRaw(''); setDebouncedSearch(''); setFilters({ party: '', quality: '', lotNo: '', lrNo: '' }) }} className="text-xs text-gray-400 hover:text-red-500">
+                Clear filters
+              </button>
+            )}
+            <span className="text-xs text-gray-400 ml-auto">{filtered.length} of {entries.length}</span>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            {loading ? (
+              <div className="p-12 text-center text-gray-400">Loading...</div>
+            ) : filtered.length === 0 ? (
+              <div className="p-12 text-center text-gray-400">
+                {entries.length === 0 ? 'No entries yet. Add manually or import from Google Sheet.' : 'No results found.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <SortTh field="date" label="Date" />
+                      <SortTh field="challanNo" label="Challan" />
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('party')}>
+                        <span className="flex items-center gap-1">Party <span className={sortField==='party'?'text-indigo-600':'text-gray-300'}>{sortField==='party'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                        <input className={fi} placeholder="filter..." value={filters.party} onChange={e=>{e.stopPropagation();setFilter('party',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('quality')}>
+                        <span className="flex items-center gap-1">Quality <span className={sortField==='quality'?'text-indigo-600':'text-gray-300'}>{sortField==='quality'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                        <input className={fi} placeholder="filter..." value={filters.quality} onChange={e=>{e.stopPropagation();setFilter('quality',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lotNo')}>
+                        <span className="flex items-center gap-1">Lot No <span className={sortField==='lotNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lotNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                        <input className={fi} placeholder="filter..." value={filters.lotNo} onChange={e=>{e.stopPropagation();setFilter('lotNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                      </th>
+                      <PlainTh label="Gray Inw" />
+                      <PlainTh label="Job Delivery" />
+                      <SortTh field="than" label="Than" right />
+                      <PlainTh label="Bill No" />
+                      <SortTh field="rate" label="Rate" right />
+                      <SortTh field="pTotal" label="P.Total" right />
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lrNo')}>
+                        <span className="flex items-center gap-1">LR No <span className={sortField==='lrNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lrNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                        <input className={fi} placeholder="filter..." value={filters.lrNo} onChange={e=>{e.stopPropagation();setFilter('lrNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                      </th>
+                      <PlainTh label="Transport" />
+                      <PlainTh label="Bale" right />
+                      <PlainTh label="" />
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {filtered.map((e) => (
+                      <tr key={e.id} className={`hover:bg-gray-50 transition ${isDup(e) ? 'bg-red-50' : ''}`}>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
+                        <td className="px-3 py-2.5">
+                          <span>{e.challanNo}</span>
+                          {isDup(e) && <span className="ml-1.5 bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide">Dup</span>}
+                        </td>
+                        <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{e.party.name}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">{e.quality.name}</td>
+                        <td className="px-3 py-2.5 font-medium text-indigo-700">{e.lotNo}</td>
+                        <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                          {e.grayInwDate ? new Date(e.grayInwDate).toLocaleDateString('en-IN') : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-500 text-xs">{e.jobDelivery || '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
+                        <td className="px-3 py-2.5 text-gray-500">{e.billNo || '—'}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-600">{e.rate ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-medium text-gray-800">
+                          {e.pTotal != null ? `₹${e.pTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-500">{e.lrNo || '—'}</td>
+                        <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.transport?.name ?? '—'}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-500">{e.bale ?? '—'}</td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <button onClick={() => router.push(`/despatch/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
+                          <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
+                            {deletingId === e.id ? '...' : 'Delete'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {showImport && (
+        <DespatchImportModal
+          onClose={() => setShowImport(false)}
+          onImported={() => { setShowImport(false); mutate() }}
+        />
+      )}
+    </div>
+  )
+}

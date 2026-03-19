@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Master Tables (Dynamic Dropdowns) ────────────────────────────────────────
+
+model Party {
+  id              Int             @id @default(autoincrement())
+  name            String          @unique
+  createdAt       DateTime        @default(now())
+  greyEntries     GreyEntry[]
+  despatchEntries DespatchEntry[]
+}
+
+model Weaver {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique
+  createdAt   DateTime    @default(now())
+  greyEntries GreyEntry[]
+}
+
+model Quality {
+  id              Int             @id @default(autoincrement())
+  name            String          @unique
+  createdAt       DateTime        @default(now())
+  greyEntries     GreyEntry[]
+  despatchEntries DespatchEntry[]
+}
+
+model Transport {
+  id              Int             @id @default(autoincrement())
+  name            String          @unique
+  createdAt       DateTime        @default(now())
+  greyEntries     GreyEntry[]
+  despatchEntries DespatchEntry[]
+}
+
+// ─── Grey Inward Entry ─────────────────────────────────────────────────────────
+
+model GreyEntry {
+  id            Int       @id @default(autoincrement())
+  sn            Int?      // Serial number from source spreadsheet
+  date          DateTime
+  challanNo     Int
+  partyId       Int
+  party         Party     @relation(fields: [partyId], references: [id])
+  qualityId     Int
+  quality       Quality   @relation(fields: [qualityId], references: [id])
+  weight        String?   // e.g. "106g", "114g", "(RG)"
+  than          Int
+  grayMtr       Float?
+  transportId   Int
+  transport     Transport @relation(fields: [transportId], references: [id])
+  transportLrNo String?
+  bale          Int?
+  baleNo        String?
+  echBaleThan   Float?
+  weaverId      Int
+  weaver        Weaver    @relation(fields: [weaverId], references: [id])
+  viverNameBill String?
+  lrNo          String?
+  lotNo         String
+  // stock & tDesp are calculated live — not stored
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ─── Dyeing Slip Entry ─────────────────────────────────────────────────────────
+
+model DyeingEntry {
+  id        Int      @id @default(autoincrement())
+  date      DateTime
+  slipNo    Int
+  lotNo     String
+  than      Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Despatch Entry ────────────────────────────────────────────────────────────
+
+model DespatchEntry {
+  id          Int       @id @default(autoincrement())
+  date        DateTime
+  challanNo   Int
+  partyId     Int
+  party       Party     @relation(fields: [partyId], references: [id])
+  qualityId   Int
+  quality     Quality   @relation(fields: [qualityId], references: [id])
+  grayInwDate DateTime?
+  lotNo       String
+  jobDelivery String?
+  than        Int
+  billNo      String?
+  rate        Float?
+  pTotal      Float?    // Auto: than × rate
+  lrNo        String?
+  transportId Int?
+  transport   Transport? @relation(fields: [transportId], references: [id])
+  bale        Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
