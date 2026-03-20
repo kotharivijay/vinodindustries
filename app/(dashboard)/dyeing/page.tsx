@@ -197,7 +197,9 @@ export default function DyeingListPage() {
                     <tbody className="divide-y divide-gray-50">
                       {filteredLot.map(r => (
                         <tr key={r.lotNo} className="hover:bg-gray-50 transition">
-                          <td className="px-4 py-3 font-semibold text-purple-700">{r.lotNo}</td>
+                          <td className="px-4 py-3 font-semibold text-purple-700">
+                            <Link href={`/lot/${encodeURIComponent(r.lotNo)}`} className="hover:underline">{r.lotNo}</Link>
+                          </td>
                           <td className="px-4 py-3 text-gray-500 text-xs">{new Date(r.lastDate).toLocaleDateString('en-IN')}</td>
                           <td className="px-4 py-3 text-gray-600 text-xs">{r.slips}</td>
                           <td className="px-4 py-3 text-right text-gray-500">{r.entries}</td>
@@ -240,43 +242,73 @@ export default function DyeingListPage() {
                   {entries.length === 0 ? 'No entries yet. Click + New Entry to add.' : 'No results found.'}
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <SortTh field="date" label="Date" />
-                        <SortTh field="slipNo" label="Slip No" />
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-purple-600"
-                          onClick={() => toggleSort('lotNo')}>
-                          <span className="flex items-center gap-1">
-                            Lot No <span className={sortField === 'lotNo' ? 'text-purple-600' : 'text-gray-300'}>{sortField === 'lotNo' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
-                          </span>
-                          <input className={fi} placeholder="filter..." value={filterLotNo}
-                            onChange={e => { e.stopPropagation(); setFilterLotNo(e.target.value); setDebouncedFilterLot(e.target.value) }}
-                            onClick={e => e.stopPropagation()} />
-                        </th>
-                        <SortTh field="than" label="Than" right />
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {filtered.map(e => (
-                        <tr key={e.id} className="hover:bg-gray-50 transition">
-                          <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
-                          <td className="px-3 py-2.5 font-medium">{e.slipNo}</td>
-                          <td className="px-3 py-2.5 font-semibold text-purple-700">{e.lotNo}</td>
-                          <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
-                          <td className="px-3 py-2.5 whitespace-nowrap">
-                            <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
-                            <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
-                              {deletingId === e.id ? '...' : 'Delete'}
-                            </button>
-                          </td>
+                <>
+                  {/* ── Mobile card view ── */}
+                  <div className="block sm:hidden divide-y divide-gray-100">
+                    {filtered.map(e => (
+                      <div key={e.id} className="p-4">
+                        <div className="flex items-start justify-between mb-1.5">
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                            <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
+                            <span className="text-gray-300">·</span>
+                            <span>Slip {e.slipNo}</span>
+                          </div>
+                          <div className="flex gap-3 shrink-0">
+                            <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-500 text-xs font-medium">Edit</button>
+                            <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 text-xs font-medium">{deletingId === e.id ? '...' : 'Del'}</button>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-purple-100 active:bg-purple-200">
+                            🔖 {e.lotNo}
+                          </Link>
+                          <span className="text-xs text-gray-600">Than: <strong>{e.than}</strong></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ── Desktop table ── */}
+                  <div className="hidden sm:block overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <SortTh field="date" label="Date" />
+                          <SortTh field="slipNo" label="Slip No" />
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-purple-600"
+                            onClick={() => toggleSort('lotNo')}>
+                            <span className="flex items-center gap-1">
+                              Lot No <span className={sortField === 'lotNo' ? 'text-purple-600' : 'text-gray-300'}>{sortField === 'lotNo' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
+                            </span>
+                            <input className={fi} placeholder="filter..." value={filterLotNo}
+                              onChange={e => { e.stopPropagation(); setFilterLotNo(e.target.value); setDebouncedFilterLot(e.target.value) }}
+                              onClick={e => e.stopPropagation()} />
+                          </th>
+                          <SortTh field="than" label="Than" right />
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50">
+                        {filtered.map(e => (
+                          <tr key={e.id} className="hover:bg-gray-50 transition">
+                            <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
+                            <td className="px-3 py-2.5 font-medium">{e.slipNo}</td>
+                            <td className="px-3 py-2.5 font-semibold text-purple-700">
+                              <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="hover:underline">{e.lotNo}</Link>
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
+                              <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
+                                {deletingId === e.id ? '...' : 'Delete'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
           </div>
         </>
