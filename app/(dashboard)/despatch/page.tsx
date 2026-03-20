@@ -76,6 +76,24 @@ export default function DespatchListPage() {
   const [debouncedSearch, setDebouncedSearch] = useDebounce('')
   const [showImport, setShowImport] = useState(false)
   const [showSync, setShowSync] = useState(false)
+  const [showReset, setShowReset] = useState(false)
+  const [resetConfirmText, setResetConfirmText] = useState('')
+  const [resetting, setResetting] = useState(false)
+
+  async function handleReset() {
+    setResetting(true)
+    const res = await fetch('/api/despatch', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'RESET_DESPATCH' }),
+    })
+    const data = await res.json()
+    setResetting(false)
+    setShowReset(false)
+    setResetConfirmText('')
+    if (res.ok) { alert(`✅ Deleted ${data.deleted} entries. You can now re-import.`); mutate() }
+    else alert(data.error ?? 'Reset failed')
+  }
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -213,6 +231,9 @@ export default function DespatchListPage() {
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setShowSync(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
             🔄 Sync with Sheet
+          </button>
+          <button onClick={() => { setShowReset(true); setResetConfirmText('') }} className="flex items-center gap-2 bg-red-100 text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-200 border border-red-200">
+            🗑 Reset All
           </button>
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
             📊 Import from Sheet
@@ -482,6 +503,46 @@ export default function DespatchListPage() {
           onClose={() => setShowSync(false)}
           onDone={() => { mutate() }}
         />
+      )}
+
+      {showReset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="text-3xl">⚠️</span>
+              <div>
+                <h2 className="text-lg font-bold text-red-700">Reset All Despatch Entries</h2>
+                <p className="text-sm text-gray-500">This will permanently delete all {entries.length} entries from the database.</p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">
+              This action <strong>cannot be undone</strong>. After reset, you can re-import clean data from Google Sheet.
+            </div>
+            <p className="text-sm text-gray-700 mb-2">Type <strong>RESET</strong> to confirm:</p>
+            <input
+              type="text"
+              value={resetConfirmText}
+              onChange={e => setResetConfirmText(e.target.value)}
+              placeholder="Type RESET here"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-red-400"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowReset(false); setResetConfirmText('') }}
+                className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReset}
+                disabled={resetConfirmText !== 'RESET' || resetting}
+                className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {resetting ? 'Deleting...' : `Delete All ${entries.length} Entries`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

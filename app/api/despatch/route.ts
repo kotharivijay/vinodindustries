@@ -47,3 +47,15 @@ export async function POST(req: NextRequest) {
   appendDespatchRowToSheet(despatchEntryToSheetRow(entry)).catch(() => {})
   return NextResponse.json(entry, { status: 201 })
 }
+
+// DELETE all — reset entire despatch table
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { confirm } = await req.json()
+  if (confirm !== 'RESET_DESPATCH') return NextResponse.json({ error: 'Confirmation required' }, { status: 400 })
+
+  const { count } = await prisma.despatchEntry.deleteMany({})
+  return NextResponse.json({ deleted: count })
+}
