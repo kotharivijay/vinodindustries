@@ -31,9 +31,11 @@ export default function LoginForm({ error }: { error?: string }) {
         {/* Google Sign In */}
         <button
           onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
-          className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 rounded-xl px-6 py-3.5 text-gray-700 font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
+          className="w-full flex items-center justify-center gap-3 bg-indigo-600 rounded-xl px-6 py-4 text-white font-bold text-base hover:bg-indigo-700 active:bg-indigo-800 transition-all shadow-lg shadow-indigo-200"
         >
-          <GoogleIcon />
+          <span className="bg-white rounded-full p-1 flex items-center justify-center">
+            <GoogleIcon />
+          </span>
           Sign in with Google
         </button>
 
