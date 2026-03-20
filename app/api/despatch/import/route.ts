@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   const transportMap = new Map(transports.map(t => [norm(t.name), t]))
 
   const existing = await prisma.despatchEntry.findMany({ select: { challanNo: true, lotNo: true } })
-  const existingKeys = new Set(existing.map(e => `${e.challanNo}|${e.lotNo}`))
+  const existingKeys = new Set(existing.map(e => `${e.challanNo}|${norm(e.lotNo)}`))
 
   const rows = []
   for (const row of dataRows) {
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     if (transportName && !transport && norm(transportName) !== 'by hand' && norm(transportName) !== 'open')
       missingMasters.push(`Transport: "${transportName}"`)
 
-    const isDuplicate = challanNo !== null && lotNo ? existingKeys.has(`${challanNo}|${lotNo}`) : false
+    const isDuplicate = challanNo !== null && lotNo ? existingKeys.has(`${challanNo}|${norm(lotNo)}`) : false
 
     let status: 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate'
     if (isDuplicate) status = 'duplicate'

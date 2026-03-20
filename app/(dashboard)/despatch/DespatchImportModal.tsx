@@ -231,8 +231,12 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                         <td className="px-3 py-1.5 text-right text-gray-600">{row.rate ?? '—'}</td>
                         <td className="px-3 py-1.5 text-right text-gray-600">{row.pTotal ?? '—'}</td>
                         <td className="px-3 py-1.5 text-gray-600">{row.transportName}</td>
-                        <td className="px-3 py-1.5 text-yellow-700">
-                          {row.missingMasters.length > 0 ? row.missingMasters.join(', ') : ''}
+                        <td className="px-3 py-1.5">
+                          {row.status === 'duplicate'
+                            ? <span className="text-gray-500">Already exists: same Challan No + Lot No</span>
+                            : row.missingMasters.length > 0
+                              ? <span className="text-yellow-700">{row.missingMasters.join(', ')}</span>
+                              : null}
                         </td>
                       </tr>
                     ))}
