@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import DespatchImportModal from './DespatchImportModal'
+import DespatchSyncModal from './DespatchSyncModal'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -74,6 +75,7 @@ export default function DespatchListPage() {
   const [search, setSearchRaw] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useDebounce('')
   const [showImport, setShowImport] = useState(false)
+  const [showSync, setShowSync] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -209,8 +211,11 @@ export default function DespatchListPage() {
           <p className="text-sm text-gray-500 mt-1">{entries.length} entries · {stockSummary.length} lots</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button onClick={() => setShowSync(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
+            🔄 Sync with Sheet
+          </button>
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
-            📊 Import from Google Sheet
+            📊 Import from Sheet
           </button>
           <Link href="/despatch/new" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
             + New Entry
@@ -470,6 +475,12 @@ export default function DespatchListPage() {
         <DespatchImportModal
           onClose={() => setShowImport(false)}
           onImported={() => { setShowImport(false); mutate() }}
+        />
+      )}
+      {showSync && (
+        <DespatchSyncModal
+          onClose={() => setShowSync(false)}
+          onDone={() => { mutate() }}
         />
       )}
     </div>
