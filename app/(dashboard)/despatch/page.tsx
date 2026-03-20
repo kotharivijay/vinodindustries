@@ -516,7 +516,7 @@ export default function DespatchListPage() {
               </div>
             </div>
             <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">
-              This action <strong>cannot be undone</strong>. After reset, you can re-import clean data from Google Sheet.
+              This action <strong>cannot be undone</strong>. Only web app database entries will be deleted — <strong>Google Sheet data is not affected</strong>. After reset, you can re-import fresh from the sheet.
             </div>
             <p className="text-sm text-gray-700 mb-2">Type <strong>RESET</strong> to confirm:</p>
             <input
