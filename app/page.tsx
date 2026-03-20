@@ -1,33 +1,37 @@
 import PublicNav from '@/components/PublicNav'
+import Link from 'next/link'
 
 export default function Home() {
   return (
     <>
       <PublicNav />
-      <main className="flex min-h-screen flex-col items-center justify-between p-24">
-        <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-          <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-            Welcome to Vinod Industries
-          </p>
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex flex-col items-center justify-center px-6 py-16 text-center">
+        <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center mb-6 shadow-lg">
+          <span className="text-white text-3xl font-bold">VI</span>
         </div>
 
-        <div className="relative flex place-items-center">
-          <h1 className="text-4xl font-bold">Vinod Industries</h1>
-          <p className="text-lg mt-4">Leading textile manufacturer specializing in high-quality fabrics.</p>
-        </div>
+        <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-3">Vinod Industries</h1>
+        <p className="text-gray-500 text-lg mb-10 max-w-sm">Leading textile manufacturer specializing in high-quality fabrics.</p>
 
-        <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-3 lg:text-left">
-          <a href="/products" className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100">
-            <h2 className="mb-3 text-2xl font-semibold">Products <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">-&gt;</span></h2>
-            <p className="m-0 max-w-[30ch] text-sm opacity-50">Explore our range of products including Poplin under Kothari Gold brand.</p>
+        <Link
+          href="/login"
+          className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-lg px-10 py-4 rounded-2xl shadow-xl shadow-indigo-200 transition-all mb-12"
+        >
+          🔐 Staff Login
+        </Link>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
+          <a href="/products" className="bg-white rounded-xl border border-gray-200 px-5 py-5 hover:shadow-md transition text-left">
+            <h2 className="text-lg font-semibold mb-1">Products →</h2>
+            <p className="text-sm text-gray-500">Poplin under Kothari Gold brand.</p>
           </a>
-          <a href="/gallery" className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100">
-            <h2 className="mb-3 text-2xl font-semibold">Manufacturing Gallery <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">-&gt;</span></h2>
-            <p className="m-0 max-w-[30ch] text-sm opacity-50">View our manufacturing process from grey checking to packing.</p>
+          <a href="/gallery" className="bg-white rounded-xl border border-gray-200 px-5 py-5 hover:shadow-md transition text-left">
+            <h2 className="text-lg font-semibold mb-1">Gallery →</h2>
+            <p className="text-sm text-gray-500">Manufacturing process photos.</p>
           </a>
-          <a href="/contact" className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100">
-            <h2 className="mb-3 text-2xl font-semibold">Contact Us <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">-&gt;</span></h2>
-            <p className="m-0 max-w-[30ch] text-sm opacity-50">Get in touch with us for inquiries and orders.</p>
+          <a href="/contact" className="bg-white rounded-xl border border-gray-200 px-5 py-5 hover:shadow-md transition text-left">
+            <h2 className="text-lg font-semibold mb-1">Contact →</h2>
+            <p className="text-sm text-gray-500">Get in touch for inquiries.</p>
           </a>
         </div>
       </main>
