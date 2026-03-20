@@ -80,8 +80,9 @@ export default function DespatchListPage() {
   const [tab, setTab] = useState<Tab>('entries')
   const [stockSearch, setStockSearch] = useState('')
   const [debouncedStockSearch, setDebouncedStockSearch] = useDebounce('')
-
   const [filters, setFilters] = useState({ party: '', quality: '', lotNo: '', lrNo: '' })
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const toggleExpand = (id: number) => setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
 
   async function handleDelete(id: number) {
     if (!confirm('Delete this despatch entry? This cannot be undone.')) return
@@ -91,7 +92,6 @@ export default function DespatchListPage() {
     mutate()
   }
 
-  // Stock summary — memoised
   const stockSummary = useMemo<StockSummaryRow[]>(() => {
     const map = new Map<string, StockSummaryRow>()
     for (const e of entries) {
@@ -126,7 +126,6 @@ export default function DespatchListPage() {
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters(prev => ({ ...prev, [key]: val }))
 
-  // Duplicate detection — memoised
   const dupKeys = useMemo(() => {
     const seen = new Map<string, number>()
     for (const e of entries) {
@@ -140,7 +139,6 @@ export default function DespatchListPage() {
 
   const isDup = (e: DespatchEntry) => dupKeys.has(`${e.challanNo}__${e.lotNo.toLowerCase()}`)
 
-  // Filtering & sorting — memoised
   const filtered = useMemo(() =>
     entries
       .filter((e) => {
@@ -188,7 +186,6 @@ export default function DespatchListPage() {
   }
 
   const fi = 'w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300 mt-1'
-
   const totalThan = stockSummary.reduce((s, r) => s + r.totalThan, 0)
   const totalValue = stockSummary.reduce((s, r) => s + r.totalPTotal, 0)
 
@@ -278,7 +275,9 @@ export default function DespatchListPage() {
                   <tbody className="divide-y divide-gray-50">
                     {filteredStock.map(r => (
                       <tr key={r.lotNo} className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 font-semibold text-indigo-700">{r.lotNo}</td>
+                        <td className="px-4 py-3 font-semibold text-indigo-700">
+                          <Link href={`/lot/${encodeURIComponent(r.lotNo)}`} className="hover:underline">{r.lotNo}</Link>
+                        </td>
                         <td className="px-4 py-3 text-gray-800">{r.party}</td>
                         <td className="px-4 py-3 text-gray-600">{r.quality}</td>
                         <td className="px-4 py-3 text-gray-500 text-xs">{new Date(r.lastDate).toLocaleDateString('en-IN')}</td>
@@ -333,74 +332,124 @@ export default function DespatchListPage() {
                 {entries.length === 0 ? 'No entries yet. Add manually or import from Google Sheet.' : 'No results found.'}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <SortTh field="date" label="Date" />
-                      <SortTh field="challanNo" label="Challan" />
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('party')}>
-                        <span className="flex items-center gap-1">Party <span className={sortField==='party'?'text-indigo-600':'text-gray-300'}>{sortField==='party'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
-                        <input className={fi} placeholder="filter..." value={filters.party} onChange={e=>{e.stopPropagation();setFilter('party',e.target.value)}} onClick={e=>e.stopPropagation()} />
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('quality')}>
-                        <span className="flex items-center gap-1">Quality <span className={sortField==='quality'?'text-indigo-600':'text-gray-300'}>{sortField==='quality'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
-                        <input className={fi} placeholder="filter..." value={filters.quality} onChange={e=>{e.stopPropagation();setFilter('quality',e.target.value)}} onClick={e=>e.stopPropagation()} />
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lotNo')}>
-                        <span className="flex items-center gap-1">Lot No <span className={sortField==='lotNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lotNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
-                        <input className={fi} placeholder="filter..." value={filters.lotNo} onChange={e=>{e.stopPropagation();setFilter('lotNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
-                      </th>
-                      <PlainTh label="Gray Inw" />
-                      <PlainTh label="Job Delivery" />
-                      <SortTh field="than" label="Than" right />
-                      <PlainTh label="Bill No" />
-                      <SortTh field="rate" label="Rate" right />
-                      <SortTh field="pTotal" label="P.Total" right />
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lrNo')}>
-                        <span className="flex items-center gap-1">LR No <span className={sortField==='lrNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lrNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
-                        <input className={fi} placeholder="filter..." value={filters.lrNo} onChange={e=>{e.stopPropagation();setFilter('lrNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
-                      </th>
-                      <PlainTh label="Transport" />
-                      <PlainTh label="Bale" right />
-                      <PlainTh label="" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {filtered.map((e) => (
-                      <tr key={e.id} className={`hover:bg-gray-50 transition ${isDup(e) ? 'bg-red-50' : ''}`}>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
-                        <td className="px-3 py-2.5">
-                          <span>{e.challanNo}</span>
-                          {isDup(e) && <span className="ml-1.5 bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide">Dup</span>}
-                        </td>
-                        <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{e.party.name}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{e.quality.name}</td>
-                        <td className="px-3 py-2.5 font-medium text-indigo-700">{e.lotNo}</td>
-                        <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">
-                          {e.grayInwDate ? new Date(e.grayInwDate).toLocaleDateString('en-IN') : '—'}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-500 text-xs">{e.jobDelivery || '—'}</td>
-                        <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{e.billNo || '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-600">{e.rate ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-right font-medium text-gray-800">
-                          {e.pTotal != null ? `₹${e.pTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-500">{e.lrNo || '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.transport?.name ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-500">{e.bale ?? '—'}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          <button onClick={() => router.push(`/despatch/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
-                          <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
-                            {deletingId === e.id ? '...' : 'Delete'}
-                          </button>
-                        </td>
+              <>
+                {/* ── Mobile card view ── */}
+                <div className="block sm:hidden divide-y divide-gray-100">
+                  {filtered.map((e) => (
+                    <div key={e.id} className={`p-4 ${isDup(e) ? 'bg-red-50' : ''}`}>
+                      <div className="flex items-start justify-between mb-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                          <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
+                          <span className="text-gray-300">·</span>
+                          <span>Ch {e.challanNo}</span>
+                          {isDup(e) && <span className="bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide">Dup</span>}
+                        </div>
+                        <div className="flex gap-3 shrink-0">
+                          <button onClick={() => router.push(`/despatch/${e.id}/edit`)} className="text-indigo-500 text-xs font-medium">Edit</button>
+                          <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 text-xs font-medium">{deletingId === e.id ? '...' : 'Del'}</button>
+                        </div>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-800">{e.party.name}</p>
+                      <p className="text-xs text-gray-500 mb-2">{e.quality.name}</p>
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-indigo-100 active:bg-indigo-200">
+                          🔖 {e.lotNo}
+                        </Link>
+                        <span className="text-xs text-gray-600">Than: <strong>{e.than}</strong></span>
+                        {e.pTotal != null && (
+                          <span className="text-xs font-semibold text-gray-700">₹{e.pTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                        )}
+                      </div>
+                      <button onClick={() => toggleExpand(e.id)} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">
+                        {expandedIds.has(e.id) ? '▲ Less' : '▼ More details'}
+                      </button>
+                      {expandedIds.has(e.id) && (
+                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 bg-gray-50 rounded-lg p-3">
+                          <span>Gray Inw: {e.grayInwDate ? new Date(e.grayInwDate).toLocaleDateString('en-IN') : '—'}</span>
+                          <span>Job: {e.jobDelivery || '—'}</span>
+                          <span>Bill No: {e.billNo || '—'}</span>
+                          <span>Rate: {e.rate ?? '—'}</span>
+                          <span>LR No: {e.lrNo || '—'}</span>
+                          <span>Transport: {e.transport?.name ?? '—'}</span>
+                          <span>Bale: {e.bale ?? '—'}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Desktop table ── */}
+                <div className="hidden sm:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <SortTh field="date" label="Date" />
+                        <SortTh field="challanNo" label="Challan" />
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('party')}>
+                          <span className="flex items-center gap-1">Party <span className={sortField==='party'?'text-indigo-600':'text-gray-300'}>{sortField==='party'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                          <input className={fi} placeholder="filter..." value={filters.party} onChange={e=>{e.stopPropagation();setFilter('party',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('quality')}>
+                          <span className="flex items-center gap-1">Quality <span className={sortField==='quality'?'text-indigo-600':'text-gray-300'}>{sortField==='quality'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                          <input className={fi} placeholder="filter..." value={filters.quality} onChange={e=>{e.stopPropagation();setFilter('quality',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                        </th>
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lotNo')}>
+                          <span className="flex items-center gap-1">Lot No <span className={sortField==='lotNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lotNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                          <input className={fi} placeholder="filter..." value={filters.lotNo} onChange={e=>{e.stopPropagation();setFilter('lotNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                        </th>
+                        <PlainTh label="Gray Inw" />
+                        <PlainTh label="Job Delivery" />
+                        <SortTh field="than" label="Than" right />
+                        <PlainTh label="Bill No" />
+                        <SortTh field="rate" label="Rate" right />
+                        <SortTh field="pTotal" label="P.Total" right />
+                        <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lrNo')}>
+                          <span className="flex items-center gap-1">LR No <span className={sortField==='lrNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lrNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                          <input className={fi} placeholder="filter..." value={filters.lrNo} onChange={e=>{e.stopPropagation();setFilter('lrNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                        </th>
+                        <PlainTh label="Transport" />
+                        <PlainTh label="Bale" right />
+                        <PlainTh label="" />
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filtered.map((e) => (
+                        <tr key={e.id} className={`hover:bg-gray-50 transition ${isDup(e) ? 'bg-red-50' : ''}`}>
+                          <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
+                          <td className="px-3 py-2.5">
+                            <span>{e.challanNo}</span>
+                            {isDup(e) && <span className="ml-1.5 bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide">Dup</span>}
+                          </td>
+                          <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{e.party.name}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">{e.quality.name}</td>
+                          <td className="px-3 py-2.5 font-medium text-indigo-700">
+                            <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="hover:underline">{e.lotNo}</Link>
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                            {e.grayInwDate ? new Date(e.grayInwDate).toLocaleDateString('en-IN') : '—'}
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-500 text-xs">{e.jobDelivery || '—'}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
+                          <td className="px-3 py-2.5 text-gray-500">{e.billNo || '—'}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-600">{e.rate ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-right font-medium text-gray-800">
+                            {e.pTotal != null ? `₹${e.pTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-500">{e.lrNo || '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.transport?.name ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-500">{e.bale ?? '—'}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <button onClick={() => router.push(`/despatch/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
+                            <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
+                              {deletingId === e.id ? '...' : 'Delete'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </>

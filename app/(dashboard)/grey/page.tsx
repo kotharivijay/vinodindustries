@@ -56,7 +56,7 @@ export default function GreyListPage() {
   const router = useRouter()
   const { data: entries = [], isLoading: loading, mutate } = useSWR<GreyEntry[]>('/api/grey', fetcher, {
     revalidateOnFocus: false,
-    dedupingInterval: 30_000, // don't re-fetch if within 30s
+    dedupingInterval: 30_000,
   })
 
   const [search, setSearchRaw] = useState('')
@@ -69,8 +69,9 @@ export default function GreyListPage() {
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [stockSearch, setStockSearch] = useState('')
   const [debouncedStockSearch, setDebouncedStockSearch] = useDebounce('')
-
   const [filters, setFilters] = useState({ party: '', quality: '', lotNo: '', lrNo: '' })
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const toggleExpand = (id: number) => setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
 
   async function handleDelete(id: number) {
     if (!confirm('Delete this entry? This cannot be undone.')) return
@@ -80,7 +81,6 @@ export default function GreyListPage() {
     mutate()
   }
 
-  // Stock summary — memoised so it only recomputes when entries change
   const stockSummary = useMemo<StockSummaryRow[]>(() => {
     const map = new Map<string, StockSummaryRow>()
     for (const e of entries) {
@@ -124,7 +124,6 @@ export default function GreyListPage() {
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters(prev => ({ ...prev, [key]: val }))
 
-  // Filtering & sorting — memoised to avoid recomputing on unrelated state changes
   const filtered = useMemo(() =>
     entries
       .filter((e) => {
@@ -271,7 +270,9 @@ export default function GreyListPage() {
                   <tbody className="divide-y divide-gray-50">
                     {filteredStock.map(r => (
                       <tr key={r.lotNo} className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 font-semibold text-indigo-700">{r.lotNo}</td>
+                        <td className="px-4 py-3 font-semibold text-indigo-700">
+                          <Link href={`/lot/${encodeURIComponent(r.lotNo)}`} className="hover:underline">{r.lotNo}</Link>
+                        </td>
                         <td className="px-4 py-3 text-gray-800">{r.party}</td>
                         <td className="px-4 py-3 text-gray-600">{r.quality}</td>
                         <td className="px-4 py-3 text-gray-500 text-xs">{r.weaver}</td>
@@ -329,77 +330,130 @@ export default function GreyListPage() {
                 {entries.length === 0 ? 'No entries yet. Add manually or import from Google Sheet.' : 'No results found.'}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <SortTh field="sn" label="SN" />
-                      <SortTh field="date" label="Date" />
-                      <PlainTh label="Challan" />
-                      <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600 group" onClick={() => toggleSort('party')}>
-                        <span className="flex items-center gap-1">Party <span className={sortField==='party'?'text-indigo-600':'text-gray-300'}>{sortField==='party'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
-                        <input className={fi} placeholder="filter..." value={filters.party} onChange={e=>{e.stopPropagation();setFilter('party',e.target.value)}} onClick={e=>e.stopPropagation()} />
-                      </th>
-                      <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('quality')}>
-                        <span className="flex items-center gap-1">Quality <span className={sortField==='quality'?'text-indigo-600':'text-gray-300'}>{sortField==='quality'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
-                        <input className={fi} placeholder="filter..." value={filters.quality} onChange={e=>{e.stopPropagation();setFilter('quality',e.target.value)}} onClick={e=>e.stopPropagation()} />
-                      </th>
-                      <PlainTh label="Weight" />
-                      <SortTh field="than" label="Than" />
-                      <PlainTh label="Gray Mtr" />
-                      <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lotNo')}>
-                        <span className="flex items-center gap-1">Lot No <span className={sortField==='lotNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lotNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
-                        <input className={fi} placeholder="filter..." value={filters.lotNo} onChange={e=>{e.stopPropagation();setFilter('lotNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
-                      </th>
-                      <PlainTh label="Transport" />
-                      <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lrNo')}>
-                        <span className="flex items-center gap-1">LR No <span className={sortField==='lrNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lrNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
-                        <input className={fi} placeholder="filter..." value={filters.lrNo} onChange={e=>{e.stopPropagation();setFilter('lrNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
-                      </th>
-                      <PlainTh label="Bale" />
-                      <PlainTh label="Bale No" />
-                      <PlainTh label="Ech Bale" />
-                      <PlainTh label="Weaver" />
-                      <SortTh field="tDesp" label="T_DESP" />
-                      <SortTh field="stock" label="Stock" />
-                      <PlainTh label="" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {filtered.map((e) => (
-                      <tr key={e.id} className="hover:bg-gray-50 transition">
-                        <td className="px-3 py-2.5 text-gray-500">{e.sn ?? e.id}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
-                        <td className="px-3 py-2.5">{e.challanNo}</td>
-                        <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{e.party.name}</td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">{e.quality.name}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{e.weight ?? '—'}</td>
-                        <td className="px-3 py-2.5 font-semibold">{e.than}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{e.grayMtr ?? '—'}</td>
-                        <td className="px-3 py-2.5 font-medium text-indigo-700">{e.lotNo}</td>
-                        <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.transport.name}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{e.lrNo ?? e.transportLrNo ?? '—'}</td>
-                        <td className="px-3 py-2.5">{e.bale ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{e.baleNo ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{e.echBaleThan ?? '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.weaver.name}</td>
-                        <td className="px-3 py-2.5 text-orange-600 font-medium">{e.tDesp}</td>
-                        <td className="px-3 py-2.5">
-                          <span className={`font-semibold ${e.stock > 0 ? 'text-green-600' : e.stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                            {e.stock}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          <button onClick={() => router.push(`/grey/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
-                          <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
-                            {deletingId === e.id ? '...' : 'Delete'}
-                          </button>
-                        </td>
+              <>
+                {/* ── Mobile card view ── */}
+                <div className="block sm:hidden divide-y divide-gray-100">
+                  {filtered.map((e) => (
+                    <div key={e.id} className="p-4">
+                      <div className="flex items-start justify-between mb-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                          <span className="text-gray-400 font-medium">SN {e.sn ?? e.id}</span>
+                          <span className="text-gray-300">·</span>
+                          <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
+                          <span className="text-gray-300">·</span>
+                          <span>Ch {e.challanNo}</span>
+                        </div>
+                        <div className="flex gap-3 shrink-0">
+                          <button onClick={() => router.push(`/grey/${e.id}/edit`)} className="text-indigo-500 text-xs font-medium">Edit</button>
+                          <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 text-xs font-medium">{deletingId === e.id ? '...' : 'Del'}</button>
+                        </div>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-800">{e.party.name}</p>
+                      <p className="text-xs text-gray-500 mb-2">{e.quality.name}</p>
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-indigo-100 active:bg-indigo-200">
+                          🔖 {e.lotNo}
+                        </Link>
+                        <span className="text-xs text-gray-600">Than: <strong>{e.than}</strong></span>
+                        <span className={`text-xs font-semibold ${e.stock > 0 ? 'text-green-600' : e.stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                          Stock: {e.stock}
+                        </span>
+                      </div>
+                      <button onClick={() => toggleExpand(e.id)} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">
+                        {expandedIds.has(e.id) ? '▲ Less' : '▼ More details'}
+                      </button>
+                      {expandedIds.has(e.id) && (
+                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 bg-gray-50 rounded-lg p-3">
+                          <span>Weight: {e.weight ?? '—'}</span>
+                          <span>Gray Mtr: {e.grayMtr ?? '—'}</span>
+                          <span>Transport: {e.transport.name}</span>
+                          <span>LR No: {e.lrNo ?? e.transportLrNo ?? '—'}</span>
+                          <span>Bale: {e.bale ?? '—'}</span>
+                          <span>Bale No: {e.baleNo ?? '—'}</span>
+                          <span>Ech Bale: {e.echBaleThan ?? '—'}</span>
+                          <span className="col-span-2">Weaver: {e.weaver.name}</span>
+                          <span>T_DESP: {e.tDesp}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Desktop table ── */}
+                <div className="hidden sm:block overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <SortTh field="sn" label="SN" />
+                        <SortTh field="date" label="Date" />
+                        <PlainTh label="Challan" />
+                        <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600 group" onClick={() => toggleSort('party')}>
+                          <span className="flex items-center gap-1">Party <span className={sortField==='party'?'text-indigo-600':'text-gray-300'}>{sortField==='party'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                          <input className={fi} placeholder="filter..." value={filters.party} onChange={e=>{e.stopPropagation();setFilter('party',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                        </th>
+                        <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('quality')}>
+                          <span className="flex items-center gap-1">Quality <span className={sortField==='quality'?'text-indigo-600':'text-gray-300'}>{sortField==='quality'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                          <input className={fi} placeholder="filter..." value={filters.quality} onChange={e=>{e.stopPropagation();setFilter('quality',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                        </th>
+                        <PlainTh label="Weight" />
+                        <SortTh field="than" label="Than" />
+                        <PlainTh label="Gray Mtr" />
+                        <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lotNo')}>
+                          <span className="flex items-center gap-1">Lot No <span className={sortField==='lotNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lotNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                          <input className={fi} placeholder="filter..." value={filters.lotNo} onChange={e=>{e.stopPropagation();setFilter('lotNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                        </th>
+                        <PlainTh label="Transport" />
+                        <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lrNo')}>
+                          <span className="flex items-center gap-1">LR No <span className={sortField==='lrNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lrNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
+                          <input className={fi} placeholder="filter..." value={filters.lrNo} onChange={e=>{e.stopPropagation();setFilter('lrNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                        </th>
+                        <PlainTh label="Bale" />
+                        <PlainTh label="Bale No" />
+                        <PlainTh label="Ech Bale" />
+                        <PlainTh label="Weaver" />
+                        <SortTh field="tDesp" label="T_DESP" />
+                        <SortTh field="stock" label="Stock" />
+                        <PlainTh label="" />
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filtered.map((e) => (
+                        <tr key={e.id} className="hover:bg-gray-50 transition">
+                          <td className="px-3 py-2.5 text-gray-500">{e.sn ?? e.id}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
+                          <td className="px-3 py-2.5">{e.challanNo}</td>
+                          <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{e.party.name}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">{e.quality.name}</td>
+                          <td className="px-3 py-2.5 text-gray-500">{e.weight ?? '—'}</td>
+                          <td className="px-3 py-2.5 font-semibold">{e.than}</td>
+                          <td className="px-3 py-2.5 text-gray-500">{e.grayMtr ?? '—'}</td>
+                          <td className="px-3 py-2.5 font-medium text-indigo-700">
+                            <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="hover:underline">{e.lotNo}</Link>
+                          </td>
+                          <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.transport.name}</td>
+                          <td className="px-3 py-2.5 text-gray-500">{e.lrNo ?? e.transportLrNo ?? '—'}</td>
+                          <td className="px-3 py-2.5">{e.bale ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500">{e.baleNo ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500">{e.echBaleThan ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.weaver.name}</td>
+                          <td className="px-3 py-2.5 text-orange-600 font-medium">{e.tDesp}</td>
+                          <td className="px-3 py-2.5">
+                            <span className={`font-semibold ${e.stock > 0 ? 'text-green-600' : e.stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                              {e.stock}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            <button onClick={() => router.push(`/grey/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
+                            <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
+                              {deletingId === e.id ? '...' : 'Delete'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </>
