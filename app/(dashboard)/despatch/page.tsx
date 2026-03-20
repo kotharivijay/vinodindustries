@@ -126,18 +126,29 @@ export default function DespatchListPage() {
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters(prev => ({ ...prev, [key]: val }))
 
-  const dupKeys = useMemo(() => {
-    const seen = new Map<string, number>()
+  function normLot(lot: string) {
+    return lot.toLowerCase().trim().replace(/\s+/g, ' ')
+  }
+
+  const dupMap = useMemo(() => {
+    const map = new Map<number, string>()
+    const challanLotCount = new Map<string, number[]>()
     for (const e of entries) {
-      const key = `${e.challanNo}__${e.lotNo.toLowerCase()}`
-      seen.set(key, (seen.get(key) ?? 0) + 1)
+      const key = `${e.challanNo}__${normLot(e.lotNo)}`
+      const arr = challanLotCount.get(key) ?? []
+      arr.push(e.id)
+      challanLotCount.set(key, arr)
     }
-    const dups = new Set<string>()
-    for (const [key, count] of seen) { if (count > 1) dups.add(key) }
-    return dups
+    for (const [, ids] of challanLotCount) {
+      if (ids.length > 1) {
+        for (const id of ids) map.set(id, 'Same Challan No + Lot No')
+      }
+    }
+    return map
   }, [entries])
 
-  const isDup = (e: DespatchEntry) => dupKeys.has(`${e.challanNo}__${e.lotNo.toLowerCase()}`)
+  const isDup = (e: DespatchEntry) => dupMap.has(e.id)
+  const getDupReason = (e: DespatchEntry) => dupMap.get(e.id) ?? ''
 
   const filtered = useMemo(() =>
     entries
@@ -342,7 +353,7 @@ export default function DespatchListPage() {
                           <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                           <span className="text-gray-300">·</span>
                           <span>Ch {e.challanNo}</span>
-                          {isDup(e) && <span className="bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide">Dup</span>}
+                          {isDup(e) && <span className="bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>⚠ Dup: {getDupReason(e)}</span>}
                         </div>
                         <div className="flex gap-3 shrink-0">
                           <button onClick={() => router.push(`/despatch/${e.id}/edit`)} className="text-indigo-500 text-xs font-medium">Edit</button>
@@ -418,7 +429,7 @@ export default function DespatchListPage() {
                           <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
                           <td className="px-3 py-2.5">
                             <span>{e.challanNo}</span>
-                            {isDup(e) && <span className="ml-1.5 bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide">Dup</span>}
+                            {isDup(e) && <span className="ml-1.5 bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>⚠ {getDupReason(e)}</span>}
                           </td>
                           <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{e.party.name}</td>
                           <td className="px-3 py-2.5 whitespace-nowrap">{e.quality.name}</td>
