@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeName, findSimilar } from '@/lib/nameUtils'
 
 const ALLOWED = ['parties', 'qualities', 'weavers', 'transports'] as const
 type MasterType = typeof ALLOWED[number]
@@ -36,12 +37,40 @@ export async function POST(req: NextRequest, { params }: { params: { type: strin
   if (!ALLOWED.includes(params.type as MasterType))
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
 
-  const { name } = await req.json()
+  const { name, force } = await req.json()
   if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
+
+  // Normalize: strip extra spaces, quotes, lowercase-compare
+  const normalized = normalizeName(name)
+  const savedName = name.replace(/\s+/g, ' ').replace(/["""''`″′]/g, '').trim()
+
+  // Load all existing to check for duplicates / similarities
+  const existing = await (getModel(params.type as MasterType) as any).findMany({
+    select: { id: true, name: true },
+  })
+
+  // Exact normalized match → always reject
+  const exactMatch = existing.find(
+    (e: { id: number; name: string }) => normalizeName(e.name) === normalized
+  )
+  if (exactMatch) {
+    return NextResponse.json(
+      { error: `Already exists as "${exactMatch.name}"`, existingId: exactMatch.id },
+      { status: 409 }
+    )
+  }
+
+  // If not forced, check for similar names
+  if (!force) {
+    const similar = findSimilar(name, existing, 65)
+    if (similar.length > 0) {
+      return NextResponse.json({ needsConfirm: true, suggestions: similar }, { status: 200 })
+    }
+  }
 
   try {
     const item = await (getModel(params.type as MasterType) as any).create({
-      data: { name: name.trim() },
+      data: { name: savedName },
     })
     return NextResponse.json(item, { status: 201 })
   } catch (e: any) {
