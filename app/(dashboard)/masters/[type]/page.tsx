@@ -172,7 +172,7 @@ export default function MasterPage({ params }: { params: Promise<{ type: string 
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
             <h2 className="text-lg font-bold text-gray-800 mb-1">Similar names found</h2>
             <p className="text-sm text-gray-500 mb-4">
-              You are adding <strong>"{pendingName}"</strong>. These similar entries already exist:
+              You are adding <strong>&quot;{pendingName}&quot;</strong>. These similar entries already exist:
             </p>
             <div className="flex flex-col gap-2 mb-5">
               {confirmSuggestions.map(s => (
