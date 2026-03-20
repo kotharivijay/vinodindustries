@@ -47,10 +47,9 @@ export async function POST(req: NextRequest) {
   const qualityMap = new Map(qualities.map(q => [norm(q.name), q]))
   const transportMap = new Map(transports.map(t => [norm(t.name), t]))
 
-  const existing = await prisma.despatchEntry.findMany({ select: { challanNo: true, lotNo: true } })
-  const existingKeys = new Set(existing.map(e => `${e.challanNo}|${norm(e.lotNo)}`))
-
   const rows = []
+  let sheetTotalThan = 0
+
   for (const row of dataRows) {
     const partyName = row[COL.PARTY]?.trim() ?? ''
     const date = row[COL.DATE]?.trim() ?? ''
@@ -64,6 +63,8 @@ export async function POST(req: NextRequest) {
     const rate = parseFloat(row[COL.RATE]) || null
     const pTotal = rate && than ? parseFloat((than * rate).toFixed(2)) : (parseFloat(row[COL.P_TOTAL]) || null)
 
+    sheetTotalThan += than
+
     const party = partyMap.get(norm(partyName))
     const quality = qualityMap.get(norm(qualityName))
     const transport = transportName ? transportMap.get(norm(transportName)) : null
@@ -74,11 +75,8 @@ export async function POST(req: NextRequest) {
     if (transportName && !transport && norm(transportName) !== 'by hand' && norm(transportName) !== 'open')
       missingMasters.push(`Transport: "${transportName}"`)
 
-    const isDuplicate = challanNo !== null && lotNo ? existingKeys.has(`${challanNo}|${norm(lotNo)}`) : false
-
-    let status: 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate'
-    if (isDuplicate) status = 'duplicate'
-    else if (missingMasters.length > 0) status = 'missing_masters'
+    let status: 'ready' | 'missing_masters' | 'missing_lot'
+    if (missingMasters.length > 0) status = 'missing_masters'
     else if (!lotNo) status = 'missing_lot'
     else status = 'ready'
 
@@ -103,7 +101,7 @@ export async function POST(req: NextRequest) {
     ready: rows.filter(r => r.status === 'ready').length,
     missing_masters: rows.filter(r => r.status === 'missing_masters').length,
     missing_lot: rows.filter(r => r.status === 'missing_lot').length,
-    duplicate: rows.filter(r => r.status === 'duplicate').length,
+    sheetTotalThan,
   }
   return NextResponse.json({ rows, summary })
 }
@@ -147,7 +145,11 @@ export async function PUT(req: NextRequest) {
       errors.push({ challanNo: row.challanNo, error: e.message })
     }
   }
-  return NextResponse.json({ imported, errors })
+  // After import, get DB total than for verification
+  const dbAgg = await prisma.despatchEntry.aggregate({ _sum: { than: true } })
+  const dbTotalThan = dbAgg._sum.than ?? 0
+
+  return NextResponse.json({ imported, errors, dbTotalThan })
 }
 
 // PATCH — auto-create missing masters

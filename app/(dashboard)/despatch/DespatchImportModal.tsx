@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 
-type RowStatus = 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate'
+type RowStatus = 'ready' | 'missing_masters' | 'missing_lot'
 
 interface ImportRow {
   challanNo: number | null
@@ -24,26 +24,24 @@ interface ImportRow {
   transportId: number | null
 }
 
-interface Summary { total: number; ready: number; missing_masters: number; missing_lot: number; duplicate: number }
+interface Summary { total: number; ready: number; missing_masters: number; missing_lot: number; sheetTotalThan: number }
 
 const STATUS_STYLE: Record<RowStatus, string> = {
   ready: 'bg-green-100 text-green-700',
   missing_masters: 'bg-yellow-100 text-yellow-700',
   missing_lot: 'bg-red-100 text-red-700',
-  duplicate: 'bg-gray-100 text-gray-500',
 }
 const STATUS_LABEL: Record<RowStatus, string> = {
   ready: 'Ready',
   missing_masters: 'Missing Masters',
   missing_lot: 'Missing Lot No',
-  duplicate: 'Duplicate',
 }
 
 export default function DespatchImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [step, setStep] = useState<'idle' | 'loading' | 'preview' | 'importing' | 'done'>('idle')
   const [rows, setRows] = useState<ImportRow[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [result, setResult] = useState<{ imported: number; errors: any[] } | null>(null)
+  const [result, setResult] = useState<{ imported: number; errors: any[]; dbTotalThan: number } | null>(null)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
@@ -51,10 +49,7 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
     setStep('loading'); setError('')
     const res = await fetch('/api/despatch/import', { method: 'POST' })
     const data = await res.json()
-    if (!res.ok) {
-      setError(data.message ?? 'Failed to fetch despatch sheet.')
-      setStep('idle'); return
-    }
+    if (!res.ok) { setError(data.message ?? 'Failed to fetch despatch sheet.'); setStep('idle'); return }
     setRows(data.rows)
     setSummary(data.summary)
     setSelected(new Set(data.rows.map((_: any, i: number) => i).filter((i: number) => data.rows[i].status === 'ready')))
@@ -73,18 +68,15 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
     const updated = [...rows]
     let j = 0
     for (let i = 0; i < updated.length; i++) {
-      if (updated[i].status === 'missing_masters') {
-        updated[i] = data.rows[j++]
-      }
+      if (updated[i].status === 'missing_masters') updated[i] = data.rows[j++]
     }
     setRows(updated)
-    setSummary({
-      total: updated.length,
-      ready: updated.filter((r) => r.status === 'ready').length,
-      missing_masters: updated.filter((r) => r.status === 'missing_masters').length,
-      missing_lot: updated.filter((r) => r.status === 'missing_lot').length,
-      duplicate: updated.filter((r) => r.status === 'duplicate').length,
-    })
+    setSummary(s => s ? {
+      ...s,
+      ready: updated.filter(r => r.status === 'ready').length,
+      missing_masters: updated.filter(r => r.status === 'missing_masters').length,
+      missing_lot: updated.filter(r => r.status === 'missing_lot').length,
+    } : s)
     setSelected(new Set(updated.map((_, i) => i).filter((i) => updated[i].status === 'ready')))
   }
 
@@ -103,14 +95,11 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
   }
 
   function toggleRow(i: number) {
-    setSelected((prev) => {
-      const s = new Set(prev)
-      s.has(i) ? s.delete(i) : s.add(i)
-      return s
-    })
+    setSelected(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s })
   }
 
   const readySelected = [...selected].filter((i) => rows[i]?.status === 'ready').length
+  const selectedThan = [...selected].filter(i => rows[i]?.status === 'ready').reduce((s, i) => s + (rows[i]?.than ?? 0), 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -126,15 +115,11 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
             <div className="text-center py-12">
               <div className="text-5xl mb-4">📦</div>
               <p className="text-gray-600 mb-2">Fetch data from <strong>Despatch Sheet (Sheet1)</strong></p>
-              <p className="text-gray-400 text-sm mb-6">New rows will be previewed before import</p>
+              <p className="text-gray-400 text-sm mb-6">All rows will be previewed before import — no duplicate filtering</p>
               <button onClick={fetchSheet} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-indigo-700">
                 Fetch Sheet Data
               </button>
-              {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mt-4 text-sm text-left">
-                  {error}
-                </div>
-              )}
+              {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mt-4 text-sm text-left">{error}</div>}
             </div>
           )}
 
@@ -147,18 +132,24 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
 
           {step === 'preview' && summary && (
             <>
-              <div className="grid grid-cols-4 gap-3 mb-4">
-                {[
-                  { label: 'Ready to Import', value: summary.ready, color: 'bg-green-50 text-green-700 border-green-200' },
-                  { label: 'Missing Masters', value: summary.missing_masters, color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
-                  { label: 'Missing Lot No', value: summary.missing_lot, color: 'bg-red-50 text-red-700 border-red-200' },
-                  { label: 'Duplicate (skip)', value: summary.duplicate, color: 'bg-gray-50 text-gray-500 border-gray-200' },
-                ].map((s) => (
-                  <div key={s.label} className={`border rounded-lg p-3 text-center ${s.color}`}>
-                    <div className="text-2xl font-bold">{s.value}</div>
-                    <div className="text-xs mt-0.5">{s.label}</div>
-                  </div>
-                ))}
+              {/* Summary cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div className="border rounded-lg p-3 text-center bg-gray-50 border-gray-200">
+                  <div className="text-2xl font-bold text-gray-700">{summary.total}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Total Rows</div>
+                </div>
+                <div className="border rounded-lg p-3 text-center bg-green-50 border-green-200">
+                  <div className="text-2xl font-bold text-green-700">{summary.ready}</div>
+                  <div className="text-xs text-green-600 mt-0.5">Ready to Import</div>
+                </div>
+                <div className="border rounded-lg p-3 text-center bg-yellow-50 border-yellow-200">
+                  <div className="text-2xl font-bold text-yellow-700">{summary.missing_masters}</div>
+                  <div className="text-xs text-yellow-600 mt-0.5">Missing Masters</div>
+                </div>
+                <div className="border rounded-lg p-3 text-center bg-indigo-50 border-indigo-200">
+                  <div className="text-2xl font-bold text-indigo-700">{summary.sheetTotalThan}</div>
+                  <div className="text-xs text-indigo-600 mt-0.5">Sheet Total Than</div>
+                </div>
               </div>
 
               {summary.missing_masters > 0 && (
@@ -175,8 +166,7 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
 
               {summary.missing_lot > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4">
-                  <p className="text-sm font-medium text-red-800">🔴 {summary.missing_lot} rows have no Lot No — these cannot be imported.</p>
-                  <p className="text-xs text-red-600 mt-0.5">Update the Google Sheet with Lot Nos, then re-fetch.</p>
+                  <p className="text-sm font-medium text-red-800">🔴 {summary.missing_lot} rows have no Lot No — these will be skipped.</p>
                 </div>
               )}
 
@@ -208,22 +198,14 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                   </thead>
                   <tbody>
                     {rows.map((row, i) => (
-                      <tr key={i} className={`border-b last:border-0 ${row.status === 'duplicate' ? 'opacity-40' : ''}`}>
+                      <tr key={i} className={`border-b last:border-0 ${row.status !== 'ready' ? 'opacity-50' : ''}`}>
                         <td className="px-3 py-1.5">
-                          <input
-                            type="checkbox"
-                            checked={selected.has(i)}
-                            disabled={row.status !== 'ready'}
-                            onChange={() => toggleRow(i)}
-                          />
+                          <input type="checkbox" checked={selected.has(i)} disabled={row.status !== 'ready'} onChange={() => toggleRow(i)} />
                         </td>
                         <td className="px-3 py-1.5">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLE[row.status]}`}>
                             {STATUS_LABEL[row.status]}
                           </span>
-                          {row.status === 'duplicate' && (
-                            <div className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap">Ch + Lot No already in DB</div>
-                          )}
                         </td>
                         <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{row.date}</td>
                         <td className="px-3 py-1.5 text-gray-600">{row.challanNo ?? '—'}</td>
@@ -234,16 +216,19 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                         <td className="px-3 py-1.5 text-right text-gray-600">{row.rate ?? '—'}</td>
                         <td className="px-3 py-1.5 text-right text-gray-600">{row.pTotal ?? '—'}</td>
                         <td className="px-3 py-1.5 text-gray-600">{row.transportName}</td>
-                        <td className="px-3 py-1.5">
-                          {row.status === 'duplicate'
-                            ? <span className="text-gray-500">Already exists: same Challan No + Lot No</span>
-                            : row.missingMasters.length > 0
-                              ? <span className="text-yellow-700">{row.missingMasters.join(', ')}</span>
-                              : null}
-                        </td>
+                        <td className="px-3 py-1.5 text-yellow-700 text-[10px]">{row.missingMasters.join(', ')}</td>
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot className="bg-gray-50 border-t">
+                    <tr>
+                      <td colSpan={7} className="px-3 py-2 text-xs font-semibold text-gray-500">
+                        {readySelected} rows selected
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs font-bold text-indigo-700">{selectedThan}</td>
+                      <td colSpan={4} />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </>
@@ -256,13 +241,35 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
             </div>
           )}
 
-          {step === 'done' && result && (
-            <div className="text-center py-12">
-              <div className="text-5xl mb-4">✅</div>
-              <p className="text-2xl font-bold text-gray-800 mb-2">{result.imported} rows imported</p>
-              {result.errors.length > 0 && (
-                <p className="text-red-500 text-sm">{result.errors.length} errors</p>
-              )}
+          {step === 'done' && result && summary && (
+            <div className="py-8">
+              <div className="text-center mb-6">
+                <div className="text-5xl mb-3">✅</div>
+                <p className="text-2xl font-bold text-gray-800">{result.imported} rows imported</p>
+                {result.errors.length > 0 && <p className="text-red-500 text-sm mt-1">{result.errors.length} errors</p>}
+              </div>
+
+              {/* Than comparison */}
+              <div className="max-w-sm mx-auto border rounded-xl overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">Than Verification</div>
+                <div className="divide-y">
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-gray-600">Sheet Total Than</span>
+                    <span className="font-bold text-gray-800">{summary.sheetTotalThan}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-gray-600">DB Total Than (after import)</span>
+                    <span className="font-bold text-gray-800">{result.dbTotalThan}</span>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+                    <span className="text-sm font-semibold text-gray-700">Match</span>
+                    {summary.sheetTotalThan === result.dbTotalThan
+                      ? <span className="text-green-600 font-bold">✅ Yes</span>
+                      : <span className="text-red-500 font-bold">❌ Diff: {result.dbTotalThan - summary.sheetTotalThan > 0 ? '+' : ''}{result.dbTotalThan - summary.sheetTotalThan}</span>
+                    }
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -272,12 +279,9 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
             {step === 'done' ? 'Close' : 'Cancel'}
           </button>
           {step === 'preview' && (
-            <button
-              onClick={handleImport}
-              disabled={readySelected === 0}
-              className="bg-green-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-            >
-              Import {readySelected} Selected Rows
+            <button onClick={handleImport} disabled={readySelected === 0}
+              className="bg-green-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50">
+              Import {readySelected} Selected Rows (Than: {selectedThan})
             </button>
           )}
         </div>
