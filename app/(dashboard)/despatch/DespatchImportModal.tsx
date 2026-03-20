@@ -221,6 +221,9 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLE[row.status]}`}>
                             {STATUS_LABEL[row.status]}
                           </span>
+                          {row.status === 'duplicate' && (
+                            <div className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap">Ch + Lot No already in DB</div>
+                          )}
                         </td>
                         <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{row.date}</td>
                         <td className="px-3 py-1.5 text-gray-600">{row.challanNo ?? '—'}</td>
