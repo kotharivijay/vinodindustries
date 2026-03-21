@@ -2,43 +2,83 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
+export interface MarkaEntry {
+  lotNo: string
+  than: number | null
+}
+
 export interface ExtractedDyeingSlip {
   slipNo: string | null
   date: string | null
   lotNo: string | null
   than: number | null
+  marka: MarkaEntry[]
   chemicals: { name: string; quantity: number | null; unit: string }[]
   notes: string | null
   confidence: 'high' | 'medium' | 'low'
 }
 
-const SYSTEM_PROMPT = `You are extracting data from a textile dyeing process slip.
+const SYSTEM_PROMPT = `You are extracting data from a textile dyeing process slip (Indian textile industry).
 Carefully read the handwritten or printed slip in the image and extract all information.
 
 Return ONLY a valid JSON object with these exact fields:
 {
   "slipNo": "slip number or null",
   "date": "date in DD/MM/YYYY format or null",
-  "lotNo": "lot number (e.g. LOT-123, 45A) or null",
-  "than": numeric than/piece count or null,
-  "chemicals": [
-    { "name": "chemical name", "quantity": numeric amount or null, "unit": "kg/liter/gram/ml or best guess" }
+  "marka": [
+    { "lotNo": "lot number like PS-1325 or AJ-325", "than": numeric than/piece count or null }
   ],
-  "notes": "any other visible text or instructions or null",
+  "chemicals": [
+    { "name": "chemical name", "quantity": numeric amount or null, "unit": "kg or gram" }
+  ],
+  "notes": "any other visible text, colour name, width, or instructions or null",
   "confidence": "high if clearly readable, medium if partially readable, low if mostly unclear"
 }
 
 Rules:
+- The "marka" field on the slip lists lot numbers with their than (piece) quantities. Extract ALL lot entries from the marka section. Lot numbers follow the pattern: alphabetic prefix + hyphen + number (e.g. PS-1325, AJ-325, BK-42). If there's only one lot, still return it as a single-item array.
 - chemicals array must include ALL chemicals listed on the slip
+- For chemical quantity: if value is greater than 10, the unit is "gram". If 10 or less, the unit is "kg". If the unit is clearly written on the slip, use that instead.
 - If a field is not visible or unclear, use null
-- For lot numbers, preserve the exact format shown
+- For lot numbers, preserve the exact format shown. If no hyphen, insert one between letters and digits (e.g. PS1325 → PS-1325)
 - For date, convert to DD/MM/YYYY format
 - Return ONLY the JSON object, no explanation`
 
 function parseJSON(text: string): ExtractedDyeingSlip {
   const match = text.match(/\{[\s\S]*\}/)
   if (!match) throw new Error('No JSON found in response')
-  return JSON.parse(match[0])
+  const raw = JSON.parse(match[0])
+
+  // Normalize marka: if old format (single lotNo/than), convert to marka array
+  if (!raw.marka && raw.lotNo) {
+    raw.marka = [{ lotNo: raw.lotNo, than: raw.than ?? null }]
+  }
+  raw.marka = (raw.marka || []).map((m: any) => ({
+    lotNo: formatLot(m.lotNo || ''),
+    than: m.than ?? null,
+  }))
+
+  // Set top-level lotNo/than from first marka entry for backward compat
+  if (raw.marka.length > 0) {
+    raw.lotNo = raw.marka[0].lotNo
+    raw.than = raw.marka[0].than
+  }
+
+  // Post-process chemicals: quantity > 10 → gram
+  if (raw.chemicals) {
+    raw.chemicals = raw.chemicals.map((c: any) => ({
+      ...c,
+      unit: c.quantity != null && c.quantity > 10 ? 'gram' : (c.unit || 'kg'),
+    }))
+  }
+
+  return raw
+}
+
+function formatLot(raw: string): string {
+  let val = raw.toUpperCase().replace(/\s/g, '')
+  val = val.replace(/^([A-Z]+)(\d+)$/, '$1-$2')
+  return val
 }
 
 async function extractWithOpenAI(imageBase64: string, mediaType: string, voiceNote: string | null) {

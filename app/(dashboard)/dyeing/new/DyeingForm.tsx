@@ -65,6 +65,10 @@ export default function DyeingForm() {
   const [extractError, setExtractError] = useState('')
   const [extracted, setExtracted] = useState(false)
 
+  // Marka entries (lot + than pairs)
+  interface MarkaEntry { lotNo: string; than: string; stockStatus: StockStatus; stockInfo: { stock: number; greyThan: number; despatchThan: number } | null }
+  const [markaEntries, setMarkaEntries] = useState<MarkaEntry[]>([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
+
   // Form state
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -205,8 +209,25 @@ export default function DyeingForm() {
       notes: data.notes ?? prev.notes,
     }))
 
-    // Trigger lot check if lot extracted
-    if (data.lotNo) checkLotStock(data.lotNo)
+    // Populate marka entries from AI response
+    if (data.marka?.length) {
+      const entries = data.marka.map((m: any) => ({
+        lotNo: formatLotNo(m.lotNo || ''),
+        than: m.than?.toString() ?? '',
+        stockStatus: 'idle' as StockStatus,
+        stockInfo: null,
+      }))
+      setMarkaEntries(entries)
+      // Check stock for each marka lot
+      entries.forEach((_: any, idx: number) => {
+        if (data.marka[idx].lotNo) {
+          setTimeout(() => checkMarkaStock(idx), idx * 200)
+        }
+      })
+    } else if (data.lotNo) {
+      setMarkaEntries([{ lotNo: formatLotNo(data.lotNo), than: data.than?.toString() ?? '', stockStatus: 'idle', stockInfo: null }])
+      checkLotStock(data.lotNo)
+    }
 
     // Build chemical rows
     if (data.chemicals?.length) {
@@ -252,10 +273,7 @@ export default function DyeingForm() {
 
   // Lot No format: ALPHA-NUMERIC e.g. PS-1325, AJ-325
   function formatLotNo(raw: string): string {
-    // Remove all spaces, uppercase
     let val = raw.toUpperCase().replace(/\s/g, '')
-    // If user typed letters then digits with no hyphen, insert hyphen automatically
-    // e.g. "PS1325" → "PS-1325"
     val = val.replace(/^([A-Z]+)(\d+)$/, '$1-$2')
     return val
   }
@@ -267,6 +285,49 @@ export default function DyeingForm() {
     setForm(prev => ({ ...prev, lotNo: formatted }))
     setStockStatus('idle'); setStockInfo(null)
   }
+
+  // ─── Marka Entries ──────────────────────────────────────────────────────
+
+  function updateMarka(i: number, field: 'lotNo' | 'than', value: string) {
+    setMarkaEntries(prev => {
+      const updated = [...prev]
+      if (field === 'lotNo') {
+        updated[i] = { ...updated[i], lotNo: formatLotNo(value), stockStatus: 'idle', stockInfo: null }
+      } else {
+        updated[i] = { ...updated[i], than: value }
+      }
+      return updated
+    })
+  }
+
+  async function checkMarkaStock(i: number) {
+    const lot = markaEntries[i]?.lotNo?.trim()
+    if (!lot) return
+    setMarkaEntries(prev => {
+      const updated = [...prev]
+      updated[i] = { ...updated[i], stockStatus: 'loading' }
+      return updated
+    })
+    const res = await fetch(`/api/grey/stock?lotNo=${encodeURIComponent(lot)}`)
+    const data = await res.json()
+    setMarkaEntries(prev => {
+      const updated = [...prev]
+      if (!data.exists) updated[i] = { ...updated[i], stockStatus: 'not_found', stockInfo: null }
+      else if (data.stock <= 0) updated[i] = { ...updated[i], stockStatus: 'no_stock', stockInfo: data }
+      else updated[i] = { ...updated[i], stockStatus: 'ok', stockInfo: data }
+      return updated
+    })
+  }
+
+  function addMarkaEntry() {
+    setMarkaEntries(prev => [...prev, { lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
+  }
+
+  function removeMarkaEntry(i: number) {
+    setMarkaEntries(prev => prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i))
+  }
+
+  const markaLotValid = (lot: string) => !lot || /^[A-Z]+-\d+$/i.test(lot)
 
   // ─── Chemical Row Editing ─────────────────────────────────────────────────
 
@@ -294,11 +355,21 @@ export default function DyeingForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (stockStatus === 'not_found') { setError('Lot not found in Grey register.'); return }
+
+    // Validate marka entries
+    const validMarka = markaEntries.filter(m => m.lotNo.trim() && m.than.trim())
+    if (validMarka.length === 0) { setError('At least one lot with than is required.'); return }
+    const hasNotFound = validMarka.some(m => m.stockStatus === 'not_found')
+    if (hasNotFound) { setError('One or more lots not found in Grey register.'); return }
+
     setSaving(true); setError('')
 
     const payload = {
       ...form,
+      // Use first marka entry as primary for backward compat
+      lotNo: validMarka[0].lotNo,
+      than: validMarka[0].than,
+      marka: validMarka.map(m => ({ lotNo: m.lotNo, than: parseFloat(m.than) || 0 })),
       chemicals: chemicals
         .filter(c => c.name.trim())
         .map(c => ({
@@ -460,41 +531,79 @@ export default function DyeingForm() {
               <input type="number" className={inp} value={form.slipNo} onChange={e => set('slipNo', e.target.value)} required placeholder="e.g. 266" />
             </Field>
 
-            <Field label="Lot No *" span={2}>
-              <input
-                type="text"
-                className={`${inp} ${form.lotNo && !lotNoValid ? 'border-red-400 ring-red-300' : ''}`}
-                value={form.lotNo}
-                onChange={e => handleLotChange(e.target.value)}
-                onBlur={() => checkLotStock(form.lotNo)}
-                required
-                placeholder="e.g. PS-1325, AJ-325"
-                maxLength={20}
-              />
-              {form.lotNo && !lotNoValid && (
-                <p className="text-xs text-red-500 mt-1">Format: PREFIX-NUMBER (e.g. PS-1325)</p>
-              )}
-              {stockStatus === 'loading' && <p className="text-xs text-gray-400 mt-1">Checking stock...</p>}
-              {stockStatus === 'not_found' && <p className="text-xs text-red-500 mt-1">⚠ Lot not found in Grey register</p>}
-              {stockStatus === 'no_stock' && stockInfo && (
-                <p className="text-xs text-amber-600 mt-1">
-                  ⚠ No stock — Grey: {stockInfo.greyThan}, Despatched: {stockInfo.despatchThan}, Balance: <strong>{stockInfo.stock}</strong>
-                </p>
-              )}
-              {stockStatus === 'ok' && stockInfo && (
-                <p className="text-xs text-green-600 mt-1">
-                  ✓ Stock OK — Grey: {stockInfo.greyThan}, Despatched: {stockInfo.despatchThan}, Balance: <strong>{stockInfo.stock}</strong>
-                </p>
-              )}
-            </Field>
-
-            <Field label="Than *">
-              <input type="number" className={inp} value={form.than} onChange={e => set('than', e.target.value)} required placeholder="Quantity" />
-            </Field>
-
             <Field label="Notes">
               <input type="text" className={inp} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Any remarks from slip" />
             </Field>
+          </div>
+
+          {/* ── Marka Entries (Lot + Than) ── */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-700">
+                Marka — Lot Entries
+                {markaEntries.length > 1 && <span className="ml-2 text-xs font-normal text-gray-400">{markaEntries.length} lots</span>}
+              </h3>
+              <button type="button" onClick={addMarkaEntry} className="text-xs text-purple-600 hover:text-purple-800 font-medium">
+                + Add Lot
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              {markaEntries.map((m, i) => (
+                <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1">
+                      <label className="block text-[10px] text-gray-400 mb-0.5">Lot No *</label>
+                      <input
+                        type="text"
+                        className={`${inp} ${m.lotNo && !markaLotValid(m.lotNo) ? 'border-red-400 ring-red-300' : ''}`}
+                        value={m.lotNo}
+                        onChange={e => updateMarka(i, 'lotNo', e.target.value)}
+                        onBlur={() => checkMarkaStock(i)}
+                        required
+                        placeholder="e.g. PS-1325"
+                        maxLength={20}
+                      />
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-[10px] text-gray-400 mb-0.5">Than *</label>
+                      <input
+                        type="number"
+                        className={inp}
+                        value={m.than}
+                        onChange={e => updateMarka(i, 'than', e.target.value)}
+                        required
+                        placeholder="Qty"
+                      />
+                    </div>
+                    {markaEntries.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeMarkaEntry(i)}
+                        className="text-red-400 hover:text-red-600 text-xl leading-none mt-5"
+                      >&times;</button>
+                    )}
+                  </div>
+
+                  {/* Lot validation + stock status */}
+                  {m.lotNo && !markaLotValid(m.lotNo) && (
+                    <p className="text-xs text-red-500 mt-1">Format: PREFIX-NUMBER (e.g. PS-1325)</p>
+                  )}
+                  {m.stockStatus === 'loading' && <p className="text-xs text-gray-400 mt-1">Checking stock...</p>}
+                  {m.stockStatus === 'not_found' && <p className="text-xs text-red-500 mt-1">⚠ Lot not found in Grey register</p>}
+                  {m.stockStatus === 'no_stock' && m.stockInfo && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      ⚠ No stock — Grey: {m.stockInfo.greyThan}, Despatched: {m.stockInfo.despatchThan}, Balance: <strong>{m.stockInfo.stock}</strong>
+                    </p>
+                  )}
+                  {m.stockStatus === 'ok' && m.stockInfo && (
+                    <p className="text-xs text-green-600 mt-1">
+                      ✓ Stock OK — Grey: {m.stockInfo.greyThan}, Despatched: {m.stockInfo.despatchThan}, Balance: <strong>{m.stockInfo.stock}</strong>
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
