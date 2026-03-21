@@ -132,61 +132,68 @@ export default function DyeingForm() {
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files || files.length === 0) return
+    const fileArr = Array.from(files)
+    e.target.value = '' // reset input
 
-    // Single file (camera or single gallery pick)
-    if (files.length === 1 && queue.length === 0) {
-      const file = files[0]
+    // Read all files first
+    const readAll = fileArr.map(file => new Promise<{ preview: string; base64: string; type: string }>(resolve => {
       const type = file.type || 'image/jpeg'
-      setImageType(type)
       const reader = new FileReader()
       reader.onload = ev => {
         const result = ev.target?.result as string
-        setImagePreview(result)
-        setImageBase64(result.split(',')[1])
+        resolve({ preview: result, base64: result.split(',')[1], type })
+      }
+      reader.readAsDataURL(file)
+    }))
+
+    Promise.all(readAll).then(results => {
+      // Single file + no existing queue → simple mode (no queue panel)
+      if (results.length === 1 && queue.length === 0) {
+        const r = results[0]
+        setImagePreview(r.preview)
+        setImageBase64(r.base64)
+        setImageType(r.type)
         setExtracted(false)
         setExtractError('')
+        return
       }
-      reader.readAsDataURL(file)
-      e.target.value = '' // reset input
-      return
-    }
 
-    // Multiple files → add to queue
-    const newItems: QueueItem[] = []
-    let loaded = 0
-    Array.from(files).forEach(file => {
-      const type = file.type || 'image/jpeg'
-      const reader = new FileReader()
-      reader.onload = ev => {
-        const result = ev.target?.result as string
+      // Multiple files OR adding to existing queue → queue mode
+      const newItems: QueueItem[] = results.map(r => {
         queueIdRef.current += 1
-        newItems.push({
-          id: queueIdRef.current,
-          preview: result,
-          base64: result.split(',')[1],
-          type,
-          status: 'pending',
-        })
-        loaded++
-        if (loaded === files.length) {
-          setQueue(prev => {
-            const combined = [...prev, ...newItems]
-            // If no active item, activate first pending
-            if (activeIdx === -1 || !prev.some(q => q.status === 'active')) {
-              const firstPending = combined.findIndex(q => q.status === 'pending')
-              if (firstPending >= 0) {
-                combined[firstPending].status = 'active'
-                loadQueueItem(combined[firstPending])
-                setActiveIdx(firstPending)
-              }
-            }
-            return combined
-          })
+        return { id: queueIdRef.current, preview: r.preview, base64: r.base64, type: r.type, status: 'pending' as QueueStatus }
+      })
+
+      setQueue(prev => {
+        const combined = [...prev, ...newItems]
+        const hasActive = combined.some(q => q.status === 'active')
+        if (!hasActive) {
+          const firstPending = combined.findIndex(q => q.status === 'pending')
+          if (firstPending >= 0) {
+            combined[firstPending].status = 'active'
+            // Load first item outside of setState
+            const item = combined[firstPending]
+            setTimeout(() => {
+              setImagePreview(item.preview)
+              setImageBase64(item.base64)
+              setImageType(item.type)
+              setExtracted(false)
+              setExtractError('')
+              setVoiceText('')
+              setOcrNames([])
+              setChemicals([])
+              setMarkaEntries([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
+              setForm({ date: new Date().toISOString().split('T')[0], slipNo: '', lotNo: '', than: '', notes: '' })
+              setStockStatus('idle')
+              setStockInfo(null)
+              setError('')
+              setActiveIdx(firstPending)
+            }, 0)
+          }
         }
-      }
-      reader.readAsDataURL(file)
+        return combined
+      })
     })
-    e.target.value = '' // reset input
   }
 
   function loadQueueItem(item: QueueItem) {
@@ -222,18 +229,16 @@ export default function DyeingForm() {
   function advanceQueue() {
     setQueue(prev => {
       const updated = [...prev]
-      // Mark current as saved
       if (activeIdx >= 0 && activeIdx < updated.length) {
         updated[activeIdx].status = 'saved'
       }
-      // Find next pending
       const nextIdx = updated.findIndex(q => q.status === 'pending')
       if (nextIdx >= 0) {
         updated[nextIdx].status = 'active'
-        setActiveIdx(nextIdx)
-        loadQueueItem(updated[nextIdx])
+        const item = updated[nextIdx]
+        setTimeout(() => { loadQueueItem(item); setActiveIdx(nextIdx) }, 0)
       } else {
-        setActiveIdx(-1)
+        setTimeout(() => setActiveIdx(-1), 0)
       }
       return updated
     })
@@ -246,10 +251,10 @@ export default function DyeingForm() {
       const nextIdx = updated.findIndex(q => q.status === 'pending')
       if (nextIdx >= 0) {
         updated[nextIdx].status = 'active'
-        setActiveIdx(nextIdx)
-        loadQueueItem(updated[nextIdx])
+        const item = updated[nextIdx]
+        setTimeout(() => { loadQueueItem(item); setActiveIdx(nextIdx) }, 0)
       } else {
-        setActiveIdx(-1)
+        setTimeout(() => setActiveIdx(-1), 0)
       }
       return updated
     })
