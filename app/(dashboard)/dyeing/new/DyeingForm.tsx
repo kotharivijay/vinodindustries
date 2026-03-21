@@ -138,30 +138,33 @@ export default function DyeingForm() {
 
     const recognition = new SR()
     recognition.lang = 'en-IN'
-    recognition.continuous = true
-    recognition.interimResults = false  // Only final results — prevents duplicates
-
-    // Track last processed index to avoid re-processing on restart
-    let lastProcessed = -1
+    recognition.continuous = false   // Single utterance per session — avoids overlap duplication
+    recognition.interimResults = false
 
     recognition.onresult = (e: any) => {
-      let newText = ''
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        // Skip already processed results
-        if (i <= lastProcessed) continue
-        if (e.results[i].isFinal) {
-          newText += e.results[i][0].transcript + ' '
-          lastProcessed = i
+      const transcript = e.results[0]?.[0]?.transcript?.trim()
+      if (!transcript) return
+
+      setVoiceText(prev => {
+        if (!prev) return transcript
+        // Deduplicate: check if last few words of prev overlap with start of new text
+        const prevWords = prev.trim().split(/\s+/)
+        const newWords = transcript.split(/\s+/)
+        // Check overlap of 1-3 trailing words
+        for (let overlap = Math.min(3, prevWords.length, newWords.length); overlap > 0; overlap--) {
+          const tail = prevWords.slice(-overlap).join(' ').toLowerCase()
+          const head = newWords.slice(0, overlap).join(' ').toLowerCase()
+          if (tail === head) {
+            // Remove overlapping words from new text
+            return prev.trimEnd() + ' ' + newWords.slice(overlap).join(' ')
+          }
         }
-      }
-      if (newText.trim()) {
-        setVoiceText(prev => prev ? prev.trimEnd() + ' ' + newText.trim() : newText.trim())
-      }
+        return prev.trimEnd() + ' ' + transcript
+      })
     }
     recognition.onend = () => {
-      // Auto-restart if user hasn't manually stopped (mobile Chrome stops after pause)
+      // Auto-restart for next utterance if user hasn't manually stopped
       if (recognitionRef.current?._active) {
-        lastProcessed = -1  // Reset for new session
         try { recognition.start() } catch { setIsRecording(false) }
       } else {
         setIsRecording(false)
