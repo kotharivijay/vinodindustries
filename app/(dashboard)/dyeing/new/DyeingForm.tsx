@@ -126,6 +126,7 @@ export default function DyeingForm() {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
     if (isRecording) {
+      if (recognitionRef.current) recognitionRef.current._active = false
       recognitionRef.current?.stop()
       setIsRecording(false)
       return
@@ -133,18 +134,27 @@ export default function DyeingForm() {
 
     const recognition = new SR()
     recognition.lang = 'en-IN'
-    recognition.continuous = false
-    recognition.interimResults = false
+    recognition.continuous = true
+    recognition.interimResults = true
 
     recognition.onresult = (e: any) => {
-      const transcript = Array.from(e.results as any[])
-        .map((r: any) => r[0].transcript)
-        .join(' ')
-      setVoiceText(prev => prev ? prev + ' ' + transcript : transcript)
+      // Only append final results (not interim)
+      let finalText = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' '
+      }
+      if (finalText) setVoiceText(prev => prev ? prev.trimEnd() + ' ' + finalText.trim() : finalText.trim())
     }
-    recognition.onend = () => setIsRecording(false)
-    recognition.onerror = () => setIsRecording(false)
+    recognition.onend = () => {
+      // Auto-restart if user hasn't manually stopped
+      if (recognitionRef.current?._active) recognition.start()
+      else setIsRecording(false)
+    }
+    recognition.onerror = (e: any) => {
+      if (e.error !== 'aborted') setIsRecording(false)
+    }
 
+    recognition._active = true
     recognitionRef.current = recognition
     recognition.start()
     setIsRecording(true)
@@ -190,7 +200,7 @@ export default function DyeingForm() {
           })()
         : prev.date,
       slipNo: data.slipNo ?? prev.slipNo,
-      lotNo: data.lotNo ?? prev.lotNo,
+      lotNo: data.lotNo ? formatLotNo(data.lotNo) : prev.lotNo,
       than: data.than?.toString() ?? prev.than,
       notes: data.notes ?? prev.notes,
     }))
@@ -240,8 +250,21 @@ export default function DyeingForm() {
     else { setStockStatus('ok'); setStockInfo(data) }
   }, [])
 
+  // Lot No format: ALPHA-NUMERIC e.g. PS-1325, AJ-325
+  function formatLotNo(raw: string): string {
+    // Remove all spaces, uppercase
+    let val = raw.toUpperCase().replace(/\s/g, '')
+    // If user typed letters then digits with no hyphen, insert hyphen automatically
+    // e.g. "PS1325" → "PS-1325"
+    val = val.replace(/^([A-Z]+)(\d+)$/, '$1-$2')
+    return val
+  }
+
+  const lotNoValid = !form.lotNo || /^[A-Z]+-\d+$/i.test(form.lotNo)
+
   function handleLotChange(val: string) {
-    setForm(prev => ({ ...prev, lotNo: val }))
+    const formatted = formatLotNo(val)
+    setForm(prev => ({ ...prev, lotNo: formatted }))
     setStockStatus('idle'); setStockInfo(null)
   }
 
@@ -439,11 +462,18 @@ export default function DyeingForm() {
 
             <Field label="Lot No *" span={2}>
               <input
-                type="text" className={inp} value={form.lotNo}
+                type="text"
+                className={`${inp} ${form.lotNo && !lotNoValid ? 'border-red-400 ring-red-300' : ''}`}
+                value={form.lotNo}
                 onChange={e => handleLotChange(e.target.value)}
                 onBlur={() => checkLotStock(form.lotNo)}
-                required placeholder="e.g. PS-502"
+                required
+                placeholder="e.g. PS-1325, AJ-325"
+                maxLength={20}
               />
+              {form.lotNo && !lotNoValid && (
+                <p className="text-xs text-red-500 mt-1">Format: PREFIX-NUMBER (e.g. PS-1325)</p>
+              )}
               {stockStatus === 'loading' && <p className="text-xs text-gray-400 mt-1">Checking stock...</p>}
               {stockStatus === 'not_found' && <p className="text-xs text-red-500 mt-1">⚠ Lot not found in Grey register</p>}
               {stockStatus === 'no_stock' && stockInfo && (
