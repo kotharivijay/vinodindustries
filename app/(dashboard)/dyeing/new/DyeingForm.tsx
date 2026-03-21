@@ -44,8 +44,25 @@ function ZoomModal({ src, onClose }: { src: string; onClose: () => void }) {
 
 // ─── Main Form ────────────────────────────────────────────────────────────────
 
+// ─── Queue Types ──────────────────────────────────────────────────────────────
+
+type QueueStatus = 'pending' | 'active' | 'saved' | 'skipped'
+
+interface QueueItem {
+  id: number
+  preview: string
+  base64: string
+  type: string
+  status: QueueStatus
+}
+
 export default function DyeingForm() {
   const router = useRouter()
+
+  // Queue state
+  const [queue, setQueue] = useState<QueueItem[]>([])
+  const [activeIdx, setActiveIdx] = useState<number>(-1)
+  const queueIdRef = useRef(0)
 
   // Image state
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -113,20 +130,129 @@ export default function DyeingForm() {
   // ─── Image Handling ────────────────────────────────────────────────────────
 
   function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const type = file.type || 'image/jpeg'
-    setImageType(type)
-    const reader = new FileReader()
-    reader.onload = ev => {
-      const result = ev.target?.result as string
-      setImagePreview(result)
-      // Strip data URL prefix to get pure base64
-      setImageBase64(result.split(',')[1])
-      setExtracted(false)
-      setExtractError('')
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    // Single file (camera or single gallery pick)
+    if (files.length === 1 && queue.length === 0) {
+      const file = files[0]
+      const type = file.type || 'image/jpeg'
+      setImageType(type)
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const result = ev.target?.result as string
+        setImagePreview(result)
+        setImageBase64(result.split(',')[1])
+        setExtracted(false)
+        setExtractError('')
+      }
+      reader.readAsDataURL(file)
+      e.target.value = '' // reset input
+      return
     }
-    reader.readAsDataURL(file)
+
+    // Multiple files → add to queue
+    const newItems: QueueItem[] = []
+    let loaded = 0
+    Array.from(files).forEach(file => {
+      const type = file.type || 'image/jpeg'
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const result = ev.target?.result as string
+        queueIdRef.current += 1
+        newItems.push({
+          id: queueIdRef.current,
+          preview: result,
+          base64: result.split(',')[1],
+          type,
+          status: 'pending',
+        })
+        loaded++
+        if (loaded === files.length) {
+          setQueue(prev => {
+            const combined = [...prev, ...newItems]
+            // If no active item, activate first pending
+            if (activeIdx === -1 || !prev.some(q => q.status === 'active')) {
+              const firstPending = combined.findIndex(q => q.status === 'pending')
+              if (firstPending >= 0) {
+                combined[firstPending].status = 'active'
+                loadQueueItem(combined[firstPending])
+                setActiveIdx(firstPending)
+              }
+            }
+            return combined
+          })
+        }
+      }
+      reader.readAsDataURL(file)
+    })
+    e.target.value = '' // reset input
+  }
+
+  function loadQueueItem(item: QueueItem) {
+    setImagePreview(item.preview)
+    setImageBase64(item.base64)
+    setImageType(item.type)
+    setExtracted(false)
+    setExtractError('')
+    setVoiceText('')
+    setOcrNames([])
+    setChemicals([])
+    setMarkaEntries([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
+    setForm({ date: new Date().toISOString().split('T')[0], slipNo: '', lotNo: '', than: '', notes: '' })
+    setStockStatus('idle')
+    setStockInfo(null)
+    setError('')
+  }
+
+  function jumpToQueueItem(idx: number) {
+    if (queue[idx].status === 'saved' || queue[idx].status === 'skipped') return
+    setQueue(prev => {
+      const updated = [...prev]
+      // Mark current active as pending
+      const curActive = updated.findIndex(q => q.status === 'active')
+      if (curActive >= 0) updated[curActive].status = 'pending'
+      updated[idx].status = 'active'
+      return updated
+    })
+    setActiveIdx(idx)
+    loadQueueItem(queue[idx])
+  }
+
+  function advanceQueue() {
+    setQueue(prev => {
+      const updated = [...prev]
+      // Mark current as saved
+      if (activeIdx >= 0 && activeIdx < updated.length) {
+        updated[activeIdx].status = 'saved'
+      }
+      // Find next pending
+      const nextIdx = updated.findIndex(q => q.status === 'pending')
+      if (nextIdx >= 0) {
+        updated[nextIdx].status = 'active'
+        setActiveIdx(nextIdx)
+        loadQueueItem(updated[nextIdx])
+      } else {
+        setActiveIdx(-1)
+      }
+      return updated
+    })
+  }
+
+  function skipQueueItem() {
+    setQueue(prev => {
+      const updated = [...prev]
+      if (activeIdx >= 0) updated[activeIdx].status = 'skipped'
+      const nextIdx = updated.findIndex(q => q.status === 'pending')
+      if (nextIdx >= 0) {
+        updated[nextIdx].status = 'active'
+        setActiveIdx(nextIdx)
+        loadQueueItem(updated[nextIdx])
+      } else {
+        setActiveIdx(-1)
+      }
+      return updated
+    })
   }
 
   // ─── Voice Note ────────────────────────────────────────────────────────────
@@ -480,7 +606,13 @@ export default function DyeingForm() {
     })
 
     if (res.ok) {
-      router.push('/dyeing')
+      setSaving(false)
+      // If queue has items, advance to next; otherwise redirect
+      if (queue.length > 0) {
+        advanceQueue()
+      } else {
+        router.push('/dyeing')
+      }
     } else {
       const d = await res.json().catch(() => ({}))
       setError(d.error ?? 'Failed to save')
@@ -492,6 +624,9 @@ export default function DyeingForm() {
 
   const totalCost = chemicals.reduce((sum, c) => sum + (c.cost ?? 0), 0)
   const set = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }))
+  const queueDone = queue.filter(q => q.status === 'saved').length
+  const queueTotal = queue.length
+  const allQueueDone = queueTotal > 0 && queue.every(q => q.status === 'saved' || q.status === 'skipped')
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -505,6 +640,81 @@ export default function DyeingForm() {
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
+
+      {/* ── Queue Panel ── */}
+      {queueTotal > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-gray-700">
+              Slip Queue: {queueDone}/{queueTotal} done
+            </h2>
+            <div className="flex gap-2">
+              {!allQueueDone && activeIdx >= 0 && (
+                <button
+                  type="button"
+                  onClick={skipQueueItem}
+                  className="text-xs text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg px-3 py-1"
+                >
+                  Skip
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="text-xs text-purple-600 hover:text-purple-800 font-medium"
+              >
+                + Add More
+              </button>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
+            <div
+              className="bg-purple-500 h-1.5 rounded-full transition-all"
+              style={{ width: `${queueTotal > 0 ? (queueDone / queueTotal) * 100 : 0}%` }}
+            />
+          </div>
+
+          {/* Thumbnails */}
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {queue.map((item, idx) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => jumpToQueueItem(idx)}
+                className={`shrink-0 w-12 h-12 rounded-lg border-2 overflow-hidden relative ${
+                  item.status === 'active' ? 'border-purple-500 ring-2 ring-purple-300' :
+                  item.status === 'saved' ? 'border-green-400 opacity-70' :
+                  item.status === 'skipped' ? 'border-gray-300 opacity-40' :
+                  'border-gray-200'
+                }`}
+              >
+                <img src={item.preview} alt={`Slip ${idx + 1}`} className="w-full h-full object-cover" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {item.status === 'saved' && <span className="text-white text-lg drop-shadow-md">&#10003;</span>}
+                  {item.status === 'skipped' && <span className="text-white text-sm drop-shadow-md">&#8212;</span>}
+                </div>
+                <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[8px] text-center">{idx + 1}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* All done message */}
+          {allQueueDone && (
+            <div className="mt-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-green-700">All {queueDone} slips saved!</span>
+              <button
+                type="button"
+                onClick={() => router.push('/dyeing')}
+                className="text-sm bg-green-600 text-white px-4 py-1.5 rounded-lg hover:bg-green-700 font-medium"
+              >
+                Done &rarr;
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Section 1: Image + AI ── */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
@@ -885,6 +1095,7 @@ export default function DyeingForm() {
         ref={fileRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={handleImageSelect}
       />
