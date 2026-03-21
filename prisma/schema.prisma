@@ -135,6 +135,29 @@ model ChemicalAlias {
   updatedAt  DateTime @updatedAt
 }
 
+// ─── Dyeing Draft Queue (cloud save) ────────────────────────────────────────
+
+model DyeingDraftBatch {
+  id        Int                @id @default(autoincrement())
+  userId    String             // email of the user
+  status    String             @default("active") // active | completed
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  items     DyeingDraftItem[]
+}
+
+model DyeingDraftItem {
+  id        Int               @id @default(autoincrement())
+  batchId   Int
+  batch     DyeingDraftBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  blobUrl   String            // Vercel Blob URL
+  mediaType String            @default("image/jpeg")
+  status    String            @default("pending") // pending | saved | skipped
+  sortOrder Int               @default(0)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
 // ─── Despatch Entry ────────────────────────────────────────────────────────────
 
 model DespatchEntry {

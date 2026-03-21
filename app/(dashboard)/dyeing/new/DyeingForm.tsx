@@ -54,6 +54,8 @@ interface QueueItem {
   base64: string
   type: string
   status: QueueStatus
+  _draftItemId?: number
+  _blobUrl?: string
 }
 
 export default function DyeingForm() {
@@ -63,6 +65,12 @@ export default function DyeingForm() {
   const [queue, setQueue] = useState<QueueItem[]>([])
   const [activeIdx, setActiveIdx] = useState<number>(-1)
   const queueIdRef = useRef(0)
+
+  // Draft queue state (cloud save)
+  const [draftBatchId, setDraftBatchId] = useState<number | null>(null)
+  const [showResume, setShowResume] = useState(false)
+  const [pendingDraftCount, setPendingDraftCount] = useState(0)
+  const [uploadingDrafts, setUploadingDrafts] = useState(false)
 
   // Image state
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -125,6 +133,23 @@ export default function DyeingForm() {
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     setSpeechSupported(!!SR)
+  }, [])
+
+  // Check for existing draft batch on mount
+  useEffect(() => {
+    fetch('/api/dyeing/drafts')
+      .then(r => r.json())
+      .then(batch => {
+        if (batch?.id && batch.items?.length) {
+          const pending = batch.items.filter((i: any) => i.status === 'pending').length
+          if (pending > 0) {
+            setDraftBatchId(batch.id)
+            setPendingDraftCount(pending)
+            setShowResume(true)
+          }
+        }
+      })
+      .catch(() => {})
   }, [])
 
   // ─── Image Handling ────────────────────────────────────────────────────────
@@ -193,6 +218,29 @@ export default function DyeingForm() {
         }
         return combined
       })
+
+      // Upload to cloud as draft
+      setUploadingDrafts(true)
+      fetch('/api/dyeing/drafts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          images: results.map(r => ({ base64: r.base64, mediaType: r.type })),
+        }),
+      })
+        .then(r => r.json())
+        .then(batch => {
+          if (batch?.id) {
+            setDraftBatchId(batch.id)
+            // Map draft item IDs to queue items
+            setQueue(prev => prev.map((q, idx) => {
+              const draftItem = batch.items?.[idx]
+              return draftItem ? { ...q, _draftItemId: draftItem.id, _blobUrl: draftItem.blobUrl } : q
+            }))
+          }
+        })
+        .catch(() => {})
+        .finally(() => setUploadingDrafts(false))
     })
   }
 
@@ -212,6 +260,47 @@ export default function DyeingForm() {
     setError('')
   }
 
+  async function loadQueueItemFromUrl(item: QueueItem) {
+    // Reset form
+    setExtracted(false)
+    setExtractError('')
+    setVoiceText('')
+    setOcrNames([])
+    setChemicals([])
+    setMarkaEntries([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
+    setForm({ date: new Date().toISOString().split('T')[0], slipNo: '', lotNo: '', than: '', notes: '' })
+    setStockStatus('idle')
+    setStockInfo(null)
+    setError('')
+
+    // If we have base64 already, use it
+    if (item.base64) {
+      setImagePreview(item.preview.startsWith('data:') ? item.preview : `data:${item.type};base64,${item.base64}`)
+      setImageBase64(item.base64)
+      setImageType(item.type)
+      return
+    }
+
+    // Fetch from blob URL
+    if (item._blobUrl) {
+      try {
+        const res = await fetch(item._blobUrl)
+        const blob = await res.blob()
+        const reader = new FileReader()
+        reader.onload = ev => {
+          const result = ev.target?.result as string
+          setImagePreview(result)
+          setImageBase64(result.split(',')[1])
+          setImageType(item.type)
+        }
+        reader.readAsDataURL(blob)
+      } catch {
+        setImagePreview(item._blobUrl)
+        setImageBase64(null)
+      }
+    }
+  }
+
   function jumpToQueueItem(idx: number) {
     if (queue[idx].status === 'saved' || queue[idx].status === 'skipped') return
     setQueue(prev => {
@@ -223,7 +312,11 @@ export default function DyeingForm() {
       return updated
     })
     setActiveIdx(idx)
-    loadQueueItem(queue[idx])
+    if (queue[idx]._blobUrl && !queue[idx].base64) {
+      loadQueueItemFromUrl(queue[idx])
+    } else {
+      loadQueueItem(queue[idx])
+    }
   }
 
   function advanceQueue() {
@@ -231,12 +324,28 @@ export default function DyeingForm() {
       const updated = [...prev]
       if (activeIdx >= 0 && activeIdx < updated.length) {
         updated[activeIdx].status = 'saved'
+        // Mark draft item as saved in cloud
+        const draftId = updated[activeIdx]._draftItemId
+        if (draftId) {
+          fetch(`/api/dyeing/drafts/${draftId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'saved' }),
+          }).catch(() => {})
+        }
       }
       const nextIdx = updated.findIndex(q => q.status === 'pending')
       if (nextIdx >= 0) {
         updated[nextIdx].status = 'active'
         const item = updated[nextIdx]
-        setTimeout(() => { loadQueueItem(item); setActiveIdx(nextIdx) }, 0)
+        setTimeout(() => {
+          if (item._blobUrl && !item.base64) {
+            loadQueueItemFromUrl(item)
+          } else {
+            loadQueueItem(item)
+          }
+          setActiveIdx(nextIdx)
+        }, 0)
       } else {
         setTimeout(() => setActiveIdx(-1), 0)
       }
@@ -247,17 +356,86 @@ export default function DyeingForm() {
   function skipQueueItem() {
     setQueue(prev => {
       const updated = [...prev]
-      if (activeIdx >= 0) updated[activeIdx].status = 'skipped'
+      if (activeIdx >= 0) {
+        updated[activeIdx].status = 'skipped'
+        const draftId = updated[activeIdx]._draftItemId
+        if (draftId) {
+          fetch(`/api/dyeing/drafts/${draftId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'skipped' }),
+          }).catch(() => {})
+        }
+      }
       const nextIdx = updated.findIndex(q => q.status === 'pending')
       if (nextIdx >= 0) {
         updated[nextIdx].status = 'active'
         const item = updated[nextIdx]
-        setTimeout(() => { loadQueueItem(item); setActiveIdx(nextIdx) }, 0)
+        setTimeout(() => {
+          if (item._blobUrl && !item.base64) {
+            loadQueueItemFromUrl(item)
+          } else {
+            loadQueueItem(item)
+          }
+          setActiveIdx(nextIdx)
+        }, 0)
       } else {
         setTimeout(() => setActiveIdx(-1), 0)
       }
       return updated
     })
+  }
+
+  async function resumeDraft() {
+    setShowResume(false)
+    const res = await fetch('/api/dyeing/drafts')
+    const batch = await res.json()
+    if (!batch?.items?.length) return
+
+    setDraftBatchId(batch.id)
+
+    // Convert draft items to queue items
+    const items: QueueItem[] = batch.items.map((item: any) => {
+      queueIdRef.current += 1
+      return {
+        id: queueIdRef.current,
+        preview: item.blobUrl,
+        base64: '',
+        type: item.mediaType,
+        status: item.status === 'saved' ? 'saved' as QueueStatus : item.status === 'skipped' ? 'skipped' as QueueStatus : 'pending' as QueueStatus,
+        _draftItemId: item.id,
+        _blobUrl: item.blobUrl,
+      }
+    })
+
+    setQueue(items)
+
+    // Load first pending item
+    const firstPending = items.findIndex(q => q.status === 'pending')
+    if (firstPending >= 0) {
+      items[firstPending].status = 'active'
+      setActiveIdx(firstPending)
+      // Fetch the actual image data
+      const imgRes = await fetch(items[firstPending]._blobUrl!)
+      const blob = await imgRes.blob()
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const result = ev.target?.result as string
+        items[firstPending].base64 = result.split(',')[1]
+        setImagePreview(result)
+        setImageBase64(result.split(',')[1])
+        setImageType(items[firstPending].type)
+        setExtracted(false)
+        setExtractError('')
+      }
+      reader.readAsDataURL(blob)
+    }
+  }
+
+  async function discardDraft() {
+    setShowResume(false)
+    await fetch('/api/dyeing/drafts', { method: 'DELETE' })
+    setDraftBatchId(null)
   }
 
   // ─── Voice Note ────────────────────────────────────────────────────────────
@@ -646,6 +824,31 @@ export default function DyeingForm() {
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
 
+      {/* ── Resume Draft Dialog ── */}
+      {showResume && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+          <p className="text-sm font-medium text-amber-800 mb-2">
+            You have {pendingDraftCount} unsaved slip{pendingDraftCount > 1 ? 's' : ''} from a previous session
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={resumeDraft}
+              className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700"
+            >
+              Resume
+            </button>
+            <button
+              type="button"
+              onClick={discardDraft}
+              className="border border-amber-300 text-amber-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-100"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Queue Panel ── */}
       {queueTotal > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
@@ -680,6 +883,10 @@ export default function DyeingForm() {
               style={{ width: `${queueTotal > 0 ? (queueDone / queueTotal) * 100 : 0}%` }}
             />
           </div>
+
+          {uploadingDrafts && (
+            <p className="text-xs text-purple-500 mb-2 animate-pulse">Saving to cloud...</p>
+          )}
 
           {/* Thumbnails */}
           <div className="flex gap-2 overflow-x-auto pb-1">
