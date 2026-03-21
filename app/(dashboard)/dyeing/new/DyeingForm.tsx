@@ -798,26 +798,30 @@ export default function DyeingForm() {
               />
             )}
 
-            {/* Extract button */}
-            {imageBase64 && !extracted && (
+            {/* Extract button — always show when image exists */}
+            {imageBase64 && (
               <button
                 type="button"
                 onClick={handleExtract}
                 disabled={extracting}
-                className="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-60 flex items-center justify-center gap-2"
+                className={`px-4 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 w-full ${
+                  extracted
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
+                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                } disabled:opacity-60`}
               >
                 {extracting ? (
-                  <><span className="animate-spin">⟳</span> Extracting...</>
+                  <><span className="animate-spin">&#x27F3;</span> Extracting...</>
+                ) : extracted ? (
+                  '&#x21BB; Re-extract with AI'
                 ) : (
-                  '✨ Extract with AI'
+                  '&#x2728; Extract with AI'
                 )}
               </button>
             )}
 
-            {extracted && (
-              <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-3 py-2 text-xs font-medium text-center">
-                ✅ Fields auto-filled from slip
-              </div>
+            {!imageBase64 && (
+              <p className="text-xs text-gray-400 text-center">Upload an image, then tap &quot;Extract with AI&quot;</p>
             )}
           </div>
         </div>
