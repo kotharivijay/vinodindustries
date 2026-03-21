@@ -73,13 +73,29 @@ model GreyEntry {
 // ─── Dyeing Slip Entry ─────────────────────────────────────────────────────────
 
 model DyeingEntry {
-  id        Int      @id @default(autoincrement())
+  id        Int                  @id @default(autoincrement())
   date      DateTime
   slipNo    Int
   lotNo     String
   than      Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  notes     String?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  chemicals DyeingSlipChemical[]
+}
+
+model DyeingSlipChemical {
+  id         Int          @id @default(autoincrement())
+  entryId    Int
+  entry      DyeingEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  chemicalId Int?
+  chemical   Chemical?    @relation(fields: [chemicalId], references: [id])
+  name       String
+  quantity   Float?
+  unit       String       @default("kg")
+  rate       Float?
+  cost       Float?
+  createdAt  DateTime     @default(now())
 }
 
 // ─── Chemical Master ───────────────────────────────────────────────────────────
@@ -92,6 +108,7 @@ model Chemical {
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
   priceHistory ChemicalPriceHistory[]
+  slipUsages   DyeingSlipChemical[]
 }
 
 model ChemicalPriceHistory {

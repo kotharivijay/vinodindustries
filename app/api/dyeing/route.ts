@@ -8,6 +8,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const entries = await prisma.dyeingEntry.findMany({
+    include: { chemicals: { include: { chemical: true } } },
     orderBy: { date: 'desc' },
   })
   return NextResponse.json(entries)
@@ -28,7 +29,21 @@ export async function POST(req: NextRequest) {
       slipNo: parseInt(data.slipNo),
       lotNo: String(data.lotNo).trim(),
       than: parseInt(data.than),
+      notes: data.notes || null,
+      chemicals: data.chemicals?.length
+        ? {
+            create: data.chemicals.map((c: any) => ({
+              chemicalId: c.chemicalId ?? null,
+              name: c.name,
+              quantity: c.quantity != null ? parseFloat(c.quantity) : null,
+              unit: c.unit || 'kg',
+              rate: c.rate != null ? parseFloat(c.rate) : null,
+              cost: c.cost != null ? parseFloat(c.cost) : null,
+            })),
+          }
+        : undefined,
     },
+    include: { chemicals: { include: { chemical: true } } },
   })
   return NextResponse.json(entry, { status: 201 })
 }
