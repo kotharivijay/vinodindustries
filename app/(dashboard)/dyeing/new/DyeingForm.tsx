@@ -816,11 +816,11 @@ export default function DyeingForm() {
                 } disabled:opacity-60`}
               >
                 {extracting ? (
-                  <><span className="animate-spin">&#x27F3;</span> Extracting...</>
+                  <><span className="animate-spin">⟳</span> Extracting...</>
                 ) : extracted ? (
-                  '&#x21BB; Re-extract with AI'
+                  '↻ Re-extract with AI'
                 ) : (
-                  '&#x2728; Extract with AI'
+                  'Extract with AI'
                 )}
               </button>
             )}
