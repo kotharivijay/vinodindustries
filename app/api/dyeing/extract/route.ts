@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 
 export interface MarkaEntry {
   lotNo: string
@@ -186,7 +187,37 @@ export async function POST(req: NextRequest) {
       : await extractWithClaude(imageBase64, type, voiceNote)
 
     const extracted = parseJSON(text)
-    return NextResponse.json({ ...extracted, provider: useOpenAI ? 'openai' : 'claude' })
+
+    // ── Apply learned aliases: replace OCR names with known master chemicals ──
+    // Save original OCR names before alias replacement (for learning on save)
+    const ocrNames = extracted.chemicals?.map(c => c.name) ?? []
+
+    if (extracted.chemicals?.length) {
+      const normNames = extracted.chemicals.map(c => c.name.toLowerCase().trim().replace(/\s+/g, ' ')).filter(Boolean)
+      if (normNames.length) {
+        try {
+          const db = prisma as any
+          const aliases: any[] = await db.chemicalAlias.findMany({
+            where: { ocrName: { in: normNames } },
+            include: { chemical: true },
+          })
+          const aliasMap = new Map<string, any>(aliases.map((a: any) => [a.ocrName, a.chemical]))
+
+          extracted.chemicals = extracted.chemicals.map(c => {
+            const norm = c.name.toLowerCase().trim().replace(/\s+/g, ' ')
+            const master = aliasMap.get(norm)
+            if (master) {
+              return { ...c, name: master.name, _matchedId: master.id, _matchedRate: master.currentPrice }
+            }
+            return c
+          }) as any
+        } catch {
+          // ChemicalAlias table may not exist yet — skip alias lookup
+        }
+      }
+    }
+
+    return NextResponse.json({ ...extracted, ocrNames, provider: useOpenAI ? 'openai' : 'claude' })
   } catch (err: any) {
     const msg = err?.message ?? 'Extraction failed'
     if (msg.includes('API key')) return NextResponse.json({ error: 'Invalid API key' }, { status: 500 })

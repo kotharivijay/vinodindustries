@@ -81,6 +81,7 @@ export default function DyeingForm() {
   // Chemicals state
   const [chemicals, setChemicals] = useState<ChemicalRow[]>([])
   const [masterChemicals, setMasterChemicals] = useState<ChemicalMaster[]>([])
+  const [ocrNames, setOcrNames] = useState<string[]>([])  // original OCR names for alias learning
 
   // Lot stock check
   const [stockStatus, setStockStatus] = useState<StockStatus>('idle')
@@ -274,12 +275,25 @@ export default function DyeingForm() {
       checkLotStock(data.lotNo)
     }
 
-    // Build chemical rows with fuzzy matching
+    // Save original OCR names for alias learning
+    if (data.ocrNames?.length) setOcrNames(data.ocrNames)
+
+    // Build chemical rows — use alias matches from server, then try local exact match
     if (data.chemicals?.length) {
       const rows: ChemicalRow[] = data.chemicals.map((c: any) => {
-        const { chemicalId, rate, matchedName } = matchToMaster(c.name)
-        // Use master name if fuzzy matched, otherwise keep OCR name
-        const displayName = matchedName || c.name
+        // If server found an alias match, use it
+        let chemicalId = c._matchedId ?? null
+        let rate = c._matchedRate != null ? String(c._matchedRate) : ''
+        let displayName = c.name
+
+        // If no alias match, try local exact match
+        if (!chemicalId) {
+          const local = matchToMaster(c.name)
+          chemicalId = local.chemicalId
+          rate = local.rate
+          displayName = local.matchedName || c.name
+        }
+
         const qty = c.quantity != null ? String(c.quantity) : ''
         const rateNum = parseFloat(rate)
         const qtyNum = parseFloat(qty)
@@ -455,6 +469,7 @@ export default function DyeingForm() {
           rate: c.rate ? parseFloat(c.rate) : null,
           cost: c.cost,
         })),
+      ocrNames, // pass original OCR names for alias learning
     }
 
     const res = await fetch('/api/dyeing', {

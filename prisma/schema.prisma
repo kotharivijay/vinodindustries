@@ -109,6 +109,7 @@ model Chemical {
   updatedAt    DateTime               @updatedAt
   priceHistory ChemicalPriceHistory[]
   slipUsages   DyeingSlipChemical[]
+  aliases      ChemicalAlias[]
 }
 
 model ChemicalPriceHistory {
@@ -120,6 +121,18 @@ model ChemicalPriceHistory {
   note       String?
   date       DateTime @default(now())
   createdAt  DateTime @default(now())
+}
+
+// ─── Chemical Alias (OCR learning) ───────────────────────────────────────────
+
+model ChemicalAlias {
+  id         Int      @id @default(autoincrement())
+  ocrName    String   @unique   // normalized OCR text e.g. "bezafix"
+  chemicalId Int
+  chemical   Chemical @relation(fields: [chemicalId], references: [id], onDelete: Cascade)
+  hitCount   Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 // ─── Despatch Entry ────────────────────────────────────────────────────────────
