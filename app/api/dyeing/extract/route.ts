@@ -115,8 +115,9 @@ async function extractWithOpenAI(imageBase64: string, mediaType: string, voiceNo
   ]
 
   const response = await client.chat.completions.create({
-    model: 'o4-mini',
-    max_completion_tokens: 1024,
+    model: 'gpt-4.1-mini',
+    max_tokens: 1024,
+    response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: userContent },
