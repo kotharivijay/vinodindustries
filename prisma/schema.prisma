@@ -82,6 +82,29 @@ model DyeingEntry {
   updatedAt DateTime @updatedAt
 }
 
+// ─── Chemical Master ───────────────────────────────────────────────────────────
+
+model Chemical {
+  id           Int                    @id @default(autoincrement())
+  name         String                 @unique
+  unit         String                 @default("kg")
+  currentPrice Float?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  priceHistory ChemicalPriceHistory[]
+}
+
+model ChemicalPriceHistory {
+  id         Int      @id @default(autoincrement())
+  chemicalId Int
+  chemical   Chemical @relation(fields: [chemicalId], references: [id], onDelete: Cascade)
+  price      Float
+  source     String   @default("manual") // "manual" | "inward_sheet"
+  note       String?
+  date       DateTime @default(now())
+  createdAt  DateTime @default(now())
+}
+
 // ─── Despatch Entry ────────────────────────────────────────────────────────────
 
 model DespatchEntry {

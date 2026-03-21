@@ -27,6 +27,7 @@ const navGroups = [
       { href: '/masters/qualities', label: 'Qualities', icon: '🏷️' },
       { href: '/masters/weavers', label: 'Weavers', icon: '🧵' },
       { href: '/masters/transports', label: 'Transports', icon: '🚛' },
+      { href: '/masters/chemicals', label: 'Chemicals', icon: '🧪' },
     ],
   },
 ]
