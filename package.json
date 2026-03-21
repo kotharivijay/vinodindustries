@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "@prisma/client": "^5.22.0",
     "google-auth-library": "^10.6.2",
     "next": "14.0.0",
