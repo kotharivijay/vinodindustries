@@ -53,6 +53,7 @@ export default function DyeingForm() {
   const [imageType, setImageType] = useState<string>('image/jpeg')
   const [showZoom, setShowZoom] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
 
   // Voice note state
   const [voiceText, setVoiceText] = useState('')
@@ -535,14 +536,24 @@ export default function DyeingForm() {
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="h-36 w-28 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-purple-400 hover:text-purple-500 transition"
-            >
-              <span className="text-2xl">📷</span>
-              <span className="text-xs text-center leading-tight">Camera / Gallery</span>
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => cameraRef.current?.click()}
+                className="h-36 w-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-purple-400 hover:text-purple-500 transition"
+              >
+                <span className="text-2xl">📷</span>
+                <span className="text-[10px] text-center leading-tight">Camera</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="h-36 w-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-purple-400 hover:text-purple-500 transition"
+              >
+                <span className="text-2xl">🖼</span>
+                <span className="text-[10px] text-center leading-tight">Gallery</span>
+              </button>
+            </div>
           )}
 
           {/* Action buttons */}
@@ -861,12 +872,19 @@ export default function DyeingForm() {
         </div>
       </form>
 
-      {/* Hidden file input */}
+      {/* Hidden file inputs */}
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleImageSelect}
+      />
       <input
         ref={fileRef}
         type="file"
         accept="image/*"
-        capture="environment"
         className="hidden"
         onChange={handleImageSelect}
       />
