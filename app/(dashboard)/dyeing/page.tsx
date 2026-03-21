@@ -23,6 +23,8 @@ interface DyeingEntry {
   slipNo: number
   lotNo: string
   than: number
+  notes: string | null
+  chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
 }
 
 interface LotSummaryRow {
@@ -245,27 +247,43 @@ export default function DyeingListPage() {
                 <>
                   {/* ── Mobile card view ── */}
                   <div className="block sm:hidden divide-y divide-gray-100">
-                    {filtered.map(e => (
-                      <div key={e.id} className="p-4">
-                        <div className="flex items-start justify-between mb-1.5">
-                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
-                            <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
-                            <span className="text-gray-300">·</span>
-                            <span>Slip {e.slipNo}</span>
+                    {filtered.map(e => {
+                      const chemCount = e.chemicals?.length ?? 0
+                      const totalCost = e.chemicals?.reduce((s, c) => s + (c.cost ?? 0), 0) ?? 0
+                      return (
+                        <div key={e.id} className="p-4">
+                          <div className="flex items-start justify-between mb-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                              <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
+                              <span className="text-gray-300">&middot;</span>
+                              <span>Slip {e.slipNo}</span>
+                            </div>
+                            <div className="flex gap-2 shrink-0">
+                              <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-500 text-xs font-medium border border-indigo-200 rounded px-2 py-0.5">Edit</button>
+                              <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-500 text-xs font-medium border border-red-200 rounded px-2 py-0.5 disabled:opacity-40">
+                                {deletingId === e.id ? '...' : 'Del'}
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex gap-3 shrink-0">
-                            <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-500 text-xs font-medium">Edit</button>
-                            <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 text-xs font-medium">{deletingId === e.id ? '...' : 'Del'}</button>
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-purple-100">
+                              {e.lotNo}
+                            </Link>
+                            <span className="text-xs text-gray-600">Than: <strong>{e.than}</strong></span>
                           </div>
+                          {/* Chemicals + cost summary */}
+                          {chemCount > 0 && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{chemCount} chemicals</span>
+                              {totalCost > 0 && (
+                                <span className="text-[10px] text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded font-medium">&#8377;{totalCost.toFixed(0)}</span>
+                              )}
+                            </div>
+                          )}
+                          {e.notes && <p className="text-[10px] text-gray-400 mt-1 truncate">{e.notes}</p>}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-purple-100 active:bg-purple-200">
-                            🔖 {e.lotNo}
-                          </Link>
-                          <span className="text-xs text-gray-600">Than: <strong>{e.than}</strong></span>
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
 
                   {/* ── Desktop table ── */}
@@ -285,6 +303,8 @@ export default function DyeingListPage() {
                               onClick={e => e.stopPropagation()} />
                           </th>
                           <SortTh field="than" label="Than" right />
+                          <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Chemicals</th>
+                          <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
                         </tr>
                       </thead>
@@ -297,6 +317,10 @@ export default function DyeingListPage() {
                               <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="hover:underline">{e.lotNo}</Link>
                             </td>
                             <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
+                            <td className="px-3 py-2.5 text-right text-gray-500">{e.chemicals?.length ?? 0}</td>
+                            <td className="px-3 py-2.5 text-right font-medium text-purple-600">
+                              {(() => { const c = e.chemicals?.reduce((s, x) => s + (x.cost ?? 0), 0) ?? 0; return c > 0 ? `₹${c.toFixed(0)}` : '—' })()}
+                            </td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
                               <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
