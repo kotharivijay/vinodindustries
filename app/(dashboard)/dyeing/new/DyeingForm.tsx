@@ -506,7 +506,7 @@ export default function DyeingForm() {
               {chemicals.length > 0 && <span className="ml-2 text-xs font-normal text-gray-400">{chemicals.length} items</span>}
             </h2>
             <button type="button" onClick={addChemicalRow} className="text-xs text-purple-600 hover:text-purple-800 font-medium">
-              + Add Row
+              + Add Chemical
             </button>
           </div>
 
@@ -515,90 +515,82 @@ export default function DyeingForm() {
               No chemicals added yet. Upload a slip image and click &quot;Extract with AI&quot;, or click &quot;+ Add Row&quot; to enter manually.
             </p>
           ) : (
-            <>
-              <div className="overflow-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-2 py-2 text-left text-gray-500 font-medium">Chemical</th>
-                      <th className="px-2 py-2 text-left text-gray-500 font-medium w-20">Qty</th>
-                      <th className="px-2 py-2 text-left text-gray-500 font-medium w-16">Unit</th>
-                      <th className="px-2 py-2 text-left text-gray-500 font-medium w-20">Rate (₹)</th>
-                      <th className="px-2 py-2 text-right text-gray-500 font-medium w-20">Cost (₹)</th>
-                      <th className="w-6" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {chemicals.map((c, i) => (
-                      <tr key={i}>
-                        <td className="px-2 py-1.5">
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="text"
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-300"
-                              value={c.name}
-                              onChange={e => updateChemical(i, 'name', e.target.value)}
-                              placeholder="Chemical name"
-                            />
-                            {c.matched && (
-                              <span className="text-green-500 shrink-0" title="Matched to master">✓</span>
-                            )}
-                            {!c.matched && c.name && (
-                              <span className="text-amber-400 shrink-0 text-[10px]" title="Not in master">new</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="number" step="0.001"
-                            className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-300"
-                            value={c.quantity}
-                            onChange={e => updateChemical(i, 'quantity', e.target.value)}
-                            placeholder="0"
-                          />
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <select
-                            className="w-full border border-gray-200 rounded px-1 py-1 text-xs focus:outline-none"
-                            value={c.unit}
-                            onChange={e => updateChemical(i, 'unit', e.target.value)}
-                          >
-                            {['kg', 'liter', 'gram', 'ml', 'piece', 'bag'].map(u => <option key={u}>{u}</option>)}
-                          </select>
-                        </td>
-                        <td className="px-2 py-1.5">
-                          <input
-                            type="number" step="0.01"
-                            className="w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-300"
-                            value={c.rate}
-                            onChange={e => updateChemical(i, 'rate', e.target.value)}
-                            placeholder="0.00"
-                          />
-                        </td>
-                        <td className="px-2 py-1.5 text-right font-medium text-gray-700">
-                          {c.cost != null ? `₹${c.cost.toFixed(2)}` : '—'}
-                        </td>
-                        <td className="px-1 py-1.5">
-                          <button type="button" onClick={() => removeChemical(i)} className="text-red-300 hover:text-red-500 text-base leading-none">&times;</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {totalCost > 0 && (
-                    <tfoot className="border-t bg-purple-50">
-                      <tr>
-                        <td colSpan={4} className="px-2 py-2 text-xs font-semibold text-gray-600 text-right">Total Dyeing Cost</td>
-                        <td className="px-2 py-2 text-right text-sm font-bold text-purple-700">₹{totalCost.toFixed(2)}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-              <p className="text-xs text-gray-400 mt-2">
-                ✓ = matched to Chemical Master (rate auto-filled) &nbsp;|&nbsp; new = will be available for linking later
-              </p>
-            </>
+            <div className="space-y-3">
+              {chemicals.map((c, i) => (
+                <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                  {/* Chemical name row */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-gray-400 w-10 shrink-0">#{i + 1}</span>
+                    <input
+                      type="text"
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      value={c.name}
+                      onChange={e => updateChemical(i, 'name', e.target.value)}
+                      placeholder="Chemical name"
+                    />
+                    {c.matched && (
+                      <span className="text-green-600 text-xs font-semibold shrink-0 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">✓ Master</span>
+                    )}
+                    {!c.matched && c.name && (
+                      <span className="text-amber-600 text-xs font-semibold shrink-0 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">New</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeChemical(i)}
+                      className="text-red-400 hover:text-red-600 text-xl leading-none shrink-0 w-6 text-center"
+                    >&times;</button>
+                  </div>
+
+                  {/* Qty / Unit / Rate / Cost row */}
+                  <div className="grid grid-cols-2 gap-2 pl-12">
+                    <div>
+                      <label className="block text-[10px] text-gray-400 mb-0.5">Quantity</label>
+                      <input
+                        type="number" step="0.001"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                        value={c.quantity}
+                        onChange={e => updateChemical(i, 'quantity', e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-400 mb-0.5">Unit</label>
+                      <select
+                        className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none bg-white"
+                        value={c.unit}
+                        onChange={e => updateChemical(i, 'unit', e.target.value)}
+                      >
+                        {['kg', 'liter', 'gram', 'ml', 'piece', 'bag'].map(u => <option key={u}>{u}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-400 mb-0.5">Rate (₹/{c.unit})</label>
+                      <input
+                        type="number" step="0.01"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                        value={c.rate}
+                        onChange={e => updateChemical(i, 'rate', e.target.value)}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-gray-400 mb-0.5">Cost (₹)</label>
+                      <div className={`w-full border rounded-lg px-3 py-1.5 text-sm font-semibold ${c.cost != null ? 'border-purple-200 bg-purple-50 text-purple-700' : 'border-gray-200 bg-white text-gray-400'}`}>
+                        {c.cost != null ? `₹${c.cost.toFixed(2)}` : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Total cost */}
+              {totalCost > 0 && (
+                <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
+                  <span className="text-sm font-semibold text-gray-700">Total Dyeing Cost</span>
+                  <span className="text-lg font-bold text-purple-700">₹{totalCost.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
