@@ -166,16 +166,57 @@ export default function DyeingForm() {
 
   // ─── OCR / AI Extraction ──────────────────────────────────────────────────
 
-  function matchToMaster(name: string): { chemicalId: number | null; rate: string } {
+  // Levenshtein distance for fuzzy matching
+  function levenshtein(a: string, b: string): number {
+    const m = a.length, n = b.length
+    const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+      Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    )
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+    return dp[m][n]
+  }
+
+  function similarity(a: string, b: string): number {
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const na = norm(a), nb = norm(b)
+    if (!na || !nb) return 0
+    const maxLen = Math.max(na.length, nb.length)
+    return 1 - levenshtein(na, nb) / maxLen
+  }
+
+  function matchToMaster(name: string): { chemicalId: number | null; rate: string; matchedName: string } {
+    if (!name.trim() || masterChemicals.length === 0) return { chemicalId: null, rate: '', matchedName: '' }
+
     const norm = (s: string) => s.toLowerCase().trim()
-    const match = masterChemicals.find(c => norm(c.name) === norm(name))
-    if (match) return { chemicalId: match.id, rate: match.currentPrice?.toString() ?? '' }
-    // Partial match
+
+    // 1. Exact match
+    const exact = masterChemicals.find(c => norm(c.name) === norm(name))
+    if (exact) return { chemicalId: exact.id, rate: exact.currentPrice?.toString() ?? '', matchedName: exact.name }
+
+    // 2. Substring match
     const partial = masterChemicals.find(c =>
       norm(c.name).includes(norm(name)) || norm(name).includes(norm(c.name))
     )
-    if (partial) return { chemicalId: partial.id, rate: partial.currentPrice?.toString() ?? '' }
-    return { chemicalId: null, rate: '' }
+    if (partial) return { chemicalId: partial.id, rate: partial.currentPrice?.toString() ?? '', matchedName: partial.name }
+
+    // 3. Fuzzy match — find best similarity score
+    let best: ChemicalMaster | null = null
+    let bestScore = 0
+    for (const c of masterChemicals) {
+      const score = similarity(name, c.name)
+      if (score > bestScore) { bestScore = score; best = c }
+    }
+
+    // Threshold: 0.5 = at least 50% similar
+    if (best && bestScore >= 0.5) {
+      return { chemicalId: best.id, rate: best.currentPrice?.toString() ?? '', matchedName: best.name }
+    }
+
+    return { chemicalId: null, rate: '', matchedName: '' }
   }
 
   async function handleExtract() {
@@ -229,16 +270,18 @@ export default function DyeingForm() {
       checkLotStock(data.lotNo)
     }
 
-    // Build chemical rows
+    // Build chemical rows with fuzzy matching
     if (data.chemicals?.length) {
       const rows: ChemicalRow[] = data.chemicals.map((c: any) => {
-        const { chemicalId, rate } = matchToMaster(c.name)
+        const { chemicalId, rate, matchedName } = matchToMaster(c.name)
+        // Use master name if fuzzy matched, otherwise keep OCR name
+        const displayName = matchedName || c.name
         const qty = c.quantity != null ? String(c.quantity) : ''
         const rateNum = parseFloat(rate)
         const qtyNum = parseFloat(qty)
         const cost = !isNaN(rateNum) && !isNaN(qtyNum) ? parseFloat((rateNum * qtyNum).toFixed(2)) : null
         return {
-          name: c.name,
+          name: displayName,
           chemicalId,
           quantity: qty,
           unit: c.unit || 'kg',
@@ -335,6 +378,15 @@ export default function DyeingForm() {
     setChemicals(prev => {
       const updated = [...prev]
       updated[i] = { ...updated[i], [field]: value }
+
+      // Re-run fuzzy match when name changes
+      if (field === 'name') {
+        const { chemicalId, rate, matchedName } = matchToMaster(value)
+        updated[i].chemicalId = chemicalId
+        updated[i].matched = chemicalId !== null
+        if (chemicalId !== null && rate) updated[i].rate = rate
+      }
+
       // Recalculate cost
       const qty = parseFloat(field === 'quantity' ? value : updated[i].quantity)
       const rate = parseFloat(field === 'rate' ? value : updated[i].rate)

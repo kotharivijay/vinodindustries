@@ -38,7 +38,7 @@ Return ONLY a valid JSON object with these exact fields:
 Rules:
 - The "marka" field on the slip lists lot numbers with their than (piece) quantities. Extract ALL lot entries from the marka section. Lot numbers follow the pattern: alphabetic prefix + hyphen + number (e.g. PS-1325, AJ-325, BK-42). If there's only one lot, still return it as a single-item array.
 - chemicals array must include ALL chemicals listed on the slip
-- For chemical quantity: if value is greater than 10, the unit is "gram". If 10 or less, the unit is "kg". If the unit is clearly written on the slip, use that instead.
+- For chemical quantity: extract the raw numeric value exactly as written on the slip. If the value is greater than 10, the unit is "gram". If 10 or less, the unit is "kg". If the unit is clearly written on the slip, use that instead.
 - If a field is not visible or unclear, use null
 - For lot numbers, preserve the exact format shown. If no hyphen, insert one between letters and digits (e.g. PS1325 → PS-1325)
 - For date, convert to DD/MM/YYYY format
@@ -64,12 +64,28 @@ function parseJSON(text: string): ExtractedDyeingSlip {
     raw.than = raw.marka[0].than
   }
 
-  // Post-process chemicals: quantity > 10 → gram
+  // Post-process chemicals: convert everything to kg
   if (raw.chemicals) {
-    raw.chemicals = raw.chemicals.map((c: any) => ({
-      ...c,
-      unit: c.quantity != null && c.quantity > 10 ? 'gram' : (c.unit || 'kg'),
-    }))
+    raw.chemicals = raw.chemicals.map((c: any) => {
+      let qty = c.quantity
+      let unit = c.unit || 'kg'
+      // If quantity > 10, it's in grams → convert to kg
+      if (qty != null && qty > 10) {
+        qty = parseFloat((qty / 1000).toFixed(4))
+        unit = 'kg'
+      }
+      // If unit is gram/g, convert to kg
+      if (unit.toLowerCase() === 'gram' || unit.toLowerCase() === 'g') {
+        if (qty != null) qty = parseFloat((qty / 1000).toFixed(4))
+        unit = 'kg'
+      }
+      // If unit is ml, convert to liter
+      if (unit.toLowerCase() === 'ml') {
+        if (qty != null) qty = parseFloat((qty / 1000).toFixed(4))
+        unit = 'liter'
+      }
+      return { ...c, quantity: qty, unit }
+    })
   }
 
   return raw
