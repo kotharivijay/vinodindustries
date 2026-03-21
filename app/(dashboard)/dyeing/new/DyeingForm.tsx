@@ -86,6 +86,10 @@ export default function DyeingForm() {
   const [stockStatus, setStockStatus] = useState<StockStatus>('idle')
   const [stockInfo, setStockInfo] = useState<{ stock: number; greyThan: number; despatchThan: number } | null>(null)
 
+  // Chemical dropdown state
+  const [chemDropIdx, setChemDropIdx] = useState<number | null>(null)
+  const [chemSearch, setChemSearch] = useState('')
+
   // Save state
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -212,28 +216,9 @@ export default function DyeingForm() {
 
     const norm = (s: string) => s.toLowerCase().trim()
 
-    // 1. Exact match
+    // Exact match only — fuzzy matching disabled
     const exact = masterChemicals.find(c => norm(c.name) === norm(name))
     if (exact) return { chemicalId: exact.id, rate: exact.currentPrice?.toString() ?? '', matchedName: exact.name }
-
-    // 2. Substring match
-    const partial = masterChemicals.find(c =>
-      norm(c.name).includes(norm(name)) || norm(name).includes(norm(c.name))
-    )
-    if (partial) return { chemicalId: partial.id, rate: partial.currentPrice?.toString() ?? '', matchedName: partial.name }
-
-    // 3. Fuzzy match — find best similarity score
-    let best: ChemicalMaster | null = null
-    let bestScore = 0
-    for (const c of masterChemicals) {
-      const score = similarity(name, c.name)
-      if (score > bestScore) { bestScore = score; best = c }
-    }
-
-    // Threshold: 0.5 = at least 50% similar
-    if (best && bestScore >= 0.5) {
-      return { chemicalId: best.id, rate: best.currentPrice?.toString() ?? '', matchedName: best.name }
-    }
 
     return { chemicalId: null, rate: '', matchedName: '' }
   }
@@ -412,6 +397,25 @@ export default function DyeingForm() {
       updated[i].cost = !isNaN(qty) && !isNaN(rate) ? parseFloat((qty * rate).toFixed(2)) : null
       return updated
     })
+  }
+
+  function selectMasterChemical(i: number, master: ChemicalMaster) {
+    setChemicals(prev => {
+      const updated = [...prev]
+      updated[i] = {
+        ...updated[i],
+        name: master.name,
+        chemicalId: master.id,
+        matched: true,
+        rate: master.currentPrice?.toString() ?? updated[i].rate,
+      }
+      const qty = parseFloat(updated[i].quantity)
+      const rate = parseFloat(updated[i].rate)
+      updated[i].cost = !isNaN(qty) && !isNaN(rate) ? parseFloat((qty * rate).toFixed(2)) : null
+      return updated
+    })
+    setChemDropIdx(null)
+    setChemSearch('')
   }
 
   function addChemicalRow() {
@@ -700,20 +704,70 @@ export default function DyeingForm() {
                 <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
                   {/* Chemical name row */}
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs text-gray-400 w-10 shrink-0">#{i + 1}</span>
-                    <input
-                      type="text"
-                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
-                      value={c.name}
-                      onChange={e => updateChemical(i, 'name', e.target.value)}
-                      placeholder="Chemical name"
-                    />
-                    {c.matched && (
-                      <span className="text-green-600 text-xs font-semibold shrink-0 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">✓ Master</span>
-                    )}
-                    {!c.matched && c.name && (
-                      <span className="text-amber-600 text-xs font-semibold shrink-0 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">New</span>
-                    )}
+                    <span className="text-xs text-gray-400 w-5 shrink-0">#{i + 1}</span>
+                    <div className="flex-1 relative">
+                      <div
+                        className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white cursor-pointer ${chemDropIdx === i ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300'}`}
+                        onClick={() => { setChemDropIdx(chemDropIdx === i ? null : i); setChemSearch('') }}
+                      >
+                        <span className={`flex-1 text-sm ${c.name ? 'font-medium text-gray-800' : 'text-gray-400'}`}>
+                          {c.name || 'Select chemical...'}
+                        </span>
+                        {c.matched && (
+                          <span className="text-green-600 text-[10px] font-semibold bg-green-50 border border-green-200 px-1 py-0.5 rounded shrink-0">✓</span>
+                        )}
+                        {!c.matched && c.name && (
+                          <span className="text-amber-600 text-[10px] font-semibold bg-amber-50 border border-amber-200 px-1 py-0.5 rounded shrink-0">New</span>
+                        )}
+                        <span className="text-gray-400 text-xs shrink-0">▼</span>
+                      </div>
+
+                      {/* Searchable dropdown */}
+                      {chemDropIdx === i && (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
+                          <input
+                            type="text"
+                            autoFocus
+                            className="w-full border-b border-gray-200 px-3 py-2 text-sm focus:outline-none rounded-t-lg"
+                            placeholder="Search or type new name..."
+                            value={chemSearch}
+                            onChange={e => setChemSearch(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <div className="overflow-y-auto max-h-48">
+                            {masterChemicals
+                              .filter(m => !chemSearch || m.name.toLowerCase().includes(chemSearch.toLowerCase()))
+                              .map(m => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-50 flex items-center justify-between ${c.chemicalId === m.id ? 'bg-purple-50 font-medium' : ''}`}
+                                  onClick={e => { e.stopPropagation(); selectMasterChemical(i, m) }}
+                                >
+                                  <span>{m.name}</span>
+                                  {m.currentPrice != null && (
+                                    <span className="text-xs text-gray-400">₹{m.currentPrice}/{m.unit}</span>
+                                  )}
+                                </button>
+                              ))
+                            }
+                            {/* Option to use typed name as new chemical */}
+                            {chemSearch.trim() && !masterChemicals.some(m => m.name.toLowerCase() === chemSearch.toLowerCase()) && (
+                              <button
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 text-amber-700 border-t border-gray-100 flex items-center gap-1"
+                                onClick={e => { e.stopPropagation(); updateChemical(i, 'name', chemSearch.trim()); setChemDropIdx(null); setChemSearch('') }}
+                              >
+                                <span className="text-amber-500">+</span> Add &quot;{chemSearch.trim()}&quot; as new
+                              </button>
+                            )}
+                            {masterChemicals.length === 0 && !chemSearch && (
+                              <p className="px-3 py-2 text-xs text-gray-400">No chemicals in master yet</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={() => removeChemical(i)}
