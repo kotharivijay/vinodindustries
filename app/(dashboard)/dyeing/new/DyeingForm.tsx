@@ -139,23 +139,39 @@ export default function DyeingForm() {
     const recognition = new SR()
     recognition.lang = 'en-IN'
     recognition.continuous = true
-    recognition.interimResults = true
+    recognition.interimResults = false  // Only final results — prevents duplicates
+
+    // Track last processed index to avoid re-processing on restart
+    let lastProcessed = -1
 
     recognition.onresult = (e: any) => {
-      // Only append final results (not interim)
-      let finalText = ''
+      let newText = ''
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalText += e.results[i][0].transcript + ' '
+        // Skip already processed results
+        if (i <= lastProcessed) continue
+        if (e.results[i].isFinal) {
+          newText += e.results[i][0].transcript + ' '
+          lastProcessed = i
+        }
       }
-      if (finalText) setVoiceText(prev => prev ? prev.trimEnd() + ' ' + finalText.trim() : finalText.trim())
+      if (newText.trim()) {
+        setVoiceText(prev => prev ? prev.trimEnd() + ' ' + newText.trim() : newText.trim())
+      }
     }
     recognition.onend = () => {
-      // Auto-restart if user hasn't manually stopped
-      if (recognitionRef.current?._active) recognition.start()
-      else setIsRecording(false)
+      // Auto-restart if user hasn't manually stopped (mobile Chrome stops after pause)
+      if (recognitionRef.current?._active) {
+        lastProcessed = -1  // Reset for new session
+        try { recognition.start() } catch { setIsRecording(false) }
+      } else {
+        setIsRecording(false)
+      }
     }
     recognition.onerror = (e: any) => {
-      if (e.error !== 'aborted') setIsRecording(false)
+      if (e.error !== 'aborted' && e.error !== 'no-speech') {
+        recognitionRef.current._active = false
+        setIsRecording(false)
+      }
     }
 
     recognition._active = true
