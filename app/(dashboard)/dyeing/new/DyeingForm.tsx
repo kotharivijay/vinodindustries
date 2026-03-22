@@ -828,7 +828,7 @@ export default function DyeingForm() {
       {showZoom && imagePreview && <ZoomModal src={imagePreview} onClose={() => setShowZoom(false)} />}
 
       <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-800 text-sm">← Back</button>
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">&larr; Back</button>
         <h1 className="text-2xl font-bold text-gray-800">New Dyeing Slip</h1>
       </div>
 

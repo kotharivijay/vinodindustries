@@ -48,7 +48,7 @@ export default function DyeingDetailView({ id }: { id: string }) {
     <div className="p-4 md:p-8 max-w-2xl">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-800 text-sm">&larr; Back</button>
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">&larr; Back</button>
         <h1 className="text-xl font-bold text-gray-800">Slip #{entry.slipNo}</h1>
         <Link href={`/dyeing/${id}/edit`} className="ml-auto text-sm font-medium text-purple-600 hover:text-purple-800 border border-purple-200 rounded-lg px-3 py-1.5">
           Edit
