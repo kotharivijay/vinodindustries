@@ -65,6 +65,28 @@ function parseJSON(text: string): ExtractedDyeingSlip {
     raw.than = raw.marka[0].than
   }
 
+  // Fix date: month must be current or previous month, year must be current year
+  if (raw.date) {
+    const now = new Date()
+    const curYear = now.getFullYear()
+    const curMonth = now.getMonth() + 1 // 1-12
+    const prevMonth = curMonth === 1 ? 12 : curMonth - 1
+    const parts = raw.date.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
+    if (parts) {
+      let day = parseInt(parts[1])
+      let month = parseInt(parts[2])
+      // Clamp month to current or previous month
+      if (month !== curMonth && month !== prevMonth) {
+        month = curMonth
+      }
+      // Always use current year
+      // Clamp day to valid range
+      if (day < 1) day = 1
+      if (day > 31) day = 31
+      raw.date = `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${curYear}`
+    }
+  }
+
   // Post-process chemicals: convert everything to kg
   // Rule: qty ≤ 10 = already in kg, qty > 10 = in grams → convert to kg
   // Special: bulk chemicals (soda, peroxide, pel, acid, salt, xni) — fix OCR misreads:
