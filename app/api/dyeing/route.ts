@@ -23,28 +23,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Date, Slip No, Lot No and Than are required.' }, { status: 400 })
   }
 
-  const entry = await prisma.dyeingEntry.create({
-    data: {
-      date: new Date(data.date),
-      slipNo: parseInt(data.slipNo),
-      lotNo: String(data.lotNo).trim(),
-      than: parseInt(data.than),
-      notes: data.notes || null,
-      chemicals: data.chemicals?.length
-        ? {
-            create: data.chemicals.map((c: any) => ({
-              chemicalId: c.chemicalId ?? null,
-              name: c.name,
-              quantity: c.quantity != null ? parseFloat(c.quantity) : null,
-              unit: c.unit || 'kg',
-              rate: c.rate != null ? parseFloat(c.rate) : null,
-              cost: c.cost != null ? parseFloat(c.cost) : null,
-            })),
-          }
-        : undefined,
-    },
-    include: { chemicals: { include: { chemical: true } } },
-  })
+  // If marka has multiple lots, create one entry per lot (same slip, same chemicals)
+  const lots = data.marka?.length
+    ? data.marka.map((m: any) => ({ lotNo: String(m.lotNo).trim(), than: parseInt(m.than) || 0 }))
+    : [{ lotNo: String(data.lotNo).trim(), than: parseInt(data.than) }]
+
+  const chemData = data.chemicals?.length
+    ? data.chemicals.map((c: any) => ({
+        chemicalId: c.chemicalId ?? null,
+        name: c.name,
+        quantity: c.quantity != null ? parseFloat(c.quantity) : null,
+        unit: c.unit || 'kg',
+        rate: c.rate != null ? parseFloat(c.rate) : null,
+        cost: c.cost != null ? parseFloat(c.cost) : null,
+      }))
+    : []
+
+  const entries = []
+  for (const lot of lots) {
+    const entry = await prisma.dyeingEntry.create({
+      data: {
+        date: new Date(data.date),
+        slipNo: parseInt(data.slipNo),
+        lotNo: lot.lotNo,
+        than: lot.than,
+        notes: data.notes || null,
+        chemicals: chemData.length ? { create: chemData } : undefined,
+      },
+      include: { chemicals: { include: { chemical: true } } },
+    })
+    entries.push(entry)
+  }
+  const entry = entries[0]
 
   // ── Learn aliases: save OCR name → master chemical mapping ──
   if (data.chemicals?.length && data.ocrNames?.length) {
