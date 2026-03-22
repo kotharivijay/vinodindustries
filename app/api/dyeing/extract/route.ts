@@ -66,23 +66,25 @@ function parseJSON(text: string): ExtractedDyeingSlip {
   }
 
   // Post-process chemicals: convert everything to kg
+  // Rule: qty ≤ 10 = already in kg, qty > 10 = in grams → convert to kg
   if (raw.chemicals) {
     raw.chemicals = raw.chemicals.map((c: any) => {
       let qty = c.quantity
       let unit = c.unit || 'kg'
-      // If quantity > 10, it's in grams → convert to kg
+      const unitLower = unit.toLowerCase()
+
       if (qty != null && qty > 10) {
+        // Large value = grams → convert to kg
         qty = parseFloat((qty / 1000).toFixed(4))
         unit = 'kg'
-      }
-      // If unit is gram/g, convert to kg
-      if (unit.toLowerCase() === 'gram' || unit.toLowerCase() === 'g') {
-        if (qty != null) qty = parseFloat((qty / 1000).toFixed(4))
+      } else if (unitLower === 'gram' || unitLower === 'g') {
+        // AI said gram but qty ≤ 10 → it's actually kg (e.g. 1, 1.5, 2, 3)
         unit = 'kg'
       }
+
       // If unit is ml, convert to liter
-      if (unit.toLowerCase() === 'ml') {
-        if (qty != null) qty = parseFloat((qty / 1000).toFixed(4))
+      if (unitLower === 'ml') {
+        if (qty != null && qty > 10) qty = parseFloat((qty / 1000).toFixed(4))
         unit = 'liter'
       }
       return { ...c, quantity: qty, unit }
