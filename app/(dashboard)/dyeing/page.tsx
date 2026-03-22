@@ -238,16 +238,45 @@ export default function DyeingListPage() {
       {/* ── ALL ENTRIES TAB ── */}
       {tab === 'entries' && (
         <>
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <input type="text" placeholder="Search lot no, slip no..."
-              className="w-full max-w-sm border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-              value={search}
-              onChange={e => { setSearchRaw(e.target.value); setDebouncedSearch(e.target.value) }} />
-            {(search || filterLotNo || filterSlipNo || filterParty) && (
-              <button onClick={() => { setSearchRaw(''); setDebouncedSearch(''); setFilterLotNo(''); setDebouncedFilterLot(''); setFilterSlipNo(''); setDebouncedFilterSlip(''); setFilterParty(''); setDebouncedFilterParty('') }}
-                className="text-xs text-gray-400 hover:text-red-500">Clear filters</button>
-            )}
-            <span className="text-xs text-gray-400 ml-auto">{filtered.length} of {entries.length}</span>
+          {/* Filter + Sort bar (visible on all screens) */}
+          <div className="mb-4 space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] text-gray-400 mb-0.5">Slip No</label>
+                <input type="text" placeholder="Filter..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  value={filterSlipNo}
+                  onChange={e => { setFilterSlipNo(e.target.value); setDebouncedFilterSlip(e.target.value) }} />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-400 mb-0.5">Lot No</label>
+                <input type="text" placeholder="Filter..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  value={filterLotNo}
+                  onChange={e => { setFilterLotNo(e.target.value); setDebouncedFilterLot(e.target.value) }} />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-400 mb-0.5">Party</label>
+                <input type="text" placeholder="Filter..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  value={filterParty}
+                  onChange={e => { setFilterParty(e.target.value); setDebouncedFilterParty(e.target.value) }} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-gray-400">Sort:</span>
+              {([['date', 'Date'], ['slipNo', 'Slip'], ['lotNo', 'Lot'], ['party', 'Party'], ['than', 'Than']] as [SortField, string][]).map(([f, label]) => (
+                <button key={f} onClick={() => toggleSort(f)}
+                  className={`text-xs px-2 py-1 rounded border ${sortField === f ? 'bg-purple-100 border-purple-300 text-purple-700 font-medium' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                  {label} {sortField === f ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+                </button>
+              ))}
+              {(filterSlipNo || filterLotNo || filterParty) && (
+                <button onClick={() => { setFilterSlipNo(''); setDebouncedFilterSlip(''); setFilterLotNo(''); setDebouncedFilterLot(''); setFilterParty(''); setDebouncedFilterParty('') }}
+                  className="text-xs text-red-400 hover:text-red-600">Clear</button>
+              )}
+              <span className="text-xs text-gray-400 ml-auto">{filtered.length} of {entries.length}</span>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

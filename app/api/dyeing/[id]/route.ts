@@ -7,16 +7,26 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
-  const db = prisma as any
-  const entry = await db.dyeingEntry.findUnique({
-    where: { id: parseInt(id) },
-    include: {
-      chemicals: { include: { chemical: true } },
-      lots: true,
-    },
-  })
-  if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  return NextResponse.json(entry)
+  try {
+    const db = prisma as any
+    const entry = await db.dyeingEntry.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        chemicals: { include: { chemical: true } },
+        lots: true,
+      },
+    })
+    if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return NextResponse.json(entry)
+  } catch {
+    // Fallback if lots table doesn't exist yet
+    const entry = await prisma.dyeingEntry.findUnique({
+      where: { id: parseInt(id) },
+      include: { chemicals: { include: { chemical: true } } },
+    })
+    if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return NextResponse.json({ ...entry, lots: [] })
+  }
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

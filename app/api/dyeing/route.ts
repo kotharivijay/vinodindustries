@@ -7,14 +7,23 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const db = prisma as any
-  const entries = await db.dyeingEntry.findMany({
-    include: {
-      chemicals: { include: { chemical: true } },
-      lots: true,
-    },
-    orderBy: { date: 'desc' },
-  })
+  let entries: any[]
+  try {
+    const db = prisma as any
+    entries = await db.dyeingEntry.findMany({
+      include: {
+        chemicals: { include: { chemical: true } },
+        lots: true,
+      },
+      orderBy: { date: 'desc' },
+    })
+  } catch {
+    // Fallback if lots table doesn't exist yet
+    entries = (await prisma.dyeingEntry.findMany({
+      include: { chemicals: { include: { chemical: true } } },
+      orderBy: { date: 'desc' },
+    })).map(e => ({ ...e, lots: [] }))
+  }
 
   // Enrich with party names from grey entries (lot → party mapping)
   const allLotNos = new Set<string>()
