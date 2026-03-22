@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 
 // Types
@@ -26,8 +26,50 @@ interface MarkaEntry {
   stockInfo: { stock: number; greyThan: number; despatchThan: number } | null
 }
 
+// Image Zoom Modal
+function ZoomModal({ src, onClose }: { src: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-2"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 text-white text-3xl leading-none z-10"
+      >&times;</button>
+      <img
+        src={src}
+        alt="Finish slip"
+        className="max-w-full max-h-full object-contain rounded-lg"
+        onClick={e => e.stopPropagation()}
+        style={{ touchAction: 'pinch-zoom' }}
+      />
+    </div>
+  )
+}
+
 export default function FinishForm() {
   const router = useRouter()
+
+  // Image state
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageBase64, setImageBase64] = useState<string | null>(null)
+  const [imageType, setImageType] = useState<string>('image/jpeg')
+  const [showZoom, setShowZoom] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+
+  // Voice note state
+  const [voiceText, setVoiceText] = useState('')
+  const [isRecording, setIsRecording] = useState(false)
+  const [speechSupported, setSpeechSupported] = useState(false)
+  const recognitionRef = useRef<any>(null)
+
+  // Extraction state
+  const [extracting, setExtracting] = useState(false)
+  const [extractError, setExtractError] = useState('')
+  const [extracted, setExtracted] = useState(false)
+  const [ocrNames, setOcrNames] = useState<string[]>([])
 
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -64,7 +106,204 @@ export default function FinishForm() {
     fetch('/api/grey/lots').then(r => r.json()).then(d => setAvailableLots(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
 
+  // Check speech recognition support
+  useEffect(() => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    setSpeechSupported(!!SR)
+  }, [])
+
   const set = (field: string, value: string) => setForm(prev => ({ ...prev, [field]: value }))
+
+  // ── Image Handling ──────────────────────────────────────────────────────────
+
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    const file = files[0]
+    e.target.value = '' // reset input
+
+    const type = file.type || 'image/jpeg'
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const result = ev.target?.result as string
+      setImagePreview(result)
+      setImageBase64(result.split(',')[1])
+      setImageType(type)
+      setExtracted(false)
+      setExtractError('')
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // ── Voice Note ──────────────────────────────────────────────────────────────
+
+  function toggleRecording() {
+    if (!speechSupported) return
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+
+    if (isRecording) {
+      if (recognitionRef.current) recognitionRef.current._active = false
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
+
+    const recognition = new SR()
+    recognition.lang = 'en-IN'
+    recognition.continuous = false
+    recognition.interimResults = false
+
+    recognition.onresult = (e: any) => {
+      const transcript = e.results[0]?.[0]?.transcript?.trim()
+      if (!transcript) return
+
+      setVoiceText(prev => {
+        if (!prev) return transcript
+        // Deduplicate: check if last few words of prev overlap with start of new text
+        const prevWords = prev.trim().split(/\s+/)
+        const newWords = transcript.split(/\s+/)
+        for (let overlap = Math.min(3, prevWords.length, newWords.length); overlap > 0; overlap--) {
+          const tail = prevWords.slice(-overlap).join(' ').toLowerCase()
+          const head = newWords.slice(0, overlap).join(' ').toLowerCase()
+          if (tail === head) {
+            return prev.trimEnd() + ' ' + newWords.slice(overlap).join(' ')
+          }
+        }
+        return prev.trimEnd() + ' ' + transcript
+      })
+    }
+    recognition.onend = () => {
+      if (recognitionRef.current?._active) {
+        try { recognition.start() } catch { setIsRecording(false) }
+      } else {
+        setIsRecording(false)
+      }
+    }
+    recognition.onerror = (e: any) => {
+      if (e.error !== 'aborted' && e.error !== 'no-speech') {
+        recognitionRef.current._active = false
+        setIsRecording(false)
+      }
+    }
+
+    recognition._active = true
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsRecording(true)
+  }
+
+  // ── OCR / AI Extraction ────────────────────────────────────────────────────
+
+  function matchToMaster(name: string): { chemicalId: number | null; rate: string; matchedName: string } {
+    if (!name.trim() || masterChemicals.length === 0) return { chemicalId: null, rate: '', matchedName: '' }
+    const norm = (s: string) => s.toLowerCase().trim()
+    const exact = masterChemicals.find(c => norm(c.name) === norm(name))
+    if (exact) return { chemicalId: exact.id, rate: exact.currentPrice?.toString() ?? '', matchedName: exact.name }
+    return { chemicalId: null, rate: '', matchedName: '' }
+  }
+
+  function formatLotNo(raw: string): string {
+    let val = raw.toUpperCase().replace(/\s/g, '')
+    val = val.replace(/^([A-Z]+)(\d+)$/, '$1-$2')
+    return val
+  }
+
+  async function handleExtract() {
+    if (!imageBase64) return
+    setExtracting(true); setExtractError('')
+
+    const res = await fetch('/api/finish/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64, mediaType: imageType, voiceNote: voiceText || null }),
+    })
+
+    const data = await res.json()
+    if (!res.ok) {
+      setExtractError(data.error ?? 'Extraction failed')
+      setExtracting(false)
+      return
+    }
+
+    // Auto-fill form fields
+    setForm(prev => ({
+      date: data.date
+        ? (() => {
+            const [d, m, y] = data.date.split('/')
+            return `${y}-${m?.padStart(2, '0')}-${d?.padStart(2, '0')}`
+          })()
+        : prev.date,
+      slipNo: data.slipNo ?? prev.slipNo,
+      notes: data.notes ?? prev.notes,
+    }))
+
+    // Fill mandi
+    if (data.mandi != null) {
+      setMandi(String(data.mandi))
+    }
+
+    // Populate marka entries from AI response
+    if (data.marka?.length) {
+      const entries: MarkaEntry[] = data.marka.map((m: any) => ({
+        lotNo: formatLotNo(m.lotNo || ''),
+        than: m.than?.toString() ?? '',
+        meter: m.meter?.toString() ?? '',
+        stockStatus: 'idle' as StockStatus,
+        stockInfo: null,
+      }))
+      setMarkaEntries(entries)
+      // Check stock for each marka lot
+      entries.forEach((_: any, idx: number) => {
+        if (data.marka[idx].lotNo) {
+          setTimeout(() => handleLotBlur(formatLotNo(data.marka[idx].lotNo), idx), idx * 200)
+        }
+      })
+    } else if (data.lotNo) {
+      setMarkaEntries([{ lotNo: formatLotNo(data.lotNo), than: data.than?.toString() ?? '', meter: '', stockStatus: 'idle', stockInfo: null }])
+      handleLotBlur(formatLotNo(data.lotNo), 0)
+    }
+
+    // Save original OCR names for alias learning
+    if (data.ocrNames?.length) setOcrNames(data.ocrNames)
+
+    // Build chemical rows -- use alias matches from server, then try local exact match
+    if (data.chemicals?.length) {
+      const rows: ChemicalRow[] = data.chemicals.map((c: any) => {
+        let chemicalId = c._matchedId ?? null
+        let rate = c._matchedRate != null ? String(c._matchedRate) : ''
+        let displayName = c.name
+
+        if (!chemicalId) {
+          const local = matchToMaster(c.name)
+          chemicalId = local.chemicalId
+          rate = local.rate
+          displayName = local.matchedName || c.name
+        }
+
+        const qty = c.quantity != null ? String(c.quantity) : ''
+        const rateNum = parseFloat(rate)
+        const qtyNum = parseFloat(qty)
+        const cost = !isNaN(rateNum) && !isNaN(qtyNum) ? parseFloat((rateNum * qtyNum).toFixed(2)) : null
+        return {
+          name: displayName,
+          chemicalId,
+          quantity: qty,
+          unit: c.unit || 'kg',
+          rate,
+          cost,
+          matched: chemicalId !== null,
+        }
+      })
+      setChemicals(rows)
+    }
+
+    setExtracted(true)
+    setExtracting(false)
+
+    if (data.confidence === 'low') {
+      setExtractError('Low confidence -- image may be unclear. Please verify all fields.')
+    }
+  }
 
   // Lot helpers
   function updateMarka(i: number, field: 'lotNo' | 'than' | 'meter', value: string) {
@@ -208,6 +447,7 @@ export default function FinishForm() {
           rate: c.rate ? parseFloat(c.rate) : null,
           cost: c.cost,
         })),
+      ocrNames,
     }
 
     try {
@@ -233,12 +473,135 @@ export default function FinishForm() {
 
   return (
     <div className="p-4 md:p-8 max-w-xl">
+      {showZoom && imagePreview && <ZoomModal src={imagePreview} onClose={() => setShowZoom(false)} />}
+
+      {/* Hidden file inputs */}
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageSelect} />
+      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
+
       <div className="flex items-center gap-4 mb-6">
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">&larr; Back</button>
         <h1 className="text-xl font-bold text-gray-800">New Finish Slip</h1>
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
+
+      {/* Section 1: Image + AI */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+        <h2 className="text-sm font-semibold text-gray-700 mb-3">Step 1 &mdash; Upload Slip Image (optional)</h2>
+
+        <div className="flex gap-3 flex-wrap">
+          {/* Image preview or upload button */}
+          {imagePreview ? (
+            <div className="relative">
+              <img
+                src={imagePreview}
+                alt="Slip preview"
+                className="h-36 w-28 object-cover rounded-lg border border-gray-200 cursor-pointer"
+                onClick={() => setShowZoom(true)}
+              />
+              <button
+                type="button"
+                onClick={() => setShowZoom(true)}
+                className="absolute bottom-1.5 right-1.5 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded"
+              >
+                Zoom
+              </button>
+              <button
+                type="button"
+                onClick={() => { setImagePreview(null); setImageBase64(null); setExtracted(false) }}
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none"
+              >
+                &times;
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => cameraRef.current?.click()}
+                className="h-36 w-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-teal-400 hover:text-teal-500 transition"
+              >
+                <span className="text-2xl">&#128247;</span>
+                <span className="text-[10px] text-center leading-tight">Camera</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="h-36 w-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-teal-400 hover:text-teal-500 transition"
+              >
+                <span className="text-2xl">&#128444;</span>
+                <span className="text-[10px] text-center leading-tight">Gallery</span>
+              </button>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex flex-col justify-between gap-2 flex-1 min-w-[160px]">
+            {/* Voice note */}
+            <div>
+              <button
+                type="button"
+                onClick={toggleRecording}
+                disabled={!speechSupported}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition w-full justify-center ${
+                  isRecording
+                    ? 'bg-red-500 text-white animate-pulse'
+                    : speechSupported
+                    ? 'bg-teal-100 text-teal-700 hover:bg-teal-200'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                <span>{isRecording ? '&#9209; Stop' : '&#127908; Voice Note'}</span>
+              </button>
+              {!speechSupported && <p className="text-xs text-gray-400 mt-1 text-center">Use Chrome for voice</p>}
+            </div>
+
+            {/* Voice text area */}
+            {(voiceText || isRecording) && (
+              <textarea
+                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 resize-none w-full"
+                rows={3}
+                placeholder="Voice note transcript..."
+                value={voiceText}
+                onChange={e => setVoiceText(e.target.value)}
+              />
+            )}
+
+            {/* Extract button */}
+            {imageBase64 && (
+              <button
+                type="button"
+                onClick={handleExtract}
+                disabled={extracting}
+                className={`px-4 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 w-full ${
+                  extracted
+                    ? 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
+                    : 'bg-teal-600 text-white hover:bg-teal-700'
+                } disabled:opacity-60`}
+              >
+                {extracting ? (
+                  <><span className="animate-spin">&#10227;</span> Extracting...</>
+                ) : extracted ? (
+                  '&#8635; Re-extract with AI'
+                ) : (
+                  'Extract with AI'
+                )}
+              </button>
+            )}
+
+            {!imageBase64 && (
+              <p className="text-xs text-gray-400 text-center">Upload an image, then tap &quot;Extract with AI&quot;</p>
+            )}
+          </div>
+        </div>
+
+        {extractError && (
+          <div className="mt-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-xs">
+            {extractError}
+          </div>
+        )}
+      </div>
 
       <form onSubmit={handleSubmit}>
         {/* Slip Details */}

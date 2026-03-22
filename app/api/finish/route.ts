@@ -87,6 +87,33 @@ export async function POST(req: NextRequest) {
         lots: true,
       },
     })
+
+    // Learn aliases: save OCR name -> master chemical mapping
+    if (data.chemicals?.length && data.ocrNames?.length) {
+      try {
+        const aliasOps = []
+        for (let i = 0; i < data.chemicals.length; i++) {
+          const chem = data.chemicals[i]
+          const ocrRaw = data.ocrNames[i]
+          if (!ocrRaw || !chem.chemicalId) continue
+          const ocrNorm = ocrRaw.toLowerCase().trim().replace(/\s+/g, ' ')
+          const finalNorm = chem.name.toLowerCase().trim().replace(/\s+/g, ' ')
+          if (ocrNorm && ocrNorm !== finalNorm) {
+            aliasOps.push(
+              db.chemicalAlias.upsert({
+                where: { ocrName: ocrNorm },
+                create: { ocrName: ocrNorm, chemicalId: chem.chemicalId },
+                update: { chemicalId: chem.chemicalId, hitCount: { increment: 1 } },
+              })
+            )
+          }
+        }
+        if (aliasOps.length) await Promise.all(aliasOps)
+      } catch {
+        // ChemicalAlias table may not exist yet -- skip
+      }
+    }
+
     return NextResponse.json(entry, { status: 201 })
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? 'Failed to save' }, { status: 500 })
