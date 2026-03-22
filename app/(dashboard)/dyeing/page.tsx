@@ -26,6 +26,7 @@ interface DyeingEntry {
   notes: string | null
   chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
   lots?: { id: number; lotNo: string; than: number }[]
+  partyName?: string | null
 }
 
 interface LotSummaryRow {
@@ -36,7 +37,7 @@ interface LotSummaryRow {
   lastDate: string
 }
 
-type SortField = 'date' | 'slipNo' | 'lotNo' | 'than'
+type SortField = 'date' | 'slipNo' | 'lotNo' | 'than' | 'party'
 type SortDir = 'asc' | 'desc'
 type Tab = 'entries' | 'summary'
 
@@ -46,6 +47,7 @@ function getValue(e: DyeingEntry, f: SortField): string | number {
     case 'slipNo': return e.slipNo
     case 'lotNo': return e.lotNo.toLowerCase()
     case 'than': return e.than
+    case 'party': return (e.partyName ?? '').toLowerCase()
   }
 }
 
@@ -66,6 +68,10 @@ export default function DyeingListPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [filterLotNo, setFilterLotNo] = useState('')
   const [debouncedFilterLot, setDebouncedFilterLot] = useDebounce()
+  const [filterSlipNo, setFilterSlipNo] = useState('')
+  const [debouncedFilterSlip, setDebouncedFilterSlip] = useDebounce()
+  const [filterParty, setFilterParty] = useState('')
+  const [debouncedFilterParty, setDebouncedFilterParty] = useDebounce()
 
   async function handleDelete(id: number) {
     if (!confirm('Delete this dyeing entry? This cannot be undone.')) return
@@ -101,21 +107,27 @@ export default function DyeingListPage() {
     return !q ? lotSummary : lotSummary.filter(r => r.lotNo.toLowerCase().includes(q))
   }, [lotSummary, debouncedLotSearch])
 
-  const filtered = useMemo(() =>
-    entries
+  const filtered = useMemo(() => {
+    const q = debouncedSearch.toLowerCase()
+    const fl = debouncedFilterLot.toLowerCase()
+    const fs = debouncedFilterSlip.toLowerCase()
+    const fp = debouncedFilterParty.toLowerCase()
+
+    return entries
       .filter(e => {
-        const q = debouncedSearch.toLowerCase()
-        const fl = debouncedFilterLot.toLowerCase()
-        const matchSearch = !q || e.lotNo.toLowerCase().includes(q) || String(e.slipNo).includes(q)
-        const matchLot = !fl || e.lotNo.toLowerCase().includes(fl)
-        return matchSearch && matchLot
+        const allLots = (e.lots?.length ? e.lots.map(l => l.lotNo) : [e.lotNo]).join(' ').toLowerCase()
+        const matchSearch = !q || allLots.includes(q) || String(e.slipNo).includes(q) || (e.partyName ?? '').toLowerCase().includes(q)
+        const matchLot = !fl || allLots.includes(fl)
+        const matchSlip = !fs || String(e.slipNo).includes(fs)
+        const matchParty = !fp || (e.partyName ?? '').toLowerCase().includes(fp)
+        return matchSearch && matchLot && matchSlip && matchParty
       })
       .sort((a, b) => {
         const av = getValue(a, sortField), bv = getValue(b, sortField)
         const cmp = av < bv ? -1 : av > bv ? 1 : 0
         return sortDir === 'asc' ? cmp : -cmp
-      }),
-  [entries, debouncedSearch, debouncedFilterLot, sortField, sortDir])
+      })
+  }, [entries, debouncedSearch, debouncedFilterLot, debouncedFilterSlip, debouncedFilterParty, sortField, sortDir])
 
   const totalThan = useMemo(() => entries.reduce((s, e) => s + e.than, 0), [entries])
   const fi = 'w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-300 mt-1'
@@ -231,8 +243,8 @@ export default function DyeingListPage() {
               className="w-full max-w-sm border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
               value={search}
               onChange={e => { setSearchRaw(e.target.value); setDebouncedSearch(e.target.value) }} />
-            {(search || filterLotNo) && (
-              <button onClick={() => { setSearchRaw(''); setDebouncedSearch(''); setFilterLotNo(''); setDebouncedFilterLot('') }}
+            {(search || filterLotNo || filterSlipNo || filterParty) && (
+              <button onClick={() => { setSearchRaw(''); setDebouncedSearch(''); setFilterLotNo(''); setDebouncedFilterLot(''); setFilterSlipNo(''); setDebouncedFilterSlip(''); setFilterParty(''); setDebouncedFilterParty('') }}
                 className="text-xs text-gray-400 hover:text-red-500">Clear filters</button>
             )}
             <span className="text-xs text-gray-400 ml-auto">{filtered.length} of {entries.length}</span>
@@ -283,7 +295,8 @@ export default function DyeingListPage() {
                               )}
                             </div>
                           )}
-                          {e.notes && <p className="text-[10px] text-gray-400 mt-1 truncate">{e.notes}</p>}
+                          {e.partyName && <p className="text-[10px] text-gray-500 mt-1">{e.partyName}</p>}
+                          {e.notes && <p className="text-[10px] text-gray-400 mt-0.5 truncate">{e.notes}</p>}
                         </div>
                       )
                     })}
@@ -295,7 +308,15 @@ export default function DyeingListPage() {
                       <thead className="bg-gray-50 border-b">
                         <tr>
                           <SortTh field="date" label="Date" />
-                          <SortTh field="slipNo" label="Slip No" />
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-purple-600"
+                            onClick={() => toggleSort('slipNo')}>
+                            <span className="flex items-center gap-1">
+                              Slip No <span className={sortField === 'slipNo' ? 'text-purple-600' : 'text-gray-300'}>{sortField === 'slipNo' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
+                            </span>
+                            <input className={fi} placeholder="filter..." value={filterSlipNo}
+                              onChange={e => { e.stopPropagation(); setFilterSlipNo(e.target.value); setDebouncedFilterSlip(e.target.value) }}
+                              onClick={e => e.stopPropagation()} />
+                          </th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-purple-600"
                             onClick={() => toggleSort('lotNo')}>
                             <span className="flex items-center gap-1">
@@ -305,8 +326,16 @@ export default function DyeingListPage() {
                               onChange={e => { e.stopPropagation(); setFilterLotNo(e.target.value); setDebouncedFilterLot(e.target.value) }}
                               onClick={e => e.stopPropagation()} />
                           </th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-purple-600"
+                            onClick={() => toggleSort('party')}>
+                            <span className="flex items-center gap-1">
+                              Party <span className={sortField === 'party' ? 'text-purple-600' : 'text-gray-300'}>{sortField === 'party' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}</span>
+                            </span>
+                            <input className={fi} placeholder="filter..." value={filterParty}
+                              onChange={e => { e.stopPropagation(); setFilterParty(e.target.value); setDebouncedFilterParty(e.target.value) }}
+                              onClick={e => e.stopPropagation()} />
+                          </th>
                           <SortTh field="than" label="Than" right />
-                          <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Chemicals</th>
                           <th className="px-3 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
                         </tr>
@@ -327,8 +356,8 @@ export default function DyeingListPage() {
                                 ))}
                               </div>
                             </td>
+                            <td className="px-3 py-2.5 text-sm text-gray-600">{e.partyName ?? '—'}</td>
                             <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
-                            <td className="px-3 py-2.5 text-right text-gray-500">{e.chemicals?.length ?? 0}</td>
                             <td className="px-3 py-2.5 text-right font-medium text-purple-600">
                               {(() => { const c = e.chemicals?.reduce((s, x) => s + (x.cost ?? 0), 0) ?? 0; return c > 0 ? `₹${c.toFixed(0)}` : '—' })()}
                             </td>

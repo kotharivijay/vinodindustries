@@ -15,7 +15,28 @@ export async function GET() {
     },
     orderBy: { date: 'desc' },
   })
-  return NextResponse.json(entries)
+
+  // Enrich with party names from grey entries (lot → party mapping)
+  const allLotNos = new Set<string>()
+  for (const e of entries) {
+    if (e.lots?.length) e.lots.forEach((l: any) => allLotNos.add(l.lotNo))
+    else allLotNos.add(e.lotNo)
+  }
+
+  const greyWithParty = await prisma.greyEntry.findMany({
+    where: { lotNo: { in: Array.from(allLotNos) } },
+    select: { lotNo: true, party: { select: { name: true } } },
+    distinct: ['lotNo'],
+  })
+  const lotPartyMap = new Map(greyWithParty.map(g => [g.lotNo, g.party.name]))
+
+  const enriched = entries.map((e: any) => {
+    const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
+    const partyNames = [...new Set(lots.map((l: any) => lotPartyMap.get(l.lotNo)).filter(Boolean))]
+    return { ...e, partyName: partyNames.join(', ') || null }
+  })
+
+  return NextResponse.json(enriched)
 }
 
 export async function POST(req: NextRequest) {
