@@ -39,9 +39,21 @@ export async function POST(req: NextRequest) {
       }))
     : []
 
+  // Calculate total than across all lots for proportional cost split
+  const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
+
   const entries = []
-  for (let i = 0; i < lots.length; i++) {
-    const lot = lots[i]
+  for (const lot of lots) {
+    // Proportional share: this lot's than / total than
+    const share = totalThan > 0 ? lot.than / totalThan : 1 / lots.length
+
+    // All lots get same chemicals but cost split by than proportion
+    const lotChemData = chemData.map((c: any) => ({
+      ...c,
+      quantity: c.quantity != null ? parseFloat((c.quantity * share).toFixed(4)) : null,
+      cost: c.cost != null ? parseFloat((c.cost * share).toFixed(2)) : null,
+    }))
+
     const entry = await prisma.dyeingEntry.create({
       data: {
         date: new Date(data.date),
@@ -49,8 +61,7 @@ export async function POST(req: NextRequest) {
         lotNo: lot.lotNo,
         than: lot.than,
         notes: data.notes || null,
-        // Only first lot gets chemicals — consumed once from stock
-        chemicals: i === 0 && chemData.length ? { create: chemData } : undefined,
+        chemicals: lotChemData.length ? { create: lotChemData } : undefined,
       },
       include: { chemicals: { include: { chemical: true } } },
     })
