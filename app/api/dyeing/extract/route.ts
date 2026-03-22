@@ -101,11 +101,12 @@ function parseJSON(text: string): ExtractedDyeingSlip {
       const nameLower = (c.name || '').toLowerCase()
       const isBulk = BULK_KEYWORDS.some(kw => nameLower.includes(kw))
 
-      // Fix bulk chemical OCR misread: .11→1, .21→2, .31→3, .51→5 etc.
+      // Fix bulk chemical OCR misread: .11→1, .18→1, .21→2, .31→3, .51→5 etc.
+      // AI misreads handwritten kg values as decimals (e.g. "1" → ".1", ".18", ".11")
       if (isBulk && qty != null && qty > 0 && qty < 1) {
-        // Pattern: 0.X1 where X is the actual kg value
+        // Extract first digit after decimal as the actual kg value
         const str = qty.toString()
-        const match = str.match(/^0?\.(\d)1?$/)
+        const match = str.match(/^0?\.(\d)/)
         if (match) {
           qty = parseInt(match[1])
         }
