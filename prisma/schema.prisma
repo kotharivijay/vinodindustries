@@ -118,6 +118,7 @@ model Chemical {
   updatedAt    DateTime               @updatedAt
   priceHistory ChemicalPriceHistory[]
   slipUsages   DyeingSlipChemical[]
+  finishUsages FinishSlipChemical[]
   aliases      ChemicalAlias[]
 }
 
@@ -165,6 +166,46 @@ model DyeingDraftItem {
   sortOrder   Int               @default(0)
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+}
+
+// ─── Finish/Center Entry ─────────────────────────────────────────────────────
+
+model FinishEntry {
+  id        Int                  @id @default(autoincrement())
+  date      DateTime
+  slipNo    Int
+  lotNo     String               // backward compat: first lot
+  than      Int                  // backward compat: first lot's than
+  meter     Float?               // total meter
+  mandi     Float?               // mandi in liters
+  notes     String?
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  chemicals FinishSlipChemical[]
+  lots      FinishEntryLot[]
+}
+
+model FinishEntryLot {
+  id      Int          @id @default(autoincrement())
+  entryId Int
+  entry   FinishEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  lotNo   String
+  than    Int
+  meter   Float?
+}
+
+model FinishSlipChemical {
+  id         Int          @id @default(autoincrement())
+  entryId    Int
+  entry      FinishEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  chemicalId Int?
+  chemical   Chemical?    @relation(fields: [chemicalId], references: [id])
+  name       String
+  quantity   Float?
+  unit       String       @default("kg")
+  rate       Float?
+  cost       Float?
+  createdAt  DateTime     @default(now())
 }
 
 // ─── Despatch Entry ────────────────────────────────────────────────────────────

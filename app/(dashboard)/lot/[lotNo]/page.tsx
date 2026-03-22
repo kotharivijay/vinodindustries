@@ -60,9 +60,39 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
     })).map(e => ({ ...e, _lotThan: e.than, lots: [], chemicals: [] }))
   }
 
+  // Find finish entries via FinishEntryLot
+  let finishEntries: any[] = []
+  try {
+    const finishLots = await db.finishEntryLot.findMany({
+      where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+      include: {
+        entry: {
+          include: {
+            chemicals: { include: { chemical: true } },
+            lots: true,
+          },
+        },
+      },
+    })
+    finishEntries = finishLots.map((le: any) => ({
+      ...le.entry,
+      _lotThan: le.than,
+      _lotMeter: le.meter,
+    }))
+    const seenFinish = new Set()
+    finishEntries = finishEntries.filter((e: any) => {
+      if (seenFinish.has(e.id)) return false
+      seenFinish.add(e.id)
+      return true
+    })
+  } catch {
+    // fallback if FinishEntryLot table doesn't exist yet
+  }
+
   const greyThan = greyEntries.reduce((s, e) => s + e.than, 0)
   const despatchThan = despatchEntries.reduce((s, e) => s + e.than, 0)
   const dyeingThan = dyeingEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
+  const finishThan = finishEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
   const stock = greyThan - despatchThan
 
   const fmt = (d: Date) => new Date(d).toLocaleDateString('en-IN')
@@ -78,7 +108,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Grey Inward</p>
           <p className="text-2xl font-bold text-gray-800 mt-1">{greyThan}</p>
@@ -88,6 +118,11 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
           <p className="text-xs text-gray-500 uppercase tracking-wide">Dyeing</p>
           <p className="text-2xl font-bold text-purple-600 mt-1">{dyeingThan}</p>
           <p className="text-xs text-gray-400">{dyeingEntries.length} entries</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Finish</p>
+          <p className="text-2xl font-bold text-teal-600 mt-1">{finishThan}</p>
+          <p className="text-xs text-gray-400">{finishEntries.length} entries</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Despatched</p>
@@ -155,6 +190,42 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         </section>
       )}
 
+      {/* Finish entries */}
+      {finishEntries.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">&#10024; Finish/Center ({finishEntries.length})</h2>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
+            {finishEntries.map((e: any) => {
+              const lotThan = e._lotThan ?? e.than
+              const lotMeter = e._lotMeter ?? null
+              const totalCost = e.chemicals?.reduce((s: number, c: any) => s + (c.cost ?? 0), 0) ?? 0
+              return (
+                <div key={e.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
+                    <Link href={`/finish/${e.id}`} className="text-teal-600 font-medium hover:underline">
+                      Slip {e.slipNo}
+                    </Link>
+                    <span className="font-semibold text-teal-700">Than: {lotThan}</span>
+                    {lotMeter != null && lotMeter > 0 && <span className="text-xs text-gray-500">Meter: {lotMeter}</span>}
+                    {totalCost > 0 && <span className="text-xs text-gray-500">Cost: &#8377;{totalCost.toFixed(0)}</span>}
+                  </div>
+                  {e.lots?.length > 1 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {e.lots.filter((l: any) => l.lotNo.toLowerCase() !== lotNo.toLowerCase()).map((l: any, i: number) => (
+                        <span key={i} className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                          +{l.lotNo} ({l.than})
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Despatch entries */}
       {despatchEntries.length > 0 && (
         <section className="mb-6">
@@ -174,7 +245,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         </section>
       )}
 
-      {greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && (
+      {greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && (
         <div className="text-center text-gray-400 py-16">No records found for lot <strong>{lotNo}</strong></div>
       )}
     </div>

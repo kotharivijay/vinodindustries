@@ -18,6 +18,7 @@ const navGroups = [
       { href: '/grey', label: 'Grey Inward', icon: '📦' },
       { href: '/despatch', label: 'Despatch', icon: '🚚' },
       { href: '/dyeing', label: 'Dyeing Slip', icon: '🎨' },
+      { href: '/finish', label: 'Finish/Center', icon: '✨' },
     ],
   },
   {
