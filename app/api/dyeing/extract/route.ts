@@ -67,11 +67,27 @@ function parseJSON(text: string): ExtractedDyeingSlip {
 
   // Post-process chemicals: convert everything to kg
   // Rule: qty ≤ 10 = already in kg, qty > 10 = in grams → convert to kg
+  // Special: bulk chemicals (soda, peroxide, pel, acid, salt, xni) — fix OCR misreads:
+  //   .11 → 1, .21 → 2, .31 → 3, .51 → 5 (AI reads "1" as ".1")
+  const BULK_KEYWORDS = ['soda', 'peroxide', 'pel', 'acid', 'salt', 'xni']
+
   if (raw.chemicals) {
     raw.chemicals = raw.chemicals.map((c: any) => {
       let qty = c.quantity
       let unit = c.unit || 'kg'
       const unitLower = unit.toLowerCase()
+      const nameLower = (c.name || '').toLowerCase()
+      const isBulk = BULK_KEYWORDS.some(kw => nameLower.includes(kw))
+
+      // Fix bulk chemical OCR misread: .11→1, .21→2, .31→3, .51→5 etc.
+      if (isBulk && qty != null && qty > 0 && qty < 1) {
+        // Pattern: 0.X1 where X is the actual kg value
+        const str = qty.toString()
+        const match = str.match(/^0?\.(\d)1?$/)
+        if (match) {
+          qty = parseInt(match[1])
+        }
+      }
 
       if (qty != null && qty > 10) {
         // Large value = grams → convert to kg
