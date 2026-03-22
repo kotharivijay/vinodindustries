@@ -94,6 +94,11 @@ export default function DyeingForm() {
   interface MarkaEntry { lotNo: string; than: string; stockStatus: StockStatus; stockInfo: { stock: number; greyThan: number; despatchThan: number } | null }
   const [markaEntries, setMarkaEntries] = useState<MarkaEntry[]>([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
 
+  // Available lots for searchable dropdown
+  const [availableLots, setAvailableLots] = useState<{ lotNo: string; greyThan: number; despatchThan: number; stock: number }[]>([])
+  const [lotDropIdx, setLotDropIdx] = useState<number | null>(null)
+  const [lotSearch, setLotSearch] = useState('')
+
   // Form state
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -126,6 +131,11 @@ export default function DyeingForm() {
       .then(r => r.json())
       .then(d => setMasterChemicals(Array.isArray(d) ? d : []))
       .catch(() => {})
+  }, [])
+
+  // Load available lots on mount
+  useEffect(() => {
+    fetch('/api/grey/lots').then(r => r.json()).then(d => setAvailableLots(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
 
   // Check speech recognition support
@@ -683,6 +693,21 @@ export default function DyeingForm() {
     setMarkaEntries(prev => prev.length <= 1 ? prev : prev.filter((_, idx) => idx !== i))
   }
 
+  function selectLot(markaIdx: number, lot: { lotNo: string; greyThan: number; despatchThan: number; stock: number }) {
+    setMarkaEntries(prev => {
+      const updated = [...prev]
+      updated[markaIdx] = {
+        ...updated[markaIdx],
+        lotNo: lot.lotNo,
+        stockStatus: lot.stock > 0 ? 'ok' : 'no_stock',
+        stockInfo: { stock: lot.stock, greyThan: lot.greyThan, despatchThan: lot.despatchThan },
+      }
+      return updated
+    })
+    setLotDropIdx(null)
+    setLotSearch('')
+  }
+
   const markaLotValid = (lot: string) => !lot || /^[A-Z]+-\d+$/i.test(lot)
 
   // ─── Chemical Row Editing ─────────────────────────────────────────────────
@@ -1061,60 +1086,120 @@ export default function DyeingForm() {
             </div>
 
             <div className="space-y-2">
-              {markaEntries.map((m, i) => (
+              {markaEntries.map((m, i) => {
+                const selectedLotNos = markaEntries.map((e, idx) => idx !== i ? e.lotNo : '').filter(Boolean)
+                const filteredLots = availableLots
+                  .filter(l => !selectedLotNos.includes(l.lotNo))
+                  .filter(l => !lotSearch || l.lotNo.toLowerCase().includes(lotSearch.toLowerCase()))
+                return (
                 <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
-                  <div className="flex items-start gap-2">
-                    <div className="flex-1">
-                      <label className="block text-[10px] text-gray-400 mb-0.5">Lot No *</label>
-                      <input
-                        type="text"
-                        className={`${inp} ${m.lotNo && !markaLotValid(m.lotNo) ? 'border-red-400 ring-red-300' : ''}`}
-                        value={m.lotNo}
-                        onChange={e => updateMarka(i, 'lotNo', e.target.value)}
-                        onBlur={() => checkMarkaStock(i)}
-                        required
-                        placeholder="e.g. PS-1325"
-                        maxLength={20}
-                      />
-                    </div>
-                    <div className="w-24">
-                      <label className="block text-[10px] text-gray-400 mb-0.5">Than *</label>
-                      <input
-                        type="number"
-                        className={inp}
-                        value={m.than}
-                        onChange={e => updateMarka(i, 'than', e.target.value)}
-                        required
-                        placeholder="Qty"
-                      />
+                  {/* Row 1: # + Lot selector + remove */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-gray-400 w-5 shrink-0">#{i + 1}</span>
+                    <div className="flex-1 relative">
+                      <div
+                        className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white cursor-pointer ${lotDropIdx === i ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300'}`}
+                        onClick={() => { setLotDropIdx(lotDropIdx === i ? null : i); setLotSearch('') }}
+                      >
+                        <span className={`flex-1 text-sm ${m.lotNo ? 'font-medium text-gray-800' : 'text-gray-400'}`}>
+                          {m.lotNo || 'Select lot...'}
+                        </span>
+                        {m.stockStatus === 'ok' && (
+                          <span className="text-green-600 text-[10px] font-semibold bg-green-50 border border-green-200 px-1 py-0.5 rounded shrink-0">OK</span>
+                        )}
+                        {m.stockStatus === 'no_stock' && (
+                          <span className="text-amber-600 text-[10px] font-semibold bg-amber-50 border border-amber-200 px-1 py-0.5 rounded shrink-0">Low</span>
+                        )}
+                        {m.stockStatus === 'not_found' && (
+                          <span className="text-red-600 text-[10px] font-semibold bg-red-50 border border-red-200 px-1 py-0.5 rounded shrink-0">N/A</span>
+                        )}
+                        <span className="text-gray-400 text-xs shrink-0">&#9660;</span>
+                      </div>
+
+                      {/* Searchable lot dropdown */}
+                      {lotDropIdx === i && (
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
+                          <input
+                            type="text"
+                            autoFocus
+                            className="w-full border-b border-gray-200 px-3 py-2 text-sm focus:outline-none rounded-t-lg"
+                            placeholder="Search lot number..."
+                            value={lotSearch}
+                            onChange={e => setLotSearch(e.target.value)}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <div className="overflow-y-auto max-h-48">
+                            {filteredLots.map(l => (
+                              <button
+                                key={l.lotNo}
+                                type="button"
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-50 flex items-center justify-between ${m.lotNo === l.lotNo ? 'bg-purple-50 font-medium' : ''}`}
+                                onClick={e => { e.stopPropagation(); selectLot(i, l) }}
+                              >
+                                <span className="font-medium">{l.lotNo}</span>
+                                <span className="text-xs text-gray-400">Stock: {l.stock} than</span>
+                              </button>
+                            ))}
+                            {filteredLots.length === 0 && !lotSearch && (
+                              <p className="px-3 py-2 text-xs text-gray-400">No lots with available stock</p>
+                            )}
+                            {filteredLots.length === 0 && lotSearch && (
+                              <button
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 text-amber-700 border-t border-gray-100 flex items-center gap-1"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  updateMarka(i, 'lotNo', lotSearch.trim())
+                                  setLotDropIdx(null)
+                                  setLotSearch('')
+                                  setTimeout(() => checkMarkaStock(i), 100)
+                                }}
+                              >
+                                <span className="text-amber-500">+</span> Use &quot;{lotSearch.trim()}&quot; manually
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {markaEntries.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeMarkaEntry(i)}
-                        className="text-red-400 hover:text-red-600 text-xl leading-none mt-5"
+                        className="text-red-400 hover:text-red-600 text-xl leading-none shrink-0 w-6 text-center"
                       >&times;</button>
                     )}
                   </div>
 
-                  {/* Lot validation + stock status */}
-                  {m.lotNo && !markaLotValid(m.lotNo) && (
-                    <p className="text-xs text-red-500 mt-1">Format: PREFIX-NUMBER (e.g. PS-1325)</p>
-                  )}
-                  {m.stockStatus === 'loading' && <p className="text-xs text-gray-400 mt-1">Checking stock...</p>}
-                  {m.stockStatus === 'not_found' && <p className="text-xs text-red-500 mt-1">⚠ Lot not found in Grey register</p>}
+                  {/* Row 2: Stock info line */}
+                  {m.stockStatus === 'loading' && <p className="text-xs text-gray-400 pl-7 mb-2">Checking stock...</p>}
+                  {m.stockStatus === 'not_found' && <p className="text-xs text-red-500 pl-7 mb-2">Lot not found in Grey register</p>}
                   {m.stockStatus === 'no_stock' && m.stockInfo && (
-                    <p className="text-xs text-amber-600 mt-1">
-                      ⚠ No stock — Grey: {m.stockInfo.greyThan}, Despatched: {m.stockInfo.despatchThan}, Balance: <strong>{m.stockInfo.stock}</strong>
+                    <p className="text-xs text-amber-600 pl-7 mb-2">
+                      Grey: {m.stockInfo.greyThan} | Despatched: {m.stockInfo.despatchThan} | Balance: <strong>{m.stockInfo.stock}</strong>
                     </p>
                   )}
                   {m.stockStatus === 'ok' && m.stockInfo && (
-                    <p className="text-xs text-green-600 mt-1">
-                      ✓ Stock OK — Grey: {m.stockInfo.greyThan}, Despatched: {m.stockInfo.despatchThan}, Balance: <strong>{m.stockInfo.stock}</strong>
+                    <p className="text-xs text-green-600 pl-7 mb-2">
+                      Grey: {m.stockInfo.greyThan} | Despatched: {m.stockInfo.despatchThan} | Balance: <strong>{m.stockInfo.stock}</strong>
                     </p>
                   )}
+
+                  {/* Row 3: Than input */}
+                  <div className="pl-7">
+                    <label className="block text-[10px] text-gray-400 mb-0.5">Than *</label>
+                    <input
+                      type="number"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      value={m.than}
+                      onChange={e => updateMarka(i, 'than', e.target.value)}
+                      required
+                      placeholder="Qty"
+                    />
+                  </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
