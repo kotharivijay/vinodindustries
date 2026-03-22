@@ -43,16 +43,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     ? data.lots.map((m: any) => ({ lotNo: String(m.lotNo).trim(), than: parseInt(m.than) || 0 }))
     : [{ lotNo: String(data.lotNo).trim(), than: parseInt(data.than) }]
 
-  const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
-
-  // Update main entry
+  // Update main entry (backward compat: first lot's values)
   await db.dyeingEntry.update({
     where: { id: entryId },
     data: {
       date: new Date(data.date),
       slipNo: parseInt(data.slipNo),
       lotNo: lots[0].lotNo,
-      than: totalThan,
+      than: lots[0].than,
       notes: data.notes || null,
     },
   })

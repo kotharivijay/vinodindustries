@@ -76,13 +76,12 @@ export async function POST(req: NextRequest) {
   const db = prisma as any
 
   // Create ONE entry per slip. Use first lot for backward compat fields.
-  const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
   const entry = await db.dyeingEntry.create({
     data: {
       date: new Date(data.date),
       slipNo: parseInt(data.slipNo),
       lotNo: lots[0].lotNo,
-      than: totalThan,
+      than: lots[0].than,
       notes: data.notes || null,
       chemicals: chemData.length ? { create: chemData } : undefined,
       lots: { create: lots },

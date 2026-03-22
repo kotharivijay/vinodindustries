@@ -45,8 +45,8 @@ function getValue(e: DyeingEntry, f: SortField): string | number {
   switch (f) {
     case 'date': return new Date(e.date).getTime()
     case 'slipNo': return e.slipNo
-    case 'lotNo': return e.lotNo.toLowerCase()
-    case 'than': return e.than
+    case 'lotNo': return (e.lots?.length ? e.lots.map(l => l.lotNo).join(' ') : e.lotNo).toLowerCase()
+    case 'than': return e.lots?.length ? e.lots.reduce((s, l) => s + l.than, 0) : e.than
     case 'party': return (e.partyName ?? '').toLowerCase()
   }
 }
@@ -292,6 +292,8 @@ export default function DyeingListPage() {
                     {filtered.map(e => {
                       const chemCount = e.chemicals?.length ?? 0
                       const totalCost = e.chemicals?.reduce((s, c) => s + (c.cost ?? 0), 0) ?? 0
+                      const lotsArr = e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than }]
+                      const slipTotalThan = lotsArr.reduce((s, l) => s + l.than, 0)
                       return (
                         <div key={e.id} className="p-4">
                           <div className="flex items-start justify-between mb-1.5">
@@ -308,12 +310,12 @@ export default function DyeingListPage() {
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2 mb-1">
-                            {(e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than }]).map((lot, li) => (
+                            {lotsArr.map((lot, li) => (
                               <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-purple-100">
                                 {lot.lotNo} <span className="text-purple-400 font-normal">({lot.than})</span>
                               </Link>
                             ))}
-                            <span className="text-xs text-gray-600">Total: <strong>{e.than}</strong></span>
+                            {lotsArr.length > 1 && <span className="text-xs text-gray-600">Total: <strong>{slipTotalThan}</strong></span>}
                           </div>
                           {/* Chemicals + cost summary */}
                           {chemCount > 0 && (
@@ -370,7 +372,10 @@ export default function DyeingListPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
-                        {filtered.map(e => (
+                        {filtered.map(e => {
+                          const dLots = e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than }]
+                          const dTotalThan = dLots.reduce((s, l) => s + l.than, 0)
+                          return (
                           <tr key={e.id} className="hover:bg-gray-50 transition">
                             <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
                             <td className="px-3 py-2.5 font-medium">
@@ -378,15 +383,15 @@ export default function DyeingListPage() {
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex flex-wrap gap-1">
-                                {(e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than }]).map((lot, li) => (
+                                {dLots.map((lot, li) => (
                                   <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 text-xs font-semibold px-2 py-0.5 rounded-full hover:bg-purple-100">
-                                    {lot.lotNo}
+                                    {lot.lotNo} <span className="text-purple-400 font-normal">({lot.than})</span>
                                   </Link>
                                 ))}
                               </div>
                             </td>
                             <td className="px-3 py-2.5 text-sm text-gray-600">{e.partyName ?? '—'}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
+                            <td className="px-3 py-2.5 text-right font-semibold">{dTotalThan}</td>
                             <td className="px-3 py-2.5 text-right font-medium text-purple-600">
                               {(() => { const c = e.chemicals?.reduce((s, x) => s + (x.cost ?? 0), 0) ?? 0; return c > 0 ? `₹${c.toFixed(0)}` : '—' })()}
                             </td>
@@ -397,7 +402,8 @@ export default function DyeingListPage() {
                               </button>
                             </td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
