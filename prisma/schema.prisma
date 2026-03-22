@@ -82,6 +82,15 @@ model DyeingEntry {
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
   chemicals DyeingSlipChemical[]
+  lots      DyeingEntryLot[]
+}
+
+model DyeingEntryLot {
+  id      Int         @id @default(autoincrement())
+  entryId Int
+  entry   DyeingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  lotNo   String
+  than    Int
 }
 
 model DyeingSlipChemical {

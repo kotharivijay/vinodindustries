@@ -25,6 +25,7 @@ interface DyeingEntry {
   than: number
   notes: string | null
   chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
+  lots?: { id: number; lotNo: string; than: number }[]
 }
 
 interface LotSummaryRow {
@@ -256,7 +257,7 @@ export default function DyeingListPage() {
                             <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                               <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                               <span className="text-gray-300">&middot;</span>
-                              <span>Slip {e.slipNo}</span>
+                              <Link href={`/dyeing/${e.id}`} className="text-purple-600 font-medium hover:underline">Slip {e.slipNo}</Link>
                             </div>
                             <div className="flex gap-2 shrink-0">
                               <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-500 text-xs font-medium border border-indigo-200 rounded px-2 py-0.5">Edit</button>
@@ -266,10 +267,12 @@ export default function DyeingListPage() {
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2 mb-1">
-                            <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-purple-100">
-                              {e.lotNo}
-                            </Link>
-                            <span className="text-xs text-gray-600">Than: <strong>{e.than}</strong></span>
+                            {(e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than }]).map((lot, li) => (
+                              <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-purple-100">
+                                {lot.lotNo} <span className="text-purple-400 font-normal">({lot.than})</span>
+                              </Link>
+                            ))}
+                            <span className="text-xs text-gray-600">Total: <strong>{e.than}</strong></span>
                           </div>
                           {/* Chemicals + cost summary */}
                           {chemCount > 0 && (
@@ -312,9 +315,17 @@ export default function DyeingListPage() {
                         {filtered.map(e => (
                           <tr key={e.id} className="hover:bg-gray-50 transition">
                             <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
-                            <td className="px-3 py-2.5 font-medium">{e.slipNo}</td>
-                            <td className="px-3 py-2.5 font-semibold text-purple-700">
-                              <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="hover:underline">{e.lotNo}</Link>
+                            <td className="px-3 py-2.5 font-medium">
+                              <Link href={`/dyeing/${e.id}`} className="text-purple-600 hover:underline">{e.slipNo}</Link>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="flex flex-wrap gap-1">
+                                {(e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than }]).map((lot, li) => (
+                                  <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-50 text-purple-700 text-xs font-semibold px-2 py-0.5 rounded-full hover:bg-purple-100">
+                                    {lot.lotNo}
+                                  </Link>
+                                ))}
+                              </div>
                             </td>
                             <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
                             <td className="px-3 py-2.5 text-right text-gray-500">{e.chemicals?.length ?? 0}</td>

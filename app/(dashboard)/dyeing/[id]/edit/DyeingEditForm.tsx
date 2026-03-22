@@ -26,7 +26,8 @@ export default function DyeingEditForm({ id }: { id: string }) {
   const [stockStatus, setStockStatus] = useState<StockStatus>('idle')
   const [stockInfo, setStockInfo] = useState<{ stock: number; greyThan: number; despatchThan: number } | null>(null)
 
-  const [form, setForm] = useState({ date: '', slipNo: '', lotNo: '', than: '', notes: '' })
+  const [form, setForm] = useState({ date: '', slipNo: '', notes: '' })
+  const [lots, setLots] = useState<{ lotNo: string; than: string }[]>([{ lotNo: '', than: '' }])
 
   // Chemicals
   const [chemicals, setChemicals] = useState<ChemicalRow[]>([])
@@ -47,11 +48,16 @@ export default function DyeingEditForm({ id }: { id: string }) {
       setForm({
         date: new Date(e.date).toISOString().split('T')[0],
         slipNo: String(e.slipNo),
-        lotNo: e.lotNo,
-        than: String(e.than),
         notes: e.notes || '',
       })
       setOriginalLot(e.lotNo)
+
+      // Load lots
+      if (e.lots?.length) {
+        setLots(e.lots.map((l: any) => ({ lotNo: l.lotNo, than: String(l.than) })))
+      } else {
+        setLots([{ lotNo: e.lotNo, than: String(e.than) }])
+      }
 
       // Load chemicals
       if (e.chemicals?.length) {
@@ -71,7 +77,23 @@ export default function DyeingEditForm({ id }: { id: string }) {
 
   const set = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  function updateLot(i: number, field: 'lotNo' | 'than', value: string) {
+    setLots(prev => {
+      const updated = [...prev]
+      updated[i] = { ...updated[i], [field]: value }
+      return updated
+    })
     if (field === 'lotNo') { setStockStatus('idle'); setStockInfo(null) }
+  }
+
+  function addLotRow() {
+    setLots(prev => [...prev, { lotNo: '', than: '' }])
+  }
+
+  function removeLotRow(i: number) {
+    setLots(prev => prev.filter((_, idx) => idx !== i))
   }
 
   // ─── Chemical helpers ──────────────────────────────────────────────────────
@@ -124,8 +146,8 @@ export default function DyeingEditForm({ id }: { id: string }) {
 
   // ─── Stock check ───────────────────────────────────────────────────────────
 
-  async function handleLotBlur() {
-    const lot = form.lotNo.trim()
+  async function handleLotBlur(lotNo: string) {
+    const lot = lotNo.trim()
     if (!lot || lot.toLowerCase() === originalLot.toLowerCase()) return
     setStockStatus('loading')
     const res = await fetch(`/api/grey/stock?lotNo=${encodeURIComponent(lot)}`)
@@ -139,11 +161,16 @@ export default function DyeingEditForm({ id }: { id: string }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const validLots = lots.filter(l => l.lotNo.trim() && l.than.trim())
+    if (validLots.length === 0) { setError('At least one lot with than is required.'); return }
     if (stockStatus === 'not_found') { setError('Lot not found in Grey register.'); return }
     setSaving(true); setError('')
 
     const payload = {
       ...form,
+      lotNo: validLots[0].lotNo,
+      than: validLots.reduce((s, l) => s + (parseInt(l.than) || 0), 0),
+      lots: validLots.map(l => ({ lotNo: l.lotNo.trim(), than: parseInt(l.than) || 0 })),
       chemicals: chemicals
         .filter(c => c.name.trim())
         .map(c => ({
@@ -193,36 +220,62 @@ export default function DyeingEditForm({ id }: { id: string }) {
               <input type="number" className={inp} value={form.slipNo} onChange={e => set('slipNo', e.target.value)} required />
             </Field>
 
-            <Field label="Lot No *" span={2}>
-              <input
-                type="text" className={inp} value={form.lotNo}
-                onChange={e => set('lotNo', e.target.value)}
-                onBlur={handleLotBlur}
-                required
-                placeholder="e.g. PS-1325"
-              />
-              {stockStatus === 'loading' && <p className="text-xs text-gray-400 mt-1">Checking stock...</p>}
-              {stockStatus === 'not_found' && <p className="text-xs text-red-500 mt-1">⚠ Lot not found in Grey register</p>}
-              {stockStatus === 'no_stock' && stockInfo && (
-                <p className="text-xs text-amber-600 mt-1">
-                  ⚠ No stock — Grey: {stockInfo.greyThan}, Despatched: {stockInfo.despatchThan}, Balance: <strong>{stockInfo.stock}</strong>
-                </p>
-              )}
-              {stockStatus === 'ok' && stockInfo && (
-                <p className="text-xs text-green-600 mt-1">
-                  ✓ Stock OK — Grey: {stockInfo.greyThan}, Despatched: {stockInfo.despatchThan}, Balance: <strong>{stockInfo.stock}</strong>
-                </p>
-              )}
-            </Field>
-
-            <Field label="Than *">
-              <input type="number" className={inp} value={form.than} onChange={e => set('than', e.target.value)} required />
-            </Field>
-
             <Field label="Notes">
               <input type="text" className={inp} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Any remarks" />
             </Field>
           </div>
+        </div>
+
+        {/* ── Lots ── */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-700">
+              Lots
+              {lots.length > 1 && <span className="ml-2 text-xs font-normal text-gray-400">{lots.length} lots</span>}
+            </h2>
+            <button type="button" onClick={addLotRow} className="text-xs text-purple-600 hover:text-purple-800 font-medium">
+              + Add Lot
+            </button>
+          </div>
+          <div className="space-y-3">
+            {lots.map((lot, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs text-gray-400 w-5 shrink-0">#{i + 1}</span>
+                <input
+                  type="text" className={inp + ' flex-1'} value={lot.lotNo}
+                  onChange={e => updateLot(i, 'lotNo', e.target.value)}
+                  onBlur={() => handleLotBlur(lot.lotNo)}
+                  placeholder="Lot No" required
+                />
+                <input
+                  type="number" className={inp + ' w-24'} value={lot.than}
+                  onChange={e => updateLot(i, 'than', e.target.value)}
+                  placeholder="Than" required
+                />
+                {lots.length > 1 && (
+                  <button type="button" onClick={() => removeLotRow(i)} className="text-red-400 hover:text-red-600 text-xl leading-none shrink-0 w-6 text-center">&times;</button>
+                )}
+              </div>
+            ))}
+          </div>
+          {stockStatus === 'loading' && <p className="text-xs text-gray-400 mt-2">Checking stock...</p>}
+          {stockStatus === 'not_found' && <p className="text-xs text-red-500 mt-2">Lot not found in Grey register</p>}
+          {stockStatus === 'no_stock' && stockInfo && (
+            <p className="text-xs text-amber-600 mt-2">
+              No stock — Grey: {stockInfo.greyThan}, Despatched: {stockInfo.despatchThan}, Balance: <strong>{stockInfo.stock}</strong>
+            </p>
+          )}
+          {stockStatus === 'ok' && stockInfo && (
+            <p className="text-xs text-green-600 mt-2">
+              Stock OK — Grey: {stockInfo.greyThan}, Despatched: {stockInfo.despatchThan}, Balance: <strong>{stockInfo.stock}</strong>
+            </p>
+          )}
+          {lots.length > 1 && (
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+              <span className="text-xs text-gray-500">Total Than</span>
+              <span className="text-sm font-bold text-indigo-600">{lots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)}</span>
+            </div>
+          )}
         </div>
 
         {/* ── Chemicals ── */}

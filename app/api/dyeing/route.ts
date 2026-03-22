@@ -7,8 +7,12 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const entries = await prisma.dyeingEntry.findMany({
-    include: { chemicals: { include: { chemical: true } } },
+  const db = prisma as any
+  const entries = await db.dyeingEntry.findMany({
+    include: {
+      chemicals: { include: { chemical: true } },
+      lots: true,
+    },
     orderBy: { date: 'desc' },
   })
   return NextResponse.json(entries)
@@ -23,7 +27,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Date, Slip No, Lot No and Than are required.' }, { status: 400 })
   }
 
-  // If marka has multiple lots, create one entry per lot (same slip, same chemicals)
+  // Build lots array from marka or single lot
   const lots = data.marka?.length
     ? data.marka.map((m: any) => ({ lotNo: String(m.lotNo).trim(), than: parseInt(m.than) || 0 }))
     : [{ lotNo: String(data.lotNo).trim(), than: parseInt(data.than) }]
@@ -39,40 +43,29 @@ export async function POST(req: NextRequest) {
       }))
     : []
 
-  // Calculate total than across all lots for proportional cost split
+  const db = prisma as any
+
+  // Create ONE entry per slip. Use first lot for backward compat fields.
   const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
-
-  const entries = []
-  for (const lot of lots) {
-    // Proportional share: this lot's than / total than
-    const share = totalThan > 0 ? lot.than / totalThan : 1 / lots.length
-
-    // All lots get same chemicals but cost split by than proportion
-    const lotChemData = chemData.map((c: any) => ({
-      ...c,
-      quantity: c.quantity != null ? parseFloat((c.quantity * share).toFixed(4)) : null,
-      cost: c.cost != null ? parseFloat((c.cost * share).toFixed(2)) : null,
-    }))
-
-    const entry = await prisma.dyeingEntry.create({
-      data: {
-        date: new Date(data.date),
-        slipNo: parseInt(data.slipNo),
-        lotNo: lot.lotNo,
-        than: lot.than,
-        notes: data.notes || null,
-        chemicals: lotChemData.length ? { create: lotChemData } : undefined,
-      },
-      include: { chemicals: { include: { chemical: true } } },
-    })
-    entries.push(entry)
-  }
-  const entry = entries[0]
+  const entry = await db.dyeingEntry.create({
+    data: {
+      date: new Date(data.date),
+      slipNo: parseInt(data.slipNo),
+      lotNo: lots[0].lotNo,
+      than: totalThan,
+      notes: data.notes || null,
+      chemicals: chemData.length ? { create: chemData } : undefined,
+      lots: { create: lots },
+    },
+    include: {
+      chemicals: { include: { chemical: true } },
+      lots: true,
+    },
+  })
 
   // ── Learn aliases: save OCR name → master chemical mapping ──
   if (data.chemicals?.length && data.ocrNames?.length) {
     try {
-      const db = prisma as any
       const aliasOps = []
       for (let i = 0; i < data.chemicals.length; i++) {
         const chem = data.chemicals[i]
@@ -80,7 +73,6 @@ export async function POST(req: NextRequest) {
         if (!ocrRaw || !chem.chemicalId) continue
         const ocrNorm = ocrRaw.toLowerCase().trim().replace(/\s+/g, ' ')
         const finalNorm = chem.name.toLowerCase().trim().replace(/\s+/g, ' ')
-        // Only save alias if OCR name differs from final master name
         if (ocrNorm && ocrNorm !== finalNorm) {
           aliasOps.push(
             db.chemicalAlias.upsert({
