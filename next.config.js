@@ -1,9 +1,5 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  // Server-side rendering enabled for NextAuth and API routes
-  experimental: {
-    serverComponentsExternalPackages: ['@vercel/blob'],
-  },
-}
+const nextConfig = {}
+
 
 module.exports = nextConfig

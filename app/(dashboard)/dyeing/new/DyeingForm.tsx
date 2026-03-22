@@ -55,7 +55,6 @@ interface QueueItem {
   type: string
   status: QueueStatus
   _draftItemId?: number
-  _blobUrl?: string
 }
 
 export default function DyeingForm() {
@@ -235,7 +234,7 @@ export default function DyeingForm() {
             // Map draft item IDs to queue items
             setQueue(prev => prev.map((q, idx) => {
               const draftItem = batch.items?.[idx]
-              return draftItem ? { ...q, _draftItemId: draftItem.id, _blobUrl: draftItem.blobUrl } : q
+              return draftItem ? { ...q, _draftItemId: draftItem.id } : q
             }))
           }
         })
@@ -260,7 +259,7 @@ export default function DyeingForm() {
     setError('')
   }
 
-  async function loadQueueItemFromUrl(item: QueueItem) {
+  async function loadDraftItem(item: QueueItem) {
     // Reset form
     setExtracted(false)
     setExtractError('')
@@ -281,22 +280,22 @@ export default function DyeingForm() {
       return
     }
 
-    // Fetch from blob URL
-    if (item._blobUrl) {
+    // Fetch image from DB via API
+    if (item._draftItemId) {
       try {
-        const res = await fetch(item._blobUrl)
-        const blob = await res.blob()
-        const reader = new FileReader()
-        reader.onload = ev => {
-          const result = ev.target?.result as string
-          setImagePreview(result)
-          setImageBase64(result.split(',')[1])
-          setImageType(item.type)
+        const res = await fetch(`/api/dyeing/drafts/${item._draftItemId}`)
+        const data = await res.json()
+        if (data.imageBase64) {
+          const preview = `data:${data.mediaType};base64,${data.imageBase64}`
+          setImagePreview(preview)
+          setImageBase64(data.imageBase64)
+          setImageType(data.mediaType)
+          // Cache in queue item
+          item.base64 = data.imageBase64
+          item.preview = preview
         }
-        reader.readAsDataURL(blob)
       } catch {
-        setImagePreview(item._blobUrl)
-        setImageBase64(null)
+        setError('Failed to load draft image')
       }
     }
   }
@@ -312,8 +311,8 @@ export default function DyeingForm() {
       return updated
     })
     setActiveIdx(idx)
-    if (queue[idx]._blobUrl && !queue[idx].base64) {
-      loadQueueItemFromUrl(queue[idx])
+    if (queue[idx]._draftItemId && !queue[idx].base64) {
+      loadDraftItem(queue[idx])
     } else {
       loadQueueItem(queue[idx])
     }
@@ -339,8 +338,8 @@ export default function DyeingForm() {
         updated[nextIdx].status = 'active'
         const item = updated[nextIdx]
         setTimeout(() => {
-          if (item._blobUrl && !item.base64) {
-            loadQueueItemFromUrl(item)
+          if (item._draftItemId && !item.base64) {
+            loadDraftItem(item)
           } else {
             loadQueueItem(item)
           }
@@ -372,8 +371,8 @@ export default function DyeingForm() {
         updated[nextIdx].status = 'active'
         const item = updated[nextIdx]
         setTimeout(() => {
-          if (item._blobUrl && !item.base64) {
-            loadQueueItemFromUrl(item)
+          if (item._draftItemId && !item.base64) {
+            loadDraftItem(item)
           } else {
             loadQueueItem(item)
           }
@@ -394,41 +393,27 @@ export default function DyeingForm() {
 
     setDraftBatchId(batch.id)
 
-    // Convert draft items to queue items
+    // Convert draft items to queue items (no image data yet — fetched on demand)
     const items: QueueItem[] = batch.items.map((item: any) => {
       queueIdRef.current += 1
       return {
         id: queueIdRef.current,
-        preview: item.blobUrl,
+        preview: '', // will be loaded from DB
         base64: '',
         type: item.mediaType,
         status: item.status === 'saved' ? 'saved' as QueueStatus : item.status === 'skipped' ? 'skipped' as QueueStatus : 'pending' as QueueStatus,
         _draftItemId: item.id,
-        _blobUrl: item.blobUrl,
       }
     })
 
     setQueue(items)
 
-    // Load first pending item
+    // Load first pending item from DB
     const firstPending = items.findIndex(q => q.status === 'pending')
     if (firstPending >= 0) {
       items[firstPending].status = 'active'
       setActiveIdx(firstPending)
-      // Fetch the actual image data
-      const imgRes = await fetch(items[firstPending]._blobUrl!)
-      const blob = await imgRes.blob()
-      const reader = new FileReader()
-      reader.onload = ev => {
-        const result = ev.target?.result as string
-        items[firstPending].base64 = result.split(',')[1]
-        setImagePreview(result)
-        setImageBase64(result.split(',')[1])
-        setImageType(items[firstPending].type)
-        setExtracted(false)
-        setExtractError('')
-      }
-      reader.readAsDataURL(blob)
+      await loadDraftItem(items[firstPending])
     }
   }
 

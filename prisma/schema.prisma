@@ -147,15 +147,15 @@ model DyeingDraftBatch {
 }
 
 model DyeingDraftItem {
-  id        Int               @id @default(autoincrement())
-  batchId   Int
-  batch     DyeingDraftBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  blobUrl   String            // Vercel Blob URL
-  mediaType String            @default("image/jpeg")
-  status    String            @default("pending") // pending | saved | skipped
-  sortOrder Int               @default(0)
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  id          Int               @id @default(autoincrement())
+  batchId     Int
+  batch       DyeingDraftBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  imageBase64 String            // base64 encoded image data
+  mediaType   String            @default("image/jpeg")
+  status      String            @default("pending") // pending | saved | skipped
+  sortOrder   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 }
 
 // ─── Despatch Entry ────────────────────────────────────────────────────────────
