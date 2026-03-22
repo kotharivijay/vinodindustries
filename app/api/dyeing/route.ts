@@ -40,7 +40,8 @@ export async function POST(req: NextRequest) {
     : []
 
   const entries = []
-  for (const lot of lots) {
+  for (let i = 0; i < lots.length; i++) {
+    const lot = lots[i]
     const entry = await prisma.dyeingEntry.create({
       data: {
         date: new Date(data.date),
@@ -48,7 +49,8 @@ export async function POST(req: NextRequest) {
         lotNo: lot.lotNo,
         than: lot.than,
         notes: data.notes || null,
-        chemicals: chemData.length ? { create: chemData } : undefined,
+        // Only first lot gets chemicals — consumed once from stock
+        chemicals: i === 0 && chemData.length ? { create: chemData } : undefined,
       },
       include: { chemicals: { include: { chemical: true } } },
     })
