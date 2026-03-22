@@ -10,7 +10,9 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
 
   const lotNo = decodeURIComponent(params.lotNo)
 
-  const [greyEntries, despatchEntries, dyeingEntries] = await Promise.all([
+  const db = prisma as any
+
+  const [greyEntries, despatchEntries] = await Promise.all([
     prisma.greyEntry.findMany({
       where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
       include: { party: true, quality: true, transport: true, weaver: true },
@@ -21,15 +23,46 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       include: { party: true, quality: true, transport: true },
       orderBy: { date: 'asc' },
     }),
-    prisma.dyeingEntry.findMany({
+  ])
+
+  // Find dyeing entries via DyeingEntryLot (correct) + fallback to lotNo field
+  let dyeingEntries: any[] = []
+  try {
+    // Find all lot entries for this lot number
+    const lotEntries = await db.dyeingEntryLot.findMany({
+      where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+      include: {
+        entry: {
+          include: {
+            chemicals: { include: { chemical: true } },
+            lots: true,
+          },
+        },
+      },
+    })
+    // Map to entries with this lot's specific than
+    dyeingEntries = lotEntries.map((le: any) => ({
+      ...le.entry,
+      _lotThan: le.than, // this specific lot's than
+    }))
+    // Deduplicate by entry id (in case of double match)
+    const seen = new Set()
+    dyeingEntries = dyeingEntries.filter((e: any) => {
+      if (seen.has(e.id)) return false
+      seen.add(e.id)
+      return true
+    })
+  } catch {
+    // Fallback if DyeingEntryLot table doesn't exist
+    dyeingEntries = (await prisma.dyeingEntry.findMany({
       where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
       orderBy: { date: 'asc' },
-    }),
-  ])
+    })).map(e => ({ ...e, _lotThan: e.than, lots: [], chemicals: [] }))
+  }
 
   const greyThan = greyEntries.reduce((s, e) => s + e.than, 0)
   const despatchThan = despatchEntries.reduce((s, e) => s + e.than, 0)
-  const dyeingThan = dyeingEntries.reduce((s, e) => s + e.than, 0)
+  const dyeingThan = dyeingEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
   const stock = greyThan - despatchThan
 
   const fmt = (d: Date) => new Date(d).toLocaleDateString('en-IN')
@@ -92,13 +125,32 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         <section className="mb-6">
           <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">🎨 Dyeing Slip ({dyeingEntries.length})</h2>
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
-            {dyeingEntries.map(e => (
-              <div key={e.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
-                <span className="text-gray-600">Slip: {e.slipNo}</span>
-                <span className="font-semibold text-purple-700">Than: {e.than}</span>
-              </div>
-            ))}
+            {dyeingEntries.map((e: any) => {
+              const lotThan = e._lotThan ?? e.than
+              const totalCost = e.chemicals?.reduce((s: number, c: any) => s + (c.cost ?? 0), 0) ?? 0
+              return (
+                <div key={e.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
+                    <Link href={`/dyeing/${e.id}`} className="text-purple-600 font-medium hover:underline">
+                      Slip {e.slipNo}
+                    </Link>
+                    <span className="font-semibold text-purple-700">Than: {lotThan}</span>
+                    {totalCost > 0 && <span className="text-xs text-gray-500">Cost: ₹{totalCost.toFixed(0)}</span>}
+                  </div>
+                  {/* Show other lots in this slip */}
+                  {e.lots?.length > 1 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {e.lots.filter((l: any) => l.lotNo.toLowerCase() !== lotNo.toLowerCase()).map((l: any, i: number) => (
+                        <span key={i} className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                          +{l.lotNo} ({l.than})
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
