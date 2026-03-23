@@ -522,7 +522,7 @@ export default function FinishForm() {
                 onClick={() => cameraRef.current?.click()}
                 className="h-36 w-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-teal-400 hover:text-teal-500 transition"
               >
-                <span className="text-2xl">&#128247;</span>
+                <span className="text-2xl">📷</span>
                 <span className="text-[10px] text-center leading-tight">Camera</span>
               </button>
               <button
@@ -530,7 +530,7 @@ export default function FinishForm() {
                 onClick={() => fileRef.current?.click()}
                 className="h-36 w-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-teal-400 hover:text-teal-500 transition"
               >
-                <span className="text-2xl">&#128444;</span>
+                <span className="text-2xl">🖼</span>
                 <span className="text-[10px] text-center leading-tight">Gallery</span>
               </button>
             </div>
@@ -552,7 +552,7 @@ export default function FinishForm() {
                     : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 }`}
               >
-                <span>{isRecording ? '&#9209; Stop' : '&#127908; Voice Note'}</span>
+                <span>{isRecording ? '⏹ Stop' : '🎤 Voice Note'}</span>
               </button>
               {!speechSupported && <p className="text-xs text-gray-400 mt-1 text-center">Use Chrome for voice</p>}
             </div>
@@ -581,9 +581,9 @@ export default function FinishForm() {
                 } disabled:opacity-60`}
               >
                 {extracting ? (
-                  <><span className="animate-spin">&#10227;</span> Extracting...</>
+                  <><span className="animate-spin">⟳</span> Extracting...</>
                 ) : extracted ? (
-                  '&#8635; Re-extract with AI'
+                  '↻ Re-extract with AI'
                 ) : (
                   'Extract with AI'
                 )}
