@@ -115,6 +115,11 @@ export default function VaultPage() {
     details: {},
   })
   const [filterType, setFilterType] = useState('')
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [currentPwd, setCurrentPwd] = useState('')
+  const [newPwd, setNewPwd] = useState('')
+  const [confirmNewPwd, setConfirmNewPwd] = useState('')
+  const [changingPwd, setChangingPwd] = useState(false)
   const [showAddType, setShowAddType] = useState(false)
   const [newTypeName, setNewTypeName] = useState('')
   const [newTypeIcon, setNewTypeIcon] = useState('📁')
@@ -274,6 +279,27 @@ export default function VaultPage() {
     setSearchResults(null)
   }
 
+  const handleChangePassword = async () => {
+    setError('')
+    if (!currentPwd) { setError('Enter current password'); return }
+    if (newPwd.length < 6) { setError('New password must be at least 6 characters'); return }
+    if (newPwd !== confirmNewPwd) { setError('New passwords do not match'); return }
+    setChangingPwd(true)
+    try {
+      const res = await fetch('/api/vault/unlock', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: currentPwd, newPassword: newPwd }),
+      })
+      if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed'); setChangingPwd(false); return }
+      setShowChangePassword(false)
+      setCurrentPwd(''); setNewPwd(''); setConfirmNewPwd('')
+      setError('')
+      alert('Password changed successfully!')
+    } catch { setError('Network error') }
+    setChangingPwd(false)
+  }
+
   const handleAddEntity = async () => {
     setError('')
     if (!newEntity.name.trim()) { setError('Name is required'); return }
@@ -420,6 +446,12 @@ export default function VaultPage() {
             <span className="hidden sm:inline text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full font-medium">
               {'\u{1F512}'} Auto-locks in {timeLeft || '15:00'}
             </span>
+            <button
+              onClick={() => { setShowChangePassword(true); setError('') }}
+              className="bg-gray-100 text-gray-600 px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-200 transition"
+            >
+              Change Password
+            </button>
             <button
               onClick={handleLock}
               className="bg-red-100 text-red-700 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-red-200 transition"
@@ -598,6 +630,47 @@ export default function VaultPage() {
           </>
         )}
       </div>
+
+      {/* Change Password Modal */}
+      {showChangePassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl shadow-xl border border-amber-200 w-full max-w-sm">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-amber-800">Change Vault Password</h2>
+                <button onClick={() => { setShowChangePassword(false); setError('') }} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+              </div>
+              {error && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-amber-800 mb-1">Current Password</label>
+                  <input type="password" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)}
+                    className="w-full border border-amber-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-amber-500 outline-none" placeholder="Enter current password" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-amber-800 mb-1">New Password</label>
+                  <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                    className="w-full border border-amber-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-amber-500 outline-none" placeholder="Min 6 characters" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-amber-800 mb-1">Confirm New Password</label>
+                  <input type="password" value={confirmNewPwd} onChange={e => setConfirmNewPwd(e.target.value)}
+                    className="w-full border border-amber-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-amber-500 outline-none" placeholder="Re-enter new password" />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button onClick={() => { setShowChangePassword(false); setError('') }}
+                  className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50">Cancel</button>
+                <button onClick={handleChangePassword} disabled={changingPwd}
+                  className="flex-1 bg-amber-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-amber-700 disabled:opacity-60">
+                  {changingPwd ? 'Changing...' : 'Change Password'}
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-3 text-center">All encrypted data will be re-encrypted with the new password.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add Entity Modal */}
       {showAdd && (
