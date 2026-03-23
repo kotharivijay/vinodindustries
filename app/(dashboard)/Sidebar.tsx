@@ -132,6 +132,8 @@ export default function Sidebar({ userName, userEmail }: Props) {
     if (saved) setCompany(saved)
   }, [])
 
+  const companyName = company === 'vi' ? 'Vinod Industries' : 'Kothari Synthetic Industries'
+
   // Close drawer on route change
   useEffect(() => { setOpen(false) }, [pathname])
 
