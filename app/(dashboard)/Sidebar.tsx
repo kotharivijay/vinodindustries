@@ -51,7 +51,7 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
   company: string
 }) {
   const initial = userName?.[0]?.toUpperCase() ?? 'U'
-  const companyName = company === 'vi' ? 'Vinod Industries' : 'Kothari Synthetic'
+  const companyName = company === 'vi' ? 'Vinod Industries' : 'Kothari Synthetic Industries'
   const companyIcon = company === 'vi' ? '\u{1F3E2}' : '\u{1F3ED}'
   const navGroups = company === 'vi' ? viNavGroups : ksiNavGroups
   return (
@@ -69,7 +69,7 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
 
       {/* Brand */}
       <div className="p-5 border-b border-gray-700">
-        <h1 className="text-lg font-bold tracking-tight">Vinod Industries</h1>
+        <h1 className="text-lg font-bold tracking-tight">{companyName}</h1>
         <p className="text-xs text-gray-400 mt-0.5">Textile Management</p>
       </div>
 
@@ -155,7 +155,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="font-bold text-base">Vinod Industries</span>
+        <span className="font-bold text-base">{companyName}</span>
       </header>
 
       {/* ── MOBILE DRAWER OVERLAY ── */}

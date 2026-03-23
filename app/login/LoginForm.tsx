@@ -9,9 +9,9 @@ export default function LoginForm({ error }: { error?: string }) {
         {/* Logo / Branding */}
         <div className="mb-8">
           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <span className="text-white text-2xl font-bold">VI</span>
+            <span className="text-white text-2xl font-bold">KSI</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-800">Vinod Industries</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Kothari Synthetic Industries</h1>
           <p className="text-gray-500 mt-1 text-sm">Textile Management System</p>
         </div>
 

@@ -7,10 +7,10 @@ export default function Home() {
       <PublicNav />
       <main className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50 flex flex-col items-center justify-center px-6 py-16 text-center">
         <div className="w-20 h-20 bg-indigo-600 rounded-3xl flex items-center justify-center mb-6 shadow-lg">
-          <span className="text-white text-3xl font-bold">VI</span>
+          <span className="text-white text-3xl font-bold">KSI</span>
         </div>
 
-        <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-3">Vinod Industries</h1>
+        <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-3">Kothari Synthetic Industries</h1>
         <p className="text-gray-500 text-lg mb-10 max-w-sm">Leading textile manufacturer specializing in high-quality fabrics.</p>
 
         <Link
