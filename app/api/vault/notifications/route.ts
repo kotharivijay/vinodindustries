@@ -15,19 +15,21 @@ export async function GET() {
     })
 
     const now = new Date()
-    const results = notifications.map((n: any) => {
-      const daysLeft = Math.ceil((new Date(n.expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      return {
-        id: n.id,
-        documentId: n.documentId,
-        entityName: n.entityName,
-        entityType: n.entityType,
-        docName: n.docName,
-        expiryDate: n.expiryDate,
-        daysLeft,
-        urgent: daysLeft <= 15,
-      }
-    })
+    const results = notifications
+      .map((n: any) => {
+        const daysLeft = Math.ceil((new Date(n.expiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        return {
+          id: n.id,
+          documentId: n.documentId,
+          entityName: n.entityName,
+          entityType: n.entityType,
+          docName: n.docName,
+          expiryDate: n.expiryDate,
+          daysLeft,
+          urgent: daysLeft <= 15,
+        }
+      })
+      .filter((n: any) => n.daysLeft <= 60) // Only show if ≤ 60 days remaining
 
     return NextResponse.json(results)
   } catch {

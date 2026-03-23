@@ -47,8 +47,9 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Create notifications for all approved users if expiryDate is set
-    if (expiryDate) {
+    // Create notifications only if expiry is within 60 days
+    const sixtyDaysMs = 60 * 24 * 60 * 60 * 1000
+    if (expiryDate && new Date(expiryDate).getTime() - Date.now() <= sixtyDaysMs) {
       const approvedEmails = (process.env.APPROVED_EMAILS || '').split(',').map((e: string) => e.trim()).filter(Boolean)
 
       // Get entity name (we have the key at upload time)
