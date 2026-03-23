@@ -5,10 +5,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 type Status = 'loading' | 'setup' | 'locked' | 'unlocked'
-type EntityType = 'company' | 'person' | 'huf' | 'property'
 interface Entity {
   id: number
-  type: EntityType
+  type: string
   name: string
   docCount: number
   createdAt: string
@@ -23,14 +22,18 @@ interface SearchResult {
   mimeType: string
   entityId: number
   entityName: string
-  entityType: EntityType
+  entityType: string
   createdAt: string
 }
 
-const TYPE_ICONS: Record<EntityType, string> = { company: '\u{1F3E2}', person: '\u{1F464}', huf: '\u{1F3E0}', property: '\u{1F3D7}' }
-const TYPE_LABELS: Record<EntityType, string> = { company: 'Company', person: 'Person', huf: 'HUF', property: 'Property' }
+const DEFAULT_TYPES: Record<string, { icon: string; label: string }> = {
+  company: { icon: '🏢', label: 'Company' },
+  person: { icon: '👤', label: 'Person' },
+  huf: { icon: '🏠', label: 'HUF' },
+  property: { icon: '🏗', label: 'Property' },
+}
 
-const DETAIL_FIELDS: Record<EntityType, { key: string; label: string }[]> = {
+const DETAIL_FIELDS: Record<string, { key: string; label: string }[]> = {
   company: [
     { key: 'pan', label: 'PAN' },
     { key: 'gst', label: 'GST' },
@@ -63,10 +66,24 @@ const DETAIL_FIELDS: Record<EntityType, { key: string; label: string }[]> = {
     { key: 'ownerName', label: 'Owner Name' },
     { key: 'registrationNo', label: 'Registration No' },
     { key: 'registryDate', label: 'Registry Date' },
-    { key: 'currentValue', label: 'Current Value (\u20B9)' },
+    { key: 'currentValue', label: 'Current Value (₹)' },
     { key: 'notes', label: 'Notes' },
   ],
 }
+
+// Custom types stored in localStorage
+function loadCustomTypes(): Record<string, { icon: string; label: string }> {
+  if (typeof window === 'undefined') return {}
+  try { return JSON.parse(localStorage.getItem('vaultCustomTypes') || '{}') } catch { return {} }
+}
+function saveCustomTypes(types: Record<string, { icon: string; label: string }>) {
+  localStorage.setItem('vaultCustomTypes', JSON.stringify(types))
+}
+function getAllTypes(): Record<string, { icon: string; label: string }> {
+  return { ...DEFAULT_TYPES, ...loadCustomTypes() }
+}
+function getTypeIcon(type: string): string { return getAllTypes()[type]?.icon || '📁' }
+function getTypeLabel(type: string): string { return getAllTypes()[type]?.label || type }
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
@@ -92,15 +109,22 @@ export default function VaultPage() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
-  const [newEntity, setNewEntity] = useState<{ type: EntityType; name: string; details: Record<string, string> }>({
+  const [newEntity, setNewEntity] = useState<{ type: string; name: string; details: Record<string, string> }>({
     type: 'company',
     name: '',
     details: {},
   })
-  const [filterType, setFilterType] = useState<'' | EntityType>('')
+  const [filterType, setFilterType] = useState('')
+  const [showAddType, setShowAddType] = useState(false)
+  const [newTypeName, setNewTypeName] = useState('')
+  const [newTypeIcon, setNewTypeIcon] = useState('📁')
+  const [customTypes, setCustomTypes] = useState<Record<string, { icon: string; label: string }>>({})
   const [search, setSearch] = useState('')
   const [unlockTime, setUnlockTime] = useState<number | null>(null)
   const [timeLeft, setTimeLeft] = useState('')
+
+  // Load custom types from localStorage
+  useEffect(() => { setCustomTypes(loadCustomTypes()) }, [])
 
   // Global search state
   const [globalSearch, setGlobalSearch] = useState('')
@@ -477,10 +501,10 @@ export default function VaultPage() {
                           <p className="text-xs text-gray-500 mt-1 line-clamp-2">{r.description}</p>
                         )}
                         <div className="flex items-center gap-2 mt-2">
-                          <span className="text-xs">{TYPE_ICONS[r.entityType]}</span>
+                          <span className="text-xs">{getTypeIcon(r.entityType)}</span>
                           <span className="text-xs text-gray-700 font-medium">{r.entityName}</span>
                           <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">
-                            {TYPE_LABELS[r.entityType]}
+                            {getTypeLabel(r.entityType)}
                           </span>
                           <span className="text-xs text-gray-400">{'\u00B7'}</span>
                           <span className="text-xs text-gray-500">{formatSize(r.fileSize)}</span>
@@ -515,17 +539,17 @@ export default function VaultPage() {
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-3 mb-4">
               <div className="flex gap-1 flex-wrap">
-                {(['' , 'company', 'person', 'huf', 'property'] as const).map(t => (
+                {['', ...Object.keys(getAllTypes())].map(t => (
                   <button
                     key={t}
-                    onClick={() => setFilterType(t as '' | EntityType)}
+                    onClick={() => setFilterType(t)}
                     className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
                       filterType === t
                         ? 'bg-amber-600 text-white'
                         : 'bg-white text-amber-700 border border-amber-300 hover:bg-amber-100'
                     }`}
                   >
-                    {t === '' ? 'All' : TYPE_LABELS[t]}
+                    {t === '' ? 'All' : getTypeLabel(t)}
                   </button>
                 ))}
               </div>
@@ -554,12 +578,12 @@ export default function VaultPage() {
                     className="bg-white rounded-xl border border-amber-200 p-4 hover:shadow-md hover:border-amber-400 transition block"
                   >
                     <div className="flex items-start gap-3">
-                      <span className="text-2xl">{TYPE_ICONS[e.type]}</span>
+                      <span className="text-2xl">{getTypeIcon(e.type)}</span>
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-gray-900 truncate">{e.name}</h3>
                         <div className="flex items-center gap-2 mt-1">
                           <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                            {TYPE_LABELS[e.type]}
+                            {getTypeLabel(e.type)}
                           </span>
                           <span className="text-xs text-gray-500">
                             {e.docCount} {e.docCount === 1 ? 'doc' : 'docs'}
@@ -587,21 +611,72 @@ export default function VaultPage() {
               {error && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
 
               {/* Type selector */}
-              <div className="flex gap-2 mb-4">
-                {(['company', 'person', 'huf', 'property'] as const).map(t => (
+              <div className="flex gap-2 mb-4 flex-wrap">
+                {Object.keys(getAllTypes()).map(t => (
                   <button
                     key={t}
                     onClick={() => setNewEntity({ ...newEntity, type: t, details: {} })}
-                    className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition ${
                       newEntity.type === t
                         ? 'bg-amber-600 text-white'
                         : 'bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100'
                     }`}
                   >
-                    {TYPE_ICONS[t]} {TYPE_LABELS[t]}
+                    {getTypeIcon(t)} {getTypeLabel(t)}
                   </button>
                 ))}
+                <button
+                  onClick={() => setShowAddType(true)}
+                  className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 border border-gray-300 hover:bg-gray-200 transition"
+                >
+                  + New Type
+                </button>
               </div>
+
+              {/* Add custom type inline form */}
+              {showAddType && (
+                <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <p className="text-xs font-medium text-gray-600 mb-2">Create New Entity Type</p>
+                  <div className="flex gap-2">
+                    <select
+                      value={newTypeIcon}
+                      onChange={e => setNewTypeIcon(e.target.value)}
+                      className="w-16 border border-gray-300 rounded-lg px-2 py-2 text-lg text-center outline-none"
+                    >
+                      {['📁','📂','🏦','🏪','🏬','🏥','🏫','⚖️','🚗','💼','📋','🎓','🛡️','💰','🏘️'].map(icon => (
+                        <option key={icon} value={icon}>{icon}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={newTypeName}
+                      onChange={e => setNewTypeName(e.target.value)}
+                      placeholder="Type name (e.g. Trust, Bank, Vehicle)"
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                    <button
+                      onClick={() => {
+                        if (!newTypeName.trim()) return
+                        const key = newTypeName.trim().toLowerCase().replace(/\s+/g, '_')
+                        const updated = { ...customTypes, [key]: { icon: newTypeIcon, label: newTypeName.trim() } }
+                        setCustomTypes(updated)
+                        saveCustomTypes(updated)
+                        setNewEntity({ ...newEntity, type: key, details: {} })
+                        setShowAddType(false)
+                        setNewTypeName('')
+                        setNewTypeIcon('📁')
+                      }}
+                      className="px-3 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700"
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => { setShowAddType(false); setNewTypeName(''); setNewTypeIcon('📁') }}
+                      className="px-2 py-2 text-gray-400 hover:text-gray-600 text-lg"
+                    >&times;</button>
+                  </div>
+                </div>
+              )}
 
               {/* Name */}
               <div className="mb-4">
@@ -617,7 +692,7 @@ export default function VaultPage() {
 
               {/* Detail fields */}
               <div className="space-y-3">
-                {DETAIL_FIELDS[newEntity.type].map(f => (
+                {(DETAIL_FIELDS[newEntity.type] || [{ key: 'description', label: 'Description' }, { key: 'notes', label: 'Notes' }]).map(f => (
                   <div key={f.key}>
                     <label className="block text-sm font-medium text-amber-800 mb-1">{f.label}</label>
                     {f.key === 'notes' || f.key === 'members' || f.key === 'address' ? (
