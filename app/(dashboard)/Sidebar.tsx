@@ -56,21 +56,18 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
   const navGroups = company === 'vi' ? viNavGroups : ksiNavGroups
   return (
     <div className="flex flex-col h-full">
-      {/* Company badge */}
-      <div className="px-4 py-3 border-b border-gray-700">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">{companyIcon}</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-gray-300 truncate">{companyName}</p>
-          </div>
-          <Link href="/select-company" className="text-[10px] text-gray-500 hover:text-purple-400 transition">Switch</Link>
-        </div>
-      </div>
-
-      {/* Brand */}
+      {/* Brand + Company */}
       <div className="p-5 border-b border-gray-700">
-        <h1 className="text-lg font-bold tracking-tight">{companyName}</h1>
-        <p className="text-xs text-gray-400 mt-0.5">Textile Management</p>
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{companyIcon}</span>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-sm font-bold tracking-tight truncate">{companyName}</h1>
+            <p className="text-[10px] text-gray-400 mt-0.5">Textile Management</p>
+          </div>
+        </div>
+        <Link href="/select-company" className="mt-2 flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1.5 transition w-full">
+          Switch Company
+        </Link>
       </div>
 
       {/* Nav */}
@@ -157,7 +154,8 @@ export default function Sidebar({ userName, userEmail }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="font-bold text-base">{companyName}</span>
+        <span className="font-bold text-base flex-1 truncate">{companyName}</span>
+        <Link href="/select-company" className="text-[10px] text-gray-400 hover:text-white bg-gray-800 rounded px-2 py-1 shrink-0">Switch</Link>
       </header>
 
       {/* ── MOBILE DRAWER OVERLAY ── */}
