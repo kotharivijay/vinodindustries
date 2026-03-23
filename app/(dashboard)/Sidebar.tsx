@@ -10,7 +10,7 @@ interface Props {
   userEmail?: string | null
 }
 
-const navGroups = [
+const ksiNavGroups = [
   { label: null, links: [{ href: '/dashboard', label: 'Dashboard', icon: '🏠' }] },
   {
     label: 'Modules',
@@ -33,15 +33,40 @@ const navGroups = [
   },
 ]
 
-function SidebarContent({ pathname, onNavigate, userName, userEmail }: {
+const viNavGroups = [
+  { label: null, links: [{ href: '/vi/dashboard', label: 'Dashboard', icon: '🏠' }] },
+  {
+    label: 'Modules',
+    links: [
+      { href: '#', label: 'Coming Soon...', icon: '🔒' },
+    ],
+  },
+]
+
+function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: {
   pathname: string
   onNavigate: () => void
   userName?: string | null
   userEmail?: string | null
+  company: string
 }) {
   const initial = userName?.[0]?.toUpperCase() ?? 'U'
+  const companyName = company === 'vi' ? 'Vinod Industries' : 'Kothari Synthetic'
+  const companyIcon = company === 'vi' ? '\u{1F3E2}' : '\u{1F3ED}'
+  const navGroups = company === 'vi' ? viNavGroups : ksiNavGroups
   return (
     <div className="flex flex-col h-full">
+      {/* Company badge */}
+      <div className="px-4 py-3 border-b border-gray-700">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{companyIcon}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gray-300 truncate">{companyName}</p>
+          </div>
+          <Link href="/select-company" className="text-[10px] text-gray-500 hover:text-purple-400 transition">Switch</Link>
+        </div>
+      </div>
+
       {/* Brand */}
       <div className="p-5 border-b border-gray-700">
         <h1 className="text-lg font-bold tracking-tight">Vinod Industries</h1>
@@ -98,7 +123,14 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail }: {
 
 export default function Sidebar({ userName, userEmail }: Props) {
   const [open, setOpen] = useState(false)
+  const [company, setCompany] = useState<string>('ksi')
   const pathname = usePathname()
+
+  // Read selected company from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('selectedCompany')
+    if (saved) setCompany(saved)
+  }, [])
 
   // Close drawer on route change
   useEffect(() => { setOpen(false) }, [pathname])
@@ -150,6 +182,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
               onNavigate={() => setOpen(false)}
               userName={userName}
               userEmail={userEmail}
+              company={company}
             />
           </aside>
         </div>
@@ -162,6 +195,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
           onNavigate={() => {}}
           userName={userName}
           userEmail={userEmail}
+          company={company}
         />
       </aside>
     </>
