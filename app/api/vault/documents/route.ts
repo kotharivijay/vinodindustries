@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   const key = getVaultKey(session.user.email)
   if (!key) return NextResponse.json({ error: 'Vault locked' }, { status: 403 })
 
-  const { entityId, fileName, fileBase64, mimeType } = await req.json()
+  const { entityId, fileName, fileBase64, mimeType, tags, description } = await req.json()
   if (!entityId || !fileName || !fileBase64) {
     return NextResponse.json({ error: 'entityId, fileName, and fileBase64 required' }, { status: 400 })
   }
@@ -28,6 +28,8 @@ export async function POST(req: NextRequest) {
   const iv = generateIV()
   const encFileName = encrypt(fileName, key, iv)
   const encFileData = encryptBuffer(fileBuffer, key, iv)
+  const encTags = tags ? encrypt(tags, key, iv) : null
+  const encDescription = description ? encrypt(description, key, iv) : null
 
   const db = prisma as any
   try {
@@ -39,6 +41,8 @@ export async function POST(req: NextRequest) {
         fileSize: fileBuffer.length,
         mimeType: mimeType || 'application/octet-stream',
         iv,
+        encTags,
+        encDescription,
       },
     })
     return NextResponse.json({ id: doc.id, fileName, fileSize: fileBuffer.length }, { status: 201 })

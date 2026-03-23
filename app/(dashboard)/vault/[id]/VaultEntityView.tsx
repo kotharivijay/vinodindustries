@@ -9,6 +9,8 @@ type EntityType = 'company' | 'person' | 'huf'
 interface Doc {
   id: number
   fileName: string
+  tags: string
+  description: string
   fileSize: number
   mimeType: string
   createdAt: string
@@ -84,6 +86,12 @@ export default function VaultEntityView({ id }: { id: string }) {
   const [unlockTime] = useState(Date.now())
   const [timeLeft, setTimeLeft] = useState('')
 
+  // Upload form state
+  const [showUploadForm, setShowUploadForm] = useState(false)
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadTags, setUploadTags] = useState('')
+  const [uploadDescription, setUploadDescription] = useState('')
+
   const loadEntity = useCallback(async () => {
     try {
       const res = await fetch(`/api/vault/entities/${id}`)
@@ -145,11 +153,16 @@ export default function VaultEntityView({ id }: { id: string }) {
     setSaving(false)
   }
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 25 * 1024 * 1024) { setError('File too large (max 25MB)'); return }
+    setUploadFile(file)
+    setShowUploadForm(true)
+  }
 
+  const handleUploadSubmit = async () => {
+    if (!uploadFile) return
     setUploading(true)
     setError('')
     try {
@@ -160,7 +173,7 @@ export default function VaultEntityView({ id }: { id: string }) {
           resolve(result.split(',')[1]) // strip data:...;base64, prefix
         }
         reader.onerror = reject
-        reader.readAsDataURL(file)
+        reader.readAsDataURL(uploadFile)
       })
 
       const res = await fetch('/api/vault/documents', {
@@ -168,16 +181,30 @@ export default function VaultEntityView({ id }: { id: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entityId: id,
-          fileName: file.name,
+          fileName: uploadFile.name,
           fileBase64: base64,
-          mimeType: file.type || 'application/octet-stream',
+          mimeType: uploadFile.type || 'application/octet-stream',
+          tags: uploadTags.trim() || undefined,
+          description: uploadDescription.trim() || undefined,
         }),
       })
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Upload failed'); setUploading(false); return }
+      setShowUploadForm(false)
+      setUploadFile(null)
+      setUploadTags('')
+      setUploadDescription('')
       await loadEntity()
     } catch { setError('Upload failed') }
     setUploading(false)
     // Reset file input
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleCancelUpload = () => {
+    setShowUploadForm(false)
+    setUploadFile(null)
+    setUploadTags('')
+    setUploadDescription('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -336,7 +363,7 @@ export default function VaultEntityView({ id }: { id: string }) {
                 ref={fileInputRef}
                 type="file"
                 accept={ACCEPT_TYPES}
-                onChange={handleUpload}
+                onChange={handleFileSelect}
                 className="hidden"
               />
               <button
@@ -349,6 +376,56 @@ export default function VaultEntityView({ id }: { id: string }) {
             </div>
           </div>
 
+          {/* Upload form modal */}
+          {showUploadForm && uploadFile && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xl">{fileIcon(uploadFile.type)}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{uploadFile.name}</p>
+                  <p className="text-xs text-gray-500">{formatSize(uploadFile.size)}</p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-amber-700 mb-1">Tags (comma-separated)</label>
+                  <input
+                    type="text"
+                    value={uploadTags}
+                    onChange={e => setUploadTags(e.target.value)}
+                    placeholder="e.g. aadhaar, id proof, kyc"
+                    className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-amber-700 mb-1">Description</label>
+                  <input
+                    type="text"
+                    value={uploadDescription}
+                    onChange={e => setUploadDescription(e.target.value)}
+                    placeholder="e.g. Front and back scan of Aadhaar card"
+                    className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleUploadSubmit}
+                    disabled={uploading}
+                    className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700 transition disabled:opacity-50"
+                  >
+                    {uploading ? 'Uploading...' : 'Upload Document'}
+                  </button>
+                  <button
+                    onClick={handleCancelUpload}
+                    className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-300 transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {entity.documents.length === 0 ? (
             <div className="text-center py-10 text-amber-600">
               <div className="text-3xl mb-2">{'\u{1F4C4}'}</div>
@@ -357,46 +434,60 @@ export default function VaultEntityView({ id }: { id: string }) {
           ) : (
             <div className="space-y-2">
               {entity.documents.map(doc => (
-                <div key={doc.id} className="flex items-center gap-3 bg-amber-50 rounded-lg p-3 border border-amber-100">
-                  <span className="text-2xl shrink-0">{fileIcon(doc.mimeType)}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{doc.fileName}</p>
-                    <p className="text-xs text-gray-500">
-                      {formatSize(doc.fileSize)} {'\u00B7'} {new Date(doc.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => handleDownload(doc.id, doc.fileName)}
-                      className="bg-amber-100 text-amber-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-amber-200 transition"
-                      title="Download"
-                    >
-                      {'\u2B07\uFE0F'} Download
-                    </button>
-                    {deleteConfirm === doc.id ? (
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => handleDeleteDoc(doc.id)}
-                          className="bg-red-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-red-700 transition"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => setDeleteConfirm(null)}
-                          className="bg-gray-200 text-gray-600 px-2 py-2 rounded-lg text-xs font-medium hover:bg-gray-300 transition"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
+                <div key={doc.id} className="bg-amber-50 rounded-lg p-3 border border-amber-100">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl shrink-0">{fileIcon(doc.mimeType)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{doc.fileName}</p>
+                      {doc.tags && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {doc.tags.split(',').map((tag, i) => (
+                            <span key={i} className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+                              {tag.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {doc.description && (
+                        <p className="text-xs text-gray-500 mt-1">{doc.description}</p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formatSize(doc.fileSize)} {'\u00B7'} {new Date(doc.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
-                        onClick={() => setDeleteConfirm(doc.id)}
-                        className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-100 transition"
-                        title="Delete"
+                        onClick={() => handleDownload(doc.id, doc.fileName)}
+                        className="bg-amber-100 text-amber-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-amber-200 transition"
+                        title="Download"
                       >
-                        {'\u{1F5D1}'} Delete
+                        {'\u2B07\uFE0F'} Download
                       </button>
-                    )}
+                      {deleteConfirm === doc.id ? (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => handleDeleteDoc(doc.id)}
+                            className="bg-red-600 text-white px-2 py-2 rounded-lg text-xs font-medium hover:bg-red-700 transition"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirm(null)}
+                            className="bg-gray-200 text-gray-600 px-2 py-2 rounded-lg text-xs font-medium hover:bg-gray-300 transition"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirm(doc.id)}
+                          className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-100 transition"
+                          title="Delete"
+                        >
+                          {'\u{1F5D1}'} Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}

@@ -254,14 +254,16 @@ model VaultEntity {
 }
 
 model VaultDocument {
-  id          Int          @id @default(autoincrement())
-  entityId    Int
-  entity      VaultEntity  @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  encFileName String       // AES encrypted original filename
-  encFileData String?      // AES encrypted file data (base64) — for small files in DB
-  blobUrl     String?      // For large files stored externally (future)
-  fileSize    Int          // original file size in bytes
-  mimeType    String       // application/pdf, image/jpeg, etc.
-  iv          String       // initialization vector
-  createdAt   DateTime     @default(now())
+  id             Int          @id @default(autoincrement())
+  entityId       Int
+  entity         VaultEntity  @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  encFileName    String       // AES encrypted original filename
+  encFileData    String?      // AES encrypted file data (base64) — for small files in DB
+  blobUrl        String?      // For large files stored externally (future)
+  fileSize       Int          // original file size in bytes
+  mimeType       String       // application/pdf, image/jpeg, etc.
+  iv             String       // initialization vector
+  encTags        String?      // AES encrypted comma-separated tags (e.g. "aadhaar,id proof")
+  encDescription String?      // AES encrypted description/notes
+  createdAt      DateTime     @default(now())
 }

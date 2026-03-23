@@ -27,15 +27,21 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
     const docs = entity.documents.map((d: any) => {
       try {
+        let tags = ''
+        let description = ''
+        try { if (d.encTags) tags = decrypt(d.encTags, key, d.iv) } catch {}
+        try { if (d.encDescription) description = decrypt(d.encDescription, key, d.iv) } catch {}
         return {
           id: d.id,
           fileName: decrypt(d.encFileName, key, d.iv),
+          tags,
+          description,
           fileSize: d.fileSize,
           mimeType: d.mimeType,
           createdAt: d.createdAt,
         }
       } catch {
-        return { id: d.id, fileName: '[Encrypted]', fileSize: d.fileSize, mimeType: d.mimeType, createdAt: d.createdAt }
+        return { id: d.id, fileName: '[Encrypted]', tags: '', description: '', fileSize: d.fileSize, mimeType: d.mimeType, createdAt: d.createdAt }
       }
     })
 

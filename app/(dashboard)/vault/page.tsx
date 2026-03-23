@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -11,6 +11,19 @@ interface Entity {
   type: EntityType
   name: string
   docCount: number
+  createdAt: string
+}
+
+interface SearchResult {
+  docId: number
+  fileName: string
+  tags: string
+  description: string
+  fileSize: number
+  mimeType: string
+  entityId: number
+  entityName: string
+  entityType: EntityType
   createdAt: string
 }
 
@@ -43,6 +56,21 @@ const DETAIL_FIELDS: Record<EntityType, { key: string; label: string }[]> = {
   ],
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+function fileIcon(mime: string): string {
+  if (mime.includes('pdf')) return '\u{1F4C4}'
+  if (mime.includes('image') || mime.includes('jpg') || mime.includes('jpeg') || mime.includes('png')) return '\u{1F5BC}'
+  if (mime.includes('spreadsheet') || mime.includes('xlsx') || mime.includes('excel')) return '\u{1F4CA}'
+  if (mime.includes('word') || mime.includes('docx')) return '\u{1F4DD}'
+  if (mime.includes('zip') || mime.includes('compressed')) return '\u{1F4E6}'
+  return '\u{1F4C4}'
+}
+
 export default function VaultPage() {
   const router = useRouter()
   const [status, setStatus] = useState<Status>('loading')
@@ -61,6 +89,12 @@ export default function VaultPage() {
   const [search, setSearch] = useState('')
   const [unlockTime, setUnlockTime] = useState<number | null>(null)
   const [timeLeft, setTimeLeft] = useState('')
+
+  // Global search state
+  const [globalSearch, setGlobalSearch] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadEntities = useCallback(async () => {
     try {
@@ -121,6 +155,30 @@ export default function VaultPage() {
     return () => clearInterval(interval)
   }, [status, unlockTime])
 
+  // Debounced global search
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    if (!globalSearch.trim()) {
+      setSearchResults(null)
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/vault/entities?search=${encodeURIComponent(globalSearch.trim())}`)
+        if (res.ok) {
+          const data = await res.json()
+          setSearchResults(data.results || [])
+        }
+      } catch {
+        setSearchResults([])
+      }
+      setSearching(false)
+    }, 400)
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current) }
+  }, [globalSearch])
+
   const handleSetup = async () => {
     setError('')
     if (password.length < 6) { setError('Password must be at least 6 characters'); return }
@@ -176,6 +234,8 @@ export default function VaultPage() {
     setEntities([])
     setUnlockTime(null)
     setPassword('')
+    setGlobalSearch('')
+    setSearchResults(null)
   }
 
   const handleAddEntity = async () => {
@@ -196,13 +256,29 @@ export default function VaultPage() {
     setSaving(false)
   }
 
+  const handleDownloadResult = async (docId: number, fileName: string) => {
+    try {
+      const res = await fetch(`/api/vault/documents/${docId}`)
+      if (!res.ok) { setError('Download failed'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch { setError('Download failed') }
+  }
+
   const filtered = entities.filter(e => {
     if (filterType && e.type !== filterType) return false
     if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
 
-  // ── LOADING ──
+  // -- LOADING --
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-amber-50">
@@ -214,7 +290,7 @@ export default function VaultPage() {
     )
   }
 
-  // ── SETUP ──
+  // -- SETUP --
   if (status === 'setup') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-amber-50 p-4">
@@ -261,7 +337,7 @@ export default function VaultPage() {
     )
   }
 
-  // ── LOCKED ──
+  // -- LOCKED --
   if (status === 'locked') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-amber-50 p-4">
@@ -297,7 +373,7 @@ export default function VaultPage() {
     )
   }
 
-  // ── UNLOCKED ──
+  // -- UNLOCKED --
   return (
     <div className="min-h-screen bg-amber-50">
       {/* Header */}
@@ -331,64 +407,159 @@ export default function VaultPage() {
       <div className="px-4 md:px-6 py-4">
         {error && <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">{error}</div>}
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-4">
-          <div className="flex gap-1 flex-wrap">
-            {(['' , 'company', 'person', 'huf'] as const).map(t => (
+        {/* Global Search Bar */}
+        <div className="bg-white rounded-xl border border-amber-300 p-3 mb-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-lg shrink-0">{'\u{1F50D}'}</span>
+            <input
+              type="text"
+              value={globalSearch}
+              onChange={e => setGlobalSearch(e.target.value)}
+              placeholder="Search documents across all entities..."
+              className="flex-1 border-0 outline-none text-sm text-gray-900 placeholder-amber-400 bg-transparent"
+            />
+            {globalSearch && (
               <button
-                key={t}
-                onClick={() => setFilterType(t as '' | EntityType)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                  filterType === t
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white text-amber-700 border border-amber-300 hover:bg-amber-100'
-                }`}
+                onClick={() => { setGlobalSearch(''); setSearchResults(null) }}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none shrink-0 px-1"
               >
-                {t === '' ? 'All' : TYPE_LABELS[t]}
+                &times;
               </button>
-            ))}
+            )}
           </div>
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search entities..."
-            className="border border-amber-300 rounded-lg px-3 py-1.5 text-sm flex-1 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
-          />
+          <p className="text-xs text-amber-500 mt-1 ml-7">Search by: file name, tags (aadhaar, pan), description</p>
         </div>
 
-        {/* Entity list */}
-        {filtered.length === 0 ? (
-          <div className="text-center py-16 text-amber-600">
-            <div className="text-4xl mb-3">{'\u{1F4C1}'}</div>
-            <p className="font-medium">No entities found</p>
-            <p className="text-sm mt-1">Add a company, person, or HUF to get started</p>
-          </div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map(e => (
-              <Link
-                key={e.id}
-                href={`/vault/${e.id}`}
-                className="bg-white rounded-xl border border-amber-200 p-4 hover:shadow-md hover:border-amber-400 transition block"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl">{TYPE_ICONS[e.type]}</span>
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate">{e.name}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
-                        {TYPE_LABELS[e.type]}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {e.docCount} {e.docCount === 1 ? 'doc' : 'docs'}
-                      </span>
+        {/* Search Results View */}
+        {searchResults !== null ? (
+          <div>
+            {searching && (
+              <div className="text-center py-4 text-amber-600 text-sm">Searching...</div>
+            )}
+            {!searching && searchResults.length === 0 && (
+              <div className="text-center py-16 text-amber-600">
+                <div className="text-4xl mb-3">{'\u{1F50D}'}</div>
+                <p className="font-medium">No documents found for &apos;{globalSearch}&apos;</p>
+                <p className="text-sm mt-1">Try a different search term</p>
+              </div>
+            )}
+            {!searching && searchResults.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-sm text-amber-700 font-medium">{searchResults.length} document{searchResults.length !== 1 ? 's' : ''} found</p>
+                {searchResults.map(r => (
+                  <div key={r.docId} className="bg-white rounded-xl border border-amber-200 p-4 hover:shadow-md transition">
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl shrink-0">{fileIcon(r.mimeType)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{r.fileName}</p>
+                        {r.tags && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {r.tags.split(',').map((tag, i) => (
+                              <span key={i} className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                                {tag.trim()}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {r.description && (
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">{r.description}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs">{TYPE_ICONS[r.entityType]}</span>
+                          <span className="text-xs text-gray-700 font-medium">{r.entityName}</span>
+                          <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded font-medium">
+                            {TYPE_LABELS[r.entityType]}
+                          </span>
+                          <span className="text-xs text-gray-400">{'\u00B7'}</span>
+                          <span className="text-xs text-gray-500">{formatSize(r.fileSize)}</span>
+                          <span className="text-xs text-gray-400">{'\u00B7'}</span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button
+                          onClick={() => handleDownloadResult(r.docId, r.fileName)}
+                          className="bg-amber-100 text-amber-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-amber-200 transition"
+                        >
+                          {'\u2B07\uFE0F'} Download
+                        </button>
+                        <Link
+                          href={`/vault/${r.entityId}`}
+                          className="bg-amber-50 text-amber-600 px-3 py-2 rounded-lg text-xs font-medium hover:bg-amber-100 transition text-center"
+                        >
+                          View Entity
+                        </Link>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                ))}
+              </div>
+            )}
           </div>
+        ) : (
+          <>
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <div className="flex gap-1 flex-wrap">
+                {(['' , 'company', 'person', 'huf'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setFilterType(t as '' | EntityType)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                      filterType === t
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-white text-amber-700 border border-amber-300 hover:bg-amber-100'
+                    }`}
+                  >
+                    {t === '' ? 'All' : TYPE_LABELS[t]}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search entities..."
+                className="border border-amber-300 rounded-lg px-3 py-1.5 text-sm flex-1 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+              />
+            </div>
+
+            {/* Entity list */}
+            {filtered.length === 0 ? (
+              <div className="text-center py-16 text-amber-600">
+                <div className="text-4xl mb-3">{'\u{1F4C1}'}</div>
+                <p className="font-medium">No entities found</p>
+                <p className="text-sm mt-1">Add a company, person, or HUF to get started</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {filtered.map(e => (
+                  <Link
+                    key={e.id}
+                    href={`/vault/${e.id}`}
+                    className="bg-white rounded-xl border border-amber-200 p-4 hover:shadow-md hover:border-amber-400 transition block"
+                  >
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl">{TYPE_ICONS[e.type]}</span>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-gray-900 truncate">{e.name}</h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">
+                            {TYPE_LABELS[e.type]}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {e.docCount} {e.docCount === 1 ? 'doc' : 'docs'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
