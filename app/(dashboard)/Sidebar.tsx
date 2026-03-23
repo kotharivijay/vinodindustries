@@ -31,6 +31,12 @@ const ksiNavGroups = [
       { href: '/masters/chemicals', label: 'Chemicals', icon: '🧪' },
     ],
   },
+  {
+    label: 'Vault',
+    links: [
+      { href: '/vault', label: 'Document Vault', icon: '🔒' },
+    ],
+  },
 ]
 
 const viNavGroups = [
