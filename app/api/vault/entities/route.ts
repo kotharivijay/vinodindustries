@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
               description,
               fileSize: doc.fileSize,
               mimeType: doc.mimeType,
+              expiryDate: doc.expiryDate,
               entityId: entity.id,
               entityName,
               entityType: entity.type,

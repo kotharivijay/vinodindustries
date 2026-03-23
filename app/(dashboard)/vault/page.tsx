@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 type Status = 'loading' | 'setup' | 'locked' | 'unlocked'
-type EntityType = 'company' | 'person' | 'huf'
+type EntityType = 'company' | 'person' | 'huf' | 'property'
 interface Entity {
   id: number
   type: EntityType
@@ -27,8 +27,8 @@ interface SearchResult {
   createdAt: string
 }
 
-const TYPE_ICONS: Record<EntityType, string> = { company: '\u{1F3E2}', person: '\u{1F464}', huf: '\u{1F3E0}' }
-const TYPE_LABELS: Record<EntityType, string> = { company: 'Company', person: 'Person', huf: 'HUF' }
+const TYPE_ICONS: Record<EntityType, string> = { company: '\u{1F3E2}', person: '\u{1F464}', huf: '\u{1F3E0}', property: '\u{1F3D7}' }
+const TYPE_LABELS: Record<EntityType, string> = { company: 'Company', person: 'Person', huf: 'HUF', property: 'Property' }
 
 const DETAIL_FIELDS: Record<EntityType, { key: string; label: string }[]> = {
   company: [
@@ -52,6 +52,18 @@ const DETAIL_FIELDS: Record<EntityType, { key: string; label: string }[]> = {
     { key: 'karta', label: 'Karta' },
     { key: 'members', label: 'Members' },
     { key: 'address', label: 'Address' },
+    { key: 'notes', label: 'Notes' },
+  ],
+  property: [
+    { key: 'propertyType', label: 'Property Type' },
+    { key: 'address', label: 'Address' },
+    { key: 'surveyNo', label: 'Survey No / Khasra No' },
+    { key: 'area', label: 'Area' },
+    { key: 'areaUnit', label: 'Area Unit' },
+    { key: 'ownerName', label: 'Owner Name' },
+    { key: 'registrationNo', label: 'Registration No' },
+    { key: 'registryDate', label: 'Registry Date' },
+    { key: 'currentValue', label: 'Current Value (\u20B9)' },
     { key: 'notes', label: 'Notes' },
   ],
 }
@@ -503,7 +515,7 @@ export default function VaultPage() {
             {/* Filters */}
             <div className="flex flex-col sm:flex-row gap-3 mb-4">
               <div className="flex gap-1 flex-wrap">
-                {(['' , 'company', 'person', 'huf'] as const).map(t => (
+                {(['' , 'company', 'person', 'huf', 'property'] as const).map(t => (
                   <button
                     key={t}
                     onClick={() => setFilterType(t as '' | EntityType)}
@@ -531,7 +543,7 @@ export default function VaultPage() {
               <div className="text-center py-16 text-amber-600">
                 <div className="text-4xl mb-3">{'\u{1F4C1}'}</div>
                 <p className="font-medium">No entities found</p>
-                <p className="text-sm mt-1">Add a company, person, or HUF to get started</p>
+                <p className="text-sm mt-1">Add a company, person, HUF, or property to get started</p>
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -576,7 +588,7 @@ export default function VaultPage() {
 
               {/* Type selector */}
               <div className="flex gap-2 mb-4">
-                {(['company', 'person', 'huf'] as const).map(t => (
+                {(['company', 'person', 'huf', 'property'] as const).map(t => (
                   <button
                     key={t}
                     onClick={() => setNewEntity({ ...newEntity, type: t, details: {} })}
@@ -608,13 +620,45 @@ export default function VaultPage() {
                 {DETAIL_FIELDS[newEntity.type].map(f => (
                   <div key={f.key}>
                     <label className="block text-sm font-medium text-amber-800 mb-1">{f.label}</label>
-                    {f.key === 'notes' || f.key === 'members' ? (
+                    {f.key === 'notes' || f.key === 'members' || f.key === 'address' ? (
                       <textarea
                         value={newEntity.details[f.key] || ''}
                         onChange={e => setNewEntity({ ...newEntity, details: { ...newEntity.details, [f.key]: e.target.value } })}
                         placeholder={f.label}
                         rows={2}
                         className="w-full border border-amber-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none resize-none"
+                      />
+                    ) : f.key === 'propertyType' ? (
+                      <select
+                        value={newEntity.details[f.key] || ''}
+                        onChange={e => setNewEntity({ ...newEntity, details: { ...newEntity.details, [f.key]: e.target.value } })}
+                        className="w-full border border-amber-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
+                      >
+                        <option value="">Select type...</option>
+                        <option value="Residential">Residential</option>
+                        <option value="Commercial">Commercial</option>
+                        <option value="Industrial">Industrial</option>
+                        <option value="Land">Land</option>
+                        <option value="Plot">Plot</option>
+                      </select>
+                    ) : f.key === 'areaUnit' ? (
+                      <select
+                        value={newEntity.details[f.key] || ''}
+                        onChange={e => setNewEntity({ ...newEntity, details: { ...newEntity.details, [f.key]: e.target.value } })}
+                        className="w-full border border-amber-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
+                      >
+                        <option value="">Select unit...</option>
+                        <option value="sq ft">sq ft</option>
+                        <option value="sq mt">sq mt</option>
+                        <option value="bigha">bigha</option>
+                        <option value="acre">acre</option>
+                      </select>
+                    ) : f.key === 'registryDate' ? (
+                      <input
+                        type="date"
+                        value={newEntity.details[f.key] || ''}
+                        onChange={e => setNewEntity({ ...newEntity, details: { ...newEntity.details, [f.key]: e.target.value } })}
+                        className="w-full border border-amber-300 rounded-lg px-4 py-2.5 text-base focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
                       />
                     ) : (
                       <input

@@ -244,7 +244,7 @@ model VaultConfig {
 
 model VaultEntity {
   id         Int             @id @default(autoincrement())
-  type       String          // company | person | huf
+  type       String          // company | person | huf | property
   encName    String          // AES encrypted name
   encDetails String          // AES encrypted JSON (PAN, GST, etc.)
   iv         String          // initialization vector for encryption
@@ -265,5 +265,23 @@ model VaultDocument {
   iv             String       // initialization vector
   encTags        String?      // AES encrypted comma-separated tags (e.g. "aadhaar,id proof")
   encDescription String?      // AES encrypted description/notes
+  expiryDate     DateTime?    // plain — needed for expiry queries
   createdAt      DateTime     @default(now())
+  notifications  VaultNotification[]
+}
+
+model VaultNotification {
+  id           Int            @id @default(autoincrement())
+  documentId   Int
+  document     VaultDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userEmail    String
+  entityName   String         // plain text copy for notification display
+  entityType   String         // company/person/huf/property
+  docName      String         // plain text copy of filename for notification
+  expiryDate   DateTime       // copy of expiry date
+  dismissed    Boolean        @default(false)
+  lastEmailed  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  @@unique([documentId, userEmail])
 }

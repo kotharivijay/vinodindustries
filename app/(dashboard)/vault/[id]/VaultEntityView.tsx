@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
-type EntityType = 'company' | 'person' | 'huf'
+type EntityType = 'company' | 'person' | 'huf' | 'property'
 
 interface Doc {
   id: number
@@ -13,6 +13,7 @@ interface Doc {
   description: string
   fileSize: number
   mimeType: string
+  expiryDate: string | null
   createdAt: string
 }
 
@@ -25,8 +26,8 @@ interface EntityData {
   createdAt: string
 }
 
-const TYPE_LABELS: Record<EntityType, string> = { company: 'Company', person: 'Person', huf: 'HUF' }
-const TYPE_ICONS: Record<EntityType, string> = { company: '\u{1F3E2}', person: '\u{1F464}', huf: '\u{1F3E0}' }
+const TYPE_LABELS: Record<EntityType, string> = { company: 'Company', person: 'Person', huf: 'HUF', property: 'Property' }
+const TYPE_ICONS: Record<EntityType, string> = { company: '\u{1F3E2}', person: '\u{1F464}', huf: '\u{1F3E0}', property: '\u{1F3D7}' }
 
 const DETAIL_FIELDS: Record<EntityType, { key: string; label: string }[]> = {
   company: [
@@ -50,6 +51,18 @@ const DETAIL_FIELDS: Record<EntityType, { key: string; label: string }[]> = {
     { key: 'karta', label: 'Karta' },
     { key: 'members', label: 'Members' },
     { key: 'address', label: 'Address' },
+    { key: 'notes', label: 'Notes' },
+  ],
+  property: [
+    { key: 'propertyType', label: 'Property Type' },
+    { key: 'address', label: 'Address' },
+    { key: 'surveyNo', label: 'Survey No / Khasra No' },
+    { key: 'area', label: 'Area' },
+    { key: 'areaUnit', label: 'Area Unit' },
+    { key: 'ownerName', label: 'Owner Name' },
+    { key: 'registrationNo', label: 'Registration No' },
+    { key: 'registryDate', label: 'Registry Date' },
+    { key: 'currentValue', label: 'Current Value (\u20B9)' },
     { key: 'notes', label: 'Notes' },
   ],
 }
@@ -91,6 +104,7 @@ export default function VaultEntityView({ id }: { id: string }) {
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadTags, setUploadTags] = useState('')
   const [uploadDescription, setUploadDescription] = useState('')
+  const [uploadExpiry, setUploadExpiry] = useState('')
 
   const loadEntity = useCallback(async () => {
     try {
@@ -186,6 +200,7 @@ export default function VaultEntityView({ id }: { id: string }) {
           mimeType: uploadFile.type || 'application/octet-stream',
           tags: uploadTags.trim() || undefined,
           description: uploadDescription.trim() || undefined,
+          expiryDate: uploadExpiry || undefined,
         }),
       })
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Upload failed'); setUploading(false); return }
@@ -193,6 +208,7 @@ export default function VaultEntityView({ id }: { id: string }) {
       setUploadFile(null)
       setUploadTags('')
       setUploadDescription('')
+      setUploadExpiry('')
       await loadEntity()
     } catch { setError('Upload failed') }
     setUploading(false)
@@ -205,6 +221,7 @@ export default function VaultEntityView({ id }: { id: string }) {
     setUploadFile(null)
     setUploadTags('')
     setUploadDescription('')
+    setUploadExpiry('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -312,12 +329,44 @@ export default function VaultEntityView({ id }: { id: string }) {
                 <div key={f.key} className="bg-amber-50 rounded-lg p-3">
                   <p className="text-xs text-amber-600 font-medium mb-1">{f.label}</p>
                   {editing ? (
-                    f.key === 'notes' || f.key === 'members' ? (
+                    f.key === 'notes' || f.key === 'members' || f.key === 'address' ? (
                       <textarea
                         value={editDetails[f.key] || ''}
                         onChange={e => setEditDetails({ ...editDetails, [f.key]: e.target.value })}
                         rows={2}
                         className="w-full border border-amber-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none resize-none"
+                      />
+                    ) : f.key === 'propertyType' ? (
+                      <select
+                        value={editDetails[f.key] || ''}
+                        onChange={e => setEditDetails({ ...editDetails, [f.key]: e.target.value })}
+                        className="w-full border border-amber-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
+                      >
+                        <option value="">Select type...</option>
+                        <option value="Residential">Residential</option>
+                        <option value="Commercial">Commercial</option>
+                        <option value="Industrial">Industrial</option>
+                        <option value="Land">Land</option>
+                        <option value="Plot">Plot</option>
+                      </select>
+                    ) : f.key === 'areaUnit' ? (
+                      <select
+                        value={editDetails[f.key] || ''}
+                        onChange={e => setEditDetails({ ...editDetails, [f.key]: e.target.value })}
+                        className="w-full border border-amber-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
+                      >
+                        <option value="">Select unit...</option>
+                        <option value="sq ft">sq ft</option>
+                        <option value="sq mt">sq mt</option>
+                        <option value="bigha">bigha</option>
+                        <option value="acre">acre</option>
+                      </select>
+                    ) : f.key === 'registryDate' ? (
+                      <input
+                        type="date"
+                        value={editDetails[f.key] || ''}
+                        onChange={e => setEditDetails({ ...editDetails, [f.key]: e.target.value })}
+                        className="w-full border border-amber-300 rounded px-2 py-1.5 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
                       />
                     ) : (
                       <input
@@ -407,6 +456,15 @@ export default function VaultEntityView({ id }: { id: string }) {
                     className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-amber-700 mb-1">Expiry Date (optional)</label>
+                  <input
+                    type="date"
+                    value={uploadExpiry}
+                    onChange={e => setUploadExpiry(e.target.value)}
+                    className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
+                  />
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={handleUploadSubmit}
@@ -454,6 +512,20 @@ export default function VaultEntityView({ id }: { id: string }) {
                       <p className="text-xs text-gray-500 mt-1">
                         {formatSize(doc.fileSize)} {'\u00B7'} {new Date(doc.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </p>
+                      {doc.expiryDate && (() => {
+                        const days = Math.ceil((new Date(doc.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                        let cls = 'bg-green-50 text-green-700 border-green-200'
+                        let label = `${days}d left`
+                        if (days <= 0) { cls = 'bg-red-100 text-red-700 border-red-300'; label = 'EXPIRED' }
+                        else if (days <= 15) { cls = 'bg-red-50 text-red-600 border-red-200'; label = `${days}d \u26A0` }
+                        else if (days <= 30) { cls = 'bg-amber-50 text-amber-700 border-amber-200'; label = `${days}d` }
+                        else if (days <= 60) { cls = 'bg-yellow-50 text-yellow-700 border-yellow-200'; label = `${days}d` }
+                        return (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${cls} inline-block mt-1`}>
+                            {new Date(doc.expiryDate).toLocaleDateString('en-IN')} ({label})
+                          </span>
+                        )
+                      })()}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button

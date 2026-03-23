@@ -38,10 +38,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           description,
           fileSize: d.fileSize,
           mimeType: d.mimeType,
+          expiryDate: d.expiryDate,
           createdAt: d.createdAt,
         }
       } catch {
-        return { id: d.id, fileName: '[Encrypted]', tags: '', description: '', fileSize: d.fileSize, mimeType: d.mimeType, createdAt: d.createdAt }
+        return { id: d.id, fileName: '[Encrypted]', tags: '', description: '', fileSize: d.fileSize, mimeType: d.mimeType, expiryDate: d.expiryDate, createdAt: d.createdAt }
       }
     })
 

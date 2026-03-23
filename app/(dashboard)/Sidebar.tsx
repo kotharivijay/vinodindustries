@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import SignOutButton from './SignOutButton'
+import NotificationBell from './NotificationBell'
 
 interface Props {
   userName?: string | null
@@ -70,6 +71,7 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
             <h1 className="text-sm font-bold tracking-tight truncate">{companyName}</h1>
             <p className="text-[10px] text-gray-400 mt-0.5">Textile Management</p>
           </div>
+          <NotificationBell />
         </div>
         <Link href="/select-company" className="mt-2 flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1.5 transition w-full">
           Switch Company
@@ -161,6 +163,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
           </svg>
         </button>
         <span className="font-bold text-base flex-1 truncate">{companyName}</span>
+        <NotificationBell />
         <Link href="/select-company" className="text-[10px] text-gray-400 hover:text-white bg-gray-800 rounded px-2 py-1 shrink-0">Switch</Link>
       </header>
 

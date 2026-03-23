@@ -1,0 +1,135 @@
+'use client'
+import { useState, useEffect, useRef } from 'react'
+
+interface Notification {
+  id: number
+  documentId: number
+  entityName: string
+  entityType: string
+  docName: string
+  expiryDate: string
+  daysLeft: number
+  urgent: boolean
+}
+
+const ENTITY_ICONS: Record<string, string> = {
+  company: '\u{1F3E2}',
+  person: '\u{1F464}',
+  huf: '\u{1F3E0}',
+  property: '\u{1F3D7}',
+}
+
+export default function NotificationBell() {
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch('/api/vault/notifications')
+      if (!res.ok) return
+      const data = await res.json()
+      if (Array.isArray(data)) setNotifications(data)
+    } catch {
+      // silently fail
+    }
+  }
+
+  useEffect(() => {
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 60000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  async function dismiss(id: number) {
+    await fetch(`/api/vault/notifications/${id}`, { method: 'PATCH' })
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }
+
+  function formatDate(dateStr: string): string {
+    const d = new Date(dateStr)
+    const day = d.getDate().toString().padStart(2, '0')
+    const month = (d.getMonth() + 1).toString().padStart(2, '0')
+    const year = d.getFullYear()
+    return `${day}/${month}/${year}`
+  }
+
+  function getDaysStyle(days: number): { cls: string; label: string } {
+    if (days <= 0) return { cls: 'bg-red-100 text-red-700', label: 'EXPIRED' }
+    if (days <= 15) return { cls: 'bg-red-50 text-red-600', label: `\u26A0 URGENT \u2022 ${days}d` }
+    if (days <= 30) return { cls: 'bg-amber-50 text-amber-700', label: `${days}d left` }
+    if (days <= 60) return { cls: 'bg-yellow-50 text-yellow-700', label: `${days}d left` }
+    return { cls: 'bg-green-50 text-green-700', label: `${days}d left` }
+  }
+
+  const count = notifications.length
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="relative p-1.5 rounded-lg hover:bg-gray-700 transition text-white"
+        aria-label="Notifications"
+      >
+        <span className="text-lg leading-none">{'\u{1F514}'}</span>
+        {count > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+            {count}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="fixed md:absolute right-2 md:right-0 top-14 md:top-full mt-0 md:mt-2 w-[calc(100vw-16px)] md:w-96 max-h-[70vh] overflow-y-auto bg-white rounded-xl shadow-xl border border-gray-200 z-50">
+          <div className="p-3 border-b border-gray-100">
+            <h3 className="text-sm font-bold text-gray-800">{'\u{1F514}'} Expiry Notifications</h3>
+          </div>
+          {count === 0 ? (
+            <div className="p-6 text-center text-gray-500 text-sm">
+              No expiring documents
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {notifications.map(n => {
+                const icon = ENTITY_ICONS[n.entityType] || '\u{1F4C4}'
+                const style = getDaysStyle(n.daysLeft)
+                return (
+                  <div key={n.id} className="p-3 hover:bg-gray-50 transition">
+                    <div className="flex items-start gap-2">
+                      <span className="text-lg shrink-0 mt-0.5">{icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{n.docName}</p>
+                        <p className="text-xs text-gray-500 truncate">{n.entityName}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-gray-500">{formatDate(n.expiryDate)}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${style.cls}`}>
+                            {style.label}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => dismiss(n.id)}
+                        className="text-xs text-gray-400 hover:text-gray-600 shrink-0 px-2 py-1 hover:bg-gray-100 rounded transition"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
