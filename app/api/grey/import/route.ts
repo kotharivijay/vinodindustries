@@ -94,18 +94,11 @@ export async function POST(req: NextRequest) {
     // Skip completely empty rows
     if (!date && !partyName && !lotNo) { skippedEmpty++; continue }
 
-    // Skip rows before FY 2025-26 (before April 2025) — carry-forward handled separately
-    if (date) {
-      const dateParts = date.split('/')
-      if (dateParts.length === 3) {
-        const month = parseInt(dateParts[0])
-        const yr = parseInt(dateParts[2])
-        const year = yr < 100 ? 2000 + yr : yr
-        if (year < 2025 || (year === 2025 && month < 4)) {
-          skippedOldYear++
-          continue
-        }
-      }
+    // Skip rows where Month column (B) is exactly "old year" (case-insensitive)
+    const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
+    if (monthVal === 'old year') {
+      skippedOldYear++
+      continue
     }
 
     // Skip rows with 0 or empty than

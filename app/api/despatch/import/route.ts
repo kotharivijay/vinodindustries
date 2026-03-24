@@ -100,15 +100,9 @@ export async function POST(req: NextRequest) {
   for (const row of dataRows) {
     const date = row[COL.DATE]?.trim() ?? ''
 
-    // Skip rows before FY 2025-26 (before April 2025)
-    if (date) {
-      const dp = date.split('/')
-      if (dp.length === 3) {
-        const m = parseInt(dp[0]), yr = parseInt(dp[2])
-        const y = yr < 100 ? 2000 + yr : yr
-        if (y < 2025 || (y === 2025 && m < 4)) continue
-      }
-    }
+    // Skip rows where Month column (B) is exactly "old year" (case-insensitive)
+    const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
+    if (monthVal === 'old year') continue
     const lotNo = row[COL.LOT_NO]?.trim() ?? ''
     const than = parseInt(row[COL.THAN]) || 0
     if (!date) continue
