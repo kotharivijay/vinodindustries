@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -26,6 +27,7 @@ interface PartyStock {
 type SortMode = 'party-asc' | 'party-desc' | 'stock-desc' | 'stock-asc'
 
 export default function StockPage() {
+  const router = useRouter()
   const { data, isLoading } = useSWR<{ parties: PartyStock[]; totalStock: number; totalLots: number }>('/api/stock', fetcher)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortMode>('party-asc')
@@ -67,9 +69,9 @@ export default function StockPage() {
     <div className="p-4 md:p-8 max-w-3xl">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
-        <Link href="/dashboard" className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">
           &larr; Back
-        </Link>
+        </button>
         <div>
           <h1 className="text-xl font-bold text-gray-800">Balance Stock</h1>
           <p className="text-sm text-gray-500">{data?.totalStock?.toLocaleString()} than &middot; {data?.totalLots} lots &middot; {data?.parties?.length} parties</p>
