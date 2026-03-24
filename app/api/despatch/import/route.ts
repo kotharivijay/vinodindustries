@@ -26,9 +26,10 @@ function parseDate(val: string): Date | null {
   return null
 }
 
-function buildDupKey(row: { challanNo: number | null; date: string; partyName: string; lotNo: string; than: number }): string {
-  if (row.challanNo) return `ch:${row.challanNo}|lot:${norm(row.lotNo)}`
-  return `dt:${row.date}|p:${norm(row.partyName)}|lot:${norm(row.lotNo)}|th:${row.than}`
+// Duplicate key: challanNo + lotNo + than + rate (same lot can appear multiple times in same challan)
+function buildDupKey(row: { challanNo: number | null; date: string; partyName: string; lotNo: string; than: number; rate: number | null }): string {
+  if (row.challanNo) return `ch:${row.challanNo}|lot:${norm(row.lotNo)}|th:${row.than}|r:${row.rate ?? 0}`
+  return `dt:${row.date}|p:${norm(row.partyName)}|lot:${norm(row.lotNo)}|th:${row.than}|r:${row.rate ?? 0}`
 }
 
 // POST — preview rows from despatch sheet
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   const [parties, transports, existingEntries, greyEntries] = await Promise.all([
     prisma.party.findMany(),
     prisma.transport.findMany(),
-    prisma.despatchEntry.findMany({ select: { challanNo: true, date: true, lotNo: true, than: true, partyId: true, party: { select: { name: true } } } }),
+    prisma.despatchEntry.findMany({ select: { challanNo: true, date: true, lotNo: true, than: true, rate: true, partyId: true, party: { select: { name: true } } } }),
     prisma.greyEntry.findMany({ select: { lotNo: true, qualityId: true, quality: { select: { name: true } } } }),
   ])
 
@@ -83,12 +84,13 @@ export async function POST(req: NextRequest) {
     ...obList.map((o: any) => norm(o.lotNo)),
   ])
 
-  // Build existing DB duplicate keys
+  // Build existing DB duplicate keys (challanNo + lotNo + than + rate)
   const dbKeys = new Set<string>()
   for (const e of existingEntries) {
     const dateStr = new Date(e.date).toISOString().split('T')[0]
-    if (e.challanNo) dbKeys.add(`ch:${e.challanNo}|lot:${norm(e.lotNo)}`)
-    dbKeys.add(`dt:${dateStr}|p:${norm(e.party.name)}|lot:${norm(e.lotNo)}|th:${e.than}`)
+    const r = e.rate ?? 0
+    if (e.challanNo) dbKeys.add(`ch:${e.challanNo}|lot:${norm(e.lotNo)}|th:${e.than}|r:${r}`)
+    dbKeys.add(`dt:${dateStr}|p:${norm(e.party.name)}|lot:${norm(e.lotNo)}|th:${e.than}|r:${r}`)
   }
 
   const batchKeys = new Set<string>()
@@ -96,10 +98,17 @@ export async function POST(req: NextRequest) {
   let sheetTotalThan = 0
 
   for (const row of dataRows) {
-    const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
-    if (/old|year|last|prev/.test(monthVal)) continue
-
     const date = row[COL.DATE]?.trim() ?? ''
+
+    // Skip rows before FY 2025-26 (before April 2025)
+    if (date) {
+      const dp = date.split('/')
+      if (dp.length === 3) {
+        const m = parseInt(dp[0]), yr = parseInt(dp[2])
+        const y = yr < 100 ? 2000 + yr : yr
+        if (y < 2025 || (y === 2025 && m < 4)) continue
+      }
+    }
     const lotNo = row[COL.LOT_NO]?.trim() ?? ''
     const than = parseInt(row[COL.THAN]) || 0
     if (!date) continue
@@ -126,8 +135,8 @@ export async function POST(req: NextRequest) {
     if (transportName && !transport && norm(transportName) !== 'by hand' && norm(transportName) !== 'open')
       missingMasters.push(`Transport: "${transportName}"`)
 
-    // Build duplicate key
-    const dupKey = buildDupKey({ challanNo, date, partyName, lotNo, than })
+    // Build duplicate key (same lot can appear multiple times in same challan)
+    const dupKey = buildDupKey({ challanNo, date, partyName, lotNo, than, rate })
     const isDuplicate = dbKeys.has(dupKey) || batchKeys.has(dupKey)
 
     const lotInGrey = knownLots.has(norm(lotNo))
@@ -135,8 +144,8 @@ export async function POST(req: NextRequest) {
     let status: 'ready' | 'missing_masters' | 'duplicate' | 'missing_lot'
     if (isDuplicate) status = 'duplicate'
     else if (missingMasters.length > 0) status = 'missing_masters'
-    else if (!lotNo) status = 'missing_lot'
-    else status = 'ready' // lot not in grey is OK — quality comes from narration
+    else if (!lotInGrey) status = 'missing_lot'
+    else status = 'ready'
 
     batchKeys.add(dupKey)
 
