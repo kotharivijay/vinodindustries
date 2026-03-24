@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
       narration,
       lotNo,
       qualityId: greyInfo?.qualityId ?? null,
-      qualityName: greyInfo?.qualityName ?? narration || null,
+      qualityName: greyInfo?.qualityName ?? (narration || null),
       lotInGrey,
       grayInwDate: row[COL.GRAY_INW_DATE]?.trim() ?? '',
       jobDelivery: row[COL.JOB_DELIVERY]?.trim() ?? '',
