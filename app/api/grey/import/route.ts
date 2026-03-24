@@ -11,14 +11,12 @@ const COL = {
   BALE: 11, BALE_NO: 12, ECH_BALE: 13, WEAVER: 14, LR_NO: 15, LOT_NO: 16,
 }
 
-// Normalize for case+space-insensitive matching
 function norm(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, ' ')
 }
 
 function parseSheetDate(val: string): Date | null {
   if (!val || val.toLowerCase() === 'open') return null
-  // MM/DD/YY or MM/DD/YYYY
   const parts = val.split('/')
   if (parts.length === 3) {
     const [m, d, y] = parts
@@ -28,27 +26,33 @@ function parseSheetDate(val: string): Date | null {
   return null
 }
 
+// Build a unique key for duplicate detection
+function buildDupKey(row: { challanNo: number | null; sn: number | null; date: string; partyName: string; lotNo: string; than: number }): string {
+  if (row.challanNo) return `ch:${row.challanNo}|lot:${norm(row.lotNo)}`
+  if (row.sn) return `sn:${row.sn}|lot:${norm(row.lotNo)}`
+  return `dt:${row.date}|p:${norm(row.partyName)}|lot:${norm(row.lotNo)}|th:${row.than}`
+}
+
 // POST /api/grey/import — fetch & preview rows from Google Sheet
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Fetch from sheet via service account
   const { values, error: sheetError } = await readSheet()
   if (!values) {
     return NextResponse.json({
       error: 'SHEETS_ERROR',
-      message: sheetError ?? 'Failed to read sheet. Add GOOGLE_SERVICE_ACCOUNT_KEY to .env.local.',
+      message: sheetError ?? 'Failed to read sheet.',
     }, { status: 403 })
   }
   if (values.length < 2) {
     return NextResponse.json({ error: 'NO_DATA', message: 'No data found in sheet.' }, { status: 400 })
   }
 
-  // First row = header (row 3), rest = data
+  // First row = header (row 3), rest = data (row 4+)
   const [, ...dataRows] = values
 
-  // Load all masters for matching
+  // Load masters
   const [parties, qualities, weavers, transports] = await Promise.all([
     prisma.party.findMany(),
     prisma.quality.findMany(),
@@ -61,29 +65,61 @@ export async function POST(req: NextRequest) {
   const weaverMap = new Map(weavers.map((w) => [norm(w.name), w]))
   const transportMap = new Map(transports.map((t) => [norm(t.name), t]))
 
-  // Existing entries to detect duplicates (by SN or challanNo)
-  const existing = await prisma.greyEntry.findMany({ select: { sn: true, challanNo: true } })
-  const existingSNs = new Set(existing.map((e) => e.sn).filter(Boolean))
-  const existingChallans = new Set(existing.map((e) => e.challanNo))
+  // Build existing duplicate keys from DB
+  const existing = await prisma.greyEntry.findMany({
+    select: { sn: true, challanNo: true, lotNo: true, than: true, date: true, partyId: true, party: { select: { name: true } } },
+  })
+  const existingKeys = new Set<string>()
+  for (const e of existing) {
+    if (e.challanNo) existingKeys.add(`ch:${e.challanNo}|lot:${norm(e.lotNo)}`)
+    if (e.sn) existingKeys.add(`sn:${e.sn}|lot:${norm(e.lotNo)}`)
+  }
+
+  // Track keys within this import batch
+  const batchKeys = new Set<string>()
 
   const rows = []
+  let skippedOldYear = 0
+  let skippedZeroThan = 0
+  let skippedEmpty = 0
 
   for (const row of dataRows) {
     const partyName = row[COL.PARTY]?.trim() ?? ''
     const date = row[COL.DATE]?.trim() ?? ''
-    if (!date && !partyName) continue // skip completely empty rows
+    const lotNo = row[COL.LOT_NO]?.trim() ?? ''
+    const than = parseInt(row[COL.THAN]) || 0
 
-    // Skip rows where month is "last year", "old year", etc. (carry-forward handled separately)
+    // ── Skip rules ──
+
+    // Skip completely empty rows
+    if (!date && !partyName && !lotNo) { skippedEmpty++; continue }
+
+    // Skip "old year" / "last year" rows (carry-forward handled separately)
     const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
-    if (monthVal.includes('last') || monthVal.includes('old') || monthVal.includes('year') || monthVal.includes('prev')) continue
+    if (monthVal.includes('last') || monthVal.includes('old') || monthVal.includes('year') || monthVal.includes('prev')) {
+      skippedOldYear++
+      continue
+    }
+
+    // Skip rows with 0 or empty than
+    if (!than || than <= 0) { skippedZeroThan++; continue }
+
+    // Skip rows without lot no
+    if (!lotNo) { skippedEmpty++; continue }
+
+    // Skip rows without date
+    if (!date) { skippedEmpty++; continue }
+
+    // Skip rows without party
+    if (!partyName) { skippedEmpty++; continue }
+
+    // ── Process row ──
 
     const sn = parseInt(row[COL.SN]) || null
     const challanNo = parseInt(row[COL.CHALLAN]) || null
     const qualityName = row[COL.QUALITY]?.trim() ?? ''
     const weaverName = row[COL.WEAVER]?.trim() ?? ''
     const transportName = row[COL.TRANSPORT]?.trim() ?? ''
-    const lotNo = row[COL.LOT_NO]?.trim() ?? ''
-    const than = parseInt(row[COL.THAN]) || 0
 
     const party = partyMap.get(norm(partyName))
     const quality = qualityMap.get(norm(qualityName))
@@ -97,9 +133,10 @@ export async function POST(req: NextRequest) {
     if (transportName && !transport && transportName.toLowerCase() !== 'open')
       missingMasters.push(`Transport: "${transportName}"`)
 
-    const isDuplicate =
-      (sn !== null && existingSNs.has(sn)) ||
-      (challanNo !== null && existingChallans.has(challanNo))
+    // Multi-level duplicate detection
+    const dupKey = buildDupKey({ challanNo, sn, date, partyName, lotNo, than })
+    const isDuplicate = existingKeys.has(dupKey) || batchKeys.has(dupKey)
+    batchKeys.add(dupKey)
 
     let status: 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate'
     if (isDuplicate) status = 'duplicate'
@@ -118,7 +155,7 @@ export async function POST(req: NextRequest) {
       lotNo,
       than,
       weight: row[COL.WEIGHT]?.trim() ?? '',
-      grayMtr: parseFloat(row[COL.GRAY_MTR]) || null,
+      grayMtr: parseFloat(row[COL.GRAY_MTR]?.replace(/,/g, '')) || null,
       transportLrNo: row[COL.TRANSPORT_LR]?.trim() ?? '',
       bale: parseInt(row[COL.BALE]) || null,
       baleNo: row[COL.BALE_NO]?.trim() ?? '',
@@ -139,6 +176,9 @@ export async function POST(req: NextRequest) {
     missing_masters: rows.filter((r) => r.status === 'missing_masters').length,
     missing_lot: rows.filter((r) => r.status === 'missing_lot').length,
     duplicate: rows.filter((r) => r.status === 'duplicate').length,
+    skippedOldYear,
+    skippedZeroThan,
+    skippedEmpty,
   }
 
   return NextResponse.json({ rows, summary })
@@ -156,11 +196,10 @@ export async function PUT(req: NextRequest) {
   for (const row of rows) {
     if (row.status !== 'ready') continue
     if (!row.partyId || !row.qualityId || !row.weaverId) continue
-    if (!row.lotNo) continue
+    if (!row.lotNo || !row.than || row.than <= 0) continue
 
     try {
       const date = parseSheetDate(row.date) ?? new Date()
-      // Find or default transport (some rows have "Open" transport)
       const transportId = row.transportId ?? (await prisma.transport.findFirst())?.id
       if (!transportId) { errors.push({ sn: row.sn, error: 'No transport found' }); continue }
 
@@ -200,9 +239,8 @@ export async function PATCH(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { rows } = await req.json()
-  const created: Record<string, number[]> = { parties: [], qualities: [], weavers: [], transports: [] }
 
-  // Collect unique missing names (deduplicated by normalized key, keep first casing seen)
+  // Collect unique missing names
   const missingParties = new Map<string, string>()
   const missingQualities = new Map<string, string>()
   const missingWeavers = new Map<string, string>()
@@ -217,7 +255,7 @@ export async function PATCH(req: NextRequest) {
       missingTransports.set(norm(row.transportName), row.transportName)
   }
 
-  // Load existing masters to avoid creating duplicates differing only by case/spaces
+  // Load existing to avoid duplicates
   const [existingParties, existingQualities, existingWeavers, existingTransports] = await Promise.all([
     prisma.party.findMany(),
     prisma.quality.findMany(),
@@ -245,7 +283,7 @@ export async function PATCH(req: NextRequest) {
       .map(([, name]) => prisma.transport.create({ data: { name } })),
   ])
 
-  // Reload masters and re-map rows
+  // Reload and re-map
   const [parties, qualities, weavers, transports] = await Promise.all([
     prisma.party.findMany(),
     prisma.quality.findMany(),
