@@ -29,6 +29,9 @@ export async function GET() {
     obMap = new Map(obs.map((o: any) => [o.lotNo.toLowerCase(), o.openingThan]))
   } catch {}
 
+  // Track which lots already have grey entries
+  const lotsWithGrey = new Set(entries.map(e => e.lotNo.toLowerCase()))
+
   const enriched = entries.map((e) => {
     const ob = obMap.get(e.lotNo.toLowerCase()) ?? 0
     return {
@@ -39,7 +42,44 @@ export async function GET() {
     }
   })
 
-  return NextResponse.json(enriched)
+  // Add carry-forward-only lots (no current year grey entries)
+  let obOnlyLots: any[] = []
+  try {
+    const db = prisma as any
+    const allObs = await db.lotOpeningBalance.findMany()
+    for (const ob of allObs) {
+      if (lotsWithGrey.has(ob.lotNo.toLowerCase())) continue
+      const despThan = despatchMap.get(ob.lotNo) ?? 0
+      const stock = ob.openingThan - despThan
+      if (stock <= 0) continue
+      obOnlyLots.push({
+        id: -ob.id, // negative id to distinguish from real entries
+        sn: null,
+        date: ob.createdAt,
+        challanNo: 0,
+        party: { id: 0, name: ob.party || 'Carry Forward' },
+        quality: { id: 0, name: ob.quality || '-' },
+        transport: { id: 0, name: '-' },
+        weaver: { id: 0, name: '-' },
+        weight: null,
+        than: ob.openingThan,
+        grayMtr: null,
+        transportLrNo: null,
+        bale: null,
+        baleNo: null,
+        echBaleThan: null,
+        viverNameBill: null,
+        lrNo: null,
+        lotNo: ob.lotNo,
+        tDesp: despThan,
+        stock,
+        openingBalance: ob.openingThan,
+        isCarryForward: true,
+      })
+    }
+  } catch {}
+
+  return NextResponse.json([...enriched, ...obOnlyLots])
 }
 
 export async function POST(req: NextRequest) {
