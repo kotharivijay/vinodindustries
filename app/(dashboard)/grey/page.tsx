@@ -208,6 +208,19 @@ export default function GreyListPage() {
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
             Import from Sheet
           </button>
+          <button
+            onClick={async () => {
+              const typed = prompt('Type RESET to delete all Grey + Despatch data. This cannot be undone.')
+              if (typed !== 'RESET') return
+              await fetch('/api/grey', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'RESET_GREY' }) })
+              await fetch('/api/despatch', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'RESET_DESPATCH' }) })
+              alert('All Grey + Despatch data deleted.')
+              mutate()
+            }}
+            className="flex items-center gap-2 bg-red-100 text-red-700 border border-red-300 px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-200"
+          >
+            Reset All
+          </button>
           <Link href="/grey/new" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
             + New Entry
           </Link>

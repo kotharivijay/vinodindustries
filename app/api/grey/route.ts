@@ -76,3 +76,17 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json(entry, { status: 201 })
 }
+
+// DELETE all — reset entire grey table
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { confirm } = await req.json().catch(() => ({}))
+  if (confirm !== 'RESET_GREY') {
+    return NextResponse.json({ error: 'Confirmation required: send { confirm: "RESET_GREY" }' }, { status: 400 })
+  }
+
+  await prisma.greyEntry.deleteMany({})
+  return NextResponse.json({ ok: true, message: 'All grey entries deleted' })
+}

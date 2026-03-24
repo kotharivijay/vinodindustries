@@ -73,6 +73,10 @@ export async function POST(req: NextRequest) {
     const date = row[COL.DATE]?.trim() ?? ''
     if (!date && !partyName) continue // skip completely empty rows
 
+    // Skip rows where month is "last year", "old year", etc. (carry-forward handled separately)
+    const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
+    if (monthVal.includes('last') || monthVal.includes('old') || monthVal.includes('year') || monthVal.includes('prev')) continue
+
     const sn = parseInt(row[COL.SN]) || null
     const challanNo = parseInt(row[COL.CHALLAN]) || null
     const qualityName = row[COL.QUALITY]?.trim() ?? ''
