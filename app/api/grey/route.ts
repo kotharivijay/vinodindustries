@@ -21,11 +21,23 @@ export async function GET() {
 
   const despatchMap = new Map(despatchTotals.map((d) => [d.lotNo, d._sum.than ?? 0]))
 
-  const enriched = entries.map((e) => ({
-    ...e,
-    tDesp: despatchMap.get(e.lotNo) ?? 0,
-    stock: e.than - (despatchMap.get(e.lotNo) ?? 0),
-  }))
+  // Fetch opening balances (carry-forward from last year)
+  let obMap = new Map<string, number>()
+  try {
+    const db = prisma as any
+    const obs = await db.lotOpeningBalance.findMany({ select: { lotNo: true, openingThan: true } })
+    obMap = new Map(obs.map((o: any) => [o.lotNo.toLowerCase(), o.openingThan]))
+  } catch {}
+
+  const enriched = entries.map((e) => {
+    const ob = obMap.get(e.lotNo.toLowerCase()) ?? 0
+    return {
+      ...e,
+      tDesp: despatchMap.get(e.lotNo) ?? 0,
+      stock: ob + e.than - (despatchMap.get(e.lotNo) ?? 0),
+      openingBalance: ob,
+    }
+  })
 
   return NextResponse.json(enriched)
 }

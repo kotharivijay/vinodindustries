@@ -20,8 +20,16 @@ export async function GET(req: NextRequest) {
 
   const greyThan = greyAgg._sum.than ?? 0
 
-  if (greyThan === 0) {
-    return NextResponse.json({ exists: false, stock: 0, greyThan: 0, despatchThan: 0 })
+  // Fetch opening balance (carry-forward from last year)
+  let openingBalance = 0
+  try {
+    const db = prisma as any
+    const ob = await db.lotOpeningBalance.findFirst({ where: { lotNo: { equals: lotNo, mode: 'insensitive' } } })
+    if (ob) openingBalance = ob.openingThan
+  } catch {}
+
+  if (greyThan === 0 && openingBalance === 0) {
+    return NextResponse.json({ exists: false, stock: 0, greyThan: 0, despatchThan: 0, openingBalance: 0 })
   }
 
   // Sum despatch than for this lot
@@ -31,7 +39,7 @@ export async function GET(req: NextRequest) {
   })
 
   const despatchThan = despatchAgg._sum.than ?? 0
-  const stock = greyThan - despatchThan
+  const stock = openingBalance + greyThan - despatchThan
 
-  return NextResponse.json({ exists: true, stock, greyThan, despatchThan })
+  return NextResponse.json({ exists: true, stock, greyThan, despatchThan, openingBalance })
 }

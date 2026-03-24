@@ -25,6 +25,17 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
     }),
   ])
 
+  // Fetch opening balance (carry-forward from last year)
+  let openingBalance: any = null
+  try {
+    openingBalance = await db.lotOpeningBalance.findFirst({
+      where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+      include: { despatchHistory: { orderBy: { setNo: 'asc' } } },
+    })
+  } catch {}
+
+  const obThan = openingBalance?.openingThan ?? 0
+
   // Find dyeing entries via DyeingEntryLot (correct) + fallback to lotNo field
   let dyeingEntries: any[] = []
   try {
@@ -93,7 +104,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
   const despatchThan = despatchEntries.reduce((s, e) => s + e.than, 0)
   const dyeingThan = dyeingEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
   const finishThan = finishEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
-  const stock = greyThan - despatchThan
+  const stock = obThan + greyThan - despatchThan
 
   const fmt = (d: Date) => new Date(d).toLocaleDateString('en-IN')
 
@@ -108,7 +119,14 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
+      <div className={`grid grid-cols-2 ${obThan > 0 ? 'sm:grid-cols-6' : 'sm:grid-cols-5'} gap-3 mb-8`}>
+        {obThan > 0 && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Opening Bal</p>
+            <p className="text-2xl font-bold text-blue-600 mt-1">{obThan}</p>
+            <p className="text-xs text-gray-400">carry-forward</p>
+          </div>
+        )}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Grey Inward</p>
           <p className="text-2xl font-bold text-gray-800 mt-1">{greyThan}</p>
@@ -135,6 +153,38 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
           <p className="text-xs text-gray-400">in stock</p>
         </div>
       </div>
+
+      {/* Opening Balance (carry-forward) */}
+      {openingBalance && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Opening Balance (Carry-Forward from {openingBalance.financialYear})</h2>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+              <div><span className="text-gray-400 text-xs">Original Grey</span><p className="font-semibold">{openingBalance.greyThan} than</p></div>
+              <div><span className="text-gray-400 text-xs">Despatched (prev yr)</span><p className="font-semibold">{openingBalance.totalDespatched} than</p></div>
+              <div><span className="text-gray-400 text-xs">Carry-Forward</span><p className="font-bold text-blue-600">{openingBalance.openingThan} than</p></div>
+              {openingBalance.party && <div><span className="text-gray-400 text-xs">Party</span><p>{openingBalance.party}</p></div>}
+            </div>
+
+            {/* Previous year despatch history */}
+            {openingBalance.despatchHistory?.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <p className="text-xs font-medium text-gray-500 mb-2">Previous Year Despatch</p>
+                <div className="space-y-1">
+                  {openingBalance.despatchHistory.map((d: any) => (
+                    <div key={d.id} className="flex items-center gap-4 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                      <span>Ch: {d.challanNo}</span>
+                      <span className="font-semibold">{d.than} than</span>
+                      {d.billNo && <span>Bill: {d.billNo}</span>}
+                      {d.rate && <span>@ &#8377;{d.rate}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Grey entries */}
       {greyEntries.length > 0 && (

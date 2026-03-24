@@ -15,12 +15,12 @@ interface GreyEntry {
   lrNo: string | null; viverNameBill: string | null; echBaleThan: number | null
   party: { name: string }; quality: { name: string }
   transport: { name: string }; weaver: { name: string }
-  stock: number; tDesp: number
+  stock: number; tDesp: number; openingBalance?: number
 }
 
 interface StockSummaryRow {
   lotNo: string; party: string; quality: string; weaver: string
-  entries: number; greyThan: number; tDesp: number; stock: number; lastDate: string
+  entries: number; greyThan: number; tDesp: number; stock: number; lastDate: string; openingBalance: number
 }
 
 type SortField = 'sn' | 'date' | 'party' | 'quality' | 'than' | 'lotNo' | 'lrNo' | 'tDesp' | 'stock'
@@ -71,6 +71,8 @@ export default function GreyListPage() {
   const [debouncedStockSearch, setDebouncedStockSearch] = useDebounce('')
   const [filters, setFilters] = useState({ party: '', quality: '', lotNo: '', lrNo: '' })
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
+  const [cfImporting, setCfImporting] = useState(false)
+  const [cfResult, setCfResult] = useState<{ imported: number; totalThan: number } | null>(null)
   const toggleExpand = (id: number) => setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
 
   async function handleDelete(id: number) {
@@ -81,21 +83,37 @@ export default function GreyListPage() {
     mutate()
   }
 
+  async function handleCarryForwardImport() {
+    if (!confirm('Import carry-forward opening balances from last year sheet? This will overwrite existing opening balances.')) return
+    setCfImporting(true)
+    setCfResult(null)
+    try {
+      const res = await fetch('/api/grey/carry-forward', { method: 'POST' })
+      const data = await res.json()
+      if (data.error) { alert('Import failed: ' + data.error); return }
+      setCfResult({ imported: data.imported, totalThan: data.totalThan })
+      mutate()
+    } catch { alert('Import failed') }
+    finally { setCfImporting(false) }
+  }
+
   const stockSummary = useMemo<StockSummaryRow[]>(() => {
     const map = new Map<string, StockSummaryRow>()
     for (const e of entries) {
+      const ob = e.openingBalance ?? 0
       const existing = map.get(e.lotNo)
       if (!existing) {
         map.set(e.lotNo, {
           lotNo: e.lotNo, party: e.party.name, quality: e.quality.name,
           weaver: e.weaver.name, entries: 1, greyThan: e.than,
-          tDesp: e.tDesp, stock: e.stock, lastDate: e.date,
+          tDesp: e.tDesp, stock: e.stock, lastDate: e.date, openingBalance: ob,
         })
       } else {
         existing.entries++
         existing.greyThan += e.than
         existing.tDesp = Math.max(existing.tDesp, e.tDesp)
-        existing.stock = existing.greyThan - existing.tDesp
+        existing.openingBalance = Math.max(existing.openingBalance, ob)
+        existing.stock = existing.openingBalance + existing.greyThan - existing.tDesp
         if (new Date(e.date) > new Date(existing.lastDate)) existing.lastDate = e.date
       }
     }
@@ -180,14 +198,31 @@ export default function GreyListPage() {
           <p className="text-sm text-gray-500 mt-1">{entries.length} entries · {stockSummary.length} lots · {lotsInStock} in stock</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleCarryForwardImport}
+            disabled={cfImporting}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {cfImporting ? 'Importing...' : 'Import Carry-Forward'}
+          </button>
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
-            📊 Import from Google Sheet
+            Import from Sheet
           </button>
           <Link href="/grey/new" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
             + New Entry
           </Link>
         </div>
       </div>
+
+      {/* Carry-forward import result */}
+      {cfResult && (
+        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-blue-800">
+            Carry-forward imported: <strong>{cfResult.imported} lots</strong>, <strong>{cfResult.totalThan.toLocaleString()} than</strong> total opening balance.
+          </p>
+          <button onClick={() => setCfResult(null)} className="text-blue-500 hover:text-blue-700 text-xs font-medium ml-4">Dismiss</button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-gray-200">
@@ -272,6 +307,7 @@ export default function GreyListPage() {
                       <tr key={r.lotNo} className="hover:bg-gray-50 transition">
                         <td className="px-4 py-3 font-semibold text-indigo-700">
                           <Link href={`/lot/${encodeURIComponent(r.lotNo)}`} className="hover:underline">{r.lotNo}</Link>
+                          {r.openingBalance > 0 && <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
                         </td>
                         <td className="px-4 py-3 text-gray-800">{r.party}</td>
                         <td className="px-4 py-3 text-gray-600">{r.quality}</td>
