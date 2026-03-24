@@ -13,10 +13,10 @@ export default function DashboardPage() {
   }, [])
 
   const cards = [
-    { label: 'Total Grey Entries', value: stats?.greyEntries, color: 'bg-blue-500', bg: 'bg-blue-50', text: 'text-blue-700' },
-    { label: 'Despatch Entries', value: stats?.despatchEntries, color: 'bg-green-500', bg: 'bg-green-50', text: 'text-green-700' },
-    { label: 'Balance Stock (Than)', value: stats?.currentStock, color: 'bg-amber-500', bg: 'bg-amber-50', text: 'text-amber-700' },
-    { label: 'Active Parties', value: stats?.parties, color: 'bg-purple-500', bg: 'bg-purple-50', text: 'text-purple-700' },
+    { label: 'Total Grey Entries', value: stats?.greyEntries, color: 'bg-blue-500', bg: 'bg-blue-50', text: 'text-blue-700', href: '' },
+    { label: 'Despatch Entries', value: stats?.despatchEntries, color: 'bg-green-500', bg: 'bg-green-50', text: 'text-green-700', href: '' },
+    { label: 'Balance Stock (Than)', value: stats?.currentStock, color: 'bg-amber-500', bg: 'bg-amber-50', text: 'text-amber-700', href: '/stock' },
+    { label: 'Active Parties', value: stats?.parties, color: 'bg-purple-500', bg: 'bg-purple-50', text: 'text-purple-700', href: '' },
   ]
 
   return (
@@ -27,17 +27,28 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        {cards.map((c) => (
-          <div key={c.label} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <div className={`w-10 h-10 ${c.bg} rounded-lg flex items-center justify-center mb-4`}>
-              <div className={`w-4 h-4 ${c.color} rounded-sm`} />
+        {cards.map((c) => {
+          const inner = (
+            <>
+              <div className={`w-10 h-10 ${c.bg} rounded-lg flex items-center justify-center mb-4`}>
+                <div className={`w-4 h-4 ${c.color} rounded-sm`} />
+              </div>
+              <p className={`text-2xl font-bold ${c.text}`}>
+                {stats === null ? '...' : (c.value ?? 0).toLocaleString()}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">{c.label}</p>
+            </>
+          )
+          return c.href ? (
+            <Link key={c.label} href={c.href} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 hover:shadow-md hover:border-gray-200 transition cursor-pointer block">
+              {inner}
+            </Link>
+          ) : (
+            <div key={c.label} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+              {inner}
             </div>
-            <p className={`text-2xl font-bold ${c.text}`}>
-              {stats === null ? '...' : (c.value ?? 0).toLocaleString()}
-            </p>
-            <p className="text-sm text-gray-500 mt-1">{c.label}</p>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
