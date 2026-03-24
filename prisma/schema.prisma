@@ -229,8 +229,32 @@ model DespatchEntry {
   transportId Int?
   transport   Transport? @relation(fields: [transportId], references: [id])
   bale        Int?
+  narration   String?   // descriptive text from despatch sheet quality column
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  changeLogs  DespatchChangeLog[]
+}
+
+model DespatchChangeLog {
+  id        Int           @id @default(autoincrement())
+  entryId   Int
+  entry     DespatchEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  field     String        // "than" | "lotNo" | "rate" | "billNo"
+  oldValue  String
+  newValue  String
+  changedBy String        // user email
+  createdAt DateTime      @default(now())
+}
+
+model DespatchNotification {
+  id        Int      @id @default(autoincrement())
+  entryId   Int
+  challanNo Int
+  lotNo     String
+  message   String
+  userEmail String
+  dismissed Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 // ─── Encrypted Document Vault ────────────────────────────────────────────────

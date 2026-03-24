@@ -35,6 +35,7 @@ interface DespatchEntry {
   party: { name: string }
   quality: { name: string }
   transport: { name: string } | null
+  narration: string | null
   isLastYear?: boolean
   financialYear?: string
 }
@@ -380,7 +381,7 @@ export default function DespatchListPage() {
                         <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                           <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                           <span className="text-gray-300">·</span>
-                          <span>Ch {e.challanNo}</span>
+                          <Link href={`/despatch/${e.id}`} className="text-indigo-600 font-medium hover:underline">Ch {e.challanNo}</Link>
                           {isDup(e) && <span className="bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>⚠ Dup: {getDupReason(e)}</span>}
                         </div>
                         <div className="flex gap-3 shrink-0">
@@ -392,7 +393,8 @@ export default function DespatchListPage() {
                         <p className="text-sm font-semibold text-gray-800">{e.party?.name ?? '-'}</p>
                         {e.isLastYear && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">Last Year</span>}
                       </div>
-                      <p className="text-xs text-gray-500 mb-2">{e.quality?.name ?? '-'}</p>
+                      <p className="text-xs text-gray-500 mb-1">{e.quality?.name ?? '-'}</p>
+                      {e.narration && <p className="text-xs text-gray-400 italic mb-1">{e.narration}</p>}
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-indigo-100 active:bg-indigo-200">
                           🔖 {e.lotNo}
@@ -459,7 +461,7 @@ export default function DespatchListPage() {
                         <tr key={e.id} className={`hover:bg-gray-50 transition ${isDup(e) ? 'bg-red-50' : ''}`}>
                           <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
                           <td className="px-3 py-2.5">
-                            <span>{e.challanNo}</span>
+                            <Link href={`/despatch/${e.id}`} className="text-indigo-600 font-medium hover:underline">{e.challanNo}</Link>
                             {isDup(e) && <span className="ml-1.5 bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>⚠ {getDupReason(e)}</span>}
                           </td>
                           <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">

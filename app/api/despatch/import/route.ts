@@ -6,12 +6,12 @@ import { readDespatchSheet } from '@/lib/sheets'
 
 // Column indices (0-based). Row 3 = header, Row 4+ = data
 const COL = {
-  CHALLAN: 0, MONTH: 1, DATE: 2, PARTY: 3, QUALITY: 4,
-  GRAY_INW_DATE: 5, LOT_NO: 6, JOB_DELIVERY: 7, THAN: 8,
-  BILL_NO: 9, RATE: 10, P_TOTAL: 11, LR_NO: 12, TRANSPORT: 13, BALE: 14,
+  CHALLAN: 0, MONTH: 1, DATE: 2, PARTY: 3, QUALITY: 4, GRAY_INW_DATE: 5,
+  LOT_NO: 6, JOB_DELIVERY: 7, THAN: 8, BILL_NO: 9, RATE: 10, P_TOTAL: 11,
+  LR_NO: 12, TRANSPORT: 13, BALE: 14,
 }
 
-function norm(s: string) {
+function norm(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, ' ')
 }
 
@@ -26,6 +26,11 @@ function parseDate(val: string): Date | null {
   return null
 }
 
+function buildDupKey(row: { challanNo: number | null; date: string; partyName: string; lotNo: string; than: number }): string {
+  if (row.challanNo) return `ch:${row.challanNo}|lot:${norm(row.lotNo)}`
+  return `dt:${row.date}|p:${norm(row.partyName)}|lot:${norm(row.lotNo)}|th:${row.than}`
+}
+
 // POST — preview rows from despatch sheet
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -35,63 +40,94 @@ export async function POST(req: NextRequest) {
   if (!values) return NextResponse.json({ error: 'SHEETS_ERROR', message: sheetError }, { status: 403 })
   if (values.length < 2) return NextResponse.json({ error: 'NO_DATA', message: 'No data found.' }, { status: 400 })
 
-  const [, ...dataRows] = values
+  const [, ...dataRows] = values // first row = header (row 3), rest = data (row 4+)
 
-  const [parties, qualities, transports] = await Promise.all([
+  const [parties, transports, existingEntries, greyEntries] = await Promise.all([
     prisma.party.findMany(),
-    prisma.quality.findMany(),
     prisma.transport.findMany(),
+    prisma.despatchEntry.findMany({ select: { challanNo: true, date: true, lotNo: true, than: true, partyId: true, party: { select: { name: true } } } }),
+    prisma.greyEntry.findMany({ select: { lotNo: true, qualityId: true, quality: { select: { name: true } } } }),
   ])
 
   const partyMap = new Map(parties.map(p => [norm(p.name), p]))
-  const qualityMap = new Map(qualities.map(q => [norm(q.name), q]))
   const transportMap = new Map(transports.map(t => [norm(t.name), t]))
 
+  // Build grey register lookup: lotNo -> { qualityId, qualityName }
+  const greyLotMap = new Map<string, { qualityId: number; qualityName: string }>()
+  for (const g of greyEntries) {
+    greyLotMap.set(norm(g.lotNo), { qualityId: g.qualityId, qualityName: g.quality.name })
+  }
+
+  // Build existing DB duplicate keys
+  const dbKeys = new Set<string>()
+  for (const e of existingEntries) {
+    const dateStr = new Date(e.date).toISOString().split('T')[0]
+    if (e.challanNo) dbKeys.add(`ch:${e.challanNo}|lot:${norm(e.lotNo)}`)
+    dbKeys.add(`dt:${dateStr}|p:${norm(e.party.name)}|lot:${norm(e.lotNo)}|th:${e.than}`)
+  }
+
+  const batchKeys = new Set<string>()
   const rows = []
   let sheetTotalThan = 0
 
   for (const row of dataRows) {
-    const partyName = row[COL.PARTY]?.trim() ?? ''
-    const date = row[COL.DATE]?.trim() ?? ''
-    if (!date && !partyName) continue
+    const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
+    if (/old|year|last|prev/.test(monthVal)) continue
 
-    const challanNo = parseInt(row[COL.CHALLAN]) || null
-    const qualityName = row[COL.QUALITY]?.trim() ?? ''
-    const transportName = row[COL.TRANSPORT]?.trim() ?? ''
+    const date = row[COL.DATE]?.trim() ?? ''
     const lotNo = row[COL.LOT_NO]?.trim() ?? ''
     const than = parseInt(row[COL.THAN]) || 0
+    if (!date) continue
+    if (!lotNo) continue
+    if (than === 0) continue
+
+    const challanNo = parseInt(row[COL.CHALLAN]) || null
+    const partyName = row[COL.PARTY]?.trim() ?? ''
+    const narration = row[COL.QUALITY]?.trim() ?? ''  // sheet quality col → narration
+    const transportName = row[COL.TRANSPORT]?.trim() ?? ''
     const rate = parseFloat(row[COL.RATE]) || null
     const pTotal = rate && than ? parseFloat((than * rate).toFixed(2)) : (parseFloat(row[COL.P_TOTAL]) || null)
 
     sheetTotalThan += than
 
     const party = partyMap.get(norm(partyName))
-    const quality = qualityMap.get(norm(qualityName))
     const transport = transportName ? transportMap.get(norm(transportName)) : null
+
+    // Fetch quality from grey register by lotNo
+    const greyInfo = greyLotMap.get(norm(lotNo))
 
     const missingMasters: string[] = []
     if (partyName && !party) missingMasters.push(`Party: "${partyName}"`)
-    if (qualityName && !quality) missingMasters.push(`Quality: "${qualityName}"`)
     if (transportName && !transport && norm(transportName) !== 'by hand' && norm(transportName) !== 'open')
       missingMasters.push(`Transport: "${transportName}"`)
 
-    let status: 'ready' | 'missing_masters' | 'missing_lot'
-    if (missingMasters.length > 0) status = 'missing_masters'
-    else if (!lotNo) status = 'missing_lot'
+    // Build duplicate key
+    const dupKey = buildDupKey({ challanNo, date, partyName, lotNo, than })
+    const isDuplicate = dbKeys.has(dupKey) || batchKeys.has(dupKey)
+
+    let status: 'ready' | 'missing_masters' | 'duplicate' | 'missing_lot'
+    if (isDuplicate) status = 'duplicate'
+    else if (missingMasters.length > 0) status = 'missing_masters'
+    else if (!greyInfo) status = 'missing_lot'
     else status = 'ready'
+
+    batchKeys.add(dupKey)
 
     rows.push({
       challanNo, date,
-      partyName, qualityName, transportName, lotNo,
+      partyName, partyId: party?.id ?? null,
+      narration,
+      lotNo,
+      qualityId: greyInfo?.qualityId ?? null,
+      qualityName: greyInfo?.qualityName ?? null,
       grayInwDate: row[COL.GRAY_INW_DATE]?.trim() ?? '',
       jobDelivery: row[COL.JOB_DELIVERY]?.trim() ?? '',
-      than, billNo: row[COL.BILL_NO]?.trim() ?? '',
+      than,
+      billNo: row[COL.BILL_NO]?.trim() ?? '',
       rate, pTotal,
       lrNo: row[COL.LR_NO]?.trim() ?? '',
+      transportName, transportId: transport?.id ?? null,
       bale: parseInt(row[COL.BALE]) || null,
-      partyId: party?.id ?? null,
-      qualityId: quality?.id ?? null,
-      transportId: transport?.id ?? null,
       missingMasters, status,
     })
   }
@@ -101,6 +137,7 @@ export async function POST(req: NextRequest) {
     ready: rows.filter(r => r.status === 'ready').length,
     missing_masters: rows.filter(r => r.status === 'missing_masters').length,
     missing_lot: rows.filter(r => r.status === 'missing_lot').length,
+    duplicate: rows.filter(r => r.status === 'duplicate').length,
     sheetTotalThan,
   }
   return NextResponse.json({ rows, summary })
@@ -117,18 +154,29 @@ export async function PUT(req: NextRequest) {
 
   for (const row of rows) {
     if (row.status !== 'ready') continue
-    if (!row.partyId || !row.qualityId || !row.lotNo) continue
+    if (!row.partyId || !row.lotNo) continue
 
     try {
       const date = parseDate(row.date) ?? new Date()
       const grayInwDate = row.grayInwDate ? parseDate(row.grayInwDate) : null
-      const transportId = row.transportId ?? (await prisma.transport.findFirst())?.id
-      if (!transportId) { errors.push({ challanNo: row.challanNo, error: 'No transport found' }); continue }
+      const transportId = row.transportId ?? (await prisma.transport.findFirst())?.id ?? null
 
-      await prisma.despatchEntry.create({
+      // Quality from grey register lookup by lotNo
+      let qualityId = row.qualityId
+      if (!qualityId) {
+        const greyMatch = await prisma.greyEntry.findFirst({
+          where: { lotNo: { equals: row.lotNo, mode: 'insensitive' } },
+          select: { qualityId: true },
+        })
+        qualityId = greyMatch?.qualityId
+      }
+      if (!qualityId) { errors.push({ challanNo: row.challanNo, error: 'No quality found for lot ' + row.lotNo }); continue }
+
+      const db = prisma as any
+      await db.despatchEntry.create({
         data: {
           date, challanNo: row.challanNo ?? 0,
-          partyId: row.partyId, qualityId: row.qualityId,
+          partyId: row.partyId, qualityId,
           grayInwDate, lotNo: row.lotNo,
           jobDelivery: row.jobDelivery || null,
           than: row.than,
@@ -138,6 +186,7 @@ export async function PUT(req: NextRequest) {
           lrNo: row.lrNo || null,
           transportId,
           bale: row.bale ?? null,
+          narration: row.narration || null,
         },
       })
       imported++
@@ -145,14 +194,14 @@ export async function PUT(req: NextRequest) {
       errors.push({ challanNo: row.challanNo, error: e.message })
     }
   }
-  // After import, get DB total than for verification
+
   const dbAgg = await prisma.despatchEntry.aggregate({ _sum: { than: true } })
   const dbTotalThan = dbAgg._sum.than ?? 0
 
   return NextResponse.json({ imported, errors, dbTotalThan })
 }
 
-// PATCH — auto-create missing masters
+// PATCH — auto-create missing masters (parties + transports only)
 export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -160,51 +209,72 @@ export async function PATCH(req: NextRequest) {
   const { rows } = await req.json()
 
   const missingParties = new Map<string, string>()
-  const missingQualities = new Map<string, string>()
   const missingTransports = new Map<string, string>()
 
   for (const row of rows) {
     if (row.status !== 'missing_masters') continue
     if (!row.partyId && row.partyName) missingParties.set(norm(row.partyName), row.partyName)
-    if (!row.qualityId && row.qualityName) missingQualities.set(norm(row.qualityName), row.qualityName)
     if (!row.transportId && row.transportName && norm(row.transportName) !== 'by hand' && norm(row.transportName) !== 'open')
       missingTransports.set(norm(row.transportName), row.transportName)
   }
 
-  const [existingParties, existingQualities, existingTransports] = await Promise.all([
-    prisma.party.findMany(), prisma.quality.findMany(), prisma.transport.findMany(),
+  const [existingParties, existingTransports] = await Promise.all([
+    prisma.party.findMany(),
+    prisma.transport.findMany(),
   ])
   const epk = new Set(existingParties.map(p => norm(p.name)))
-  const eqk = new Set(existingQualities.map(q => norm(q.name)))
   const etk = new Set(existingTransports.map(t => norm(t.name)))
 
   await Promise.all([
     ...[...missingParties.entries()].filter(([k]) => !epk.has(k)).map(([, n]) => prisma.party.create({ data: { name: n } })),
-    ...[...missingQualities.entries()].filter(([k]) => !eqk.has(k)).map(([, n]) => prisma.quality.create({ data: { name: n } })),
     ...[...missingTransports.entries()].filter(([k]) => !etk.has(k)).map(([, n]) => prisma.transport.create({ data: { name: n } })),
   ])
 
-  const [parties, qualities, transports] = await Promise.all([
-    prisma.party.findMany(), prisma.quality.findMany(), prisma.transport.findMany(),
+  const [parties, transports] = await Promise.all([
+    prisma.party.findMany(),
+    prisma.transport.findMany(),
   ])
   const pm = new Map(parties.map(p => [norm(p.name), p]))
-  const qm = new Map(qualities.map(q => [norm(q.name), q]))
   const tm = new Map(transports.map(t => [norm(t.name), t]))
+
+  // Also re-check grey register for lot quality
+  const greyEntries = await prisma.greyEntry.findMany({
+    select: { lotNo: true, qualityId: true, quality: { select: { name: true } } },
+  })
+  const greyLotMap = new Map<string, { qualityId: number; qualityName: string }>()
+  for (const g of greyEntries) {
+    greyLotMap.set(norm(g.lotNo), { qualityId: g.qualityId, qualityName: g.quality.name })
+  }
 
   const updatedRows = rows.map((row: any) => {
     if (row.status !== 'missing_masters') return row
     const party = pm.get(norm(row.partyName ?? ''))
-    const quality = qm.get(norm(row.qualityName ?? ''))
     const transport = tm.get(norm(row.transportName ?? ''))
+    const greyInfo = greyLotMap.get(norm(row.lotNo ?? ''))
     const newRow = {
       ...row,
       partyId: party?.id ?? row.partyId,
-      qualityId: quality?.id ?? row.qualityId,
       transportId: transport?.id ?? row.transportId,
+      qualityId: greyInfo?.qualityId ?? row.qualityId,
+      qualityName: greyInfo?.qualityName ?? row.qualityName,
     }
-    if (newRow.partyId && newRow.qualityId && newRow.lotNo) {
-      newRow.missingMasters = []
-      newRow.status = 'ready'
+
+    // Check if all required masters are resolved
+    const stillMissing: string[] = []
+    if (!newRow.partyId && newRow.partyName) stillMissing.push(`Party: "${newRow.partyName}"`)
+    if (!newRow.transportId && newRow.transportName && norm(newRow.transportName) !== 'by hand' && norm(newRow.transportName) !== 'open')
+      stillMissing.push(`Transport: "${newRow.transportName}"`)
+
+    if (stillMissing.length === 0 && newRow.partyId && newRow.lotNo) {
+      if (!newRow.qualityId) {
+        newRow.missingMasters = []
+        newRow.status = 'missing_lot'
+      } else {
+        newRow.missingMasters = []
+        newRow.status = 'ready'
+      }
+    } else {
+      newRow.missingMasters = stillMissing
     }
     return newRow
   })
@@ -213,7 +283,6 @@ export async function PATCH(req: NextRequest) {
     rows: updatedRows,
     created: {
       parties: [...missingParties.keys()].filter(k => !epk.has(k)).length,
-      qualities: [...missingQualities.keys()].filter(k => !eqk.has(k)).length,
       transports: [...missingTransports.keys()].filter(k => !etk.has(k)).length,
     },
   })

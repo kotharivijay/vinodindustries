@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 
-interface Notification {
+interface VaultNotification {
   id: number
   documentId: number
   entityName: string
@@ -10,7 +10,20 @@ interface Notification {
   expiryDate: string
   daysLeft: number
   urgent: boolean
+  type: 'vault'
 }
+
+interface DespatchNotification {
+  id: number
+  entryId: number
+  challanNo: number
+  lotNo: string
+  message: string
+  createdAt: string
+  type: 'despatch'
+}
+
+type AppNotification = VaultNotification | DespatchNotification
 
 const ENTITY_ICONS: Record<string, string> = {
   company: '\u{1F3E2}',
@@ -20,16 +33,24 @@ const ENTITY_ICONS: Record<string, string> = {
 }
 
 export default function NotificationBell() {
-  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch('/api/vault/notifications')
-      if (!res.ok) return
-      const data = await res.json()
-      if (Array.isArray(data)) setNotifications(data)
+      const [vaultRes, despatchRes] = await Promise.all([
+        fetch('/api/vault/notifications'),
+        fetch('/api/despatch/notifications'),
+      ])
+      const vaultData = vaultRes.ok ? await vaultRes.json() : []
+      const despatchData = despatchRes.ok ? await despatchRes.json() : []
+
+      const all: AppNotification[] = [
+        ...(Array.isArray(vaultData) ? vaultData.map((n: any) => ({ ...n, type: 'vault' as const })) : []),
+        ...(Array.isArray(despatchData) ? despatchData.map((n: any) => ({ ...n, type: 'despatch' as const })) : []),
+      ]
+      setNotifications(all)
     } catch {
       // silently fail
     }
@@ -50,9 +71,13 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  async function dismiss(id: number) {
-    await fetch(`/api/vault/notifications/${id}`, { method: 'PATCH' })
-    setNotifications(prev => prev.filter(n => n.id !== id))
+  async function dismiss(n: AppNotification) {
+    if (n.type === 'vault') {
+      await fetch(`/api/vault/notifications/${n.id}`, { method: 'PATCH' })
+    } else {
+      await fetch(`/api/despatch/notifications/${n.id}`, { method: 'PATCH' })
+    }
+    setNotifications(prev => prev.filter(x => !(x.id === n.id && x.type === n.type)))
   }
 
   function formatDate(dateStr: string): string {
@@ -91,40 +116,70 @@ export default function NotificationBell() {
       {open && (
         <div className="fixed md:absolute right-2 md:right-0 top-14 md:top-full mt-0 md:mt-2 w-[calc(100vw-16px)] md:w-96 max-h-[70vh] overflow-y-auto bg-white rounded-xl shadow-xl border border-gray-200 z-50">
           <div className="p-3 border-b border-gray-100">
-            <h3 className="text-sm font-bold text-gray-800">{'\u{1F514}'} Expiry Notifications</h3>
+            <h3 className="text-sm font-bold text-gray-800">{'\u{1F514}'} Notifications</h3>
           </div>
           {count === 0 ? (
             <div className="p-6 text-center text-gray-500 text-sm">
-              No expiring documents
+              No notifications
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
               {notifications.map(n => {
-                const icon = ENTITY_ICONS[n.entityType] || '\u{1F4C4}'
-                const style = getDaysStyle(n.daysLeft)
-                return (
-                  <div key={n.id} className="p-3 hover:bg-gray-50 transition">
-                    <div className="flex items-start gap-2">
-                      <span className="text-lg shrink-0 mt-0.5">{icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{n.docName}</p>
-                        <p className="text-xs text-gray-500 truncate">{n.entityName}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-gray-500">{formatDate(n.expiryDate)}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${style.cls}`}>
-                            {style.label}
-                          </span>
+                if (n.type === 'vault') {
+                  const vn = n as VaultNotification
+                  const icon = ENTITY_ICONS[vn.entityType] || '\u{1F4C4}'
+                  const style = getDaysStyle(vn.daysLeft)
+                  return (
+                    <div key={`vault-${vn.id}`} className="p-3 hover:bg-gray-50 transition">
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg shrink-0 mt-0.5">{icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{vn.docName}</p>
+                          <p className="text-xs text-gray-500 truncate">{vn.entityName}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-500">{formatDate(vn.expiryDate)}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${style.cls}`}>
+                              {style.label}
+                            </span>
+                          </div>
                         </div>
+                        <button
+                          onClick={() => dismiss(n)}
+                          className="text-xs text-gray-400 hover:text-gray-600 shrink-0 px-2 py-1 hover:bg-gray-100 rounded transition"
+                        >
+                          Dismiss
+                        </button>
                       </div>
-                      <button
-                        onClick={() => dismiss(n.id)}
-                        className="text-xs text-gray-400 hover:text-gray-600 shrink-0 px-2 py-1 hover:bg-gray-100 rounded transition"
-                      >
-                        Dismiss
-                      </button>
                     </div>
-                  </div>
-                )
+                  )
+                } else {
+                  const dn = n as DespatchNotification
+                  return (
+                    <div key={`despatch-${dn.id}`} className="p-3 hover:bg-gray-50 transition">
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg shrink-0 mt-0.5">{'\u{1F69A}'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            Challan {dn.challanNo}: {dn.message}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">Lot {dn.lotNo}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-gray-500">{formatDate(dn.createdAt)}</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-blue-50 text-blue-700">
+                              Edit
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => dismiss(n)}
+                          className="text-xs text-gray-400 hover:text-gray-600 shrink-0 px-2 py-1 hover:bg-gray-100 rounded transition"
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  )
+                }
               })}
             </div>
           )}

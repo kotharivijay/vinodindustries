@@ -58,12 +58,24 @@ export async function POST(req: NextRequest) {
   const rate = data.rate ? parseFloat(data.rate) : null
   const pTotal = rate && than ? parseFloat((than * rate).toFixed(2)) : null
 
-  const entry = await prisma.despatchEntry.create({
+  // Auto-fetch qualityId from grey register by lotNo if not provided
+  let qualityId = data.qualityId ? parseInt(data.qualityId) : null
+  if (!qualityId && data.lotNo) {
+    const greyMatch = await prisma.greyEntry.findFirst({
+      where: { lotNo: { equals: data.lotNo, mode: 'insensitive' } },
+      select: { qualityId: true },
+    })
+    qualityId = greyMatch?.qualityId ?? null
+  }
+  if (!qualityId) return NextResponse.json({ error: 'Quality not found for lot' }, { status: 400 })
+
+  const db = prisma as any
+  const entry = await db.despatchEntry.create({
     data: {
       date: new Date(data.date),
       challanNo: parseInt(data.challanNo),
       partyId: parseInt(data.partyId),
-      qualityId: parseInt(data.qualityId),
+      qualityId,
       grayInwDate: data.grayInwDate ? new Date(data.grayInwDate) : null,
       lotNo: data.lotNo,
       jobDelivery: data.jobDelivery || null,
@@ -74,6 +86,7 @@ export async function POST(req: NextRequest) {
       lrNo: data.lrNo || null,
       transportId: data.transportId ? parseInt(data.transportId) : null,
       bale: data.bale ? parseInt(data.bale) : null,
+      narration: data.narration || null,
     },
     include: { party: true, quality: true, transport: true },
   })
