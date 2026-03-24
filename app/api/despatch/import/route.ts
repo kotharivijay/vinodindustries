@@ -130,13 +130,13 @@ export async function POST(req: NextRequest) {
     const dupKey = buildDupKey({ challanNo, date, partyName, lotNo, than })
     const isDuplicate = dbKeys.has(dupKey) || batchKeys.has(dupKey)
 
-    const lotExists = knownLots.has(norm(lotNo))
+    const lotInGrey = knownLots.has(norm(lotNo))
 
     let status: 'ready' | 'missing_masters' | 'duplicate' | 'missing_lot'
     if (isDuplicate) status = 'duplicate'
     else if (missingMasters.length > 0) status = 'missing_masters'
-    else if (!lotExists) status = 'missing_lot'
-    else status = 'ready'
+    else if (!lotNo) status = 'missing_lot'
+    else status = 'ready' // lot not in grey is OK — quality comes from narration
 
     batchKeys.add(dupKey)
 
@@ -146,7 +146,8 @@ export async function POST(req: NextRequest) {
       narration,
       lotNo,
       qualityId: greyInfo?.qualityId ?? null,
-      qualityName: greyInfo?.qualityName ?? null,
+      qualityName: greyInfo?.qualityName ?? narration || null,
+      lotInGrey,
       grayInwDate: row[COL.GRAY_INW_DATE]?.trim() ?? '',
       jobDelivery: row[COL.JOB_DELIVERY]?.trim() ?? '',
       than,
