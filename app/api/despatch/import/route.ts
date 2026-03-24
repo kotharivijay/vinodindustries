@@ -49,6 +49,17 @@ export async function POST(req: NextRequest) {
     prisma.greyEntry.findMany({ select: { lotNo: true, qualityId: true, quality: { select: { name: true } } } }),
   ])
 
+  // Also fetch opening balances for lots not in grey register
+  let obList: any[] = []
+  try {
+    const db = prisma as any
+    obList = await db.lotOpeningBalance.findMany({ select: { lotNo: true, quality: true } })
+  } catch {}
+
+  // Fetch all qualities for fallback matching
+  const allQualities = await prisma.quality.findMany()
+  const qualityByName = new Map(allQualities.map(q => [norm(q.name), q]))
+
   const partyMap = new Map(parties.map(p => [norm(p.name), p]))
   const transportMap = new Map(transports.map(t => [norm(t.name), t]))
 
@@ -57,6 +68,20 @@ export async function POST(req: NextRequest) {
   for (const g of greyEntries) {
     greyLotMap.set(norm(g.lotNo), { qualityId: g.qualityId, qualityName: g.quality.name })
   }
+  // Also add opening balance lots (carry-forward) — match quality by name
+  for (const ob of obList) {
+    const key = norm(ob.lotNo)
+    if (!greyLotMap.has(key) && ob.quality) {
+      const q = qualityByName.get(norm(ob.quality))
+      if (q) greyLotMap.set(key, { qualityId: q.id, qualityName: q.name })
+    }
+  }
+
+  // Track known lot numbers (grey + opening balance) for lot existence check
+  const knownLots = new Set([
+    ...greyEntries.map(g => norm(g.lotNo)),
+    ...obList.map((o: any) => norm(o.lotNo)),
+  ])
 
   // Build existing DB duplicate keys
   const dbKeys = new Set<string>()
@@ -105,10 +130,12 @@ export async function POST(req: NextRequest) {
     const dupKey = buildDupKey({ challanNo, date, partyName, lotNo, than })
     const isDuplicate = dbKeys.has(dupKey) || batchKeys.has(dupKey)
 
+    const lotExists = knownLots.has(norm(lotNo))
+
     let status: 'ready' | 'missing_masters' | 'duplicate' | 'missing_lot'
     if (isDuplicate) status = 'duplicate'
     else if (missingMasters.length > 0) status = 'missing_masters'
-    else if (!greyInfo) status = 'missing_lot'
+    else if (!lotExists) status = 'missing_lot'
     else status = 'ready'
 
     batchKeys.add(dupKey)
@@ -161,7 +188,7 @@ export async function PUT(req: NextRequest) {
       const grayInwDate = row.grayInwDate ? parseDate(row.grayInwDate) : null
       const transportId = row.transportId ?? (await prisma.transport.findFirst())?.id ?? null
 
-      // Quality from grey register lookup by lotNo
+      // Quality from grey register OR opening balance
       let qualityId = row.qualityId
       if (!qualityId) {
         const greyMatch = await prisma.greyEntry.findFirst({
@@ -169,6 +196,28 @@ export async function PUT(req: NextRequest) {
           select: { qualityId: true },
         })
         qualityId = greyMatch?.qualityId
+      }
+      // Fallback: try opening balance quality name → match to quality master
+      if (!qualityId) {
+        try {
+          const db2 = prisma as any
+          const ob = await db2.lotOpeningBalance.findFirst({ where: { lotNo: { equals: row.lotNo, mode: 'insensitive' } } })
+          if (ob?.quality) {
+            const q = await prisma.quality.findFirst({ where: { name: { equals: ob.quality, mode: 'insensitive' } } })
+            if (q) qualityId = q.id
+          }
+        } catch {}
+      }
+      // Last fallback: create quality from narration
+      if (!qualityId && row.narration) {
+        try {
+          const q = await prisma.quality.findFirst({ where: { name: { equals: row.narration, mode: 'insensitive' } } })
+          if (q) qualityId = q.id
+          else {
+            const created = await prisma.quality.create({ data: { name: row.narration } })
+            qualityId = created.id
+          }
+        } catch {}
       }
       if (!qualityId) { errors.push({ challanNo: row.challanNo, error: 'No quality found for lot ' + row.lotNo }); continue }
 
