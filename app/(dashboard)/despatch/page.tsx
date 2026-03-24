@@ -34,7 +34,9 @@ interface DespatchEntry {
   bale: number | null
   party: { name: string }
   quality: { name: string }
-  transport: { name: string }
+  transport: { name: string } | null
+  isLastYear?: boolean
+  financialYear?: string
 }
 
 interface StockSummaryRow {
@@ -386,8 +388,11 @@ export default function DespatchListPage() {
                           <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 text-xs font-medium">{deletingId === e.id ? '...' : 'Del'}</button>
                         </div>
                       </div>
-                      <p className="text-sm font-semibold text-gray-800">{e.party.name}</p>
-                      <p className="text-xs text-gray-500 mb-2">{e.quality.name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-gray-800">{e.party?.name ?? '-'}</p>
+                        {e.isLastYear && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">Last Year</span>}
+                      </div>
+                      <p className="text-xs text-gray-500 mb-2">{e.quality?.name ?? '-'}</p>
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-indigo-100 active:bg-indigo-200">
                           🔖 {e.lotNo}
@@ -457,8 +462,11 @@ export default function DespatchListPage() {
                             <span>{e.challanNo}</span>
                             {isDup(e) && <span className="ml-1.5 bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>⚠ {getDupReason(e)}</span>}
                           </td>
-                          <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{e.party.name}</td>
-                          <td className="px-3 py-2.5 whitespace-nowrap">{e.quality.name}</td>
+                          <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
+                            {e.party?.name ?? '-'}
+                            {e.isLastYear && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded">LY</span>}
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">{e.quality?.name ?? '-'}</td>
                           <td className="px-3 py-2.5 font-medium text-indigo-700">
                             <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="hover:underline">{e.lotNo}</Link>
                           </td>

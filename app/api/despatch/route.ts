@@ -12,7 +12,41 @@ export async function GET() {
     include: { party: true, quality: true, transport: true },
     orderBy: { date: 'desc' },
   })
-  return NextResponse.json(entries)
+
+  // Include last year despatch from carry-forward data
+  let lastYearDesp: any[] = []
+  try {
+    const db = prisma as any
+    const obs = await db.lotOpeningBalance.findMany({
+      include: { despatchHistory: { orderBy: { setNo: 'asc' } } },
+    })
+    for (const ob of obs) {
+      for (const d of ob.despatchHistory) {
+        if (!d.than || d.than <= 0) continue
+        lastYearDesp.push({
+          id: -d.id,
+          date: ob.createdAt,
+          challanNo: parseInt(d.challanNo) || 0,
+          party: { id: 0, name: ob.party || '-' },
+          quality: { id: 0, name: ob.quality || '-' },
+          transport: null,
+          lotNo: ob.lotNo,
+          than: d.than,
+          billNo: d.billNo || null,
+          rate: d.rate || null,
+          pTotal: d.than && d.rate ? parseFloat((d.than * d.rate).toFixed(2)) : null,
+          lrNo: null,
+          bale: null,
+          grayInwDate: null,
+          jobDelivery: null,
+          isLastYear: true,
+          financialYear: ob.financialYear,
+        })
+      }
+    }
+  } catch {}
+
+  return NextResponse.json([...entries, ...lastYearDesp])
 }
 
 export async function POST(req: NextRequest) {
