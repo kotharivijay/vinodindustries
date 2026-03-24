@@ -6,6 +6,22 @@ import { GoogleAuth } from 'google-auth-library'
 
 const LAST_YEAR_SHEET_ID = '1-SbwlIuhGfnZrkmozh9rOpsdF3K6X1sRIZdPweI0yrk'
 
+// Lots that conflict with current year — rename by adding "0" at the end
+const CARRY_FORWARD_RENAMES: Record<string, string> = {
+  'YC-773': 'YC-7730',
+  'PS-823': 'PS-8230',
+  'AJ-1212': 'AJ-12120',
+  'PS-1223': 'PS-12230',
+  'PS-1224': 'PS-12240',
+  'PS-1227': 'PS-12270',
+  'PS-1228': 'PS-12280',
+  'PS-1229': 'PS-12290',
+  'PS-1242': 'PS-12420',
+  'PS-1246': 'PS-12460',
+  'SSF-1260': 'SSF-12600',
+  'AJ-1264': 'AJ-12640',
+}
+
 async function readLastYearSheet(): Promise<string[][] | null> {
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   if (!keyJson) return null
@@ -60,7 +76,10 @@ export async function POST(req: NextRequest) {
   let totalThan = 0
 
   for (const row of rows) {
-    const lotNo = (row[16] || '').trim() // Q
+    const rawLotNo = (row[16] || '').trim() // Q
+    // Rename conflicting lots (same lot number exists in current year)
+    const renameKey = Object.keys(CARRY_FORWARD_RENAMES).find(k => k.toLowerCase() === rawLotNo.toLowerCase())
+    const lotNo = renameKey ? CARRY_FORWARD_RENAMES[renameKey] : rawLotNo
     const stock = parseInt(row[17]) || 0  // R
     const totalDesp = parseInt(row[18]) || 0 // S
     const than = parseInt(row[7]) || 0 // H (grey than)
