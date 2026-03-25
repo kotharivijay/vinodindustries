@@ -196,19 +196,34 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
               )}
 
               {/* Filter checkboxes */}
-              <div className="flex flex-wrap gap-3 mb-3">
-                <span className="text-xs text-gray-500 font-medium self-center">Hide:</span>
-                {(['ready', 'missing_masters', 'missing_lot', 'duplicate', 'skipped'] as RowStatus[]).map((s) => (
-                  <label key={s} className="flex items-center gap-1.5 cursor-pointer text-xs">
-                    <input
-                      type="checkbox"
-                      checked={hideStatus.has(s)}
-                      onChange={() => setHideStatus(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n })}
-                    />
-                    <span className={`px-2 py-0.5 rounded-full font-medium ${STATUS_STYLE[s]}`}>{STATUS_LABEL[s]}</span>
-                  </label>
-                ))}
-              </div>
+              {(() => {
+                const ALL_STATUSES: RowStatus[] = ['ready', 'missing_masters', 'missing_lot', 'duplicate', 'skipped']
+                const allHidden = ALL_STATUSES.every(s => hideStatus.has(s))
+                return (
+                  <div className="flex flex-wrap gap-3 mb-3">
+                    <span className="text-xs text-gray-500 font-medium self-center">Hide:</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-600">
+                      <input
+                        type="checkbox"
+                        checked={allHidden}
+                        onChange={() => setHideStatus(allHidden ? new Set() : new Set(ALL_STATUSES))}
+                      />
+                      All
+                    </label>
+                    <span className="text-gray-300 self-center">|</span>
+                    {ALL_STATUSES.map((s) => (
+                      <label key={s} className="flex items-center gap-1.5 cursor-pointer text-xs">
+                        <input
+                          type="checkbox"
+                          checked={hideStatus.has(s)}
+                          onChange={() => setHideStatus(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n })}
+                        />
+                        <span className={`px-2 py-0.5 rounded-full font-medium ${STATUS_STYLE[s]}`}>{STATUS_LABEL[s]}</span>
+                      </label>
+                    ))}
+                  </div>
+                )
+              })()}
 
               {/* Preview table */}
               <div className="overflow-auto border rounded-lg">
