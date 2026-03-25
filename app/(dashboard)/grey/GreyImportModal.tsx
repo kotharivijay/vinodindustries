@@ -219,7 +219,9 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row, i) => (
+                    {[...rows.entries()]
+                      .sort(([,a],[,b]) => (a.status === 'skipped' ? 1 : 0) - (b.status === 'skipped' ? 1 : 0))
+                      .map(([i, row]) => (
                       <tr key={i} className={`border-b last:border-0 ${row.status === 'duplicate' || row.status === 'skipped' ? 'opacity-40' : ''}`}>
                         <td className="px-3 py-1.5">
                           <input
