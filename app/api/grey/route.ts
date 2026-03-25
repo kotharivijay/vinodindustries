@@ -128,5 +128,9 @@ export async function DELETE(req: NextRequest) {
   }
 
   await prisma.greyEntry.deleteMany({})
+  try {
+    const db = prisma as any
+    await db.lotOpeningBalance.deleteMany({})
+  } catch {}
   return NextResponse.json({ ok: true, message: 'All grey entries deleted' })
 }
