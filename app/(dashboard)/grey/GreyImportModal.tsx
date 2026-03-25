@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import * as XLSX from 'xlsx'
 
 type RowStatus = 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate' | 'skipped'
 
@@ -14,6 +15,8 @@ interface ImportRow {
   transportName: string
   lotNo: string
   than: number
+  weight?: string
+  lrNo?: string
   missingMasters: string[]
   status: RowStatus
   skipReason?: string
@@ -119,6 +122,57 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
 
   const readySelected = [...selected].filter((i) => rows[i]?.status === 'ready').length
 
+  const HEADERS = ['Status', 'Skip Reason', 'SN', 'Date', 'Challan', 'Party', 'Quality', 'Than', 'Lot No', 'Weaver', 'Transport', 'Weight', 'LR No', 'Issue']
+
+  function getDisplayRows() {
+    return [...rows.entries()]
+      .sort(([,a],[,b]) => (a.status === 'skipped' ? 1 : 0) - (b.status === 'skipped' ? 1 : 0))
+      .filter(([,row]) => !hideStatus.has(row.status))
+      .map(([,row]) => row)
+  }
+
+  function rowToArray(row: ImportRow) {
+    return [
+      STATUS_LABEL[row.status],
+      row.skipReason ?? '',
+      row.sn ?? '',
+      row.date,
+      row.challanNo ?? '',
+      row.partyName,
+      row.qualityName,
+      row.than,
+      row.lotNo,
+      row.weaverName,
+      row.transportName,
+      row.weight ?? '',
+      row.lrNo ?? '',
+      row.status === 'skipped' ? (row.skipReason ?? '') : row.missingMasters.join(', '),
+    ]
+  }
+
+  function exportXLSX() {
+    const data = [HEADERS, ...getDisplayRows().map(rowToArray)]
+    const ws = XLSX.utils.aoa_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Grey Import Preview')
+    XLSX.writeFile(wb, 'grey-import-preview.xlsx')
+  }
+
+  async function exportPDF() {
+    const { default: jsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    const doc = new jsPDF({ orientation: 'landscape' })
+    doc.text('Grey Import Preview', 14, 14)
+    autoTable(doc, {
+      head: [HEADERS],
+      body: getDisplayRows().map(rowToArray),
+      startY: 20,
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [79, 70, 229] },
+    })
+    doc.save('grey-import-preview.pdf')
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
@@ -186,6 +240,16 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                   </button>
                 </div>
               )}
+
+              {/* Export buttons */}
+              <div className="flex justify-end gap-2 mb-3">
+                <button onClick={exportXLSX} className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-700">
+                  ⬇ Export XLSX
+                </button>
+                <button onClick={exportPDF} className="flex items-center gap-1.5 bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700">
+                  ⬇ Export PDF
+                </button>
+              </div>
 
               {/* Missing lot notification */}
               {summary.missing_lot > 0 && (

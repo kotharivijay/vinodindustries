@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import * as XLSX from 'xlsx'
 
 type RowStatus = 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate' | 'skipped'
 
@@ -107,6 +108,57 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
   const readySelected = [...selected].filter((i) => rows[i]?.status === 'ready').length
   const selectedThan = [...selected].filter(i => rows[i]?.status === 'ready').reduce((s, i) => s + (rows[i]?.than ?? 0), 0)
 
+  const D_HEADERS = ['Status', 'Skip Reason', 'Date', 'Challan', 'Party', 'Quality', 'Lot No', 'Than', 'Rate', 'P.Total', 'Transport', 'LR No', 'Bill No', 'Issue']
+
+  function getDisplayRows() {
+    return [...rows.entries()]
+      .sort(([,a],[,b]) => (a.status === 'skipped' ? 1 : 0) - (b.status === 'skipped' ? 1 : 0))
+      .filter(([,row]) => !hideStatus.has(row.status))
+      .map(([,row]) => row)
+  }
+
+  function rowToArray(row: ImportRow) {
+    return [
+      STATUS_LABEL[row.status],
+      row.skipReason ?? '',
+      row.date,
+      row.challanNo ?? '',
+      row.partyName,
+      row.qualityName,
+      row.lotNo,
+      row.than,
+      row.rate ?? '',
+      row.pTotal ?? '',
+      row.transportName,
+      row.lrNo,
+      row.billNo,
+      row.status === 'skipped' ? (row.skipReason ?? '') : row.missingMasters.join(', '),
+    ]
+  }
+
+  function exportXLSX() {
+    const data = [D_HEADERS, ...getDisplayRows().map(rowToArray)]
+    const ws = XLSX.utils.aoa_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Despatch Import Preview')
+    XLSX.writeFile(wb, 'despatch-import-preview.xlsx')
+  }
+
+  async function exportPDF() {
+    const { default: jsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    const doc = new jsPDF({ orientation: 'landscape' })
+    doc.text('Despatch Import Preview', 14, 14)
+    autoTable(doc, {
+      head: [D_HEADERS],
+      body: getDisplayRows().map(rowToArray),
+      startY: 20,
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [79, 70, 229] },
+    })
+    doc.save('despatch-import-preview.pdf')
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
@@ -183,6 +235,16 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                   <p className="text-sm font-medium text-red-800">🔴 {summary.missing_lot} rows have no Lot No — these will be skipped.</p>
                 </div>
               )}
+
+              {/* Export buttons */}
+              <div className="flex justify-end gap-2 mb-3">
+                <button onClick={exportXLSX} className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-700">
+                  ⬇ Export XLSX
+                </button>
+                <button onClick={exportPDF} className="flex items-center gap-1.5 bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-red-700">
+                  ⬇ Export PDF
+                </button>
+              </div>
 
               {/* Filter checkboxes */}
               {(() => {
