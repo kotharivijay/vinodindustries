@@ -88,6 +88,7 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
       missing_masters: updated.filter((r) => r.status === 'missing_masters').length,
       missing_lot: updated.filter((r) => r.status === 'missing_lot').length,
       duplicate: updated.filter((r) => r.status === 'duplicate').length,
+      skipped: updated.filter((r) => r.status === 'skipped').length,
     }
     setSummary(newSummary)
     // Add newly ready rows to selection
