@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import * as XLSX from 'xlsx'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -63,6 +64,40 @@ export default function StockPage() {
     return list
   }, [data, search, sort])
 
+  function getFlatRows() {
+    return filtered.flatMap(p =>
+      p.lots.map(l => [p.party, l.lotNo, l.quality, l.openingBalance, l.greyThan, l.despatchThan, l.stock])
+    )
+  }
+
+  function exportXLSX() {
+    const headers = ['Party', 'Lot No', 'Quality', 'Opening Balance', 'Grey Than', 'Despatch Than', 'Balance Stock']
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...getFlatRows()])
+    // Bold header
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Balance Stock')
+    XLSX.writeFile(wb, 'balance-stock.xlsx')
+  }
+
+  async function exportPDF() {
+    const { default: jsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    const doc = new jsPDF({ orientation: 'landscape' })
+    doc.setFontSize(14)
+    doc.text('Balance Stock Report', 14, 14)
+    doc.setFontSize(9)
+    doc.text(`${data?.totalStock?.toLocaleString()} than · ${data?.totalLots} lots · ${filtered.length} parties${search ? ` · Search: "${search}"` : ''}`, 14, 21)
+    autoTable(doc, {
+      head: [['Party', 'Lot No', 'Quality', 'OB', 'Grey Than', 'Desp', 'Balance']],
+      body: getFlatRows(),
+      startY: 26,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [79, 70, 229] },
+      columnStyles: { 6: { fontStyle: 'bold', textColor: [79, 70, 229] } },
+    })
+    doc.save('balance-stock.pdf')
+  }
+
   if (isLoading) return <div className="p-8 text-gray-400">Loading stock data...</div>
 
   return (
@@ -72,9 +107,17 @@ export default function StockPage() {
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">
           &larr; Back
         </button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-800">Balance Stock</h1>
           <p className="text-sm text-gray-500">{data?.totalStock?.toLocaleString()} than &middot; {data?.totalLots} lots &middot; {data?.parties?.length} parties</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={exportXLSX} className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-emerald-700">
+            ⬇ XLSX
+          </button>
+          <button onClick={exportPDF} className="flex items-center gap-1.5 bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-700">
+            ⬇ PDF
+          </button>
         </div>
       </div>
 
