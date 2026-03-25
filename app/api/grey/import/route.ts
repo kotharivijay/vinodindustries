@@ -162,8 +162,10 @@ export async function POST(req: NextRequest) {
     const transport = transportMap.get(norm(transportName))
 
     const missingMasters: string[] = []
-    if (partyName && !party) missingMasters.push(`Party: "${partyName}"`)
-    if (qualityName && !quality) missingMasters.push(`Quality: "${qualityName}"`)
+    if (!partyName) missingMasters.push('Party: (empty)')
+    else if (!party) missingMasters.push(`Party: "${partyName}"`)
+    if (!qualityName) missingMasters.push('Quality: (empty)')
+    else if (!quality) missingMasters.push(`Quality: "${qualityName}"`)
     if (weaverName && !weaver) missingMasters.push(`Weaver: "${weaverName}"`)
     if (transportName && !transport && transportName.toLowerCase() !== 'open')
       missingMasters.push(`Transport: "${transportName}"`)
