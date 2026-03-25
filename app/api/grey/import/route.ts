@@ -30,7 +30,10 @@ function parseSheetDate(val: string): Date | null {
 function buildDupKey(row: { challanNo: number | null; sn: number | null; date: string; partyName: string; lotNo: string; than: number }): string {
   if (row.challanNo) return `ch:${row.challanNo}|lot:${norm(row.lotNo)}`
   if (row.sn) return `sn:${row.sn}|lot:${norm(row.lotNo)}`
-  return `dt:${row.date}|p:${norm(row.partyName)}|lot:${norm(row.lotNo)}|th:${row.than}`
+  // Normalize sheet date to ISO for consistent matching
+  const parsed = parseSheetDate(row.date)
+  const dateISO = parsed ? parsed.toISOString().split('T')[0] : row.date
+  return `dt:${dateISO}|p:${norm(row.partyName)}|lot:${norm(row.lotNo)}|th:${row.than}`
 }
 
 // POST /api/grey/import — fetch & preview rows from Google Sheet
@@ -73,6 +76,9 @@ export async function POST(req: NextRequest) {
   for (const e of existing) {
     if (e.challanNo) existingKeys.add(`ch:${e.challanNo}|lot:${norm(e.lotNo)}`)
     if (e.sn) existingKeys.add(`sn:${e.sn}|lot:${norm(e.lotNo)}`)
+    // Always add dt: fallback so rows without challanNo/sn are also detected
+    const dateISO = new Date(e.date).toISOString().split('T')[0]
+    existingKeys.add(`dt:${dateISO}|p:${norm(e.party.name)}|lot:${norm(e.lotNo)}|th:${e.than}`)
   }
 
   // Track keys within this import batch
@@ -222,8 +228,14 @@ export async function PUT(req: NextRequest) {
 
   for (const row of rows) {
     if (row.status !== 'ready') continue
-    if (!row.partyId || !row.qualityId || !row.weaverId) continue
-    if (!row.lotNo || !row.than || row.than <= 0) continue
+    if (!row.partyId || !row.qualityId || !row.weaverId) {
+      errors.push({ sn: row.sn, error: `Missing IDs — party:${row.partyId} quality:${row.qualityId} weaver:${row.weaverId} lot:${row.lotNo}` })
+      continue
+    }
+    if (!row.lotNo || !row.than || row.than <= 0) {
+      errors.push({ sn: row.sn, error: `Missing lotNo or than` })
+      continue
+    }
 
     try {
       const date = parseSheetDate(row.date) ?? new Date()

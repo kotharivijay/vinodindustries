@@ -300,11 +300,20 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
 
           {/* Done */}
           {step === 'done' && result && (
-            <div className="text-center py-12">
-              <div className="text-5xl mb-4">✅</div>
-              <p className="text-2xl font-bold text-gray-800 mb-2">{result.imported} rows imported</p>
+            <div className="py-8">
+              <div className="text-center mb-4">
+                <div className="text-5xl mb-3">{result.imported > 0 ? '✅' : '⚠️'}</div>
+                <p className="text-2xl font-bold text-gray-800">{result.imported} rows imported</p>
+              </div>
               {result.errors.length > 0 && (
-                <p className="text-red-500 text-sm">{result.errors.length} errors</p>
+                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
+                  <p className="text-sm font-semibold text-red-700 mb-2">{result.errors.length} rows failed:</p>
+                  <div className="max-h-48 overflow-auto space-y-1">
+                    {result.errors.map((e: any, i: number) => (
+                      <p key={i} className="text-xs text-red-600">SN {e.sn ?? '?'}: {e.error}</p>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
