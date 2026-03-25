@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 
@@ -45,7 +45,7 @@ interface BatchRow {
 export default function NewFoldPage() {
   const router = useRouter()
   const { data: stockData } = useSWR<{ parties: PartyStock[] }>('/api/stock', fetcher)
-  const { data: shades } = useSWR<Shade[]>('/api/shades', fetcher)
+  const { data: shades, mutate: mutateShades } = useSWR<Shade[]>('/api/shades', fetcher)
   const { data: parties } = useSWR<{ id: number; name: string }[]>('/api/masters/party', fetcher)
   const { data: qualities } = useSWR<{ id: number; name: string }[]>('/api/masters/quality', fetcher)
 
@@ -208,34 +208,21 @@ export default function NewFoldPage() {
           <div key={batchIdx} className="bg-white dark:bg-gray-800 rounded-xl border border-indigo-100 dark:border-gray-700 overflow-hidden">
             {/* Batch header */}
             <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 flex items-center gap-3">
-              <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">Batch {batch.batchNo}</span>
+              <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400 shrink-0">Batch {batch.batchNo}</span>
               <div className="flex-1">
-                <select
-                  className="border border-gray-300 rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 w-full max-w-[180px]"
-                  value={batch.shadeId ?? ''}
-                  onChange={e => {
-                    const id = e.target.value ? parseInt(e.target.value) : null
-                    const shade = shades?.find(s => s.id === id)
+                <ShadeCombobox
+                  shadeId={batch.shadeId}
+                  shadeName={batch.shadeName}
+                  shades={shades ?? []}
+                  onChange={(id, name) => {
                     updateBatch(batchIdx, 'shadeId', id)
-                    updateBatch(batchIdx, 'shadeName', shade?.name ?? '')
+                    updateBatch(batchIdx, 'shadeName', name)
                   }}
-                >
-                  <option value="">Select Shade...</option>
-                  {(shades ?? []).map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-              {!batch.shadeId && (
-                <input
-                  className="border border-gray-300 rounded px-2 py-1 text-sm w-32 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                  placeholder="Shade name"
-                  value={batch.shadeName}
-                  onChange={e => updateBatch(batchIdx, 'shadeName', e.target.value)}
+                  onShadeAdded={shade => mutateShades(prev => [...(prev ?? []), shade].sort((a, b) => a.name.localeCompare(b.name)))}
                 />
-              )}
+              </div>
               {batches.length > 1 && (
-                <button onClick={() => removeBatch(batchIdx)} className="text-xs text-red-500 hover:text-red-700 ml-auto">
+                <button onClick={() => removeBatch(batchIdx)} className="text-xs text-red-500 hover:text-red-700 shrink-0">
                   Remove
                 </button>
               )}
@@ -319,6 +306,128 @@ export default function NewFoldPage() {
       >
         {saving ? 'Saving...' : 'Save Fold Program'}
       </button>
+    </div>
+  )
+}
+
+// ── Shade Combobox ────────────────────────────────────────────────────────────
+
+function ShadeCombobox({ shadeId, shadeName, shades, onChange, onShadeAdded }: {
+  shadeId: number | null
+  shadeName: string
+  shades: Shade[]
+  onChange: (id: number | null, name: string) => void
+  onShadeAdded: (shade: Shade) => void
+}) {
+  const [query, setQuery] = useState(shadeName)
+  const [open, setOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Sync query when parent clears selection
+  useEffect(() => { setQuery(shadeName) }, [shadeName])
+
+  // Close on outside click
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [])
+
+  const filtered = shades.filter(s => s.name.toLowerCase().includes(query.toLowerCase().trim()))
+  const exactMatch = shades.some(s => s.name.toLowerCase() === query.toLowerCase().trim())
+  const showAdd = query.trim().length > 0 && !exactMatch
+
+  async function addShade() {
+    setAdding(true)
+    try {
+      const res = await fetch('/api/shades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: query.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        onShadeAdded(data)
+        onChange(data.id, data.name)
+        setQuery(data.name)
+        setOpen(false)
+      }
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  function select(id: number, name: string) {
+    onChange(id, name)
+    setQuery(name)
+    setOpen(false)
+  }
+
+  function clear() {
+    onChange(null, '')
+    setQuery('')
+    setOpen(true)
+  }
+
+  return (
+    <div ref={ref} className="relative w-full max-w-[220px]">
+      <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 focus-within:ring-2 focus-within:ring-indigo-400">
+        <input
+          className="flex-1 px-2 py-1 text-sm bg-transparent text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none"
+          placeholder="Search or add shade..."
+          value={query}
+          onChange={e => {
+            setQuery(e.target.value)
+            setOpen(true)
+            // Clear linked shade id while typing
+            if (shadeId) onChange(null, e.target.value)
+          }}
+          onFocus={() => setOpen(true)}
+        />
+        {(shadeId || query) && (
+          <button
+            onClick={clear}
+            className="px-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
+            tabIndex={-1}
+          >✕</button>
+        )}
+      </div>
+
+      {/* Dropdown */}
+      {open && (filtered.length > 0 || showAdd) && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {filtered.map(s => (
+            <button
+              key={s.id}
+              onMouseDown={e => { e.preventDefault(); select(s.id, s.name) }}
+              className={`w-full text-left px-3 py-2 text-sm transition ${
+                s.id === shadeId
+                  ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-medium'
+                  : 'text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
+              }`}
+            >
+              {s.name}
+            </button>
+          ))}
+          {showAdd && (
+            <button
+              onMouseDown={e => { e.preventDefault(); addShade() }}
+              disabled={adding}
+              className="w-full text-left px-3 py-2 text-sm text-indigo-600 dark:text-indigo-400 font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border-t border-gray-100 dark:border-gray-700 disabled:opacity-50"
+            >
+              {adding ? 'Adding...' : `+ Add "${query.trim()}"`}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Show selected badge */}
+      {shadeId && (
+        <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5 pl-0.5">✓ Saved shade</p>
+      )}
     </div>
   )
 }
