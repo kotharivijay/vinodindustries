@@ -132,7 +132,6 @@ export async function POST(req: NextRequest) {
     if (than === 0) { rows.push(makeSkippedRow(row, 'Zero or missing Than')); continue }
 
     const challanNo = parseInt(row[COL.CHALLAN]) || null
-    const partyName = row[COL.PARTY]?.trim() ?? ''
     const narration = row[COL.QUALITY]?.trim() ?? ''  // sheet quality col → narration
     const transportName = row[COL.TRANSPORT]?.trim() ?? ''
     const rate = parseFloat(row[COL.RATE]) || null
