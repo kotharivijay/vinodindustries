@@ -97,17 +97,39 @@ export async function POST(req: NextRequest) {
   const rows = []
   let sheetTotalThan = 0
 
+  function makeSkippedRow(row: string[], reason: string) {
+    return {
+      challanNo: parseInt(row[COL.CHALLAN]) || null,
+      date: row[COL.DATE]?.trim() ?? '',
+      partyName: row[COL.PARTY]?.trim() ?? '',
+      qualityName: row[COL.QUALITY]?.trim() ?? '',
+      transportName: row[COL.TRANSPORT]?.trim() ?? '',
+      lotNo: row[COL.LOT_NO]?.trim() ?? '',
+      than: parseInt(row[COL.THAN]) || 0,
+      billNo: '', rate: null, pTotal: null, lrNo: '',
+      bale: null, narration: '', grayInwDate: '', jobDelivery: '',
+      partyId: null, qualityId: null, qualityName2: null, transportId: null,
+      lotInGrey: false, missingMasters: [],
+      status: 'skipped' as const,
+      skipReason: reason,
+    }
+  }
+
   for (const row of dataRows) {
     const date = row[COL.DATE]?.trim() ?? ''
+    const lotNo = row[COL.LOT_NO]?.trim() ?? ''
+    const than = parseInt(row[COL.THAN]) || 0
+    const partyName = row[COL.PARTY]?.trim() ?? ''
+
+    // Skip completely empty rows (silent)
+    if (!date && !partyName && !lotNo) continue
 
     // Skip rows where Month column (B) is exactly "old year" (case-insensitive)
     const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
-    if (monthVal === 'old year') continue
-    const lotNo = row[COL.LOT_NO]?.trim() ?? ''
-    const than = parseInt(row[COL.THAN]) || 0
-    if (!date) continue
-    if (!lotNo) continue
-    if (than === 0) continue
+    if (monthVal === 'old year') { rows.push(makeSkippedRow(row, 'Old Year entry')); continue }
+    if (!date) { rows.push(makeSkippedRow(row, 'Missing Date')); continue }
+    if (!lotNo) { rows.push(makeSkippedRow(row, 'Missing Lot No')); continue }
+    if (than === 0) { rows.push(makeSkippedRow(row, 'Zero or missing Than')); continue }
 
     const challanNo = parseInt(row[COL.CHALLAN]) || null
     const partyName = row[COL.PARTY]?.trim() ?? ''
@@ -169,6 +191,7 @@ export async function POST(req: NextRequest) {
     missing_masters: rows.filter(r => r.status === 'missing_masters').length,
     missing_lot: rows.filter(r => r.status === 'missing_lot').length,
     duplicate: rows.filter(r => r.status === 'duplicate').length,
+    skipped: rows.filter(r => r.status === 'skipped').length,
     sheetTotalThan,
   }
   return NextResponse.json({ rows, summary })

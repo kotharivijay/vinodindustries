@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 
-type RowStatus = 'ready' | 'missing_masters' | 'missing_lot'
+type RowStatus = 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate' | 'skipped'
 
 interface ImportRow {
   challanNo: number | null
@@ -19,22 +19,27 @@ interface ImportRow {
   bale: number | null
   missingMasters: string[]
   status: RowStatus
+  skipReason?: string
   partyId: number | null
   qualityId: number | null
   transportId: number | null
 }
 
-interface Summary { total: number; ready: number; missing_masters: number; missing_lot: number; sheetTotalThan: number }
+interface Summary { total: number; ready: number; missing_masters: number; missing_lot: number; duplicate: number; skipped: number; sheetTotalThan: number }
 
 const STATUS_STYLE: Record<RowStatus, string> = {
   ready: 'bg-green-100 text-green-700',
   missing_masters: 'bg-yellow-100 text-yellow-700',
   missing_lot: 'bg-red-100 text-red-700',
+  duplicate: 'bg-gray-100 text-gray-500',
+  skipped: 'bg-orange-100 text-orange-600',
 }
 const STATUS_LABEL: Record<RowStatus, string> = {
   ready: 'Ready',
   missing_masters: 'Missing Masters',
   missing_lot: 'Missing Lot No',
+  duplicate: 'Duplicate',
+  skipped: 'Skip',
 }
 
 export default function DespatchImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
@@ -44,6 +49,7 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
   const [result, setResult] = useState<{ imported: number; errors: any[]; dbTotalThan: number } | null>(null)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [hideStatus, setHideStatus] = useState<Set<RowStatus>>(new Set())
 
   async function fetchSheet() {
     setStep('loading'); setError('')
@@ -133,22 +139,30 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
           {step === 'preview' && summary && (
             <>
               {/* Summary cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-4">
                 <div className="border rounded-lg p-3 text-center bg-gray-50 border-gray-200">
                   <div className="text-2xl font-bold text-gray-700">{summary.total}</div>
                   <div className="text-xs text-gray-500 mt-0.5">Total Rows</div>
                 </div>
                 <div className="border rounded-lg p-3 text-center bg-green-50 border-green-200">
                   <div className="text-2xl font-bold text-green-700">{summary.ready}</div>
-                  <div className="text-xs text-green-600 mt-0.5">Ready to Import</div>
+                  <div className="text-xs text-green-600 mt-0.5">Ready</div>
                 </div>
                 <div className="border rounded-lg p-3 text-center bg-yellow-50 border-yellow-200">
                   <div className="text-2xl font-bold text-yellow-700">{summary.missing_masters}</div>
                   <div className="text-xs text-yellow-600 mt-0.5">Missing Masters</div>
                 </div>
-                <div className="border rounded-lg p-3 text-center bg-indigo-50 border-indigo-200">
-                  <div className="text-2xl font-bold text-indigo-700">{summary.sheetTotalThan}</div>
-                  <div className="text-xs text-indigo-600 mt-0.5">Sheet Total Than</div>
+                <div className="border rounded-lg p-3 text-center bg-red-50 border-red-200">
+                  <div className="text-2xl font-bold text-red-700">{summary.missing_lot}</div>
+                  <div className="text-xs text-red-600 mt-0.5">Missing Lot</div>
+                </div>
+                <div className="border rounded-lg p-3 text-center bg-gray-50 border-gray-200">
+                  <div className="text-2xl font-bold text-gray-500">{summary.duplicate}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">Duplicate</div>
+                </div>
+                <div className="border rounded-lg p-3 text-center bg-orange-50 border-orange-200">
+                  <div className="text-2xl font-bold text-orange-600">{summary.skipped}</div>
+                  <div className="text-xs text-orange-500 mt-0.5">Skipped</div>
                 </div>
               </div>
 
@@ -169,6 +183,30 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                   <p className="text-sm font-medium text-red-800">🔴 {summary.missing_lot} rows have no Lot No — these will be skipped.</p>
                 </div>
               )}
+
+              {/* Filter checkboxes */}
+              {(() => {
+                const ALL_STATUSES: RowStatus[] = ['ready', 'missing_masters', 'missing_lot', 'duplicate', 'skipped']
+                const allHidden = ALL_STATUSES.every(s => hideStatus.has(s))
+                return (
+                  <div className="flex flex-wrap gap-3 mb-3">
+                    <span className="text-xs text-gray-500 font-medium self-center">Hide:</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-600">
+                      <input type="checkbox" checked={allHidden}
+                        onChange={() => setHideStatus(allHidden ? new Set() : new Set(ALL_STATUSES))} />
+                      All
+                    </label>
+                    <span className="text-gray-300 self-center">|</span>
+                    {ALL_STATUSES.map(s => (
+                      <label key={s} className="flex items-center gap-1.5 cursor-pointer text-xs">
+                        <input type="checkbox" checked={hideStatus.has(s)}
+                          onChange={() => setHideStatus(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n })} />
+                        <span className={`px-2 py-0.5 rounded-full font-medium ${STATUS_STYLE[s]}`}>{STATUS_LABEL[s]}</span>
+                      </label>
+                    ))}
+                  </div>
+                )
+              })()}
 
               <div className="overflow-auto border rounded-lg">
                 <table className="w-full text-xs">
@@ -197,8 +235,11 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row, i) => (
-                      <tr key={i} className={`border-b last:border-0 ${row.status !== 'ready' ? 'opacity-50' : ''}`}>
+                    {[...rows.entries()]
+                      .sort(([,a],[,b]) => (a.status === 'skipped' ? 1 : 0) - (b.status === 'skipped' ? 1 : 0))
+                      .filter(([,row]) => !hideStatus.has(row.status))
+                      .map(([i, row]) => (
+                      <tr key={i} className={`border-b last:border-0 ${row.status === 'duplicate' || row.status === 'skipped' ? 'opacity-40' : row.status !== 'ready' ? 'opacity-60' : ''}`}>
                         <td className="px-3 py-1.5">
                           <input type="checkbox" checked={selected.has(i)} disabled={row.status !== 'ready'} onChange={() => toggleRow(i)} />
                         </td>
@@ -207,16 +248,21 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                             {STATUS_LABEL[row.status]}
                           </span>
                         </td>
-                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{row.date}</td>
+                        <td className="px-3 py-1.5 text-gray-600 whitespace-nowrap">{row.date || '—'}</td>
                         <td className="px-3 py-1.5 text-gray-600">{row.challanNo ?? '—'}</td>
-                        <td className="px-3 py-1.5 font-medium">{row.partyName}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{row.qualityName}</td>
+                        <td className="px-3 py-1.5 font-medium">{row.partyName || '—'}</td>
+                        <td className="px-3 py-1.5 text-gray-600">{row.qualityName || '—'}</td>
                         <td className="px-3 py-1.5 text-indigo-700 font-medium">{row.lotNo || <span className="text-red-500">—</span>}</td>
-                        <td className="px-3 py-1.5 text-right font-medium">{row.than}</td>
+                        <td className="px-3 py-1.5 text-right font-medium">{row.than || '—'}</td>
                         <td className="px-3 py-1.5 text-right text-gray-600">{row.rate ?? '—'}</td>
                         <td className="px-3 py-1.5 text-right text-gray-600">{row.pTotal ?? '—'}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{row.transportName}</td>
-                        <td className="px-3 py-1.5 text-yellow-700 text-[10px]">{row.missingMasters.join(', ')}</td>
+                        <td className="px-3 py-1.5 text-gray-600">{row.transportName || '—'}</td>
+                        <td className="px-3 py-1.5 text-[10px]">
+                          {row.status === 'skipped'
+                            ? <span className="text-orange-600 font-medium">{row.skipReason}</span>
+                            : <span className="text-yellow-700">{row.missingMasters.join(', ')}</span>
+                          }
+                        </td>
                       </tr>
                     ))}
                   </tbody>
