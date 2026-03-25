@@ -47,6 +47,7 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
   const [result, setResult] = useState<{ imported: number; errors: any[] } | null>(null)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [hideStatus, setHideStatus] = useState<Set<RowStatus>>(new Set())
 
   async function fetchSheet() {
     setStep('loading'); setError('')
@@ -193,6 +194,21 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                 </div>
               )}
 
+              {/* Filter checkboxes */}
+              <div className="flex flex-wrap gap-3 mb-3">
+                <span className="text-xs text-gray-500 font-medium self-center">Hide:</span>
+                {(['ready', 'missing_masters', 'missing_lot', 'duplicate', 'skipped'] as RowStatus[]).map((s) => (
+                  <label key={s} className="flex items-center gap-1.5 cursor-pointer text-xs">
+                    <input
+                      type="checkbox"
+                      checked={hideStatus.has(s)}
+                      onChange={() => setHideStatus(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n })}
+                    />
+                    <span className={`px-2 py-0.5 rounded-full font-medium ${STATUS_STYLE[s]}`}>{STATUS_LABEL[s]}</span>
+                  </label>
+                ))}
+              </div>
+
               {/* Preview table */}
               <div className="overflow-auto border rounded-lg">
                 <table className="w-full text-xs">
@@ -221,6 +237,7 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                   <tbody>
                     {[...rows.entries()]
                       .sort(([,a],[,b]) => (a.status === 'skipped' ? 1 : 0) - (b.status === 'skipped' ? 1 : 0))
+                      .filter(([,row]) => !hideStatus.has(row.status))
                       .map(([i, row]) => (
                       <tr key={i} className={`border-b last:border-0 ${row.status === 'duplicate' || row.status === 'skipped' ? 'opacity-40' : ''}`}>
                         <td className="px-3 py-1.5">
