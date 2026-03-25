@@ -228,8 +228,8 @@ export async function PUT(req: NextRequest) {
 
   for (const row of rows) {
     if (row.status !== 'ready') continue
-    if (!row.partyId || !row.qualityId || !row.weaverId) {
-      errors.push({ sn: row.sn, error: `Missing IDs — party:${row.partyId} quality:${row.qualityId} weaver:${row.weaverId} lot:${row.lotNo}` })
+    if (!row.partyId || !row.qualityId) {
+      errors.push({ sn: row.sn, error: `Missing IDs — party:${row.partyId} quality:${row.qualityId} lot:${row.lotNo}` })
       continue
     }
     if (!row.lotNo || !row.than || row.than <= 0) {
@@ -241,6 +241,8 @@ export async function PUT(req: NextRequest) {
       const date = parseSheetDate(row.date) ?? new Date()
       const transportId = row.transportId ?? (await prisma.transport.findFirst())?.id
       if (!transportId) { errors.push({ sn: row.sn, error: 'No transport found' }); continue }
+      const weaverId = row.weaverId ?? (await prisma.weaver.findFirst())?.id
+      if (!weaverId) { errors.push({ sn: row.sn, error: 'No weaver found' }); continue }
 
       await prisma.greyEntry.create({
         data: {
@@ -257,7 +259,7 @@ export async function PUT(req: NextRequest) {
           bale: row.bale ?? undefined,
           baleNo: row.baleNo || undefined,
           echBaleThan: row.echBaleThan ?? undefined,
-          weaverId: row.weaverId,
+          weaverId,
           viverNameBill: row.weaverName || undefined,
           lrNo: row.lrNo || undefined,
           lotNo: row.lotNo,
