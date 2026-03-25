@@ -16,6 +16,8 @@ interface LotStock {
   openingBalance: number
   greyThan: number
   despatchThan: number
+  foldProgrammed: number
+  foldAvailable: number
 }
 
 interface PartyStock {
@@ -66,12 +68,12 @@ export default function StockPage() {
 
   function getFlatRows() {
     return filtered.flatMap(p =>
-      p.lots.map(l => [p.party, l.lotNo, l.quality, l.openingBalance, l.greyThan, l.despatchThan, l.stock])
+      p.lots.map(l => [p.party, l.lotNo, l.quality, l.openingBalance, l.greyThan, l.despatchThan, l.stock, l.foldProgrammed, l.foldAvailable])
     )
   }
 
   function exportXLSX() {
-    const headers = ['Party', 'Lot No', 'Quality', 'Opening Balance', 'Grey Than', 'Despatch Than', 'Balance Stock']
+    const headers = ['Party', 'Lot No', 'Quality', 'Opening Balance', 'Grey Than', 'Despatch Than', 'Balance Stock', 'Fold Programmed', 'Fold Available']
     const ws = XLSX.utils.aoa_to_sheet([headers, ...getFlatRows()])
     // Bold header
     const wb = XLSX.utils.book_new()
@@ -88,12 +90,15 @@ export default function StockPage() {
     doc.setFontSize(9)
     doc.text(`${data?.totalStock?.toLocaleString()} than · ${data?.totalLots} lots · ${filtered.length} parties${search ? ` · Search: "${search}"` : ''}`, 14, 21)
     autoTable(doc, {
-      head: [['Party', 'Lot No', 'Quality', 'OB', 'Grey Than', 'Desp', 'Balance']],
+      head: [['Party', 'Lot No', 'Quality', 'OB', 'Grey', 'Desp', 'Balance', 'Fold Prog', 'Fold Avail']],
       body: getFlatRows(),
       startY: 26,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [79, 70, 229] },
-      columnStyles: { 6: { fontStyle: 'bold', textColor: [79, 70, 229] } },
+      columnStyles: {
+        6: { fontStyle: 'bold', textColor: [79, 70, 229] },
+        8: { fontStyle: 'bold', textColor: [5, 150, 105] },
+      },
     })
     doc.save('balance-stock.pdf')
   }
@@ -196,6 +201,12 @@ export default function StockPage() {
                         )}
                         {lot.despatchThan > 0 && (
                           <span className="bg-orange-50 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded">Desp: {lot.despatchThan}</span>
+                        )}
+                        {lot.foldProgrammed > 0 && (
+                          <span className="bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded">Fold: {lot.foldProgrammed}</span>
+                        )}
+                        {lot.foldProgrammed > 0 && (
+                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-semibold">Avail: {lot.foldAvailable}</span>
                         )}
                       </div>
                     </div>

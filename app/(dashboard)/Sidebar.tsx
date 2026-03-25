@@ -21,6 +21,7 @@ const ksiNavGroups = [
       { href: '/dyeing', label: 'Dyeing Slip', icon: '🎨' },
       { href: '/finish', label: 'Finish/Center', icon: '✨' },
       { href: '/stock', label: 'Stock Summary', icon: '📊' },
+      { href: '/fold', label: 'Fold Program', icon: '🪡' },
     ],
   },
   {
@@ -31,6 +32,7 @@ const ksiNavGroups = [
       { href: '/masters/weavers', label: 'Weavers', icon: '🧵' },
       { href: '/masters/transports', label: 'Transports', icon: '🚛' },
       { href: '/masters/chemicals', label: 'Chemicals', icon: '🧪' },
+      { href: '/masters/shades', label: 'Shades', icon: '🎨' },
     ],
   },
   {

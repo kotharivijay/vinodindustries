@@ -15,6 +15,7 @@ model Party {
   createdAt       DateTime        @default(now())
   greyEntries     GreyEntry[]
   despatchEntries DespatchEntry[]
+  foldBatchLots   FoldBatchLot[]
 }
 
 model Weaver {
@@ -30,6 +31,7 @@ model Quality {
   createdAt       DateTime        @default(now())
   greyEntries     GreyEntry[]
   despatchEntries DespatchEntry[]
+  foldBatchLots   FoldBatchLot[]
 }
 
 model Transport {
@@ -308,6 +310,91 @@ model VaultNotification {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   @@unique([documentId, userEmail])
+}
+
+// ─── Fold Program Module ─────────────────────────────────────────────────────
+
+model Shade {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique
+  createdAt   DateTime    @default(now())
+  foldBatches FoldBatch[]
+}
+
+model FoldProgram {
+  id        Int         @id @default(autoincrement())
+  foldNo    String      @unique
+  date      DateTime
+  status    String      @default("draft") // draft | confirmed
+  notes     String?
+  batches   FoldBatch[]
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model FoldBatch {
+  id            Int            @id @default(autoincrement())
+  foldProgramId Int
+  foldProgram   FoldProgram    @relation(fields: [foldProgramId], references: [id], onDelete: Cascade)
+  batchNo       Int
+  shadeId       Int?
+  shade         Shade?         @relation(fields: [shadeId], references: [id])
+  shadeName     String?        // free-text shade name (if not in master)
+  lots          FoldBatchLot[]
+}
+
+model FoldBatchLot {
+  id          Int       @id @default(autoincrement())
+  foldBatchId Int
+  foldBatch   FoldBatch @relation(fields: [foldBatchId], references: [id], onDelete: Cascade)
+  lotNo       String
+  partyId     Int?
+  party       Party?    @relation(fields: [partyId], references: [id])
+  qualityId   Int?
+  quality     Quality?  @relation(fields: [qualityId], references: [id])
+  than        Int
+  createdAt   DateTime  @default(now())
+}
+
+model FoldingSlip {
+  id        Int              @id @default(autoincrement())
+  slipNo    String           @unique
+  date      DateTime
+  status    String           @default("draft") // draft | confirmed
+  notes     String?
+  lots      FoldingSlipLot[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model FoldingSlipLot {
+  id            Int         @id @default(autoincrement())
+  foldingSlipId Int
+  foldingSlip   FoldingSlip @relation(fields: [foldingSlipId], references: [id], onDelete: Cascade)
+  lotNo         String
+  than          Int
+  meter         Float?
+}
+
+model PackingEntry {
+  id         Int          @id @default(autoincrement())
+  packingNo  String       @unique
+  date       DateTime
+  status     String       @default("draft") // draft | confirmed
+  notes      String?
+  lots       PackingLot[]
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model PackingLot {
+  id             Int          @id @default(autoincrement())
+  packingEntryId Int
+  packingEntry   PackingEntry @relation(fields: [packingEntryId], references: [id], onDelete: Cascade)
+  lotNo          String
+  than           Int
+  boxes          Int?
+  notes          String?
 }
 
 // ─── Carry-Forward / Opening Balance ─────────────────────────────────────────

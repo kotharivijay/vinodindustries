@@ -7,6 +7,16 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Fetch fold programmed than per lot
+  const foldBatchLots = await (prisma as any).foldBatchLot.findMany({
+    select: { lotNo: true, than: true },
+  })
+  const foldMap = new Map<string, number>()
+  for (const fl of foldBatchLots) {
+    const key = fl.lotNo.toLowerCase()
+    foldMap.set(key, (foldMap.get(key) ?? 0) + fl.than)
+  }
+
   // Fetch grey entries grouped by lot
   const greyByLot = await prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
 
@@ -38,6 +48,8 @@ export async function GET() {
     openingBalance: number
     greyThan: number
     despatchThan: number
+    foldProgrammed: number
+    foldAvailable: number
   }
 
   const lotStocks: LotStock[] = []
@@ -55,6 +67,7 @@ export async function GET() {
     if (stock <= 0) continue
 
     const detail = lotDetailMap.get(key)
+    const foldProgrammed = foldMap.get(key) ?? 0
     lotStocks.push({
       lotNo: g.lotNo,
       party: detail?.party ?? ob?.party ?? 'Unknown',
@@ -63,6 +76,8 @@ export async function GET() {
       openingBalance: obThan,
       greyThan,
       despatchThan: despThan,
+      foldProgrammed,
+      foldAvailable: Math.max(0, stock - foldProgrammed),
     })
   }
 
@@ -78,6 +93,7 @@ export async function GET() {
     const stock = ob.openingThan - despThan
     if (stock <= 0) continue
 
+    const foldProgrammed = foldMap.get(key) ?? 0
     lotStocks.push({
       lotNo: ob.lotNo,
       party: ob.party || 'Unknown',
@@ -86,6 +102,8 @@ export async function GET() {
       openingBalance: ob.openingThan,
       greyThan: 0,
       despatchThan: despThan,
+      foldProgrammed,
+      foldAvailable: Math.max(0, stock - foldProgrammed),
     })
   }
 
