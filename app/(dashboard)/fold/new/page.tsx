@@ -231,25 +231,18 @@ export default function NewFoldPage() {
             {/* Lots */}
             <div className="p-3 space-y-2 bg-white dark:bg-gray-800">
               {batch.lots.map((lot, lotIdx) => {
-                const stockInfo = lotLookup.get(lot.lotNo.toLowerCase())
+                const allSelectedLotNos = batches.flatMap((b, bi) =>
+                  b.lots.filter((_, li) => !(bi === batchIdx && li === lotIdx)).map(l => l.lotNo).filter(Boolean)
+                )
                 return (
                   <div key={lotIdx} className="flex gap-2 items-start">
                     <div className="flex-1">
-                      <input
-                        list={`lots-${batchIdx}-${lotIdx}`}
-                        className="w-full border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                        placeholder="Lot No"
-                        value={lot.lotNo}
-                        onChange={e => updateLot(batchIdx, lotIdx, 'lotNo', e.target.value)}
+                      <LotCombobox
+                        lotNo={lot.lotNo}
+                        allLots={allLots}
+                        selectedLotNos={allSelectedLotNos}
+                        onSelect={selected => updateLot(batchIdx, lotIdx, 'lotNo', selected)}
                       />
-                      <datalist id={`lots-${batchIdx}-${lotIdx}`}>
-                        {allLots.map(l => <option key={l.lotNo} value={l.lotNo}>{l.lotNo} — {l.party} ({l.foldAvailable} avail)</option>)}
-                      </datalist>
-                      {stockInfo && (
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          {stockInfo.party} · {stockInfo.quality} · Balance: {stockInfo.stock} · Avail: <span className="text-emerald-600 font-medium">{stockInfo.foldAvailable}</span>
-                        </p>
-                      )}
                     </div>
                     <input
                       type="number"
@@ -306,6 +299,100 @@ export default function NewFoldPage() {
       >
         {saving ? 'Saving...' : 'Save Fold Program'}
       </button>
+    </div>
+  )
+}
+
+// ── Lot Combobox ──────────────────────────────────────────────────────────────
+
+function LotCombobox({ lotNo, allLots, selectedLotNos, onSelect }: {
+  lotNo: string
+  allLots: LotStockItem[]
+  selectedLotNos: string[]
+  onSelect: (lotNo: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [])
+
+  const filtered = allLots.filter(l =>
+    l.lotNo.toLowerCase().includes(search.toLowerCase().trim()) &&
+    !selectedLotNos.includes(l.lotNo)
+  )
+
+  const stockInfo = allLots.find(l => l.lotNo.toLowerCase() === lotNo.toLowerCase())
+
+  function select(selected: string) {
+    onSelect(selected)
+    setSearch('')
+    setOpen(false)
+  }
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <div
+        className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm cursor-pointer bg-white dark:bg-gray-700 flex items-center justify-between gap-1 min-h-[32px]"
+        onClick={() => setOpen(o => !o)}
+      >
+        <span className={lotNo ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400'}>
+          {lotNo || 'Select lot...'}
+        </span>
+        <span className="text-gray-400 text-xs shrink-0">▾</span>
+      </div>
+
+      {open && (
+        <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+          <div className="p-1.5 border-b border-gray-100 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
+            <input
+              autoFocus
+              className="w-full px-2 py-1 text-sm border border-gray-200 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              placeholder="Search lot..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          {filtered.length > 0 ? (
+            filtered.map(l => (
+              <button
+                key={l.lotNo}
+                onMouseDown={e => { e.preventDefault(); select(l.lotNo) }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between gap-2 ${
+                  l.lotNo === lotNo ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
+                }`}
+              >
+                <span>
+                  <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
+                  <span className="text-xs text-gray-400 ml-2">{l.party} · {l.quality}</span>
+                </span>
+                <span className="text-xs text-emerald-600 dark:text-emerald-400 shrink-0">Avail: {l.foldAvailable}</span>
+              </button>
+            ))
+          ) : search.trim() ? (
+            <button
+              onMouseDown={e => { e.preventDefault(); select(search.trim()) }}
+              className="w-full text-left px-3 py-2 text-sm text-indigo-600 dark:text-indigo-400 font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+            >
+              + Use "{search.trim()}" manually
+            </button>
+          ) : (
+            <div className="px-3 py-3 text-sm text-gray-400 text-center">No available lots</div>
+          )}
+        </div>
+      )}
+
+      {stockInfo && (
+        <p className="text-[10px] text-gray-400 mt-0.5">
+          {stockInfo.party} · {stockInfo.quality} · Balance: {stockInfo.stock} · Avail: <span className="text-emerald-600 font-medium">{stockInfo.foldAvailable}</span>
+        </p>
+      )}
     </div>
   )
 }
