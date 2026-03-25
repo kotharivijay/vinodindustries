@@ -110,7 +110,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
   const fmt = (d: Date) => new Date(d).toLocaleDateString('en-IN')
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl dark:text-gray-100">
       <div className="flex items-center gap-4 mb-6">
         <BackButton />
         <div>
@@ -122,33 +122,33 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       {/* Summary cards */}
       <div className={`grid grid-cols-2 ${obThan > 0 ? 'sm:grid-cols-6' : 'sm:grid-cols-5'} gap-3 mb-8`}>
         {obThan > 0 && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Opening Bal</p>
             <p className="text-2xl font-bold text-blue-600 mt-1">{obThan}</p>
             <p className="text-xs text-gray-400">carry-forward</p>
           </div>
         )}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Grey Inward</p>
           <p className="text-2xl font-bold text-gray-800 mt-1">{greyThan}</p>
           <p className="text-xs text-gray-400">{greyEntries.length} entries</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Dyeing</p>
           <p className="text-2xl font-bold text-purple-600 mt-1">{dyeingThan}</p>
           <p className="text-xs text-gray-400">{dyeingEntries.length} entries</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Finish</p>
           <p className="text-2xl font-bold text-teal-600 mt-1">{finishThan}</p>
           <p className="text-xs text-gray-400">{finishEntries.length} entries</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Despatched</p>
           <p className="text-2xl font-bold text-orange-600 mt-1">{despatchThan}</p>
           <p className="text-xs text-gray-400">{despatchEntries.length} entries</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Balance</p>
           <p className={`text-2xl font-bold mt-1 ${stock > 0 ? 'text-green-600' : stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>{stock}</p>
           <p className="text-xs text-gray-400">in stock</p>
@@ -158,8 +158,8 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       {/* Opening Balance (carry-forward) */}
       {openingBalance && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Opening Balance (Carry-Forward from {openingBalance.financialYear})</h2>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">Opening Balance (Carry-Forward from {openingBalance.financialYear})</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
             <div className="grid grid-cols-2 gap-3 text-sm mb-3">
               <div><span className="text-gray-400 text-xs">Original Grey</span><p className="font-semibold">{openingBalance.greyThan} than</p></div>
               <div><span className="text-gray-400 text-xs">Despatched (prev yr)</span><p className="font-semibold">{openingBalance.totalDespatched} than</p></div>
@@ -190,8 +190,8 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       {/* Grey entries */}
       {greyEntries.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">📦 Grey Inward ({greyEntries.length})</h2>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">📦 Grey Inward ({greyEntries.length})</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-50">
             {greyEntries.map(e => (
               <div key={e.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                 <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
@@ -209,8 +209,8 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       {/* Dyeing entries */}
       {dyeingEntries.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">🎨 Dyeing Slip ({dyeingEntries.length})</h2>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">🎨 Dyeing Slip ({dyeingEntries.length})</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-50">
             {dyeingEntries.map((e: any) => {
               const lotThan = e._lotThan ?? e.than
               const totalCost = e.chemicals?.reduce((s: number, c: any) => s + (c.cost ?? 0), 0) ?? 0
@@ -228,7 +228,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                   {e.lots?.length > 1 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {e.lots.filter((l: any) => l.lotNo.toLowerCase() !== lotNo.toLowerCase()).map((l: any, i: number) => (
-                        <span key={i} className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                        <span key={i} className="text-[10px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
                           +{l.lotNo} ({l.than})
                         </span>
                       ))}
@@ -244,8 +244,8 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       {/* Finish entries */}
       {finishEntries.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">&#10024; Finish/Center ({finishEntries.length})</h2>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">&#10024; Finish/Center ({finishEntries.length})</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-50">
             {finishEntries.map((e: any) => {
               const lotThan = e._lotThan ?? e.than
               const lotMeter = e._lotMeter ?? null
@@ -264,7 +264,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                   {e.lots?.length > 1 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {e.lots.filter((l: any) => l.lotNo.toLowerCase() !== lotNo.toLowerCase()).map((l: any, i: number) => (
-                        <span key={i} className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                        <span key={i} className="text-[10px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
                           +{l.lotNo} ({l.than})
                         </span>
                       ))}
@@ -280,8 +280,8 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       {/* Despatch entries */}
       {despatchEntries.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">🚚 Despatch ({despatchEntries.length})</h2>
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y divide-gray-50">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">🚚 Despatch ({despatchEntries.length})</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-50">
             {despatchEntries.map(e => (
               <div key={e.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                 <span className="text-gray-500 text-xs">{fmt(e.date)}</span>

@@ -4,15 +4,15 @@ import { signIn } from 'next-auth/react'
 
 export default function LoginForm({ error }: { error?: string }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl p-10 w-full max-w-md text-center">
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-10 w-full max-w-md text-center">
         {/* Logo / Branding */}
         <div className="mb-8">
           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <span className="text-white text-2xl font-bold">KSI</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-800">Kothari Synthetic Industries</h1>
-          <p className="text-gray-500 mt-1 text-sm">Textile Management System</p>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Kothari Synthetic Industries</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1 text-sm">Textile Management System</p>
         </div>
 
         {/* Error message */}
@@ -39,7 +39,7 @@ export default function LoginForm({ error }: { error?: string }) {
           Sign in with Google
         </button>
 
-        <p className="text-xs text-gray-400 mt-8">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-8">
           Only authorized Gmail accounts can access this system.
         </p>
       </div>

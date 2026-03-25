@@ -170,10 +170,10 @@ export default function GreyListPage() {
   function SortTh({ field, label }: { field: SortField; label: string }) {
     const active = sortField === field
     return (
-      <th onClick={() => toggleSort(field)} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600 group">
+      <th onClick={() => toggleSort(field)} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600 group">
         <span className="flex items-center gap-1">
           {label}
-          <span className={`transition ${active ? 'text-indigo-600' : 'text-gray-300 group-hover:text-gray-400'}`}>
+          <span className={`transition ${active ? 'text-indigo-600' : 'text-gray-300 dark:text-gray-600 group-hover:text-gray-400'}`}>
             {active ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
           </span>
         </span>
@@ -182,10 +182,10 @@ export default function GreyListPage() {
   }
 
   function PlainTh({ label }: { label: string }) {
-    return <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{label}</th>
+    return <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide whitespace-nowrap">{label}</th>
   }
 
-  const fi = 'w-full border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300 mt-1'
+  const fi = 'w-full border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300 mt-1'
   const totalStock = useMemo(() => stockSummary.reduce((s, r) => s + r.stock, 0), [stockSummary])
   const lotsInStock = useMemo(() => stockSummary.filter(r => r.stock > 0).length, [stockSummary])
 
@@ -194,8 +194,8 @@ export default function GreyListPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Grey Inward</h1>
-          <p className="text-sm text-gray-500 mt-1">{entries.length} entries · {stockSummary.length} lots · {lotsInStock} in stock</p>
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Grey Inward</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{entries.length} entries · {stockSummary.length} lots · {lotsInStock} in stock</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -229,8 +229,8 @@ export default function GreyListPage() {
 
       {/* Carry-forward import result */}
       {cfResult && (
-        <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between">
-          <p className="text-sm text-blue-800">
+        <div className="mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-3 flex items-center justify-between">
+          <p className="text-sm text-blue-800 dark:text-blue-300">
             Carry-forward imported: <strong>{cfResult.imported} lots</strong>, <strong>{cfResult.totalThan.toLocaleString()} than</strong> total opening balance.
           </p>
           <button onClick={() => setCfResult(null)} className="text-blue-500 hover:text-blue-700 text-xs font-medium ml-4">Dismiss</button>
@@ -238,20 +238,20 @@ export default function GreyListPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-gray-200">
+      <div className="flex gap-1 mb-5 border-b border-gray-200 dark:border-gray-700">
         <button
           onClick={() => setTab('entries')}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === 'entries' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === 'entries' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
         >
           All Entries
-          <span className="ml-2 bg-gray-100 text-gray-600 text-xs rounded-full px-2 py-0.5">{entries.length}</span>
+          <span className="ml-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full px-2 py-0.5">{entries.length}</span>
         </button>
         <button
           onClick={() => setTab('stock')}
-          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === 'stock' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === 'stock' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
         >
           Stock Summary
-          <span className="ml-2 bg-gray-100 text-gray-600 text-xs rounded-full px-2 py-0.5">{stockSummary.length} lots</span>
+          <span className="ml-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full px-2 py-0.5">{stockSummary.length} lots</span>
         </button>
       </div>
 
@@ -259,16 +259,16 @@ export default function GreyListPage() {
       {tab === 'stock' && (
         <div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Lots</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{stockSummary.length}</p>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total Lots</p>
+              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100 mt-1">{stockSummary.length}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Lots with Stock</p>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Lots with Stock</p>
               <p className="text-2xl font-bold text-green-600 mt-1">{lotsInStock}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Balance (Than)</p>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total Balance (Than)</p>
               <p className="text-2xl font-bold text-indigo-600 mt-1">{totalStock}</p>
             </div>
           </div>
@@ -281,12 +281,12 @@ export default function GreyListPage() {
               value={stockSearch}
               onChange={e => { setStockSearch(e.target.value); setDebouncedStockSearch(e.target.value) }}
             />
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
               {(['all', 'instock', 'cleared'] as StockFilter[]).map(f => (
                 <button
                   key={f}
                   onClick={() => setStockFilter(f)}
-                  className={`px-3 py-1 text-xs rounded-md font-medium transition ${stockFilter === f ? 'bg-white shadow text-gray-800' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`px-3 py-1 text-xs rounded-md font-medium transition ${stockFilter === f ? 'bg-white dark:bg-gray-600 shadow text-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
                 >
                   {f === 'all' ? 'All' : f === 'instock' ? 'In Stock' : 'Cleared'}
                 </button>
@@ -302,33 +302,33 @@ export default function GreyListPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Lot No</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Party</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Quality</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Weaver</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Last Date</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Entries</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Grey Than</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">T_DESP</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Balance</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Lot No</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Party</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Quality</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Weaver</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Last Date</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Entries</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Grey Than</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">T_DESP</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Balance</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                     {filteredStock.map(r => (
-                      <tr key={r.lotNo} className="hover:bg-gray-50 transition">
-                        <td className="px-4 py-3 font-semibold text-indigo-700">
+                      <tr key={r.lotNo} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                        <td className="px-4 py-3 font-semibold text-indigo-700 dark:text-indigo-400">
                           <Link href={`/lot/${encodeURIComponent(r.lotNo)}`} className="hover:underline">{r.lotNo}</Link>
-                          {r.openingBalance > 0 && <span className="ml-1.5 text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
+                          {r.openingBalance > 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
                         </td>
-                        <td className="px-4 py-3 text-gray-800">{r.party}</td>
-                        <td className="px-4 py-3 text-gray-600">{r.quality}</td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">{r.weaver}</td>
-                        <td className="px-4 py-3 text-gray-500 text-xs">{new Date(r.lastDate).toLocaleDateString('en-IN')}</td>
-                        <td className="px-4 py-3 text-right text-gray-500">{r.entries}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-gray-800">{r.greyThan}</td>
-                        <td className="px-4 py-3 text-right text-orange-600 font-medium">{r.tDesp}</td>
+                        <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{r.party}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.quality}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{r.weaver}</td>
+                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{new Date(r.lastDate).toLocaleDateString('en-IN')}</td>
+                        <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{r.entries}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{r.greyThan}</td>
+                        <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400 font-medium">{r.tDesp}</td>
                         <td className="px-4 py-3 text-right">
                           <span className={`font-bold text-base ${r.stock > 0 ? 'text-green-600' : r.stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>
                             {r.stock}
@@ -337,12 +337,12 @@ export default function GreyListPage() {
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                  <tfoot className="bg-gray-50 dark:bg-gray-700 border-t-2 border-gray-200 dark:border-gray-600">
                     <tr>
-                      <td colSpan={6} className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Total ({filteredStock.length} lots)</td>
-                      <td className="px-4 py-3 text-right font-bold text-gray-800">{filteredStock.reduce((s, r) => s + r.greyThan, 0)}</td>
+                      <td colSpan={6} className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total ({filteredStock.length} lots)</td>
+                      <td className="px-4 py-3 text-right font-bold text-gray-800 dark:text-gray-100">{filteredStock.reduce((s, r) => s + r.greyThan, 0)}</td>
                       <td className="px-4 py-3 text-right font-bold text-orange-600">{filteredStock.reduce((s, r) => s + r.tDesp, 0)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-indigo-700">{filteredStock.reduce((s, r) => s + r.stock, 0)}</td>
+                      <td className="px-4 py-3 text-right font-bold text-indigo-700 dark:text-indigo-400">{filteredStock.reduce((s, r) => s + r.stock, 0)}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -371,7 +371,7 @@ export default function GreyListPage() {
             <span className="text-xs text-gray-400 ml-auto">{filtered.length} of {entries.length}</span>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {loading ? (
               <div className="p-12 text-center text-gray-400">Loading...</div>
             ) : filtered.length === 0 ? (
@@ -412,7 +412,7 @@ export default function GreyListPage() {
                         {expandedIds.has(e.id) ? '▲ Less' : '▼ More details'}
                       </button>
                       {expandedIds.has(e.id) && (
-                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 bg-gray-50 rounded-lg p-3">
+                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
                           <span>Weight: {e.weight ?? '—'}</span>
                           <span>Gray Mtr: {e.grayMtr ?? '—'}</span>
                           <span>Transport: {e.transport.name}</span>
@@ -431,7 +431,7 @@ export default function GreyListPage() {
                 {/* ── Desktop table ── */}
                 <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b">
+                    <thead className="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600">
                       <tr>
                         <SortTh field="sn" label="SN" />
                         <SortTh field="date" label="Date" />
@@ -465,27 +465,27 @@ export default function GreyListPage() {
                         <PlainTh label="" />
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                       {filtered.map((e) => (
-                        <tr key={e.id} className="hover:bg-gray-50 transition">
-                          <td className="px-3 py-2.5 text-gray-500">{e.sn ?? e.id}</td>
-                          <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
-                          <td className="px-3 py-2.5">{e.challanNo}</td>
-                          <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">{e.party.name}</td>
-                          <td className="px-3 py-2.5 whitespace-nowrap">{e.quality.name}</td>
-                          <td className="px-3 py-2.5 text-gray-500">{e.weight ?? '—'}</td>
-                          <td className="px-3 py-2.5 font-semibold">{e.than}</td>
-                          <td className="px-3 py-2.5 text-gray-500">{e.grayMtr ?? '—'}</td>
-                          <td className="px-3 py-2.5 font-medium text-indigo-700">
+                        <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.sn ?? e.id}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap dark:text-gray-300">{new Date(e.date).toLocaleDateString('en-IN')}</td>
+                          <td className="px-3 py-2.5 dark:text-gray-300">{e.challanNo}</td>
+                          <td className="px-3 py-2.5 font-medium text-gray-800 dark:text-gray-100 whitespace-nowrap">{e.party.name}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap dark:text-gray-300">{e.quality.name}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.weight ?? '—'}</td>
+                          <td className="px-3 py-2.5 font-semibold dark:text-gray-100">{e.than}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.grayMtr ?? '—'}</td>
+                          <td className="px-3 py-2.5 font-medium text-indigo-700 dark:text-indigo-400">
                             <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="hover:underline">{e.lotNo}</Link>
                           </td>
-                          <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.transport.name}</td>
-                          <td className="px-3 py-2.5 text-gray-500">{e.lrNo ?? e.transportLrNo ?? '—'}</td>
-                          <td className="px-3 py-2.5">{e.bale ?? '—'}</td>
-                          <td className="px-3 py-2.5 text-gray-500">{e.baleNo ?? '—'}</td>
-                          <td className="px-3 py-2.5 text-gray-500">{e.echBaleThan ?? '—'}</td>
-                          <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.weaver.name}</td>
-                          <td className="px-3 py-2.5 text-orange-600 font-medium">{e.tDesp}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.transport.name}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.lrNo ?? e.transportLrNo ?? '—'}</td>
+                          <td className="px-3 py-2.5 dark:text-gray-300">{e.bale ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.baleNo ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.echBaleThan ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.weaver.name}</td>
+                          <td className="px-3 py-2.5 text-orange-600 dark:text-orange-400 font-medium">{e.tDesp}</td>
                           <td className="px-3 py-2.5">
                             <span className={`font-semibold ${e.stock > 0 ? 'text-green-600' : e.stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>
                               {e.stock}

@@ -173,7 +173,7 @@ export default function FoldDetailPage() {
     win?.print()
   }
 
-  if (isLoading) return <div className="p-8 text-gray-400">Loading...</div>
+  if (isLoading) return <div className="p-8 text-gray-400 dark:text-gray-500">Loading...</div>
   if (!program) return <div className="p-8 text-red-500">Not found</div>
 
   const totalThan = program.batches.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + l.than, 0), 0)
@@ -182,19 +182,19 @@ export default function FoldDetailPage() {
     <div className="p-4 md:p-8 max-w-2xl">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6 flex-wrap">
-        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg px-4 py-2 text-sm font-medium transition">
           &larr; Back
         </button>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-gray-800">{program.foldNo}</h1>
+            <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">{program.foldNo}</h1>
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-              program.status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+              program.status === 'confirmed' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
             }`}>
               {program.status}
             </span>
           </div>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             {new Date(program.date).toLocaleDateString('en-IN')} &middot; {program.batches.length} batch{program.batches.length !== 1 ? 'es' : ''} &middot; {totalThan} than
           </p>
         </div>
@@ -215,7 +215,7 @@ export default function FoldDetailPage() {
       </div>
 
       {program.notes && (
-        <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-2 text-sm text-gray-700">
+        <div className="mb-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-yellow-300">
           {program.notes}
         </div>
       )}
@@ -226,17 +226,17 @@ export default function FoldDetailPage() {
           const shade = batch.shade?.name ?? batch.shadeName
           const batchTotal = batch.lots.reduce((s, l) => s + l.than, 0)
           return (
-            <div key={batch.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="bg-indigo-50 px-4 py-2 flex items-center justify-between">
+            <div key={batch.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 flex items-center justify-between">
                 <div>
-                  <span className="font-bold text-indigo-700 text-sm">Batch {batch.batchNo}</span>
-                  {shade && <span className="ml-2 text-xs text-gray-600 bg-white border border-gray-200 px-2 py-0.5 rounded-full">{shade}</span>}
+                  <span className="font-bold text-indigo-700 dark:text-indigo-400 text-sm">Batch {batch.batchNo}</span>
+                  {shade && <span className="ml-2 text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 px-2 py-0.5 rounded-full">{shade}</span>}
                 </div>
-                <span className="text-sm font-bold text-indigo-600">{batchTotal} than</span>
+                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{batchTotal} than</span>
               </div>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
+                  <tr className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
                     <th className="text-left px-4 py-2">Lot No</th>
                     <th className="text-left px-4 py-2">Party</th>
                     <th className="text-left px-4 py-2">Quality</th>
@@ -245,18 +245,18 @@ export default function FoldDetailPage() {
                 </thead>
                 <tbody>
                   {batch.lots.map(lot => (
-                    <tr key={lot.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                      <td className="px-4 py-2 font-medium text-indigo-700">{lot.lotNo}</td>
-                      <td className="px-4 py-2 text-gray-600">{lot.party?.name ?? '-'}</td>
-                      <td className="px-4 py-2 text-gray-600">{lot.quality?.name ?? '-'}</td>
-                      <td className="px-4 py-2 text-right font-bold text-gray-800">{lot.than}</td>
+                    <tr key={lot.id} className="border-b border-gray-50 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      <td className="px-4 py-2 font-medium text-indigo-700 dark:text-indigo-400">{lot.lotNo}</td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{lot.party?.name ?? '-'}</td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{lot.quality?.name ?? '-'}</td>
+                      <td className="px-4 py-2 text-right font-bold text-gray-800 dark:text-gray-100">{lot.than}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="bg-indigo-50">
-                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-right text-gray-600">Batch Total:</td>
-                    <td className="px-4 py-2 text-right font-bold text-indigo-700">{batchTotal}</td>
+                  <tr className="bg-indigo-50 dark:bg-indigo-900/20">
+                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-right text-gray-600 dark:text-gray-400">Batch Total:</td>
+                    <td className="px-4 py-2 text-right font-bold text-indigo-700 dark:text-indigo-400">{batchTotal}</td>
                   </tr>
                 </tfoot>
               </table>

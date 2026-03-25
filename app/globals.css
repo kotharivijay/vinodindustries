@@ -11,3 +11,57 @@
     to   { transform: translateX(0); }
   }
 }
+
+/* ── Dark mode global styles ─────────────────────────────────────── */
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Form elements */
+.dark input:not([type=checkbox]):not([type=radio]):not([type=range]),
+.dark select,
+.dark textarea {
+  background-color: rgb(55 65 81);   /* gray-700 */
+  border-color: rgb(75 85 99);       /* gray-600 */
+  color: rgb(243 244 246);           /* gray-100 */
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgb(156 163 175);           /* gray-400 */
+}
+
+/* Tables */
+.dark table thead tr {
+  background-color: rgb(31 41 55);   /* gray-800 */
+}
+.dark table thead th {
+  color: rgb(209 213 219);           /* gray-300 */
+  border-color: rgb(55 65 81);       /* gray-700 */
+}
+.dark table tbody tr {
+  border-color: rgb(55 65 81);       /* gray-700 */
+}
+.dark table tbody tr:hover {
+  background-color: rgb(31 41 55);   /* gray-800 */
+}
+.dark table tbody td {
+  color: rgb(209 213 219);           /* gray-300 */
+}
+
+/* Dividers */
+.dark .divide-y > * + * {
+  border-color: rgb(55 65 81);       /* gray-700 */
+}
+.dark hr {
+  border-color: rgb(55 65 81);
+}
+
+/* Scrollbars */
+.dark ::-webkit-scrollbar {
+  background-color: rgb(17 24 39);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgb(75 85 99);
+  border-radius: 4px;
+}

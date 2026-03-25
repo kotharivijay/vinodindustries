@@ -161,16 +161,16 @@ export default function NewFoldPage() {
   return (
     <div className="p-4 md:p-8 max-w-2xl">
       <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg px-4 py-2 text-sm font-medium transition">
           &larr; Back
         </button>
-        <h1 className="text-xl font-bold text-gray-800 flex-1">New Fold Program</h1>
+        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex-1">New Fold Program</h1>
       </div>
 
-      {error && <div className="mb-4 text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm">{error}</div>}
+      {error && <div className="mb-4 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2 text-sm">{error}</div>}
 
       {/* Header fields */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4 space-y-3">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Fold No *</label>
@@ -205,10 +205,10 @@ export default function NewFoldPage() {
       {/* Batches */}
       <div className="space-y-4 mb-4">
         {batches.map((batch, batchIdx) => (
-          <div key={batchIdx} className="bg-white rounded-xl border border-indigo-100 overflow-hidden">
+          <div key={batchIdx} className="bg-white dark:bg-gray-800 rounded-xl border border-indigo-100 dark:border-gray-700 overflow-hidden">
             {/* Batch header */}
-            <div className="bg-indigo-50 px-4 py-2 flex items-center gap-3">
-              <span className="text-sm font-bold text-indigo-700">Batch {batch.batchNo}</span>
+            <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 flex items-center gap-3">
+              <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">Batch {batch.batchNo}</span>
               <div className="flex-1">
                 <select
                   className="border border-gray-300 rounded px-2 py-1 text-sm bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 w-full max-w-[180px]"
@@ -242,7 +242,7 @@ export default function NewFoldPage() {
             </div>
 
             {/* Lots */}
-            <div className="p-3 space-y-2">
+            <div className="p-3 space-y-2 bg-white dark:bg-gray-800">
               {batch.lots.map((lot, lotIdx) => {
                 const stockInfo = lotLookup.get(lot.lotNo.toLowerCase())
                 return (
@@ -286,9 +286,9 @@ export default function NewFoldPage() {
             </div>
 
             {/* Batch total */}
-            <div className="bg-gray-50 px-4 py-1.5 text-right">
-              <span className="text-xs text-gray-500">Batch total: </span>
-              <span className="text-sm font-bold text-indigo-600">
+            <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-1.5 text-right">
+              <span className="text-xs text-gray-500 dark:text-gray-400">Batch total: </span>
+              <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
                 {batch.lots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)} than
               </span>
             </div>

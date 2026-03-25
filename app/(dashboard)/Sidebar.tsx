@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import SignOutButton from './SignOutButton'
 import NotificationBell from './NotificationBell'
+import { useTheme } from '../theme-provider'
 
 interface Props {
   userName?: string | null
@@ -61,6 +62,7 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
   company: string
 }) {
   const initial = userName?.[0]?.toUpperCase() ?? 'U'
+  const { theme, toggle } = useTheme()
   const companyName = company === 'vi' ? 'Vinod Industries' : 'Kothari Synthetic Industries'
   const companyIcon = company === 'vi' ? '\u{1F3E2}' : '\u{1F3ED}'
   const navGroups = company === 'vi' ? viNavGroups : ksiNavGroups
@@ -123,6 +125,15 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
             <p className="text-xs text-gray-400 truncate">{userEmail}</p>
           </div>
         </div>
+        <div className="flex gap-2 mb-2">
+          <button
+            onClick={toggle}
+            className="flex-1 flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-2 transition"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode'}
+          </button>
+        </div>
         <SignOutButton />
       </div>
     </div>
@@ -133,6 +144,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
   const [open, setOpen] = useState(false)
   const [company, setCompany] = useState<string>('ksi')
   const pathname = usePathname()
+  const { theme, toggle } = useTheme()
 
   // Read selected company from localStorage
   useEffect(() => {
@@ -167,6 +179,9 @@ export default function Sidebar({ userName, userEmail }: Props) {
         </button>
         <span className="font-bold text-base flex-1 truncate">{companyName}</span>
         <NotificationBell />
+        <button onClick={toggle} className="text-lg shrink-0" title="Toggle dark mode">
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
         <Link href="/select-company" className="text-[10px] text-gray-400 hover:text-white bg-gray-800 rounded px-2 py-1 shrink-0">Switch</Link>
       </header>
 
