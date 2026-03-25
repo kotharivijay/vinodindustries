@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 
-type RowStatus = 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate'
+type RowStatus = 'ready' | 'missing_masters' | 'missing_lot' | 'duplicate' | 'skipped'
 
 interface ImportRow {
   sn: number | null
@@ -16,25 +16,28 @@ interface ImportRow {
   than: number
   missingMasters: string[]
   status: RowStatus
+  skipReason?: string
   partyId: number | null
   qualityId: number | null
   weaverId: number | null
   transportId: number | null
 }
 
-interface Summary { total: number; ready: number; missing_masters: number; missing_lot: number; duplicate: number }
+interface Summary { total: number; ready: number; missing_masters: number; missing_lot: number; duplicate: number; skipped: number }
 
 const STATUS_STYLE: Record<RowStatus, string> = {
   ready: 'bg-green-100 text-green-700',
   missing_masters: 'bg-yellow-100 text-yellow-700',
   missing_lot: 'bg-red-100 text-red-700',
   duplicate: 'bg-gray-100 text-gray-500',
+  skipped: 'bg-orange-100 text-orange-600',
 }
 const STATUS_LABEL: Record<RowStatus, string> = {
   ready: 'Ready',
   missing_masters: 'Missing Masters',
   missing_lot: 'Missing Lot No',
   duplicate: 'Duplicate',
+  skipped: 'Skip',
 }
 
 export default function GreyImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
@@ -154,12 +157,13 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
           {step === 'preview' && summary && (
             <>
               {/* Summary bar */}
-              <div className="grid grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-5 gap-3 mb-4">
                 {[
                   { label: 'Ready to Import', value: summary.ready, color: 'bg-green-50 text-green-700 border-green-200' },
                   { label: 'Missing Masters', value: summary.missing_masters, color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
                   { label: 'Missing Lot No', value: summary.missing_lot, color: 'bg-red-50 text-red-700 border-red-200' },
                   { label: 'Duplicate (skip)', value: summary.duplicate, color: 'bg-gray-50 text-gray-500 border-gray-200' },
+                  { label: 'Skipped (reason)', value: summary.skipped, color: 'bg-orange-50 text-orange-600 border-orange-200' },
                 ].map((s) => (
                   <div key={s.label} className={`border rounded-lg p-3 text-center ${s.color}`}>
                     <div className="text-2xl font-bold">{s.value}</div>
@@ -216,7 +220,7 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                   </thead>
                   <tbody>
                     {rows.map((row, i) => (
-                      <tr key={i} className={`border-b last:border-0 ${row.status === 'duplicate' ? 'opacity-40' : ''}`}>
+                      <tr key={i} className={`border-b last:border-0 ${row.status === 'duplicate' || row.status === 'skipped' ? 'opacity-40' : ''}`}>
                         <td className="px-3 py-1.5">
                           <input
                             type="checkbox"
@@ -231,14 +235,17 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                           </span>
                         </td>
                         <td className="px-3 py-1.5 text-gray-600">{row.sn ?? '—'}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{row.date}</td>
+                        <td className="px-3 py-1.5 text-gray-600">{row.date || '—'}</td>
                         <td className="px-3 py-1.5 text-gray-600">{row.challanNo ?? '—'}</td>
-                        <td className="px-3 py-1.5 font-medium">{row.partyName}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{row.qualityName}</td>
-                        <td className="px-3 py-1.5 text-right font-medium">{row.than}</td>
+                        <td className="px-3 py-1.5 font-medium">{row.partyName || '—'}</td>
+                        <td className="px-3 py-1.5 text-gray-600">{row.qualityName || '—'}</td>
+                        <td className="px-3 py-1.5 text-right font-medium">{row.than || '—'}</td>
                         <td className="px-3 py-1.5 text-gray-600">{row.lotNo || <span className="text-red-500">—</span>}</td>
-                        <td className="px-3 py-1.5 text-yellow-700">
-                          {row.missingMasters.length > 0 ? row.missingMasters.join(', ') : ''}
+                        <td className="px-3 py-1.5">
+                          {row.status === 'skipped'
+                            ? <span className="text-orange-600 font-medium">{row.skipReason}</span>
+                            : <span className="text-yellow-700">{row.missingMasters.join(', ')}</span>
+                          }
                         </td>
                       </tr>
                     ))}

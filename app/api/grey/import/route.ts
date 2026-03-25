@@ -79,9 +79,26 @@ export async function POST(req: NextRequest) {
   const batchKeys = new Set<string>()
 
   const rows = []
-  let skippedOldYear = 0
-  let skippedZeroThan = 0
-  let skippedEmpty = 0
+
+  function makeSkippedRow(row: string[], reason: string) {
+    return {
+      sn: parseInt(row[COL.SN]) || null,
+      date: row[COL.DATE]?.trim() ?? '',
+      challanNo: parseInt(row[COL.CHALLAN]) || null,
+      partyName: row[COL.PARTY]?.trim() ?? '',
+      qualityName: row[COL.QUALITY]?.trim() ?? '',
+      weaverName: row[COL.WEAVER]?.trim() ?? '',
+      transportName: row[COL.TRANSPORT]?.trim() ?? '',
+      lotNo: row[COL.LOT_NO]?.trim() ?? '',
+      than: parseInt(row[COL.THAN]) || 0,
+      weight: row[COL.WEIGHT]?.trim() ?? '',
+      grayMtr: null, transportLrNo: '', bale: null, baleNo: '', echBaleThan: null, lrNo: '',
+      partyId: null, qualityId: null, weaverId: null, transportId: null,
+      missingMasters: [],
+      status: 'skipped' as const,
+      skipReason: reason,
+    }
+  }
 
   for (const row of dataRows) {
     const partyName = row[COL.PARTY]?.trim() ?? ''
@@ -91,27 +108,39 @@ export async function POST(req: NextRequest) {
 
     // ── Skip rules ──
 
-    // Skip completely empty rows
-    if (!date && !partyName && !lotNo) { skippedEmpty++; continue }
+    // Skip completely empty rows (silent — no point showing blank rows)
+    if (!date && !partyName && !lotNo) continue
 
     // Skip rows where Month column (B) is exactly "old year" (case-insensitive)
     const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
     if (monthVal === 'old year') {
-      skippedOldYear++
+      rows.push(makeSkippedRow(row, 'Old Year entry'))
       continue
     }
 
     // Skip rows with 0 or empty than
-    if (!than || than <= 0) { skippedZeroThan++; continue }
+    if (!than || than <= 0) {
+      rows.push(makeSkippedRow(row, 'Zero or missing Than'))
+      continue
+    }
 
     // Skip rows without lot no
-    if (!lotNo) { skippedEmpty++; continue }
+    if (!lotNo) {
+      rows.push(makeSkippedRow(row, 'Missing Lot No'))
+      continue
+    }
 
     // Skip rows without date
-    if (!date) { skippedEmpty++; continue }
+    if (!date) {
+      rows.push(makeSkippedRow(row, 'Missing Date'))
+      continue
+    }
 
     // Skip rows without party
-    if (!partyName) { skippedEmpty++; continue }
+    if (!partyName) {
+      rows.push(makeSkippedRow(row, 'Missing Party'))
+      continue
+    }
 
     // ── Process row ──
 
@@ -176,9 +205,7 @@ export async function POST(req: NextRequest) {
     missing_masters: rows.filter((r) => r.status === 'missing_masters').length,
     missing_lot: rows.filter((r) => r.status === 'missing_lot').length,
     duplicate: rows.filter((r) => r.status === 'duplicate').length,
-    skippedOldYear,
-    skippedZeroThan,
-    skippedEmpty,
+    skipped: rows.filter((r) => r.status === 'skipped').length,
   }
 
   return NextResponse.json({ rows, summary })
