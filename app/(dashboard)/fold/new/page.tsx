@@ -54,8 +54,8 @@ export default function NewFoldPage() {
   const router = useRouter()
   const { data: stockData } = useSWR<{ parties: PartyStock[] }>('/api/stock', fetcher)
   const { data: shades, mutate: mutateShades } = useSWR<Shade[]>('/api/shades', fetcher)
-  const { data: parties } = useSWR<{ id: number; name: string }[]>('/api/masters/party', fetcher)
-  const { data: qualities } = useSWR<{ id: number; name: string }[]>('/api/masters/quality', fetcher)
+  const { data: parties } = useSWR<{ id: number; name: string }[]>('/api/masters/parties', fetcher)
+  const { data: qualities } = useSWR<{ id: number; name: string }[]>('/api/masters/qualities', fetcher)
 
   const [foldNo, setFoldNo] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
@@ -134,8 +134,8 @@ export default function NewFoldPage() {
         if (field === 'lotNo' && value) {
           const lotInfo = lotLookup.get((value as string).toLowerCase())
           if (lotInfo) {
-            const party = parties?.find(p => p.name === lotInfo.party)
-            const quality = qualities?.find(q => q.name === lotInfo.quality)
+            const party = Array.isArray(parties) ? parties.find(p => p.name === lotInfo.party) : undefined
+            const quality = Array.isArray(qualities) ? qualities.find(q => q.name === lotInfo.quality) : undefined
             updated.partyId = party?.id ?? null
             updated.qualityId = quality?.id ?? null
             updated.partyName = lotInfo.party
