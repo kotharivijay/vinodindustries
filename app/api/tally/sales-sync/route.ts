@@ -175,17 +175,49 @@ export async function GET(req: NextRequest) {
         const tallyName = FIRM_TALLY[firmCode]
         const fetchStart = Date.now()
         let firmTotal = 0
+        let connectionFailed = false
 
-        send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Fetching ${weeks.length} weeks...`, total: weeks.length, progress: 0 })
+        // Find last synced date for this firm to resume from
+        let startWeekIndex = 0
+        try {
+          const lastEntry = await db.tallySales.findFirst({
+            where: { firmCode },
+            orderBy: { date: 'desc' },
+            select: { date: true, lastSynced: true },
+          })
+          if (lastEntry?.date) {
+            const lastDate = new Date(lastEntry.date)
+            // Find which week this date falls in, start from that week (re-sync it to catch any missed entries)
+            for (let wi = 0; wi < weeks.length; wi++) {
+              const parts = weeks[wi].to.split('/')
+              const weekEnd = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
+              if (weekEnd >= lastDate) {
+                startWeekIndex = wi
+                break
+              }
+            }
+          }
+        } catch {}
 
-        // Delete old data for this firm
-        try { await db.tallySales.deleteMany({ where: { firmCode } }) } catch {}
+        const skippedWeeks = startWeekIndex
+        const remainingWeeks = weeks.length - startWeekIndex
+
+        if (skippedWeeks > 0) {
+          send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Resuming from week ${startWeekIndex + 1} (${skippedWeeks} already synced). ${remainingWeeks} weeks remaining...`, total: remainingWeeks, progress: 0 })
+        } else {
+          send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Fetching ${weeks.length} weeks...`, total: weeks.length, progress: 0 })
+          // Full sync — delete old data only when starting fresh
+          try { await db.tallySales.deleteMany({ where: { firmCode } }) } catch {}
+        }
 
         const now = new Date()
 
-        for (let mi = 0; mi < weeks.length; mi++) {
+        for (let mi = startWeekIndex; mi < weeks.length; mi++) {
           const m = weeks[mi]
-          send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Fetching ${m.label}... (${mi + 1}/${weeks.length})`, total: weeks.length, progress: mi })
+          const progressIndex = mi - startWeekIndex
+          const totalToSync = weeks.length - startWeekIndex
+
+          send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Fetching ${m.label}... (${progressIndex + 1}/${totalToSync})`, total: totalToSync, progress: progressIndex })
 
           let xml: string
           try {
@@ -197,8 +229,10 @@ export async function GET(req: NextRequest) {
             if (!res.ok) throw new Error('HTTP ' + res.status)
             xml = await res.text()
           } catch {
-            send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `${m.label}: connection failed, skipping` })
-            continue
+            // Connection error — stop here, keep progress
+            connectionFailed = true
+            send({ type: 'progress', firm: firmCode, stage: 'error', message: `Connection lost at ${m.label}. ${firmTotal} entries saved. Click Sync again to resume.` })
+            break
           }
 
           // Parse
@@ -206,7 +240,6 @@ export async function GET(req: NextRequest) {
           xml = '' // Free memory
 
           if (sales.length > 0) {
-            // Bulk insert
             const data = sales.map(s => ({
               firmCode,
               date: s.date,
@@ -228,12 +261,15 @@ export async function GET(req: NextRequest) {
             } catch {}
           }
 
-          send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `${m.label}: ${sales.length} items (${mi + 1}/${weeks.length})`, total: weeks.length, progress: mi + 1 })
+          send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `${m.label}: ${sales.length} items (${progressIndex + 1}/${totalToSync})`, total: totalToSync, progress: progressIndex + 1 })
         }
 
         totalSaved += firmTotal
         const totalTime = ((Date.now() - fetchStart) / 1000).toFixed(1)
-        send({ type: 'progress', firm: firmCode, stage: 'done', message: `${firmTotal} sales synced across ${weeks.length} weeks (${totalTime}s)`, saved: firmTotal })
+
+        if (!connectionFailed) {
+          send({ type: 'progress', firm: firmCode, stage: 'done', message: `${firmTotal} sales synced across ${weeks.length - startWeekIndex} weeks (${totalTime}s)`, saved: firmTotal })
+        }
       }
 
       send({ type: 'complete', totalSaved })
