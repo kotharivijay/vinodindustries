@@ -6,6 +6,13 @@ import useSWR from 'swr'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+function matchesSearch(l: LotStockItem, query: string): boolean {
+  const tokens = query.toLowerCase().split(/[\s,]+/).filter(Boolean)
+  if (tokens.length === 0) return true
+  const fields = [l.lotNo, l.party, l.quality].map(s => s.toLowerCase())
+  return tokens.every(token => fields.some(field => field.includes(token)))
+}
+
 interface LotStockItem {
   lotNo: string
   party: string
@@ -266,7 +273,7 @@ export default function NewFoldPage() {
                 )
                 const filteredLots = allLots
                   .filter(l => !selectedLotNos.includes(l.lotNo))
-                  .filter(l => !lotSearch || l.lotNo.toLowerCase().includes(lotSearch.toLowerCase()))
+                  .filter(l => matchesSearch(l, lotSearch))
                 const stockInfo = lot.lotNo ? lotLookup.get(lot.lotNo.toLowerCase()) : undefined
                 return (
                   <div key={lotIdx} className="flex gap-2 items-start">
@@ -304,7 +311,7 @@ export default function NewFoldPage() {
                             type="text"
                             autoFocus
                             className="w-full border-b border-gray-100 dark:border-gray-700 px-3 py-2 text-sm focus:outline-none rounded-t-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
-                            placeholder="Search lot number..."
+                            placeholder="Search lot, party or quality..."
                             value={lotSearch}
                             onChange={e => setLotSearch(e.target.value)}
                             onClick={e => e.stopPropagation()}
@@ -432,7 +439,7 @@ function LotBottomSheet({ allLots, selectedLotNos, currentLotNo, onSelect, onClo
 
   const filtered = allLots
     .filter(l => !selectedLotNos.includes(l.lotNo))
-    .filter(l => !query || l.lotNo.toLowerCase().includes(query.toLowerCase()))
+    .filter(l => matchesSearch(l, query))
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -467,7 +474,7 @@ function LotBottomSheet({ allLots, selectedLotNos, currentLotNo, onSelect, onClo
             autoFocus
             type="text"
             className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            placeholder="Search lot number..."
+            placeholder="Search lot, party or quality..."
             value={query}
             onChange={e => setQuery(e.target.value)}
           />
