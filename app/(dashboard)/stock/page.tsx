@@ -249,8 +249,31 @@ export default function StockPage() {
       {/* Bulk mode banner */}
       {bulkMode && (
         <div className="mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
-          <p className="font-semibold mb-0.5">Bulk Mark Used Mode</p>
-          <p className="text-xs opacity-80">Expand any party, check lots and enter quantity used. Save all at once at the bottom.</p>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-semibold mb-0.5">Bulk Mark Used Mode</p>
+              <p className="text-xs opacity-80">
+                {bulkSelectedCount === 0
+                  ? 'Expand a party → check lots → enter quantity used'
+                  : `${bulkSelectedCount} lot${bulkSelectedCount !== 1 ? 's' : ''} selected, ${bulkFilledCount} with quantity`}
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={toggleBulkMode}
+                className="px-3 py-1.5 rounded-lg text-xs border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveBulk}
+                disabled={savingBulk || bulkFilledCount === 0}
+                className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-amber-700 disabled:opacity-40 transition"
+              >
+                {savingBulk ? 'Saving...' : bulkFilledCount > 0 ? `Save ${bulkSelectedCount} lot${bulkSelectedCount !== 1 ? 's' : ''}` : 'Save'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -291,24 +314,70 @@ export default function StockPage() {
         <div className="text-center text-gray-400 py-16">No stock found</div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(p => (
+          {filtered.map(p => {
+            const partyAllSelected = p.lots.every(l => bulkSelections.has(l.lotNo))
+            const partySomeSelected = p.lots.some(l => bulkSelections.has(l.lotNo))
+
+            function toggleSelectAllParty() {
+              // auto-expand party so user can see selections
+              if (!expanded.has(p.party)) toggle(p.party)
+              setBulkSelections(prev => {
+                const next = new Map(prev)
+                if (partyAllSelected) {
+                  p.lots.forEach(l => next.delete(l.lotNo))
+                } else {
+                  p.lots.forEach(l => {
+                    if (!next.has(l.lotNo)) {
+                      next.set(l.lotNo, {
+                        usedThan: l.manuallyUsed > 0 ? String(l.manuallyUsed) : String(l.foldAvailable),
+                        note: l.manuallyUsedNote ?? '',
+                      })
+                    }
+                  })
+                }
+                return next
+              })
+            }
+
+            return (
             <div key={p.party} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
               {/* Party header */}
-              <button
-                onClick={() => toggle(p.party)}
-                className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition"
-              >
-                <span className="text-lg">📦</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{p.party}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{p.lotCount} lot{p.lotCount !== 1 ? 's' : ''}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{p.totalStock}</p>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500">than</p>
-                </div>
-                <span className="text-gray-300 dark:text-gray-600 text-sm">{expanded.has(p.party) ? '▲' : '▼'}</span>
-              </button>
+              <div className="flex items-center">
+                {bulkMode && (
+                  <div className="pl-4 pr-1 flex items-center" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={partyAllSelected}
+                      ref={el => { if (el) el.indeterminate = partySomeSelected && !partyAllSelected }}
+                      onChange={toggleSelectAllParty}
+                      className="w-4 h-4 accent-amber-500 cursor-pointer"
+                      title="Select all lots in this party"
+                    />
+                  </div>
+                )}
+                <button
+                  onClick={() => toggle(p.party)}
+                  className="flex-1 text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition"
+                >
+                  <span className="text-lg">📦</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{p.party}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {p.lotCount} lot{p.lotCount !== 1 ? 's' : ''}
+                      {bulkMode && partySomeSelected && (
+                        <span className="ml-1 text-amber-600 dark:text-amber-400 font-medium">
+                          · {p.lots.filter(l => bulkSelections.has(l.lotNo)).length} selected
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{p.totalStock}</p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500">than</p>
+                  </div>
+                  <span className="text-gray-300 dark:text-gray-600 text-sm">{expanded.has(p.party) ? '▲' : '▼'}</span>
+                </button>
+              </div>
 
               {/* Expanded lot cards */}
               {expanded.has(p.party) && (
