@@ -187,7 +187,7 @@ export default function NewFoldPage() {
     }
   }
 
-  const allLots = stockData?.parties.flatMap(p => p.lots) ?? []
+  const allLots = (stockData?.parties ?? []).flatMap(p => p.lots).filter(l => l.foldAvailable > 0)
 
   // Derive active batch/lot from lotDropKey for bottom sheet
   const activeKeys = lotDropKey ? lotDropKey.split('-').map(Number) : null
@@ -490,7 +490,7 @@ function LotBottomSheet({ allLots, selectedLotNos, currentLotNo, onSelect, onClo
               className={`w-full text-left px-4 py-4 flex items-center justify-between border-b border-gray-50 dark:border-gray-800 active:bg-indigo-50 dark:active:bg-indigo-900/20 ${
                 l.lotNo === currentLotNo ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
               }`}
-              onClick={() => onSelect(l.lotNo)}
+              onClick={() => { onSelect(l.lotNo); onClose() }}
             >
               <div>
                 <p className="font-semibold text-gray-800 dark:text-gray-100 text-base">{l.lotNo}</p>
@@ -511,7 +511,7 @@ function LotBottomSheet({ allLots, selectedLotNos, currentLotNo, onSelect, onClo
             <button
               type="button"
               className="w-full text-left px-4 py-4 text-amber-700 dark:text-amber-400 font-semibold border-b border-gray-50 dark:border-gray-800 active:bg-amber-50 dark:active:bg-amber-900/20"
-              onClick={() => onSelect(query.trim())}
+              onClick={() => { onSelect(query.trim()); onClose() }}
             >
               + Use &quot;{query.trim()}&quot; manually
             </button>
