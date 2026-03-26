@@ -72,6 +72,22 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
     })).map(e => ({ ...e, _lotThan: e.than, lots: [], chemicals: [] }))
   }
 
+  // Find fold entries via FoldBatchLot
+  let foldEntries: any[] = []
+  try {
+    foldEntries = await db.foldBatchLot.findMany({
+      where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+      include: {
+        foldBatch: {
+          include: {
+            shade: true,
+            foldProgram: true,
+          },
+        },
+      },
+    })
+  } catch {}
+
   // Find finish entries via FinishEntryLot
   let finishEntries: any[] = []
   try {
@@ -105,6 +121,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
   const despatchThan = despatchEntries.reduce((s, e) => s + e.than, 0)
   const dyeingThan = dyeingEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
   const finishThan = finishEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
+  const foldThan = foldEntries.reduce((s: number, e: any) => s + (e.than ?? 0), 0)
   const stock = obThan + greyThan - despatchThan
 
   const fmt = (d: Date) => new Date(d).toLocaleDateString('en-IN')
@@ -120,7 +137,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       </div>
 
       {/* Summary cards */}
-      <div className={`grid grid-cols-2 ${obThan > 0 ? 'sm:grid-cols-6' : 'sm:grid-cols-5'} gap-3 mb-8`}>
+      <div className={`grid grid-cols-2 ${obThan > 0 ? 'sm:grid-cols-7' : 'sm:grid-cols-6'} gap-3 mb-8`}>
         {obThan > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Opening Bal</p>
@@ -142,6 +159,11 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
           <p className="text-xs text-gray-500 uppercase tracking-wide">Finish</p>
           <p className="text-2xl font-bold text-teal-600 mt-1">{finishThan}</p>
           <p className="text-xs text-gray-400">{finishEntries.length} entries</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Fold</p>
+          <p className="text-2xl font-bold text-indigo-600 mt-1">{foldThan}</p>
+          <p className="text-xs text-gray-400">{foldEntries.length} batch{foldEntries.length !== 1 ? 'es' : ''}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Despatched</p>
@@ -202,6 +224,40 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                 <span className="text-gray-500 text-xs">{e.transport.name}</span>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Fold entries */}
+      {foldEntries.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">🗂️ Fold Program ({foldEntries.length})</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700">
+            {foldEntries.map((e: any) => {
+              const batch = e.foldBatch
+              const program = batch?.foldProgram
+              const shade = batch?.shade?.name ?? batch?.shadeName ?? null
+              return (
+                <div key={e.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <span className="text-gray-500 text-xs">{fmt(program?.date)}</span>
+                    <Link href={`/fold/${program?.id}`} className="text-indigo-600 font-medium hover:underline">
+                      {program?.foldNo}
+                    </Link>
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                      program?.status === 'confirmed'
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                    }`}>
+                      {program?.status}
+                    </span>
+                    <span className="text-gray-500">Batch {batch?.batchNo}</span>
+                    {shade && <span className="font-medium text-indigo-700 dark:text-indigo-400">Shade: {shade}</span>}
+                    <span className="font-semibold text-indigo-700 dark:text-indigo-300">Than: {e.than}</span>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
@@ -296,7 +352,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         </section>
       )}
 
-      {greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && (
+      {greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && foldEntries.length === 0 && (
         <div className="text-center text-gray-400 py-16">No records found for lot <strong>{lotNo}</strong></div>
       )}
     </div>
