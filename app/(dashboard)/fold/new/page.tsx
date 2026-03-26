@@ -245,32 +245,34 @@ export default function NewFoldPage() {
         {batches.map((batch, batchIdx) => (
           <div key={batchIdx} className="bg-white dark:bg-gray-800 rounded-xl border border-indigo-100 dark:border-gray-700 overflow-hidden">
             {/* Batch header */}
-            <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 flex items-center gap-3">
-              <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400 shrink-0">Batch {batch.batchNo}</span>
-              <div className="shrink-0">
-                <ShadeCombobox
-                  shadeId={batch.shadeId}
-                  shadeName={batch.shadeName}
-                  shades={shades ?? []}
-                  onChange={(id, name) => {
-                    updateBatch(batchIdx, 'shadeId', id)
-                    updateBatch(batchIdx, 'shadeName', name)
-                  }}
-                  onShadeAdded={shade => mutateShades(prev => [...(prev ?? []), shade].sort((a, b) => a.name.localeCompare(b.name)))}
-                />
+            <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 space-y-1.5">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400 shrink-0">Batch {batch.batchNo}</span>
+                <div className="flex-1">
+                  <ShadeCombobox
+                    shadeId={batch.shadeId}
+                    shadeName={batch.shadeName}
+                    shades={shades ?? []}
+                    onChange={(id, name) => {
+                      updateBatch(batchIdx, 'shadeId', id)
+                      updateBatch(batchIdx, 'shadeName', name)
+                    }}
+                    onShadeAdded={shade => mutateShades(prev => [...(prev ?? []), shade].sort((a, b) => a.name.localeCompare(b.name)))}
+                  />
+                </div>
+                {batches.length > 1 && (
+                  <button onClick={() => removeBatch(batchIdx)} className="text-xs text-red-500 hover:text-red-700 shrink-0">
+                    Remove
+                  </button>
+                )}
               </div>
               <input
                 type="text"
-                className="flex-1 min-w-0 border border-indigo-200 dark:border-indigo-700 rounded bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                className="w-full border border-indigo-200 dark:border-indigo-700 rounded bg-white dark:bg-gray-700 px-2 py-1.5 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                 placeholder="Shade description..."
                 value={batch.shadeDescription}
                 onChange={e => updateBatch(batchIdx, 'shadeDescription', e.target.value)}
               />
-              {batches.length > 1 && (
-                <button onClick={() => removeBatch(batchIdx)} className="text-xs text-red-500 hover:text-red-700 shrink-0">
-                  Remove
-                </button>
-              )}
             </div>
 
             {/* Lots */}
