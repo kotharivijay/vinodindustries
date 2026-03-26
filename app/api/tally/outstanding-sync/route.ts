@@ -1,0 +1,190 @@
+import { NextRequest } from 'next/server'
+import { viPrisma } from '@/lib/prisma'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+
+const FIRM_TALLY: Record<string, string> = {
+  VI: 'Vinod Industries - (from 1-Apr-25)',
+  VCF: 'Vimal Cotton Fabrics',
+  VF: 'Vijay Fabrics - (from 1-Apr-2019)',
+}
+
+function buildBillXML(tallyCompany: string, report: string): string {
+  return `<ENVELOPE>
+<HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER>
+<BODY><EXPORTDATA><REQUESTDESC>
+<STATICVARIABLES>
+<SVCURRENTCOMPANY>${tallyCompany}</SVCURRENTCOMPANY>
+<SVFROMDATE>20190401</SVFROMDATE>
+<SVTODATE>20260331</SVTODATE>
+<EXPLODEFLAG>Yes</EXPLODEFLAG>
+</STATICVARIABLES>
+<REPORTNAME>${report}</REPORTNAME>
+</REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>`
+}
+
+function parseBills(text: string, type: string): any[] {
+  const bills: any[] = []
+  // Split by BILLFIXED blocks
+  const parts = text.split(/<BILLFIXED>/).slice(1)
+
+  for (const part of parts) {
+    const billDate = part.match(/<BILLDATE>([^<]*)<\/BILLDATE>/)?.[1] || ''
+    const billRef = part.match(/<BILLREF>([^<]*)<\/BILLREF>/)?.[1] || ''
+    const partyName = part.match(/<BILLPARTY>([^<]*)<\/BILLPARTY>/)?.[1]?.trim() || ''
+    const closingBalance = parseFloat((part.match(/<BILLCL>([^<]*)<\/BILLCL>/)?.[1] || '0').replace(/,/g, '')) || 0
+    const dueDate = part.match(/<BILLDUE>([^<]*)<\/BILLDUE>/)?.[1] || ''
+    const overdueDays = parseInt(part.match(/<BILLOVERDUE>([^<]*)<\/BILLOVERDUE>/)?.[1] || '0') || 0
+    const vchType = part.match(/<BILLVCHTYPE>([^<]*)<\/BILLVCHTYPE>/)?.[1] || ''
+    const vchNumber = part.match(/<BILLVCHNUMBER>([^<]*)<\/BILLVCHNUMBER>/)?.[1] || ''
+    const vchAmount = parseFloat((part.match(/<BILLVCHAMOUNT>([^<]*)<\/BILLVCHAMOUNT>/)?.[1] || '0').replace(/,/g, '')) || 0
+
+    if (partyName && billRef) {
+      bills.push({
+        partyName,
+        type,
+        billRef,
+        billDate: parseTallyDate(billDate),
+        dueDate: parseTallyDate(dueDate),
+        overdueDays,
+        closingBalance: Math.abs(closingBalance),
+        vchType,
+        vchNumber,
+        vchAmount,
+      })
+    }
+  }
+  return bills
+}
+
+function parseTallyDate(dateStr: string): Date | null {
+  if (!dateStr) return null
+  // Format: "8-Aug-21" or "13-May-22"
+  const d = new Date(dateStr)
+  return isNaN(d.getTime()) ? null : d
+}
+
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return new Response('Unauthorized', { status: 401 })
+
+  const firmParam = req.nextUrl.searchParams.get('firm') || ''
+  const firmsToSync = firmParam && FIRM_TALLY[firmParam] ? [firmParam] : Object.keys(FIRM_TALLY)
+
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(data: any) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
+
+      const tunnelUrl = process.env.TALLY_TUNNEL_URL
+      if (!tunnelUrl) {
+        send({ type: 'error', message: 'Tally tunnel URL not configured' })
+        controller.close()
+        return
+      }
+
+      const db = viPrisma as any
+      let totalSaved = 0
+
+      for (let fi = 0; fi < firmsToSync.length; fi++) {
+        const firmCode = firmsToSync[fi]
+        const tallyName = FIRM_TALLY[firmCode]
+        const fetchStart = Date.now()
+
+        // Fetch Receivable (Bills Receivable)
+        send({ type: 'progress', firm: firmCode, stage: 'fetching', message: 'Fetching Bills Receivable...' })
+
+        let receivables: any[] = []
+        try {
+          const res = await fetch(tunnelUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/xml' },
+            body: buildBillXML(tallyName, 'Bills Receivable'),
+          })
+          if (!res.ok) throw new Error('HTTP ' + res.status)
+          const xml = await res.text()
+          receivables = parseBills(xml, 'receivable')
+          send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Receivable: ${receivables.length} bills. Fetching Payable...` })
+        } catch {
+          send({ type: 'progress', firm: firmCode, stage: 'error', message: 'Failed to fetch receivables' })
+          continue
+        }
+
+        // Fetch Payable (Bills Payable)
+        let payables: any[] = []
+        try {
+          const res = await fetch(tunnelUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/xml' },
+            body: buildBillXML(tallyName, 'Bills Payable'),
+          })
+          if (!res.ok) throw new Error('HTTP ' + res.status)
+          const xml = await res.text()
+          payables = parseBills(xml, 'payable')
+        } catch {
+          send({ type: 'progress', firm: firmCode, stage: 'error', message: 'Failed to fetch payables' })
+          continue
+        }
+
+        const allBills = [...receivables, ...payables]
+        send({ type: 'progress', firm: firmCode, stage: 'saving', message: `Parsed ${receivables.length} receivable + ${payables.length} payable. Saving...`, total: allBills.length, progress: 0 })
+
+        // Delete old data for this firm
+        try { await db.tallyOutstanding.deleteMany({ where: { firmCode } }) } catch {}
+
+        // Deduplicate and bulk insert
+        const now = new Date()
+        const seen = new Set<string>()
+        const data: any[] = []
+        for (const bill of allBills) {
+          const key = `${firmCode}|${bill.partyName}|${bill.billRef}|${bill.type}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          data.push({
+            firmCode,
+            partyName: bill.partyName,
+            parent: bill.type === 'receivable' ? 'Sundry Debtors' : 'Sundry Creditors',
+            type: bill.type,
+            billRef: bill.billRef,
+            billDate: bill.billDate,
+            dueDate: bill.dueDate,
+            overdueDays: bill.overdueDays,
+            closingBalance: bill.closingBalance,
+            vchType: bill.vchType,
+            vchNumber: bill.vchNumber,
+            vchAmount: bill.vchAmount,
+            lastSynced: now,
+          })
+        }
+
+        let saved = 0
+        const BATCH = 500
+        for (let b = 0; b < data.length; b += BATCH) {
+          const batch = data.slice(b, b + BATCH)
+          try {
+            const r = await db.tallyOutstanding.createMany({ data: batch, skipDuplicates: true })
+            saved += r.count
+          } catch {}
+          send({ type: 'progress', firm: firmCode, stage: 'saving', message: `Saving... ${Math.min(b + BATCH, data.length)} of ${data.length}`, total: data.length, progress: Math.min(b + BATCH, data.length) })
+        }
+
+        totalSaved += saved
+        const totalTime = ((Date.now() - fetchStart) / 1000).toFixed(1)
+        send({ type: 'progress', firm: firmCode, stage: 'done', message: `${saved} bills synced (${totalTime}s) — ${receivables.length} receivable, ${payables.length} payable`, saved })
+      }
+
+      send({ type: 'complete', totalSaved })
+      controller.close()
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
+}

@@ -444,3 +444,56 @@ model TallyLedger {
   updatedAt      DateTime @updatedAt
   @@unique([firmCode, name])
 }
+
+// ─── Tally Outstanding ───────────────────────────────────────────────────────
+
+model TallyOutstanding {
+  id             Int      @id @default(autoincrement())
+  firmCode       String
+  partyName      String
+  parent         String?  // Sundry Debtors / Sundry Creditors
+  type           String   // "receivable" | "payable"
+  billRef        String   // invoice/bill reference
+  billDate       DateTime?
+  dueDate        DateTime?
+  overdueDays    Int      @default(0)
+  closingBalance Float    @default(0)
+  vchType        String?  // Sales, Receipt, Journal, Purchase
+  vchNumber      String?
+  vchAmount      Float?
+  lastSynced     DateTime?
+  createdAt      DateTime @default(now())
+  @@unique([firmCode, partyName, billRef, type])
+}
+
+// ─── Tally Sales ────────────────────────────────────────────────────────────
+
+model TallySales {
+  id           Int      @id @default(autoincrement())
+  firmCode     String
+  date         DateTime?
+  vchNumber    String?
+  partyName    String?
+  itemName     String?
+  quantity     Float?
+  unit         String?
+  rate         Float?
+  amount       Float?
+  vchType      String?  // Sales, Credit Note etc
+  narration    String?
+  lastSynced   DateTime?
+  createdAt    DateTime @default(now())
+  @@index([firmCode, partyName])
+}
+
+// ─── Lot Manual Reservation (PC-created, preserve data) ──────────────────────
+
+model LotManualReservation {
+  id        Int      @id @default(autoincrement())
+  lotNo     String
+  usedThan  Int
+  note      String?
+  updatedBy String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}

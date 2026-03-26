@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 
 const companies = [
   { id: 'ksi', name: 'Kothari Synthetic Industries', code: 'KSI', icon: '\u{1F3ED}', href: '/dashboard', comingSoon: false },
-  { id: 'vi', name: 'Vinod Industries', code: 'VI', icon: '\u{1F3E2}', href: '/vi/dashboard', comingSoon: true },
+  { id: 'vi', name: 'Vinod Industries', code: 'VI', icon: '\u{1F3E2}', href: '/vi/dashboard', comingSoon: false },
 ]
 
 export default function SelectCompanyPage() {

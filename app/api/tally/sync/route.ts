@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { viPrisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getFirm, getFirms, queryTally, buildLedgerExportXML, parseLedgersXML } from '@/lib/tally'
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
 
   if (firmsToSync.length === 0) return NextResponse.json({ error: 'Invalid firm code' }, { status: 400 })
 
-  const db = prisma as any
+  const db = viPrisma as any
   const results: { firm: string; synced: number; errors: number }[] = []
 
   for (const firm of firmsToSync) {
