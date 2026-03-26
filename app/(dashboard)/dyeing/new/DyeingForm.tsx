@@ -1223,34 +1223,34 @@ export default function DyeingForm() {
           ) : (
             <div className="space-y-3">
               {chemicals.map((c, i) => (
-                <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                <div key={i} className="border border-gray-200 dark:border-gray-700 rounded-xl p-3 bg-gray-50 dark:bg-gray-800">
                   {/* Chemical name row */}
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs text-gray-400 w-5 shrink-0">#{i + 1}</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500 w-5 shrink-0">#{i + 1}</span>
                     <div className="flex-1 relative">
                       <div
-                        className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white cursor-pointer ${chemDropIdx === i ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300'}`}
+                        className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white dark:bg-gray-900 cursor-pointer ${chemDropIdx === i ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300 dark:border-gray-600'}`}
                         onClick={() => { setChemDropIdx(chemDropIdx === i ? null : i); setChemSearch('') }}
                       >
-                        <span className={`flex-1 text-sm ${c.name ? 'font-medium text-gray-800' : 'text-gray-400'}`}>
+                        <span className={`flex-1 text-sm ${c.name ? 'font-medium text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>
                           {c.name || 'Select chemical...'}
                         </span>
                         {c.matched && (
-                          <span className="text-green-600 text-[10px] font-semibold bg-green-50 border border-green-200 px-1 py-0.5 rounded shrink-0">✓</span>
+                          <span className="text-green-600 dark:text-green-400 text-[10px] font-semibold bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 px-1 py-0.5 rounded shrink-0">✓</span>
                         )}
                         {!c.matched && c.name && (
-                          <span className="text-amber-600 text-[10px] font-semibold bg-amber-50 border border-amber-200 px-1 py-0.5 rounded shrink-0">New</span>
+                          <span className="text-amber-600 dark:text-amber-400 text-[10px] font-semibold bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 px-1 py-0.5 rounded shrink-0">New</span>
                         )}
-                        <span className="text-gray-400 text-xs shrink-0">▼</span>
+                        <span className="text-gray-400 dark:text-gray-500 text-xs shrink-0">▼</span>
                       </div>
 
                       {/* Searchable dropdown */}
                       {chemDropIdx === i && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
                           <input
                             type="text"
                             autoFocus
-                            className="w-full border-b border-gray-200 px-3 py-2 text-sm focus:outline-none rounded-t-lg"
+                            className="w-full border-b border-gray-200 dark:border-gray-700 px-3 py-2 text-sm focus:outline-none rounded-t-lg bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500"
                             placeholder="Search or type new name..."
                             value={chemSearch}
                             onChange={e => setChemSearch(e.target.value)}
@@ -1263,12 +1263,12 @@ export default function DyeingForm() {
                                 <button
                                   key={m.id}
                                   type="button"
-                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-50 flex items-center justify-between ${c.chemicalId === m.id ? 'bg-purple-50 font-medium' : ''}`}
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-purple-900/30 flex items-center justify-between text-gray-800 dark:text-gray-200 ${c.chemicalId === m.id ? 'bg-purple-50 dark:bg-purple-900/30 font-medium' : ''}`}
                                   onClick={e => { e.stopPropagation(); selectMasterChemical(i, m) }}
                                 >
                                   <span>{m.name}</span>
                                   {m.currentPrice != null && (
-                                    <span className="text-xs text-gray-400">₹{m.currentPrice}/{m.unit}</span>
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">₹{m.currentPrice}/{m.unit}</span>
                                   )}
                                 </button>
                               ))
@@ -1277,14 +1277,14 @@ export default function DyeingForm() {
                             {chemSearch.trim() && !masterChemicals.some(m => m.name.toLowerCase() === chemSearch.toLowerCase()) && (
                               <button
                                 type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 text-amber-700 border-t border-gray-100 flex items-center gap-1"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-t border-gray-100 dark:border-gray-700 flex items-center gap-1"
                                 onClick={e => { e.stopPropagation(); updateChemical(i, 'name', chemSearch.trim()); setChemDropIdx(null); setChemSearch('') }}
                               >
                                 <span className="text-amber-500">+</span> Add &quot;{chemSearch.trim()}&quot; as new
                               </button>
                             )}
                             {masterChemicals.length === 0 && !chemSearch && (
-                              <p className="px-3 py-2 text-xs text-gray-400">No chemicals in master yet</p>
+                              <p className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">No chemicals in master yet</p>
                             )}
                           </div>
                         </div>
@@ -1293,26 +1293,26 @@ export default function DyeingForm() {
                     <button
                       type="button"
                       onClick={() => removeChemical(i)}
-                      className="text-red-400 hover:text-red-600 text-xl leading-none shrink-0 w-6 text-center"
+                      className="text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 text-xl leading-none shrink-0 w-6 text-center"
                     >&times;</button>
                   </div>
 
                   {/* Qty / Unit / Rate / Cost row */}
                   <div className="grid grid-cols-2 gap-2 pl-12">
                     <div>
-                      <label className="block text-[10px] text-gray-400 mb-0.5">Quantity</label>
+                      <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Quantity</label>
                       <input
                         type="number" step="0.001"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
                         value={c.quantity}
                         onChange={e => updateChemical(i, 'quantity', e.target.value)}
                         placeholder="0"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-gray-400 mb-0.5">Unit</label>
+                      <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Unit</label>
                       <select
-                        className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none bg-white"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
                         value={c.unit}
                         onChange={e => updateChemical(i, 'unit', e.target.value)}
                       >
@@ -1320,18 +1320,18 @@ export default function DyeingForm() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] text-gray-400 mb-0.5">Rate (₹/{c.unit})</label>
+                      <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Rate (₹/{c.unit})</label>
                       <input
                         type="number" step="0.01"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
                         value={c.rate}
                         onChange={e => updateChemical(i, 'rate', e.target.value)}
                         placeholder="0.00"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-gray-400 mb-0.5">Cost (₹)</label>
-                      <div className={`w-full border rounded-lg px-3 py-1.5 text-sm font-semibold ${c.cost != null ? 'border-purple-200 bg-purple-50 text-purple-700' : 'border-gray-200 bg-white text-gray-400'}`}>
+                      <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Cost (₹)</label>
+                      <div className={`w-full border rounded-lg px-3 py-1.5 text-sm font-semibold ${c.cost != null ? 'border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-400 dark:text-gray-500'}`}>
                         {c.cost != null ? `₹${c.cost.toFixed(2)}` : '—'}
                       </div>
                     </div>
@@ -1341,9 +1341,9 @@ export default function DyeingForm() {
 
               {/* Total cost */}
               {totalCost > 0 && (
-                <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
-                  <span className="text-sm font-semibold text-gray-700">Total Dyeing Cost</span>
-                  <span className="text-lg font-bold text-purple-700">₹{totalCost.toFixed(2)}</span>
+                <div className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-xl px-4 py-3">
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Total Dyeing Cost</span>
+                  <span className="text-lg font-bold text-purple-700 dark:text-purple-300">₹{totalCost.toFixed(2)}</span>
                 </div>
               )}
             </div>
