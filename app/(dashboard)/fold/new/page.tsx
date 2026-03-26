@@ -18,6 +18,7 @@ interface LotStockItem {
   party: string
   quality: string
   stock: number
+  manuallyUsed: number
   foldAvailable: number
 }
 

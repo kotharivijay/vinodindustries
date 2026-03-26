@@ -423,3 +423,15 @@ model LotCarryForwardDespatch {
   rate      Float?
   setNo     Int               // 1, 2, 3, or 4
 }
+
+// ─── Lot Manual Reservation ───────────────────────────────────────────────────
+
+model LotManualReservation {
+  id          Int      @id @default(autoincrement())
+  lotNo       String   @unique
+  usedThan    Int      // how many than are manually marked as used
+  note        String?  // optional reason (e.g. "dyeing batch march")
+  updatedBy   String   // user email
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}

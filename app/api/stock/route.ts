@@ -17,6 +17,15 @@ export async function GET() {
     foldMap.set(key, (foldMap.get(key) ?? 0) + fl.than)
   }
 
+  // Fetch manual reservations
+  const reservations = await (prisma as any).lotManualReservation.findMany({
+    select: { lotNo: true, usedThan: true, note: true },
+  })
+  const reservationMap = new Map<string, { usedThan: number; note: string | null }>()
+  for (const r of reservations) {
+    reservationMap.set(r.lotNo.toLowerCase(), { usedThan: r.usedThan, note: r.note })
+  }
+
   // Fetch grey entries grouped by lot
   const greyByLot = await prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
 
@@ -49,6 +58,8 @@ export async function GET() {
     greyThan: number
     despatchThan: number
     foldProgrammed: number
+    manuallyUsed: number
+    manuallyUsedNote: string | null
     foldAvailable: number
   }
 
@@ -68,6 +79,8 @@ export async function GET() {
 
     const detail = lotDetailMap.get(key)
     const foldProgrammed = foldMap.get(key) ?? 0
+    const reservation = reservationMap.get(key)
+    const manuallyUsed = reservation?.usedThan ?? 0
     lotStocks.push({
       lotNo: g.lotNo,
       party: detail?.party ?? ob?.party ?? 'Unknown',
@@ -77,7 +90,9 @@ export async function GET() {
       greyThan,
       despatchThan: despThan,
       foldProgrammed,
-      foldAvailable: Math.max(0, stock - foldProgrammed),
+      manuallyUsed,
+      manuallyUsedNote: reservation?.note ?? null,
+      foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed),
     })
   }
 
@@ -94,6 +109,8 @@ export async function GET() {
     if (stock <= 0) continue
 
     const foldProgrammed = foldMap.get(key) ?? 0
+    const reservation = reservationMap.get(key)
+    const manuallyUsed = reservation?.usedThan ?? 0
     lotStocks.push({
       lotNo: ob.lotNo,
       party: ob.party || 'Unknown',
@@ -103,7 +120,9 @@ export async function GET() {
       greyThan: 0,
       despatchThan: despThan,
       foldProgrammed,
-      foldAvailable: Math.max(0, stock - foldProgrammed),
+      manuallyUsed,
+      manuallyUsedNote: reservation?.note ?? null,
+      foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed),
     })
   }
 

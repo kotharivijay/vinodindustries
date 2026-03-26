@@ -17,6 +17,8 @@ interface LotStock {
   greyThan: number
   despatchThan: number
   foldProgrammed: number
+  manuallyUsed: number
+  manuallyUsedNote: string | null
   foldAvailable: number
 }
 
@@ -31,10 +33,45 @@ type SortMode = 'party-asc' | 'party-desc' | 'stock-desc' | 'stock-asc'
 
 export default function StockPage() {
   const router = useRouter()
-  const { data, isLoading } = useSWR<{ parties: PartyStock[]; totalStock: number; totalLots: number }>('/api/stock', fetcher)
+  const { data, isLoading, mutate } = useSWR<{ parties: PartyStock[]; totalStock: number; totalLots: number }>('/api/stock', fetcher)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortMode>('party-asc')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // reservation editing: key = lotNo, value = { usedThan, note }
+  const [editingReservation, setEditingReservation] = useState<string | null>(null)
+  const [reserveThan, setReserveThan] = useState('')
+  const [reserveNote, setReserveNote] = useState('')
+  const [savingReservation, setSavingReservation] = useState(false)
+
+  function openReservation(lot: LotStock) {
+    setEditingReservation(lot.lotNo)
+    setReserveThan(lot.manuallyUsed > 0 ? String(lot.manuallyUsed) : '')
+    setReserveNote(lot.manuallyUsedNote ?? '')
+  }
+
+  async function saveReservation(lotNo: string) {
+    const usedThan = parseInt(reserveThan) || 0
+    setSavingReservation(true)
+    try {
+      if (usedThan <= 0) {
+        await fetch('/api/stock/reservation', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lotNo }),
+        })
+      } else {
+        await fetch('/api/stock/reservation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lotNo, usedThan, note: reserveNote.trim() || null }),
+        })
+      }
+      await mutate()
+      setEditingReservation(null)
+    } finally {
+      setSavingReservation(false)
+    }
+  }
 
   const toggle = (party: string) => {
     setExpanded(prev => {
@@ -192,23 +229,86 @@ export default function StockPage() {
                         <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{lot.stock} than</span>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{lot.quality}</p>
-                      <div className="flex flex-wrap gap-2 text-[10px]">
+                      <div className="flex flex-wrap gap-2 text-[10px] mb-2">
                         {lot.openingBalance > 0 && (
-                          <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded">OB: {lot.openingBalance}</span>
+                          <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-1.5 py-0.5 rounded">OB: {lot.openingBalance}</span>
                         )}
                         {lot.greyThan > 0 && (
-                          <span className="bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded">Grey: {lot.greyThan}</span>
+                          <span className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-1.5 py-0.5 rounded">Grey: {lot.greyThan}</span>
                         )}
                         {lot.despatchThan > 0 && (
-                          <span className="bg-orange-50 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded">Desp: {lot.despatchThan}</span>
+                          <span className="bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800 px-1.5 py-0.5 rounded">Desp: {lot.despatchThan}</span>
                         )}
                         {lot.foldProgrammed > 0 && (
-                          <span className="bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded">Fold: {lot.foldProgrammed}</span>
+                          <span className="bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded">Fold: {lot.foldProgrammed}</span>
                         )}
-                        {lot.foldProgrammed > 0 && (
-                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-semibold">Avail: {lot.foldAvailable}</span>
+                        {lot.manuallyUsed > 0 && (
+                          <span className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded font-semibold">Used: {lot.manuallyUsed}</span>
                         )}
+                        <span className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 px-1.5 py-0.5 rounded font-semibold">Avail: {lot.foldAvailable}</span>
                       </div>
+
+                      {/* Reservation toggle/form */}
+                      {editingReservation === lot.lotNo ? (
+                        <div className="mt-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-2">
+                          <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Mark than as used (dyeing / fold)</p>
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="number"
+                              min={0}
+                              max={lot.stock}
+                              className="w-24 border border-amber-300 dark:border-amber-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              placeholder="Than"
+                              value={reserveThan}
+                              onChange={e => setReserveThan(e.target.value)}
+                              autoFocus
+                            />
+                            <span className="text-xs text-gray-400">of {lot.stock} than</span>
+                          </div>
+                          <input
+                            type="text"
+                            className="w-full border border-amber-300 dark:border-amber-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                            placeholder="Note (optional) e.g. dyeing batch March"
+                            value={reserveNote}
+                            onChange={e => setReserveNote(e.target.value)}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => saveReservation(lot.lotNo)}
+                              disabled={savingReservation}
+                              className="bg-amber-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-amber-700 disabled:opacity-50"
+                            >
+                              {savingReservation ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => setEditingReservation(null)}
+                              className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-600"
+                            >
+                              Cancel
+                            </button>
+                            {lot.manuallyUsed > 0 && (
+                              <button
+                                onClick={() => { setReserveThan('0'); saveReservation(lot.lotNo) }}
+                                disabled={savingReservation}
+                                className="ml-auto text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={e => { e.stopPropagation(); openReservation(lot) }}
+                          className={`text-[10px] px-2 py-1 rounded border font-medium transition ${
+                            lot.manuallyUsed > 0
+                              ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-100'
+                              : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          {lot.manuallyUsed > 0 ? `✓ ${lot.manuallyUsed} than used — edit` : '+ Mark as used'}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
