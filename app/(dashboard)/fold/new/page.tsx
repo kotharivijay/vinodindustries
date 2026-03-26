@@ -9,7 +9,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 function matchesSearch(l: LotStockItem, query: string): boolean {
   const tokens = query.toLowerCase().split(/[\s,]+/).filter(Boolean)
   if (tokens.length === 0) return true
-  const fields = [l.lotNo, l.party, l.quality].map(s => s.toLowerCase())
+  const fields = [l.lotNo, l.party, l.quality].map(s => (s ?? '').toLowerCase())
   return tokens.every(token => fields.some(field => field.includes(token)))
 }
 
@@ -82,7 +82,7 @@ export default function NewFoldPage() {
   const lotLookup = new Map<string, LotStockItem>()
   for (const p of stockData?.parties ?? []) {
     for (const l of p.lots) {
-      lotLookup.set(l.lotNo.toLowerCase(), l)
+      if (l.lotNo) lotLookup.set(l.lotNo.toLowerCase(), l)
     }
   }
 
@@ -131,8 +131,8 @@ export default function NewFoldPage() {
       const lots = b.lots.map((l, j) => {
         if (j !== lotIdx) return l
         const updated = { ...l, [field]: value }
-        if (field === 'lotNo') {
-          const lotInfo = lotLookup.get(value.toLowerCase())
+        if (field === 'lotNo' && value) {
+          const lotInfo = lotLookup.get((value as string).toLowerCase())
           if (lotInfo) {
             const party = parties?.find(p => p.name === lotInfo.party)
             const quality = qualities?.find(q => q.name === lotInfo.quality)
