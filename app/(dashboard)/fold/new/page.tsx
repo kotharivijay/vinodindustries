@@ -56,6 +56,19 @@ export default function NewFoldPage() {
   const [error, setError] = useState('')
   const [lotDropKey, setLotDropKey] = useState<string | null>(null)
   const [lotSearch, setLotSearch] = useState('')
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Refs for Than inputs — keyed by "batchIdx-lotIdx"
+  const thanRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+
+  // Detect mobile viewport
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    setIsMobile(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   // Build lot lookup from stock
   const lotLookup = new Map<string, LotStockItem>()
@@ -110,7 +123,6 @@ export default function NewFoldPage() {
       const lots = b.lots.map((l, j) => {
         if (j !== lotIdx) return l
         const updated = { ...l, [field]: value }
-        // Auto-fill party/quality from stock lookup when lot number changes
         if (field === 'lotNo') {
           const lotInfo = lotLookup.get(value.toLowerCase())
           if (lotInfo) {
@@ -121,7 +133,6 @@ export default function NewFoldPage() {
             updated.partyName = lotInfo.party
             updated.qualityName = lotInfo.quality
             updated.maxStock = lotInfo.foldAvailable
-            // Auto-set than to available stock
             if (!updated.than) updated.than = String(lotInfo.foldAvailable)
           }
         }
@@ -129,6 +140,16 @@ export default function NewFoldPage() {
       })
       return { ...b, lots }
     }))
+  }
+
+  // Select a lot and focus Than input
+  function selectLot(batchIdx: number, lotIdx: number, lotNo: string) {
+    updateLot(batchIdx, lotIdx, 'lotNo', lotNo)
+    setLotDropKey(null)
+    setLotSearch('')
+    setTimeout(() => {
+      thanRefs.current.get(`${batchIdx}-${lotIdx}`)?.focus()
+    }, 80)
   }
 
   async function save() {
@@ -159,6 +180,11 @@ export default function NewFoldPage() {
   }
 
   const allLots = stockData?.parties.flatMap(p => p.lots) ?? []
+
+  // Derive active batch/lot from lotDropKey for bottom sheet
+  const activeKeys = lotDropKey ? lotDropKey.split('-').map(Number) : null
+  const activeBatchIdx = activeKeys?.[0] ?? null
+  const activeLotIdx = activeKeys?.[1] ?? null
 
   return (
     <div className="p-4 md:p-8 max-w-2xl">
@@ -234,7 +260,7 @@ export default function NewFoldPage() {
             <div className="p-3 space-y-2 bg-white dark:bg-gray-800">
               {batch.lots.map((lot, lotIdx) => {
                 const dropKey = `${batchIdx}-${lotIdx}`
-                const isOpen = lotDropKey === dropKey
+                const isOpen = lotDropKey === dropKey && !isMobile
                 const selectedLotNos = batches.flatMap((b, bi) =>
                   b.lots.filter((_, li) => !(bi === batchIdx && li === lotIdx)).map(l => l.lotNo).filter(Boolean)
                 )
@@ -247,8 +273,16 @@ export default function NewFoldPage() {
                     <div className="flex-1 relative">
                       {/* Trigger */}
                       <div
-                        className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white dark:bg-gray-700 cursor-pointer text-sm ${isOpen ? 'ring-2 ring-indigo-400 border-indigo-400' : 'border-gray-300 dark:border-gray-600'}`}
-                        onClick={() => { setLotDropKey(isOpen ? null : dropKey); setLotSearch('') }}
+                        className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white dark:bg-gray-700 cursor-pointer text-sm ${(lotDropKey === dropKey) ? 'ring-2 ring-indigo-400 border-indigo-400' : 'border-gray-300 dark:border-gray-600'}`}
+                        onClick={() => {
+                          if (lotDropKey === dropKey) {
+                            setLotDropKey(null)
+                            setLotSearch('')
+                          } else {
+                            setLotDropKey(dropKey)
+                            setLotSearch('')
+                          }
+                        }}
                       >
                         <span className={`flex-1 ${lot.lotNo ? 'text-gray-800 dark:text-gray-100 font-medium' : 'text-gray-400'}`}>
                           {lot.lotNo || 'Select lot...'}
@@ -263,7 +297,7 @@ export default function NewFoldPage() {
                         </p>
                       )}
 
-                      {/* Dropdown */}
+                      {/* Desktop inline dropdown */}
                       {isOpen && (
                         <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
                           <input
@@ -281,12 +315,7 @@ export default function NewFoldPage() {
                                 key={l.lotNo}
                                 type="button"
                                 className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between ${lot.lotNo === l.lotNo ? 'bg-indigo-50 dark:bg-indigo-900/30 font-medium' : ''}`}
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  updateLot(batchIdx, lotIdx, 'lotNo', l.lotNo)
-                                  setLotDropKey(null)
-                                  setLotSearch('')
-                                }}
+                                onClick={e => { e.stopPropagation(); selectLot(batchIdx, lotIdx, l.lotNo) }}
                               >
                                 <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
                                 <span className="text-xs text-gray-400">{l.party} · Avail: {l.foldAvailable}</span>
@@ -299,12 +328,7 @@ export default function NewFoldPage() {
                               <button
                                 type="button"
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-400 flex items-center gap-1"
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  updateLot(batchIdx, lotIdx, 'lotNo', lotSearch.trim())
-                                  setLotDropKey(null)
-                                  setLotSearch('')
-                                }}
+                                onClick={e => { e.stopPropagation(); selectLot(batchIdx, lotIdx, lotSearch.trim()) }}
                               >
                                 + Use &quot;{lotSearch.trim()}&quot; manually
                               </button>
@@ -315,7 +339,11 @@ export default function NewFoldPage() {
                     </div>
                     <input
                       type="number"
-                      className="w-20 border border-gray-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      ref={el => {
+                        if (el) thanRefs.current.set(dropKey, el)
+                        else thanRefs.current.delete(dropKey)
+                      }}
+                      className="w-20 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400"
                       placeholder="Than"
                       value={lot.than}
                       onChange={e => updateLot(batchIdx, lotIdx, 'than', e.target.value)}
@@ -368,6 +396,123 @@ export default function NewFoldPage() {
       >
         {saving ? 'Saving...' : 'Save Fold Program'}
       </button>
+
+      {/* Mobile bottom sheet */}
+      {isMobile && lotDropKey !== null && activeBatchIdx !== null && activeLotIdx !== null && (
+        <LotBottomSheet
+          allLots={allLots}
+          selectedLotNos={batches.flatMap((b, bi) =>
+            b.lots.filter((_, li) => !(bi === activeBatchIdx && li === activeLotIdx)).map(l => l.lotNo).filter(Boolean)
+          )}
+          currentLotNo={batches[activeBatchIdx]?.lots[activeLotIdx]?.lotNo ?? ''}
+          onSelect={lotNo => selectLot(activeBatchIdx, activeLotIdx, lotNo)}
+          onClose={() => { setLotDropKey(null); setLotSearch('') }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Mobile Bottom Sheet ────────────────────────────────────────────────────────
+
+function LotBottomSheet({ allLots, selectedLotNos, currentLotNo, onSelect, onClose }: {
+  allLots: LotStockItem[]
+  selectedLotNos: string[]
+  currentLotNo: string
+  onSelect: (lotNo: string) => void
+  onClose: () => void
+}) {
+  const [query, setQuery] = useState('')
+
+  // Lock body scroll while sheet is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
+  const filtered = allLots
+    .filter(l => !selectedLotNos.includes(l.lotNo))
+    .filter(l => !query || l.lotNo.toLowerCase().includes(query.toLowerCase()))
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+
+      {/* Sheet panel */}
+      <div
+        className="relative bg-white dark:bg-gray-900 rounded-t-2xl flex flex-col"
+        style={{ maxHeight: '90vh' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+        </div>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+          <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Select Lot</h3>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-lg"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+          <input
+            autoFocus
+            type="text"
+            className="w-full border border-gray-300 dark:border-gray-600 rounded-xl px-4 py-3 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            placeholder="Search lot number..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
+        </div>
+
+        {/* Lot list */}
+        <div className="overflow-y-auto overscroll-contain flex-1">
+          {filtered.map(l => (
+            <button
+              key={l.lotNo}
+              type="button"
+              className={`w-full text-left px-4 py-4 flex items-center justify-between border-b border-gray-50 dark:border-gray-800 active:bg-indigo-50 dark:active:bg-indigo-900/20 ${
+                l.lotNo === currentLotNo ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
+              }`}
+              onClick={() => onSelect(l.lotNo)}
+            >
+              <div>
+                <p className="font-semibold text-gray-800 dark:text-gray-100 text-base">{l.lotNo}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{l.party} · {l.quality}</p>
+              </div>
+              <div className="text-right shrink-0 ml-3">
+                <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{l.foldAvailable} avail</p>
+                <p className="text-xs text-gray-400">Balance: {l.stock}</p>
+              </div>
+            </button>
+          ))}
+
+          {filtered.length === 0 && !query && (
+            <div className="px-4 py-8 text-center text-gray-400 text-sm">No available lots</div>
+          )}
+
+          {filtered.length === 0 && query.trim() && (
+            <button
+              type="button"
+              className="w-full text-left px-4 py-4 text-amber-700 dark:text-amber-400 font-semibold border-b border-gray-50 dark:border-gray-800 active:bg-amber-50 dark:active:bg-amber-900/20"
+              onClick={() => onSelect(query.trim())}
+            >
+              + Use &quot;{query.trim()}&quot; manually
+            </button>
+          )}
+
+          {/* Bottom safe area padding */}
+          <div className="h-6" />
+        </div>
+      </div>
     </div>
   )
 }
@@ -386,10 +531,8 @@ function ShadeCombobox({ shadeId, shadeName, shades, onChange, onShadeAdded }: {
   const [adding, setAdding] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  // Sync query when parent clears selection
   useEffect(() => { setQuery(shadeName) }, [shadeName])
 
-  // Close on outside click
   useEffect(() => {
     function handle(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
@@ -444,7 +587,6 @@ function ShadeCombobox({ shadeId, shadeName, shades, onChange, onShadeAdded }: {
           onChange={e => {
             setQuery(e.target.value)
             setOpen(true)
-            // Clear linked shade id while typing
             if (shadeId) onChange(null, e.target.value)
           }}
           onFocus={() => setOpen(true)}
@@ -458,7 +600,6 @@ function ShadeCombobox({ shadeId, shadeName, shades, onChange, onShadeAdded }: {
         )}
       </div>
 
-      {/* Dropdown */}
       {open && (filtered.length > 0 || showAdd) && (
         <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
           {filtered.map(s => (
@@ -486,7 +627,6 @@ function ShadeCombobox({ shadeId, shadeName, shades, onChange, onShadeAdded }: {
         </div>
       )}
 
-      {/* Show selected badge */}
       {shadeId && (
         <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5 pl-0.5">✓ Saved shade</p>
       )}
