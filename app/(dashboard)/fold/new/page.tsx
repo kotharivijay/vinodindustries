@@ -328,8 +328,35 @@ export default function NewFoldPage() {
     e.target.value = ''
     setImportError('')
     try {
-      const parsed = await parseImportSheet(file)
-      setImportPreview(parsed)
+      const isImage = /\.(jpg|jpeg|png)$/i.test(file.name)
+      if (isImage) {
+        // Convert image to base64 and send to AI for extraction
+        setImportError('Extracting data from image...')
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve((reader.result as string).split(',')[1])
+          reader.onerror = () => reject(new Error('Failed to read image'))
+          reader.readAsDataURL(file)
+        })
+        const mediaType = file.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg'
+        const res = await fetch('/api/fold/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64, mediaType }),
+        })
+        if (!res.ok) throw new Error('AI extraction failed')
+        const data = await res.json()
+        if (data.batches?.length > 0) {
+          setImportPreview(data.batches)
+          setImportError('')
+        } else {
+          setImportError('No batch data found in image')
+        }
+      } else {
+        // Excel/CSV parsing
+        const parsed = await parseImportSheet(file)
+        setImportPreview(parsed)
+      }
     } catch (err: any) {
       setImportError(err.message ?? 'Failed to parse file')
     }
@@ -402,11 +429,11 @@ export default function NewFoldPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-2xl">
-      {/* Hidden file input */}
+      {/* Hidden file input — accepts Excel + images */}
       <input
         ref={importRef}
         type="file"
-        accept=".xlsx,.xls,.csv"
+        accept=".xlsx,.xls,.csv,.jpg,.jpeg,.png"
         className="hidden"
         onChange={handleImportFile}
       />
@@ -420,7 +447,7 @@ export default function NewFoldPage() {
           onClick={() => { setImportError(''); importRef.current?.click() }}
           className="flex items-center gap-1.5 text-sm bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700 px-3 py-2 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition font-medium"
         >
-          ↑ Import Sheet
+          ↑ Import
         </button>
       </div>
 
