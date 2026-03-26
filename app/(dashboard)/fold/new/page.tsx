@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import * as XLSX from 'xlsx'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -51,6 +52,158 @@ interface BatchRow {
   lots: LotRow[]
 }
 
+// ── Import types ──────────────────────────────────────────────────────────────
+
+interface ParsedLot { lotNo: string; than: number }
+interface ParsedBatch { batchNo: number; shade: string; lots: ParsedLot[] }
+
+function parseImportSheet(file: File): Promise<ParsedBatch[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = e => {
+      try {
+        const data = new Uint8Array(e.target!.result as ArrayBuffer)
+        const wb = XLSX.read(data, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+
+        // Find header row containing "Sn"
+        let hIdx = -1
+        for (let i = 0; i < Math.min(rows.length, 20); i++) {
+          if (rows[i].some((c: any) => String(c).trim() === 'Sn')) { hIdx = i; break }
+        }
+        if (hIdx === -1) { reject(new Error('Could not find "Sn" column in sheet')); return }
+
+        const headers = rows[hIdx].map((h: any) => String(h ?? '').trim())
+        const snIdx = headers.findIndex(h => h === 'Sn')
+        const shadeIdx = headers.findIndex(h => h.toLowerCase().includes('shade nam'))
+        const totalIdx = headers.findIndex(h => h.toLowerCase() === 'total')
+
+        // Lot columns: between shade col and total col (exclusive), non-empty header
+        const endCol = totalIdx > 0 ? totalIdx : headers.length
+        const lotCols: { idx: number; lotNo: string }[] = []
+        const afterShade = shadeIdx >= 0 ? shadeIdx + 1 : snIdx + 3
+        for (let i = afterShade; i < endCol; i++) {
+          if (headers[i]) lotCols.push({ idx: i, lotNo: headers[i] })
+        }
+
+        if (lotCols.length === 0) { reject(new Error('No lot columns found after the Shade Name column')); return }
+
+        // Parse data rows
+        const batches: ParsedBatch[] = []
+        for (let i = hIdx + 1; i < rows.length; i++) {
+          const row = rows[i]
+          const snVal = row[snIdx]
+          if (snVal === '' || snVal === null || isNaN(Number(snVal))) break
+
+          const shade = String(row[shadeIdx] ?? '').trim()
+          const lots = lotCols
+            .map(col => ({ lotNo: String(col.lotNo).trim(), than: Number(row[col.idx]) || 0 }))
+            .filter(l => l.than > 0)
+
+          if (lots.length > 0) batches.push({ batchNo: Number(snVal), shade, lots })
+        }
+
+        if (batches.length === 0) reject(new Error('No batch data found — check sheet format'))
+        else resolve(batches)
+      } catch (err: any) {
+        reject(new Error(err.message ?? 'Failed to parse file'))
+      }
+    }
+    reader.onerror = () => reject(new Error('Failed to read file'))
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+// ── Import Preview Modal ──────────────────────────────────────────────────────
+
+function ImportPreviewModal({ batches, lotLookup, onConfirm, onClose }: {
+  batches: ParsedBatch[]
+  lotLookup: Map<string, LotStockItem>
+  onConfirm: (batches: ParsedBatch[]) => void
+  onClose: () => void
+}) {
+  const totalThan = batches.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + l.than, 0), 0)
+  const allLotNos = batches.flatMap(b => b.lots.map(l => l.lotNo))
+  const unknownLots = [...new Set(allLotNos.filter(ln => !lotLookup.has(ln.toLowerCase())))]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+          <div>
+            <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">Import Preview</h2>
+            <p className="text-xs text-gray-500 mt-0.5">{batches.length} batches · {totalThan} total than</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+
+        {/* Warning for unknown lots */}
+        {unknownLots.length > 0 && (
+          <div className="mx-5 mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <span className="font-semibold">Lots not in stock master:</span> {unknownLots.join(', ')} — will be added as manual entries
+          </div>
+        )}
+
+        {/* Batch list */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {batches.map(batch => (
+            <div key={batch.batchNo} className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+              <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 flex items-center gap-3">
+                <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">Batch {batch.batchNo}</span>
+                {batch.shade && (
+                  <span className="text-sm text-indigo-600 dark:text-indigo-300">{batch.shade}</span>
+                )}
+                <span className="ml-auto text-xs text-indigo-500">
+                  {batch.lots.reduce((s, l) => s + l.than, 0)} than
+                </span>
+              </div>
+              <div className="divide-y divide-gray-50 dark:divide-gray-800">
+                {batch.lots.map((lot, i) => {
+                  const info = lotLookup.get(lot.lotNo.toLowerCase())
+                  return (
+                    <div key={i} className="px-4 py-2 flex items-center justify-between text-sm">
+                      <div>
+                        <span className="font-medium text-gray-800 dark:text-gray-200">{lot.lotNo}</span>
+                        {info && (
+                          <span className="text-xs text-gray-400 ml-2">{info.party} · {info.quality}</span>
+                        )}
+                        {!info && (
+                          <span className="text-xs text-amber-500 ml-2">not in stock</span>
+                        )}
+                      </div>
+                      <span className="font-semibold text-indigo-600 dark:text-indigo-400">{lot.than} than</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 px-5 py-4 border-t border-gray-100 dark:border-gray-700">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2 text-sm border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(batches)}
+            className="flex-1 py-2 text-sm bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition"
+          >
+            Fill Form
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function NewFoldPage() {
   const router = useRouter()
   const { data: stockData } = useSWR<{ parties: PartyStock[] }>('/api/stock', fetcher)
@@ -66,6 +219,11 @@ export default function NewFoldPage() {
   const [lotDropKey, setLotDropKey] = useState<string | null>(null)
   const [lotSearch, setLotSearch] = useState('')
   const [isMobile, setIsMobile] = useState(false)
+
+  // Import state
+  const importRef = useRef<HTMLInputElement>(null)
+  const [importPreview, setImportPreview] = useState<ParsedBatch[] | null>(null)
+  const [importError, setImportError] = useState('')
 
   // Refs for Than inputs — keyed by "batchIdx-lotIdx"
   const thanRefs = useRef<Map<string, HTMLInputElement>>(new Map())
@@ -162,6 +320,52 @@ export default function NewFoldPage() {
     }, 80)
   }
 
+  // ── Import handlers ─────────────────────────────────────────────────────────
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImportError('')
+    try {
+      const parsed = await parseImportSheet(file)
+      setImportPreview(parsed)
+    } catch (err: any) {
+      setImportError(err.message ?? 'Failed to parse file')
+    }
+  }
+
+  function applyImport(parsed: ParsedBatch[]) {
+    const newBatches: BatchRow[] = parsed.map(pb => {
+      const shadeMatch = (shades ?? []).find(s => s.name.toLowerCase() === pb.shade.toLowerCase())
+      const lots: LotRow[] = pb.lots.map(pl => {
+        const lotInfo = lotLookup.get(pl.lotNo.toLowerCase())
+        const party = Array.isArray(parties) ? parties.find(p => p.name === lotInfo?.party) : undefined
+        const quality = Array.isArray(qualities) ? qualities.find(q => q.name === lotInfo?.quality) : undefined
+        return {
+          lotNo: pl.lotNo,
+          than: String(pl.than),
+          partyId: party?.id ?? null,
+          qualityId: quality?.id ?? null,
+          partyName: lotInfo?.party ?? '',
+          qualityName: lotInfo?.quality ?? '',
+          maxStock: lotInfo?.foldAvailable ?? 0,
+        }
+      })
+      return {
+        batchNo: pb.batchNo,
+        shadeId: shadeMatch?.id ?? null,
+        shadeName: shadeMatch?.name ?? pb.shade,
+        shadeDescription: '',
+        lots,
+      }
+    })
+    setBatches(newBatches)
+    setImportPreview(null)
+  }
+
+  // ── Save ────────────────────────────────────────────────────────────────────
+
   async function save() {
     setError('')
     if (!foldNo.trim()) { setError('Fold No is required'); return }
@@ -198,14 +402,30 @@ export default function NewFoldPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-2xl">
+      {/* Hidden file input */}
+      <input
+        ref={importRef}
+        type="file"
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+
       <div className="flex items-center gap-4 mb-6">
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg px-4 py-2 text-sm font-medium transition">
           &larr; Back
         </button>
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100 flex-1">New Fold Program</h1>
+        <button
+          onClick={() => { setImportError(''); importRef.current?.click() }}
+          className="flex items-center gap-1.5 text-sm bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700 px-3 py-2 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition font-medium"
+        >
+          ↑ Import Sheet
+        </button>
       </div>
 
       {error && <div className="mb-4 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2 text-sm">{error}</div>}
+      {importError && <div className="mb-4 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-4 py-2 text-sm">{importError}</div>}
 
       {/* Header fields */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-4 space-y-3">
@@ -444,6 +664,16 @@ export default function NewFoldPage() {
           />
         )
       })()}
+
+      {/* Import preview modal */}
+      {importPreview && (
+        <ImportPreviewModal
+          batches={importPreview}
+          lotLookup={lotLookup}
+          onConfirm={applyImport}
+          onClose={() => setImportPreview(null)}
+        />
+      )}
     </div>
   )
 }
@@ -458,7 +688,6 @@ function LotBottomSheet({ availableLots, currentLotNo, onSelect, onClose }: {
 }) {
   const [query, setQuery] = useState('')
 
-  // Lock body scroll while sheet is open
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = '' }
@@ -468,32 +697,19 @@ function LotBottomSheet({ availableLots, currentLotNo, onSelect, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-
-      {/* Sheet panel */}
       <div
         className="relative bg-white dark:bg-gray-900 rounded-t-2xl flex flex-col"
         style={{ maxHeight: '90vh' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
         </div>
-
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
           <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Select Lot</h3>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-lg"
-          >
-            ✕
-          </button>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-lg">✕</button>
         </div>
-
-        {/* Search */}
         <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
           <input
             autoFocus
@@ -504,16 +720,12 @@ function LotBottomSheet({ availableLots, currentLotNo, onSelect, onClose }: {
             onChange={e => setQuery(e.target.value)}
           />
         </div>
-
-        {/* Lot list */}
         <div className="overflow-y-auto overscroll-contain flex-1">
           {filtered.map(l => (
             <button
               key={l.lotNo}
               type="button"
-              className={`w-full text-left px-4 py-4 flex items-center justify-between border-b border-gray-50 dark:border-gray-800 active:bg-indigo-50 dark:active:bg-indigo-900/20 ${
-                l.lotNo === currentLotNo ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
-              }`}
+              className={`w-full text-left px-4 py-4 flex items-center justify-between border-b border-gray-50 dark:border-gray-800 active:bg-indigo-50 dark:active:bg-indigo-900/20 ${l.lotNo === currentLotNo ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''}`}
               onClick={() => { onSelect(l.lotNo); onClose() }}
             >
               <div>
@@ -526,11 +738,9 @@ function LotBottomSheet({ availableLots, currentLotNo, onSelect, onClose }: {
               </div>
             </button>
           ))}
-
           {filtered.length === 0 && !query && (
             <div className="px-4 py-8 text-center text-gray-400 text-sm">No available lots</div>
           )}
-
           {filtered.length === 0 && query.trim() && (
             <button
               type="button"
@@ -540,8 +750,6 @@ function LotBottomSheet({ availableLots, currentLotNo, onSelect, onClose }: {
               + Use &quot;{query.trim()}&quot; manually
             </button>
           )}
-
-          {/* Bottom safe area padding */}
           <div className="h-6" />
         </div>
       </div>
@@ -624,25 +832,16 @@ function ShadeCombobox({ shadeId, shadeName, shades, onChange, onShadeAdded }: {
           onFocus={() => setOpen(true)}
         />
         {(shadeId || query) && (
-          <button
-            onClick={clear}
-            className="px-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
-            tabIndex={-1}
-          >✕</button>
+          <button onClick={clear} className="px-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs" tabIndex={-1}>✕</button>
         )}
       </div>
-
       {open && (filtered.length > 0 || showAdd) && (
         <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
           {filtered.map(s => (
             <button
               key={s.id}
               onMouseDown={e => { e.preventDefault(); select(s.id, s.name) }}
-              className={`w-full text-left px-3 py-2 text-sm transition ${
-                s.id === shadeId
-                  ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-medium'
-                  : 'text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'
-              }`}
+              className={`w-full text-left px-3 py-2 text-sm transition ${s.id === shadeId ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-medium' : 'text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
             >
               {s.name}
             </button>
@@ -658,7 +857,6 @@ function ShadeCombobox({ shadeId, shadeName, shades, onChange, onShadeAdded }: {
           )}
         </div>
       )}
-
       {shadeId && (
         <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5 pl-0.5">✓ Saved shade</p>
       )}
