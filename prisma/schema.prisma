@@ -336,11 +336,12 @@ model FoldBatch {
   id            Int            @id @default(autoincrement())
   foldProgramId Int
   foldProgram   FoldProgram    @relation(fields: [foldProgramId], references: [id], onDelete: Cascade)
-  batchNo       Int
-  shadeId       Int?
-  shade         Shade?         @relation(fields: [shadeId], references: [id])
-  shadeName     String?        // free-text shade name (if not in master)
-  lots          FoldBatchLot[]
+  batchNo          Int
+  shadeId          Int?
+  shade            Shade?         @relation(fields: [shadeId], references: [id])
+  shadeName        String?        // free-text shade name (if not in master)
+  shadeDescription String?
+  lots             FoldBatchLot[]
 }
 
 model FoldBatchLot {

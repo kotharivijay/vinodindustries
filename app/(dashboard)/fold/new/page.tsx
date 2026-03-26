@@ -47,6 +47,7 @@ interface BatchRow {
   batchNo: number
   shadeId: number | null
   shadeName: string
+  shadeDescription: string
   lots: LotRow[]
 }
 
@@ -87,7 +88,7 @@ export default function NewFoldPage() {
   }
 
   const [batches, setBatches] = useState<BatchRow[]>([
-    { batchNo: 1, shadeId: null, shadeName: '', lots: [emptyLot()] },
+    { batchNo: 1, shadeId: null, shadeName: '', shadeDescription: '', lots: [emptyLot()] },
   ])
 
   function emptyLot(): LotRow {
@@ -99,6 +100,7 @@ export default function NewFoldPage() {
       batchNo: prev.length + 1,
       shadeId: null,
       shadeName: '',
+      shadeDescription: '',
       lots: [emptyLot()],
     }])
   }
@@ -245,7 +247,7 @@ export default function NewFoldPage() {
             {/* Batch header */}
             <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 flex items-center gap-3">
               <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400 shrink-0">Batch {batch.batchNo}</span>
-              <div className="flex-1">
+              <div className="shrink-0">
                 <ShadeCombobox
                   shadeId={batch.shadeId}
                   shadeName={batch.shadeName}
@@ -257,6 +259,13 @@ export default function NewFoldPage() {
                   onShadeAdded={shade => mutateShades(prev => [...(prev ?? []), shade].sort((a, b) => a.name.localeCompare(b.name)))}
                 />
               </div>
+              <input
+                type="text"
+                className="flex-1 min-w-0 border border-indigo-200 dark:border-indigo-700 rounded bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-700 dark:text-gray-200 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                placeholder="Shade description..."
+                value={batch.shadeDescription}
+                onChange={e => updateBatch(batchIdx, 'shadeDescription', e.target.value)}
+              />
               {batches.length > 1 && (
                 <button onClick={() => removeBatch(batchIdx)} className="text-xs text-red-500 hover:text-red-700 shrink-0">
                   Remove
@@ -269,12 +278,18 @@ export default function NewFoldPage() {
               {batch.lots.map((lot, lotIdx) => {
                 const dropKey = `${batchIdx}-${lotIdx}`
                 const isOpen = lotDropKey === dropKey && !isMobile
-                const selectedLotNos = batches.flatMap((b, bi) =>
-                  b.lots.filter((_, li) => !(bi === batchIdx && li === lotIdx)).map(l => l.lotNo).filter(Boolean)
-                )
-                const filteredLots = allLots
-                  .filter(l => !selectedLotNos.includes(l.lotNo))
-                  .filter(l => matchesSearch(l, lotSearch))
+                const usedElsewhere = new Map<string, number>()
+                for (const [bi, b] of batches.entries()) {
+                  for (const [li, l] of b.lots.entries()) {
+                    if (bi === batchIdx && li === lotIdx) continue
+                    if (!l.lotNo) continue
+                    usedElsewhere.set(l.lotNo, (usedElsewhere.get(l.lotNo) ?? 0) + (parseInt(l.than) || 0))
+                  }
+                }
+                const availableLots = allLots
+                  .map(l => ({ ...l, foldAvailable: l.foldAvailable - (usedElsewhere.get(l.lotNo) ?? 0) }))
+                  .filter(l => l.foldAvailable > 0)
+                const filteredLots = availableLots.filter(l => matchesSearch(l, lotSearch))
                 const stockInfo = lot.lotNo ? lotLookup.get(lot.lotNo.toLowerCase()) : undefined
                 return (
                   <div key={lotIdx} className="flex gap-2 items-start">
@@ -406,26 +421,35 @@ export default function NewFoldPage() {
       </button>
 
       {/* Mobile bottom sheet */}
-      {isMobile && lotDropKey !== null && activeBatchIdx !== null && activeLotIdx !== null && (
-        <LotBottomSheet
-          allLots={allLots}
-          selectedLotNos={batches.flatMap((b, bi) =>
-            b.lots.filter((_, li) => !(bi === activeBatchIdx && li === activeLotIdx)).map(l => l.lotNo).filter(Boolean)
-          )}
-          currentLotNo={batches[activeBatchIdx]?.lots[activeLotIdx]?.lotNo ?? ''}
-          onSelect={lotNo => selectLot(activeBatchIdx, activeLotIdx, lotNo)}
-          onClose={() => { setLotDropKey(null); setLotSearch('') }}
-        />
-      )}
+      {isMobile && lotDropKey !== null && activeBatchIdx !== null && activeLotIdx !== null && (() => {
+        const usedElsewhereSheet = new Map<string, number>()
+        for (const [bi, b] of batches.entries()) {
+          for (const [li, l] of b.lots.entries()) {
+            if (bi === activeBatchIdx && li === activeLotIdx) continue
+            if (!l.lotNo) continue
+            usedElsewhereSheet.set(l.lotNo, (usedElsewhereSheet.get(l.lotNo) ?? 0) + (parseInt(l.than) || 0))
+          }
+        }
+        const sheetLots = allLots
+          .map(l => ({ ...l, foldAvailable: l.foldAvailable - (usedElsewhereSheet.get(l.lotNo) ?? 0) }))
+          .filter(l => l.foldAvailable > 0)
+        return (
+          <LotBottomSheet
+            availableLots={sheetLots}
+            currentLotNo={batches[activeBatchIdx]?.lots[activeLotIdx]?.lotNo ?? ''}
+            onSelect={lotNo => selectLot(activeBatchIdx, activeLotIdx, lotNo)}
+            onClose={() => { setLotDropKey(null); setLotSearch('') }}
+          />
+        )
+      })()}
     </div>
   )
 }
 
 // ── Mobile Bottom Sheet ────────────────────────────────────────────────────────
 
-function LotBottomSheet({ allLots, selectedLotNos, currentLotNo, onSelect, onClose }: {
-  allLots: LotStockItem[]
-  selectedLotNos: string[]
+function LotBottomSheet({ availableLots, currentLotNo, onSelect, onClose }: {
+  availableLots: LotStockItem[]
   currentLotNo: string
   onSelect: (lotNo: string) => void
   onClose: () => void
@@ -438,9 +462,7 @@ function LotBottomSheet({ allLots, selectedLotNos, currentLotNo, onSelect, onClo
     return () => { document.body.style.overflow = '' }
   }, [])
 
-  const filtered = allLots
-    .filter(l => !selectedLotNos.includes(l.lotNo))
-    .filter(l => matchesSearch(l, query))
+  const filtered = availableLots.filter(l => matchesSearch(l, query))
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
