@@ -150,6 +150,7 @@ export async function GET(req: NextRequest) {
   if (!session) return new Response('Unauthorized', { status: 401 })
 
   const firmParam = req.nextUrl.searchParams.get('firm') || ''
+  const fullSync = req.nextUrl.searchParams.get('full') === '1'
   const firmsToSync = firmParam && FIRM_TALLY[firmParam] ? [firmParam] : Object.keys(FIRM_TALLY)
   const weeks = getWeeklyRanges()
 
@@ -177,36 +178,39 @@ export async function GET(req: NextRequest) {
         let firmTotal = 0
         let connectionFailed = false
 
-        // Find last synced date for this firm to resume from
+        // Find last synced date for this firm to resume from (unless full sync requested)
         let startWeekIndex = 0
-        try {
-          const lastEntry = await db.tallySales.findFirst({
-            where: { firmCode },
-            orderBy: { date: 'desc' },
-            select: { date: true, lastSynced: true },
-          })
-          if (lastEntry?.date) {
-            const lastDate = new Date(lastEntry.date)
-            // Find which week this date falls in, start from that week (re-sync it to catch any missed entries)
-            for (let wi = 0; wi < weeks.length; wi++) {
-              const parts = weeks[wi].to.split('/')
-              const weekEnd = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
-              if (weekEnd >= lastDate) {
-                startWeekIndex = wi
-                break
+        if (!fullSync) {
+          try {
+            const lastEntry = await db.tallySales.findFirst({
+              where: { firmCode },
+              orderBy: { date: 'desc' },
+              select: { date: true, lastSynced: true },
+            })
+            if (lastEntry?.date) {
+              const lastDate = new Date(lastEntry.date)
+              for (let wi = 0; wi < weeks.length; wi++) {
+                const parts = weeks[wi].to.split('/')
+                const weekEnd = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]))
+                if (weekEnd >= lastDate) {
+                  startWeekIndex = wi
+                  break
+                }
               }
             }
-          }
-        } catch {}
+          } catch {}
+        }
 
         const skippedWeeks = startWeekIndex
         const remainingWeeks = weeks.length - startWeekIndex
 
-        if (skippedWeeks > 0) {
+        if (fullSync) {
+          send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Full sync: ${weeks.length} weeks...`, total: weeks.length, progress: 0 })
+          try { await db.tallySales.deleteMany({ where: { firmCode } }) } catch {}
+        } else if (skippedWeeks > 0) {
           send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Resuming from week ${startWeekIndex + 1} (${skippedWeeks} already synced). ${remainingWeeks} weeks remaining...`, total: remainingWeeks, progress: 0 })
         } else {
           send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Fetching ${weeks.length} weeks...`, total: weeks.length, progress: 0 })
-          // Full sync — delete old data only when starting fresh
           try { await db.tallySales.deleteMany({ where: { firmCode } }) } catch {}
         }
 

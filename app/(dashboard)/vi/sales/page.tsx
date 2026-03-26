@@ -118,7 +118,7 @@ export default function SalesRegisterPage() {
   }
 
   // SSE sync
-  async function handleSync() {
+  async function handleSync(full = false) {
     const firmsToSync = firm ? [firm] : ['VI', 'VCF', 'VF']
     setSyncing(true)
     setShowSyncModal(true)
@@ -131,7 +131,7 @@ export default function SalesRegisterPage() {
     const timer = setInterval(() => setSyncElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000)
 
     try {
-      const res = await fetch(`/api/tally/sales-sync?firm=${firm}`)
+      const res = await fetch(`/api/tally/sales-sync?firm=${firm}${full ? '&full=1' : ''}`)
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
       if (!reader) throw new Error('No stream')
@@ -234,9 +234,13 @@ export default function SalesRegisterPage() {
           <option value="amount-desc">Amount High→Low</option>
           <option value="party-asc">Party A-Z</option>
         </select>
-        <button onClick={handleSync} disabled={syncing}
-          className="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap">
-          {syncing ? 'Syncing...' : 'Sync from Tally'}
+        <button onClick={() => handleSync(false)} disabled={syncing}
+          className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap">
+          {syncing ? 'Syncing...' : 'Sync'}
+        </button>
+        <button onClick={() => handleSync(true)} disabled={syncing}
+          className="bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-700 disabled:opacity-50 whitespace-nowrap">
+          Full Sync
         </button>
       </div>
 
