@@ -49,7 +49,8 @@ const viNavGroups = [
   {
     label: 'Modules',
     links: [
-      { href: '#', label: 'Coming Soon...', icon: '🔒' },
+      { href: '/vi/ledgers', label: 'Ledger Master', icon: '📒' },
+      { href: '/vi/settings', label: 'Tally Settings', icon: '⚙️' },
     ],
   },
 ]

@@ -423,3 +423,24 @@ model LotCarryForwardDespatch {
   rate      Float?
   setNo     Int               // 1, 2, 3, or 4
 }
+
+// ─── Tally Integration ──────────────────────────────────────────────────────
+
+model TallyLedger {
+  id             Int      @id @default(autoincrement())
+  firmCode       String   // "VI", "VCF", "VJF", "KSI", "PS"
+  name           String
+  parent         String?
+  address        String?
+  gstNo          String?
+  panNo          String?
+  mobileNos      String?  // comma-separated
+  state          String?
+  stateCode      String?
+  openingBalance Float?
+  closingBalance Float?
+  lastSynced     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@unique([firmCode, name])
+}
