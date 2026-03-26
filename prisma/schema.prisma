@@ -118,10 +118,11 @@ model Chemical {
   currentPrice Float?
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
-  priceHistory ChemicalPriceHistory[]
-  slipUsages   DyeingSlipChemical[]
-  finishUsages FinishSlipChemical[]
-  aliases      ChemicalAlias[]
+  priceHistory  ChemicalPriceHistory[]
+  slipUsages    DyeingSlipChemical[]
+  finishUsages  FinishSlipChemical[]
+  aliases       ChemicalAlias[]
+  recipeUsages  ShadeRecipeItem[]
 }
 
 model ChemicalPriceHistory {
@@ -315,10 +316,22 @@ model VaultNotification {
 // ─── Fold Program Module ─────────────────────────────────────────────────────
 
 model Shade {
-  id          Int         @id @default(autoincrement())
-  name        String      @unique
-  createdAt   DateTime    @default(now())
+  id          Int               @id @default(autoincrement())
+  name        String            @unique
+  description String?
+  createdAt   DateTime          @default(now())
   foldBatches FoldBatch[]
+  recipeItems ShadeRecipeItem[]
+}
+
+model ShadeRecipeItem {
+  id         Int      @id @default(autoincrement())
+  shadeId    Int
+  shade      Shade    @relation(fields: [shadeId], references: [id], onDelete: Cascade)
+  chemicalId Int
+  chemical   Chemical @relation(fields: [chemicalId], references: [id])
+  quantity   Float    // per 100 kg fabric
+  @@unique([shadeId, chemicalId])
 }
 
 model FoldProgram {
