@@ -17,6 +17,8 @@ interface LotStock {
   greyThan: number
   despatchThan: number
   foldProgrammed: number
+  manuallyUsed: number
+  manuallyUsedNote: string | null
   foldAvailable: number
 }
 
@@ -31,10 +33,113 @@ type SortMode = 'party-asc' | 'party-desc' | 'stock-desc' | 'stock-asc'
 
 export default function StockPage() {
   const router = useRouter()
-  const { data, isLoading } = useSWR<{ parties: PartyStock[]; totalStock: number; totalLots: number }>('/api/stock', fetcher)
+  const { data, isLoading, mutate } = useSWR<{ parties: PartyStock[]; totalStock: number; totalLots: number }>('/api/stock', fetcher)
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortMode>('party-asc')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  // Single-lot reservation
+  const [editingReservation, setEditingReservation] = useState<string | null>(null)
+  const [reserveThan, setReserveThan] = useState('')
+  const [reserveNote, setReserveNote] = useState('')
+  const [savingReservation, setSavingReservation] = useState(false)
+
+  // Bulk mode
+  const [bulkMode, setBulkMode] = useState(false)
+  // Map<lotNo, { usedThan: string, note: string }>
+  const [bulkSelections, setBulkSelections] = useState<Map<string, { usedThan: string; note: string }>>(new Map())
+  const [savingBulk, setSavingBulk] = useState(false)
+
+  function toggleBulkMode() {
+    setBulkMode(prev => !prev)
+    setBulkSelections(new Map())
+    setEditingReservation(null)
+  }
+
+  function toggleBulkLot(lot: LotStock) {
+    setBulkSelections(prev => {
+      const next = new Map(prev)
+      if (next.has(lot.lotNo)) {
+        next.delete(lot.lotNo)
+      } else {
+        next.set(lot.lotNo, {
+          usedThan: lot.manuallyUsed > 0 ? String(lot.manuallyUsed) : String(lot.foldAvailable),
+          note: lot.manuallyUsedNote ?? '',
+        })
+      }
+      return next
+    })
+  }
+
+  function updateBulkThan(lotNo: string, val: string) {
+    setBulkSelections(prev => {
+      const next = new Map(prev)
+      const existing = next.get(lotNo)
+      if (existing) next.set(lotNo, { ...existing, usedThan: val })
+      return next
+    })
+  }
+
+  function updateBulkNote(lotNo: string, val: string) {
+    setBulkSelections(prev => {
+      const next = new Map(prev)
+      const existing = next.get(lotNo)
+      if (existing) next.set(lotNo, { ...existing, note: val })
+      return next
+    })
+  }
+
+  async function saveBulk() {
+    if (bulkSelections.size === 0) return
+    setSavingBulk(true)
+    try {
+      const items = Array.from(bulkSelections.entries()).map(([lotNo, { usedThan, note }]) => ({
+        lotNo,
+        usedThan: parseInt(usedThan) || 0,
+        note: note.trim() || undefined,
+      }))
+      await fetch('/api/stock/reservation/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      })
+      await mutate()
+      setBulkMode(false)
+      setBulkSelections(new Map())
+    } finally {
+      setSavingBulk(false)
+    }
+  }
+
+  function openReservation(lot: LotStock) {
+    setEditingReservation(lot.lotNo)
+    setReserveThan(lot.manuallyUsed > 0 ? String(lot.manuallyUsed) : '')
+    setReserveNote(lot.manuallyUsedNote ?? '')
+  }
+
+  async function saveReservation(lotNo: string) {
+    const usedThan = parseInt(reserveThan) || 0
+    setSavingReservation(true)
+    try {
+      if (usedThan <= 0) {
+        await fetch('/api/stock/reservation', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lotNo }),
+        })
+      } else {
+        await fetch('/api/stock/reservation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lotNo, usedThan, note: reserveNote.trim() || null }),
+        })
+      }
+      await mutate()
+      setEditingReservation(null)
+    } finally {
+      setSavingReservation(false)
+    }
+  }
 
   const toggle = (party: string) => {
     setExpanded(prev => {
@@ -55,7 +160,6 @@ export default function StockPage() {
         p.lots.some(l => l.lotNo.toLowerCase().includes(q) || l.quality.toLowerCase().includes(q))
       )
     }
-    // Sort
     list = [...list]
     switch (sort) {
       case 'party-asc': list.sort((a, b) => a.party.localeCompare(b.party)); break
@@ -68,14 +172,13 @@ export default function StockPage() {
 
   function getFlatRows() {
     return filtered.flatMap(p =>
-      p.lots.map(l => [p.party, l.lotNo, l.quality, l.openingBalance, l.greyThan, l.despatchThan, l.stock, l.foldProgrammed, l.foldAvailable])
+      p.lots.map(l => [p.party, l.lotNo, l.quality, l.openingBalance, l.greyThan, l.despatchThan, l.stock, l.foldProgrammed, l.manuallyUsed, l.foldAvailable])
     )
   }
 
   function exportXLSX() {
-    const headers = ['Party', 'Lot No', 'Quality', 'Opening Balance', 'Grey Than', 'Despatch Than', 'Balance Stock', 'Fold Programmed', 'Fold Available']
+    const headers = ['Party', 'Lot No', 'Quality', 'Opening Balance', 'Grey Than', 'Despatch Than', 'Balance Stock', 'Fold Programmed', 'Manually Used', 'Fold Available']
     const ws = XLSX.utils.aoa_to_sheet([headers, ...getFlatRows()])
-    // Bold header
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Balance Stock')
     XLSX.writeFile(wb, 'balance-stock.xlsx')
@@ -90,14 +193,14 @@ export default function StockPage() {
     doc.setFontSize(9)
     doc.text(`${data?.totalStock?.toLocaleString()} than · ${data?.totalLots} lots · ${filtered.length} parties${search ? ` · Search: "${search}"` : ''}`, 14, 21)
     autoTable(doc, {
-      head: [['Party', 'Lot No', 'Quality', 'OB', 'Grey', 'Desp', 'Balance', 'Fold Prog', 'Fold Avail']],
+      head: [['Party', 'Lot No', 'Quality', 'OB', 'Grey', 'Desp', 'Balance', 'Fold Prog', 'Used', 'Fold Avail']],
       body: getFlatRows(),
       startY: 26,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [79, 70, 229] },
       columnStyles: {
         6: { fontStyle: 'bold', textColor: [79, 70, 229] },
-        8: { fontStyle: 'bold', textColor: [5, 150, 105] },
+        9: { fontStyle: 'bold', textColor: [5, 150, 105] },
       },
     })
     doc.save('balance-stock.pdf')
@@ -105,33 +208,81 @@ export default function StockPage() {
 
   if (isLoading) return <div className="p-8 text-gray-400">Loading stock data...</div>
 
+  const bulkSelectedCount = bulkSelections.size
+  const bulkFilledCount = Array.from(bulkSelections.values()).filter(v => parseInt(v.usedThan) > 0).length
+
   return (
-    <div className="p-4 md:p-8 max-w-3xl">
+    <div className="p-4 md:p-8 max-w-3xl pb-32">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg px-4 py-2 text-sm font-medium transition">
           &larr; Back
         </button>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Balance Stock</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{data?.totalStock?.toLocaleString()} than &middot; {data?.totalLots} lots &middot; {data?.parties?.length} parties</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={exportXLSX} className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-emerald-700">
-            ⬇ XLSX
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={toggleBulkMode}
+            className={`px-3 py-2 rounded-lg text-xs font-medium transition ${
+              bulkMode
+                ? 'bg-amber-500 text-white hover:bg-amber-600'
+                : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 hover:bg-amber-100'
+            }`}
+          >
+            {bulkMode ? '✕ Cancel Bulk' : '☑ Bulk Mark Used'}
           </button>
-          <button onClick={exportPDF} className="flex items-center gap-1.5 bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-700">
-            ⬇ PDF
-          </button>
+          {!bulkMode && (
+            <>
+              <button onClick={exportXLSX} className="flex items-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-emerald-700">
+                ⬇ XLSX
+              </button>
+              <button onClick={exportPDF} className="flex items-center gap-1.5 bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-700">
+                ⬇ PDF
+              </button>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Bulk mode banner */}
+      {bulkMode && (
+        <div className="mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="font-semibold mb-0.5">Bulk Mark Used Mode</p>
+              <p className="text-xs opacity-80">
+                {bulkSelectedCount === 0
+                  ? 'Expand a party → check lots → enter quantity used'
+                  : `${bulkSelectedCount} lot${bulkSelectedCount !== 1 ? 's' : ''} selected, ${bulkFilledCount} with quantity`}
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={toggleBulkMode}
+                className="px-3 py-1.5 rounded-lg text-xs border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveBulk}
+                disabled={savingBulk || bulkFilledCount === 0}
+                className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-xs font-semibold hover:bg-amber-700 disabled:opacity-40 transition"
+              >
+                {savingBulk ? 'Saving...' : bulkFilledCount > 0 ? `Save ${bulkSelectedCount} lot${bulkSelectedCount !== 1 ? 's' : ''}` : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search + Sort */}
       <div className="mb-4 space-y-3">
         <input
           type="text"
           placeholder="Search party, lot no, quality..."
-          className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -140,14 +291,16 @@ export default function StockPage() {
           {([
             ['party-asc', 'Party A-Z'],
             ['party-desc', 'Party Z-A'],
-            ['stock-desc', 'Stock High\u2192Low'],
-            ['stock-asc', 'Stock Low\u2192High'],
+            ['stock-desc', 'Stock High→Low'],
+            ['stock-asc', 'Stock Low→High'],
           ] as [SortMode, string][]).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setSort(key)}
               className={`text-xs px-2 py-1 rounded border ${
-                sort === key ? 'bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-400 font-medium' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                sort === key
+                  ? 'bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-400 font-medium'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
               }`}
             >
               {label}
@@ -161,60 +314,247 @@ export default function StockPage() {
         <div className="text-center text-gray-400 py-16">No stock found</div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(p => (
+          {filtered.map(p => {
+            const partyAllSelected = p.lots.every(l => bulkSelections.has(l.lotNo))
+            const partySomeSelected = p.lots.some(l => bulkSelections.has(l.lotNo))
+
+            const toggleSelectAllParty = () => {
+              // auto-expand party so user can see selections
+              if (!expanded.has(p.party)) toggle(p.party)
+              setBulkSelections(prev => {
+                const next = new Map(prev)
+                if (partyAllSelected) {
+                  p.lots.forEach(l => next.delete(l.lotNo))
+                } else {
+                  p.lots.forEach(l => {
+                    if (!next.has(l.lotNo)) {
+                      next.set(l.lotNo, {
+                        usedThan: l.manuallyUsed > 0 ? String(l.manuallyUsed) : String(l.foldAvailable),
+                        note: l.manuallyUsedNote ?? '',
+                      })
+                    }
+                  })
+                }
+                return next
+              })
+            }
+
+            return (
             <div key={p.party} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
-              {/* Party header - tappable */}
-              <button
-                onClick={() => toggle(p.party)}
-                className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition"
-              >
-                <span className="text-lg">{'\uD83D\uDCE6'}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{p.party}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{p.lotCount} lot{p.lotCount !== 1 ? 's' : ''}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{p.totalStock}</p>
-                  <p className="text-[10px] text-gray-400 dark:text-gray-500">than</p>
-                </div>
-                <span className="text-gray-300 dark:text-gray-600 text-sm">{expanded.has(p.party) ? '\u25B2' : '\u25BC'}</span>
-              </button>
+              {/* Party header */}
+              <div className="flex items-center">
+                {bulkMode && (
+                  <div className="pl-4 pr-1 flex items-center" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={partyAllSelected}
+                      ref={el => { if (el) el.indeterminate = partySomeSelected && !partyAllSelected }}
+                      onChange={toggleSelectAllParty}
+                      className="w-4 h-4 accent-amber-500 cursor-pointer"
+                      title="Select all lots in this party"
+                    />
+                  </div>
+                )}
+                <button
+                  onClick={() => toggle(p.party)}
+                  className="flex-1 text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition"
+                >
+                  <span className="text-lg">📦</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{p.party}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {p.lotCount} lot{p.lotCount !== 1 ? 's' : ''}
+                      {bulkMode && partySomeSelected && (
+                        <span className="ml-1 text-amber-600 dark:text-amber-400 font-medium">
+                          · {p.lots.filter(l => bulkSelections.has(l.lotNo)).length} selected
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{p.totalStock}</p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500">than</p>
+                  </div>
+                  <span className="text-gray-300 dark:text-gray-600 text-sm">{expanded.has(p.party) ? '▲' : '▼'}</span>
+                </button>
+              </div>
 
               {/* Expanded lot cards */}
               {expanded.has(p.party) && (
                 <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 px-4 py-3 space-y-2">
-                  {p.lots.map(lot => (
-                    <div key={lot.lotNo} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 hover:underline">
-                          {lot.lotNo}
-                        </Link>
-                        <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{lot.stock} than</span>
+                  {p.lots.map(lot => {
+                    const isChecked = bulkSelections.has(lot.lotNo)
+                    const bulkVal = bulkSelections.get(lot.lotNo)
+                    return (
+                      <div
+                        key={lot.lotNo}
+                        className={`bg-white dark:bg-gray-800 rounded-lg border p-3 transition ${
+                          bulkMode && isChecked
+                            ? 'border-amber-300 dark:border-amber-600 ring-1 ring-amber-200 dark:ring-amber-700'
+                            : 'border-gray-200 dark:border-gray-700'
+                        }`}
+                      >
+                        {/* Lot header row */}
+                        <div className="flex items-center gap-2 mb-1">
+                          {bulkMode && (
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleBulkLot(lot)}
+                              className="w-4 h-4 accent-amber-500 shrink-0 cursor-pointer"
+                            />
+                          )}
+                          <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 hover:underline flex-1">
+                            {lot.lotNo}
+                          </Link>
+                          <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{lot.stock} than</span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 ml-6">{lot.quality}</p>
+
+                        {/* Badges */}
+                        <div className="flex flex-wrap gap-2 text-[10px] mb-2 ml-6">
+                          {lot.openingBalance > 0 && (
+                            <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-1.5 py-0.5 rounded">OB: {lot.openingBalance}</span>
+                          )}
+                          {lot.greyThan > 0 && (
+                            <span className="bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-1.5 py-0.5 rounded">Grey: {lot.greyThan}</span>
+                          )}
+                          {lot.despatchThan > 0 && (
+                            <span className="bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border border-orange-200 dark:border-orange-800 px-1.5 py-0.5 rounded">Desp: {lot.despatchThan}</span>
+                          )}
+                          {lot.foldProgrammed > 0 && (
+                            <span className="bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-1.5 py-0.5 rounded">Fold: {lot.foldProgrammed}</span>
+                          )}
+                          {lot.manuallyUsed > 0 && (
+                            <span className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded font-semibold">Used: {lot.manuallyUsed}</span>
+                          )}
+                          <span className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 px-1.5 py-0.5 rounded font-semibold">Avail: {lot.foldAvailable}</span>
+                        </div>
+
+                        {/* Bulk inline inputs — shown when checked */}
+                        {bulkMode && isChecked && (
+                          <div className="ml-6 mt-2 space-y-2">
+                            <div className="flex gap-2 items-center">
+                              <input
+                                type="number"
+                                min={0}
+                                max={lot.stock}
+                                className="w-24 border border-amber-300 dark:border-amber-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                placeholder="Than"
+                                value={bulkVal?.usedThan ?? ''}
+                                onChange={e => updateBulkThan(lot.lotNo, e.target.value)}
+                                autoFocus
+                              />
+                              <span className="text-xs text-gray-400">of {lot.stock} than</span>
+                            </div>
+                            <input
+                              type="text"
+                              className="w-full border border-amber-300 dark:border-amber-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              placeholder="Note (optional)"
+                              value={bulkVal?.note ?? ''}
+                              onChange={e => updateBulkNote(lot.lotNo, e.target.value)}
+                            />
+                          </div>
+                        )}
+
+                        {/* Single-lot reservation (only in normal mode) */}
+                        {!bulkMode && (
+                          editingReservation === lot.lotNo ? (
+                            <div className="mt-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 space-y-2">
+                              <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Mark than as used (dyeing / fold)</p>
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={lot.stock}
+                                  className="w-24 border border-amber-300 dark:border-amber-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                  placeholder="Than"
+                                  value={reserveThan}
+                                  onChange={e => setReserveThan(e.target.value)}
+                                  autoFocus
+                                />
+                                <span className="text-xs text-gray-400">of {lot.stock} than</span>
+                              </div>
+                              <input
+                                type="text"
+                                className="w-full border border-amber-300 dark:border-amber-700 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                placeholder="Note (optional) e.g. dyeing batch March"
+                                value={reserveNote}
+                                onChange={e => setReserveNote(e.target.value)}
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => saveReservation(lot.lotNo)}
+                                  disabled={savingReservation}
+                                  className="bg-amber-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-amber-700 disabled:opacity-50"
+                                >
+                                  {savingReservation ? 'Saving...' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => setEditingReservation(null)}
+                                  className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-3 py-1.5 rounded text-xs font-medium hover:bg-gray-200 dark:hover:bg-gray-600"
+                                >
+                                  Cancel
+                                </button>
+                                {lot.manuallyUsed > 0 && (
+                                  <button
+                                    onClick={() => { setReserveThan('0'); saveReservation(lot.lotNo) }}
+                                    disabled={savingReservation}
+                                    className="ml-auto text-xs text-red-500 hover:text-red-700 disabled:opacity-50"
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={e => { e.stopPropagation(); openReservation(lot) }}
+                              className={`text-[10px] px-2 py-1 rounded border font-medium transition ${
+                                lot.manuallyUsed > 0
+                                  ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-100'
+                                  : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-600'
+                              }`}
+                            >
+                              {lot.manuallyUsed > 0 ? `✓ ${lot.manuallyUsed} than used — edit` : '+ Mark as used'}
+                            </button>
+                          )
+                        )}
                       </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{lot.quality}</p>
-                      <div className="flex flex-wrap gap-2 text-[10px]">
-                        {lot.openingBalance > 0 && (
-                          <span className="bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded">OB: {lot.openingBalance}</span>
-                        )}
-                        {lot.greyThan > 0 && (
-                          <span className="bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded">Grey: {lot.greyThan}</span>
-                        )}
-                        {lot.despatchThan > 0 && (
-                          <span className="bg-orange-50 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded">Desp: {lot.despatchThan}</span>
-                        )}
-                        {lot.foldProgrammed > 0 && (
-                          <span className="bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded">Fold: {lot.foldProgrammed}</span>
-                        )}
-                        {lot.foldProgrammed > 0 && (
-                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-semibold">Avail: {lot.foldAvailable}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
-          ))}
+          )
+          })}
+        </div>
+      )}
+
+      {/* Sticky bulk save footer */}
+      {bulkMode && bulkSelectedCount > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-t border-amber-200 dark:border-amber-800 px-4 py-4 flex items-center gap-3 shadow-xl">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+              {bulkSelectedCount} lot{bulkSelectedCount !== 1 ? 's' : ''} selected
+            </p>
+            <p className="text-xs text-gray-400">
+              {bulkFilledCount} with quantity entered
+            </p>
+          </div>
+          <button
+            onClick={toggleBulkMode}
+            className="px-4 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={saveBulk}
+            disabled={savingBulk || bulkFilledCount === 0}
+            className="bg-amber-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 transition"
+          >
+            {savingBulk ? 'Saving...' : `Save ${bulkSelectedCount} lot${bulkSelectedCount !== 1 ? 's' : ''}`}
+          </button>
         </div>
       )}
     </div>
