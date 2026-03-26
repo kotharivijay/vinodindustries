@@ -75,16 +75,18 @@ model GreyEntry {
 // ─── Dyeing Slip Entry ─────────────────────────────────────────────────────────
 
 model DyeingEntry {
-  id        Int                  @id @default(autoincrement())
-  date      DateTime
-  slipNo    Int
-  lotNo     String
-  than      Int
-  notes     String?
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
-  chemicals DyeingSlipChemical[]
-  lots      DyeingEntryLot[]
+  id          Int                  @id @default(autoincrement())
+  date        DateTime
+  slipNo      Int
+  lotNo       String
+  than        Int
+  notes       String?
+  foldBatchId Int?
+  foldBatch   FoldBatch?           @relation(fields: [foldBatchId], references: [id])
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  chemicals   DyeingSlipChemical[]
+  lots        DyeingEntryLot[]
 }
 
 model DyeingEntryLot {
@@ -355,6 +357,7 @@ model FoldBatch {
   shadeName        String?        // free-text shade name (if not in master)
   shadeDescription String?
   lots             FoldBatchLot[]
+  dyeingEntries    DyeingEntry[]
 }
 
 model FoldBatchLot {
