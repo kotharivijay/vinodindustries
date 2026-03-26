@@ -318,7 +318,7 @@ export default function StockPage() {
             const partyAllSelected = p.lots.every(l => bulkSelections.has(l.lotNo))
             const partySomeSelected = p.lots.some(l => bulkSelections.has(l.lotNo))
 
-            function toggleSelectAllParty() {
+            const toggleSelectAllParty = () => {
               // auto-expand party so user can see selections
               if (!expanded.has(p.party)) toggle(p.party)
               setBulkSelections(prev => {
@@ -526,7 +526,8 @@ export default function StockPage() {
                 </div>
               )}
             </div>
-          ))}
+          )
+          })}
         </div>
       )}
 
