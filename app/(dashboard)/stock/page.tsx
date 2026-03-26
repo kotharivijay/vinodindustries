@@ -63,7 +63,7 @@ export default function StockPage() {
         next.delete(lot.lotNo)
       } else {
         next.set(lot.lotNo, {
-          usedThan: lot.manuallyUsed > 0 ? String(lot.manuallyUsed) : '',
+          usedThan: lot.manuallyUsed > 0 ? String(lot.manuallyUsed) : String(lot.foldAvailable),
           note: lot.manuallyUsedNote ?? '',
         })
       }
