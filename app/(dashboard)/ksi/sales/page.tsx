@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import * as XLSX from 'xlsx'
 
 function useDebounce<T>(value: T, delay = 350): T {
   const [debounced, setDebounced] = useState(value)
@@ -135,6 +136,25 @@ export default function KSISalesPage() {
     loadData(1, true)
   }
 
+  function exportExcel() {
+    const rows = sales.map(s => ({
+      Date: s.date ? fmtDate(s.date) : '',
+      'Vch Type': s.vchType || '',
+      'Vch No': s.vchNumber || '',
+      Party: s.partyName || '',
+      Item: s.itemName || '',
+      Qty: s.quantity ?? '',
+      Unit: s.unit || '',
+      Rate: s.rate ?? '',
+      Amount: s.amount,
+      Narration: s.narration || '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Sales')
+    XLSX.writeFile(wb, `KSI_Sales_${dateFrom}_${dateTo}.xlsx`)
+  }
+
   const vchTypes = ['Sales', 'Credit Note', 'Purchase', 'Debit Note', 'Receipt', 'Payment', 'Journal', 'Contra']
 
   return (
@@ -148,6 +168,10 @@ export default function KSISalesPage() {
           <h1 className="text-xl font-bold text-white">Sales Register</h1>
           <p className="text-xs text-gray-400">Kothari Synthetic Industries — All vouchers</p>
         </div>
+        <button onClick={exportExcel} disabled={sales.length === 0}
+          className="bg-gray-700 text-gray-200 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-gray-600 disabled:opacity-40 flex items-center gap-1.5">
+          ⬇ Excel
+        </button>
         <button onClick={handleSync} disabled={syncing}
           className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5">
           {syncing ? <><span className="animate-spin">⟳</span> Syncing...</> : '🔄 Sync'}
@@ -219,7 +243,14 @@ export default function KSISalesPage() {
                     <span className="text-xs text-gray-500">#{s.vchNumber}</span>
                     <span className="text-xs text-gray-500">{fmtDate(s.date)}</span>
                   </div>
-                  <p className="text-sm font-medium text-gray-200 truncate mt-0.5">{s.partyName || s.narration || '—'}</p>
+                  {s.partyName ? (
+                    <Link href={`/ksi/party/${encodeURIComponent(s.partyName)}`}
+                      className="text-sm font-medium text-gray-200 hover:text-indigo-400 truncate mt-0.5 block transition">
+                      {s.partyName}
+                    </Link>
+                  ) : (
+                    <p className="text-sm font-medium text-gray-200 truncate mt-0.5">{s.narration || '—'}</p>
+                  )}
                   {s.itemName && <p className="text-[10px] text-gray-500 truncate">{s.itemName}{s.quantity ? ` · ${s.quantity} ${s.unit || ''}` : ''}</p>}
                 </div>
                 <p className={`text-sm font-bold shrink-0 ${color}`}>{formatINR(s.amount)}</p>

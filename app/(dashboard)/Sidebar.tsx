@@ -43,6 +43,7 @@ const ksiNavGroups = [
       { href: '/ksi/tally', label: 'Tally Dashboard', icon: '📊' },
       { href: '/ksi/outstanding', label: 'Outstanding', icon: '💰' },
       { href: '/ksi/sales', label: 'Sales Register', icon: '📈' },
+      { href: '/ksi/ledgers', label: 'Ledger Master', icon: '📒' },
     ],
   },
   {

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import * as XLSX from 'xlsx'
 
 // Debounce hook — delays value update until user stops typing
 function useDebounce<T>(value: T, delay = 350): T {
@@ -159,6 +160,25 @@ export default function KSIOutstandingPage() {
     loadData(1, true)
   }
 
+  function exportExcel() {
+    const rows = bills.map(b => ({
+      Party: b.partyName,
+      Group: b.parent || '',
+      Type: b.type,
+      'Bill Ref': b.billRef,
+      'Bill Date': b.billDate ? fmtDate(b.billDate) : '',
+      'Due Date': b.dueDate ? fmtDate(b.dueDate) : '',
+      'Overdue Days': b.overdueDays,
+      'Closing Balance': b.closingBalance,
+      'Vch Type': b.vchType || '',
+      'Vch No': b.vchNumber || '',
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Outstanding')
+    XLSX.writeFile(wb, `KSI_Outstanding_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
   return (
     <div className="p-4 md:p-6 max-w-4xl">
       {/* Header */}
@@ -170,6 +190,10 @@ export default function KSIOutstandingPage() {
           <h1 className="text-xl font-bold text-white">Outstanding</h1>
           <p className="text-xs text-gray-400">Kothari Synthetic Industries — Bill-wise receivables &amp; payables</p>
         </div>
+        <button onClick={exportExcel} disabled={bills.length === 0}
+          className="bg-gray-700 text-gray-200 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-gray-600 disabled:opacity-40 flex items-center gap-1.5">
+          ⬇ Excel
+        </button>
         <button onClick={handleSync} disabled={syncing}
           className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5">
           {syncing ? <><span className="animate-spin">⟳</span> Syncing...</> : '🔄 Sync'}
@@ -247,7 +271,14 @@ export default function KSIOutstandingPage() {
                 <button onClick={() => setExpandedParty(expanded ? null : g.partyName)}
                   className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-700 transition">
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-100 text-sm truncate">{g.partyName}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-gray-100 text-sm truncate">{g.partyName}</p>
+                      <Link href={`/ksi/party/${encodeURIComponent(g.partyName)}`}
+                        onClick={e => e.stopPropagation()}
+                        className="text-gray-600 hover:text-indigo-400 transition shrink-0" title="View party detail">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                      </Link>
+                    </div>
                     <div className="flex flex-wrap gap-x-4 mt-0.5">
                       {g.totalReceivable > 0 && <span className="text-xs font-medium text-green-400">{formatINR(g.totalReceivable)} receivable</span>}
                       {g.totalPayable > 0 && <span className="text-xs font-medium text-rose-400">{formatINR(g.totalPayable)} payable</span>}
