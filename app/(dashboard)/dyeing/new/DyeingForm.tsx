@@ -96,6 +96,10 @@ export default function DyeingForm() {
   const cmdToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const commandModeRef = useRef(false) // stable ref for callbacks
 
+  // Floating bubble drag state
+  const [bubblePos, setBubblePos] = useState<{ x: number; y: number } | null>(null)
+  const bubbleDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number; dragging: boolean } | null>(null)
+
   // Extraction state
   const [extracting, setExtracting] = useState(false)
   const [extractError, setExtractError] = useState('')
@@ -185,6 +189,17 @@ export default function DyeingForm() {
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     setSpeechSupported(!!SR)
+  }, [])
+
+  // Load bubble position from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('vi_bubble_pos')
+      if (saved) setBubblePos(JSON.parse(saved))
+      else setBubblePos({ x: window.innerWidth - 80, y: window.innerHeight - 160 })
+    } catch {
+      setBubblePos({ x: window.innerWidth - 80, y: window.innerHeight - 160 })
+    }
   }, [])
 
   // Cleanup command mode on unmount
@@ -562,16 +577,18 @@ export default function DyeingForm() {
     return true
   }
 
-  // Stable ref so recognition callbacks always see latest state
+  // Stable refs so recognition callbacks always see latest state
   const setShowZoomRef = useRef(setShowZoom)
   setShowZoomRef.current = setShowZoom
+  const imagePreviewRef = useRef<string | null>(null)
+  imagePreviewRef.current = imagePreview
 
   function handleVoiceCommand(transcript: string) {
     const t = transcript.toLowerCase().trim()
 
     // "slip" / "show" / "image" / "open" → open slip zoom
     if (/\b(slip|show|image|open|photo)\b/.test(t)) {
-      if (canFire('open') && imagePreview) {
+      if (canFire('open') && imagePreviewRef.current) {
         setShowZoomRef.current(true)
         showCmdToast('🎙 "slip" → opened image')
       }
@@ -1100,6 +1117,46 @@ export default function DyeingForm() {
     }
   }
 
+  // ─── Floating Bubble Drag ─────────────────────────────────────────────────
+
+  function onBubblePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    bubbleDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: bubblePos?.x ?? window.innerWidth - 80,
+      origY: bubblePos?.y ?? window.innerHeight - 160,
+      dragging: false,
+    }
+  }
+
+  function onBubblePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const d = bubbleDragRef.current
+    if (!d) return
+    const dx = e.clientX - d.startX
+    const dy = e.clientY - d.startY
+    if (!d.dragging && Math.abs(dx) < 5 && Math.abs(dy) < 5) return
+    d.dragging = true
+    const x = Math.max(28, Math.min(window.innerWidth - 28, d.origX + dx))
+    const y = Math.max(28, Math.min(window.innerHeight - 28, d.origY + dy))
+    setBubblePos({ x, y })
+  }
+
+  function onBubblePointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    const d = bubbleDragRef.current
+    bubbleDragRef.current = null
+    if (!d) return
+    if (!d.dragging) {
+      // Tap — open zoom
+      if (imagePreviewRef.current) setShowZoom(true)
+      return
+    }
+    // Save final position
+    const x = Math.max(28, Math.min(window.innerWidth - 28, d.origX + (e.clientX - d.startX)))
+    const y = Math.max(28, Math.min(window.innerHeight - 28, d.origY + (e.clientY - d.startY)))
+    try { localStorage.setItem('vi_bubble_pos', JSON.stringify({ x, y })) } catch {}
+  }
+
   // ─── Derived ──────────────────────────────────────────────────────────────
 
   const totalCost = chemicals.reduce((sum, c) => sum + (c.cost ?? 0), 0)
@@ -1119,6 +1176,34 @@ export default function DyeingForm() {
   return (
     <div className="p-4 md:p-8 max-w-3xl">
       {showZoom && imagePreview && <ZoomModal src={imagePreview} onClose={() => setShowZoom(false)} />}
+
+      {/* ── Floating Slip Bubble ── */}
+      {bubblePos && (
+        <div
+          onPointerDown={onBubblePointerDown}
+          onPointerMove={onBubblePointerMove}
+          onPointerUp={onBubblePointerUp}
+          style={{ left: bubblePos.x - 28, top: bubblePos.y - 28, touchAction: 'none' }}
+          className={`fixed z-40 w-14 h-14 rounded-full shadow-2xl border-2 select-none cursor-grab active:cursor-grabbing overflow-hidden flex items-center justify-center transition-all ${
+            commandMode ? 'border-teal-400 ring-4 ring-teal-200 animate-pulse' : imagePreview ? 'border-indigo-400' : 'border-gray-300'
+          }`}
+        >
+          {imagePreview ? (
+            <img src={imagePreview} alt="slip" className="w-full h-full object-cover pointer-events-none" />
+          ) : (
+            <div className="w-full h-full bg-gray-100 flex flex-col items-center justify-center gap-0.5">
+              <span className="text-lg leading-none">📄</span>
+              <span className="text-[8px] text-gray-400 font-medium leading-none">SLIP</span>
+            </div>
+          )}
+          {/* Queue badge */}
+          {queueTotal > 0 && (
+            <div className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 leading-none">
+              {queueDone}/{queueTotal}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Save to Shade Master Modal ── */}
       {showSaveShade && (
