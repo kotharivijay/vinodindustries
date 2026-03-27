@@ -286,7 +286,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
           <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700 shrink-0">
               <div>
-                <h2 className="text-base font-bold text-gray-100">Save to Shade Master</h2>
+                <h2 className="text-base font-bold text-white">Save to Shade Master</h2>
                 <p className="text-xs text-gray-500 mt-0.5">Normalises chemical quantities to per 100 kg</p>
               </div>
               <button onClick={() => setShowSaveShade(false)} className="text-gray-500 hover:text-gray-300 text-2xl leading-none">×</button>
@@ -301,13 +301,13 @@ export default function DyeingEditForm({ id }: { id: string }) {
               )}
               <div className="grid grid-cols-1 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Shade Name *</label>
+                  <label className="block text-xs font-medium text-white mb-1">Shade Name *</label>
                   <input type="text" value={shadeNameInput} onChange={e => setShadeNameInput(e.target.value)}
                     className="w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     placeholder="e.g. APC1, Navy Blue 12..." />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Description (optional)</label>
+                  <label className="block text-xs font-medium text-white mb-1">Description (optional)</label>
                   <input type="text" value={shadeDescInput} onChange={e => setShadeDescInput(e.target.value)}
                     className="w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     placeholder="e.g. 4% shade, reactive dye..." />
@@ -315,7 +315,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
               </div>
 
               <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
-                <p className="text-xs font-semibold text-gray-400 mb-2">Batch Weight Calculation</p>
+                <p className="text-xs font-semibold text-white mb-2">Batch Weight Calculation</p>
                 {loadingWeights ? (
                   <p className="text-xs text-gray-500 animate-pulse">Loading lot data...</p>
                 ) : (
@@ -337,7 +337,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
                       })}
                     </div>
                     <div className="flex items-center justify-between border-t border-gray-700 pt-2">
-                      <span className="text-xs font-semibold text-gray-400">Total Batch Weight</span>
+                      <span className="text-xs font-semibold text-white">Total Batch Weight</span>
                       <span className={`text-sm font-bold ${batchWeight > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                         {batchWeight > 0 ? `${batchWeight.toFixed(2)} kg` : 'Cannot compute'}
                       </span>
@@ -348,7 +348,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
 
               {batchWeight > 0 && normalizedChemicals.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-gray-400 mb-2">Normalized Recipe (per 100 kg fabric)</p>
+                  <p className="text-xs font-semibold text-white mb-2">Normalized Recipe (per 100 kg fabric)</p>
                   <div className="border border-gray-700 rounded-xl overflow-hidden">
                     <table className="w-full text-xs">
                       <thead className="bg-gray-800 border-b border-gray-700">
@@ -399,7 +399,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
       <form onSubmit={handleSubmit}>
         {/* ── Slip Details ── */}
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 mb-4">
-          <h2 className="text-sm font-semibold text-gray-300 mb-3">Slip Details</h2>
+          <h2 className="text-sm font-semibold text-white mb-3">Slip Details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Date *">
               <input type="date" className={inp} value={form.date} onChange={e => set('date', e.target.value)} required />
@@ -416,7 +416,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
         {/* ── Lots ── */}
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 mb-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-300">
+            <h2 className="text-sm font-semibold text-white">
               Lots
               {lots.length > 1 && <span className="ml-2 text-xs font-normal text-gray-500">{lots.length} lots</span>}
             </h2>
@@ -532,7 +532,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
 
                 {/* Row 3: Than input */}
                 <div className="pl-7">
-                  <label className="block text-[10px] text-gray-500 mb-0.5">Than *</label>
+                  <label className="block text-[10px] text-white mb-0.5">Than *</label>
                   <input
                     type="number"
                     className="w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -548,7 +548,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
           </div>
           {lots.length > 1 && (
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-700">
-              <span className="text-xs text-gray-500">Total Than</span>
+              <span className="text-xs text-white">Total Than</span>
               <span className="text-sm font-bold text-indigo-400">{lots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)}</span>
             </div>
           )}
@@ -557,7 +557,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
         {/* ── Chemicals ── */}
         <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 mb-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-300">
+            <h2 className="text-sm font-semibold text-white">
               Chemicals Used
               {chemicals.length > 0 && <span className="ml-2 text-xs font-normal text-gray-500">{chemicals.length} items</span>}
             </h2>
@@ -652,7 +652,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
                   {/* Qty / Unit / Rate / Cost row */}
                   <div className="grid grid-cols-2 gap-2 pl-7">
                     <div>
-                      <label className="block text-[10px] text-gray-500 mb-0.5">Quantity</label>
+                      <label className="block text-[10px] text-white mb-0.5">Quantity</label>
                       <input
                         type="number" step="0.001"
                         className="w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -662,7 +662,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-gray-500 mb-0.5">Unit</label>
+                      <label className="block text-[10px] text-white mb-0.5">Unit</label>
                       <select
                         className="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
                         value={c.unit}
@@ -672,7 +672,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] text-gray-500 mb-0.5">Rate (&#8377;/{c.unit})</label>
+                      <label className="block text-[10px] text-white mb-0.5">Rate (&#8377;/{c.unit})</label>
                       <input
                         type="number" step="0.01"
                         className="w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
@@ -682,7 +682,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-gray-500 mb-0.5">Cost (&#8377;)</label>
+                      <label className="block text-[10px] text-white mb-0.5">Cost (&#8377;)</label>
                       <div className={`w-full border rounded-lg px-3 py-1.5 text-sm font-semibold ${c.cost != null ? 'border-purple-700 bg-purple-900/30 text-purple-300' : 'border-gray-700 bg-gray-800 text-gray-600'}`}>
                         {c.cost != null ? `₹${c.cost.toFixed(2)}` : '—'}
                       </div>
@@ -694,7 +694,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
               {/* Total cost */}
               {totalCost > 0 && (
                 <div className="flex items-center justify-between bg-purple-900/30 border border-purple-700 rounded-xl px-4 py-3">
-                  <span className="text-sm font-semibold text-gray-300">Total Dyeing Cost</span>
+                  <span className="text-sm font-semibold text-white">Total Dyeing Cost</span>
                   <span className="text-lg font-bold text-purple-300">&#8377;{totalCost.toFixed(2)}</span>
                 </div>
               )}
@@ -718,7 +718,7 @@ const inp = 'w-full bg-gray-700 border border-gray-600 text-gray-100 placeholder
 function Field({ label, children, span = 1 }: { label: string; children: React.ReactNode; span?: number }) {
   return (
     <div className={span === 2 ? 'sm:col-span-2' : ''}>
-      <label className="block text-xs font-medium text-gray-400 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-white mb-1">{label}</label>
       {children}
     </div>
   )
