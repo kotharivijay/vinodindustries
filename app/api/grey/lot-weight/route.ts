@@ -24,7 +24,8 @@ export async function GET(req: NextRequest) {
 
   const greyEntries = await prisma.greyEntry.findMany({
     where: { lotNo: { in: lotNos } },
-    select: { lotNo: true, weight: true, grayMtr: true, than: true },
+    select: { lotNo: true, weight: true, grayMtr: true, than: true, quality: { select: { name: true } } },
+    orderBy: { id: 'asc' },
   })
 
   const result = lotNos.map(lotNo => {
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
     let weightPerThan = 0
     let kgPerMtr = 0
     let grayMtr = 0
+    const quality = entries[0]?.quality?.name ?? ''
     for (const e of entries) {
       const w = parseWeightKgPerMtr(e.weight)
       const mtr = e.grayMtr ?? 0
@@ -42,7 +44,7 @@ export async function GET(req: NextRequest) {
         break
       }
     }
-    return { lotNo, weightPerThan, kgPerMtr: Math.round(kgPerMtr * 10000) / 10000, grayMtr }
+    return { lotNo, weightPerThan, kgPerMtr: Math.round(kgPerMtr * 10000) / 10000, grayMtr, quality }
   })
 
   return NextResponse.json({ lots: result })

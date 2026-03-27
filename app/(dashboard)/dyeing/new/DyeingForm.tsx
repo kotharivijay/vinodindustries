@@ -141,7 +141,7 @@ export default function DyeingForm() {
   const [showSaveShade, setShowSaveShade] = useState(false)
   const [shadeNameInput, setShadeNameInput] = useState('')
   const [shadeDescInput, setShadeDescInput] = useState('')
-  const [lotWeights, setLotWeights] = useState<{ lotNo: string; weightPerThan: number; kgPerMtr: number; grayMtr: number }[]>([])
+  const [lotWeights, setLotWeights] = useState<{ lotNo: string; weightPerThan: number; kgPerMtr: number; grayMtr: number; quality: string }[]>([])
   const [loadingWeights, setLoadingWeights] = useState(false)
   const [savingShade, setSavingShade] = useState(false)
   const [shadeError, setShadeError] = useState('')
@@ -1253,13 +1253,14 @@ export default function DyeingForm() {
                       {markaEntries.filter(m => m.lotNo.trim()).map((m, i) => {
                         const lw = lotWeights.find(l => l.lotNo === m.lotNo.trim())
                         const al = availableLots.find(l => l.lotNo === m.lotNo.trim())
+                        const quality = lw?.quality || al?.quality
                         const than = parseFloat(m.than) || 0
                         const weight = (lw?.weightPerThan ?? 0) * than
                         return (
                           <div key={i} className="flex items-center justify-between text-xs">
                             <span className="font-medium text-gray-700">
                               {m.lotNo}
-                              {al?.quality && <span className="block text-[10px] text-indigo-500 font-normal">{al.quality}</span>}
+                              {quality && <span className="block text-[10px] text-indigo-500 font-normal">{quality}</span>}
                             </span>
                             <span className="text-gray-500">
                               {than} than × {lw?.weightPerThan ?? '?'} kg/than
