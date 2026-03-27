@@ -97,19 +97,20 @@ export async function GET(req: NextRequest) {
         // Fetch Receivable (Bills Receivable)
         send({ type: 'progress', firm: firmCode, stage: 'fetching', message: 'Fetching Bills Receivable...' })
 
+        const apiSecret = process.env.TALLY_API_SECRET || ''
         let receivables: any[] = []
         try {
           const res = await fetch(tunnelUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/xml' },
+            headers: { 'Content-Type': 'text/xml', 'X-Tally-Key': apiSecret },
             body: buildBillXML(tallyName, 'Bills Receivable'),
           })
-          if (!res.ok) throw new Error('HTTP ' + res.status)
+          if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
           const xml = await res.text()
           receivables = parseBills(xml, 'receivable')
           send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Receivable: ${receivables.length} bills. Fetching Payable...` })
-        } catch {
-          send({ type: 'progress', firm: firmCode, stage: 'error', message: 'Failed to fetch receivables' })
+        } catch (e: any) {
+          send({ type: 'progress', firm: firmCode, stage: 'error', message: `✗ Receivables: ${e.message}` })
           continue
         }
 
@@ -118,14 +119,14 @@ export async function GET(req: NextRequest) {
         try {
           const res = await fetch(tunnelUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/xml' },
+            headers: { 'Content-Type': 'text/xml', 'X-Tally-Key': apiSecret },
             body: buildBillXML(tallyName, 'Bills Payable'),
           })
-          if (!res.ok) throw new Error('HTTP ' + res.status)
+          if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
           const xml = await res.text()
           payables = parseBills(xml, 'payable')
-        } catch {
-          send({ type: 'progress', firm: firmCode, stage: 'error', message: 'Failed to fetch payables' })
+        } catch (e: any) {
+          send({ type: 'progress', firm: firmCode, stage: 'error', message: `✗ Payables: ${e.message}` })
           continue
         }
 

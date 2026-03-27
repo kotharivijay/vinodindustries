@@ -84,16 +84,18 @@ export async function GET(req: NextRequest) {
 
         let xml: string
         const fetchStart = Date.now()
+        const apiSecret = process.env.TALLY_API_SECRET || ''
         try {
           const res = await fetch(tunnelUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/xml' },
+            headers: { 'Content-Type': 'text/xml', 'X-Tally-Key': apiSecret },
             body: buildLedgerXML(tallyName),
           })
-          if (!res.ok) throw new Error('HTTP ' + res.status)
+          if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
           xml = await res.text()
-        } catch {
-          send({ type: 'progress', firm: firmCode, stage: 'error', message: 'Connection failed' })
+          if (!xml.includes('<LEDGER')) throw new Error(`No ledger data in response — check company name "${tallyName}" in Tally. Response: ${xml.slice(0, 300)}`)
+        } catch (e: any) {
+          send({ type: 'progress', firm: firmCode, stage: 'error', message: `✗ ${e.message}` })
           continue
         }
 
