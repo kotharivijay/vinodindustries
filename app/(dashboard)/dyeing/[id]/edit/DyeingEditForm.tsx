@@ -327,7 +327,10 @@ export default function DyeingEditForm({ id }: { id: string }) {
                         const weight = (lw?.weightPerThan ?? 0) * than
                         return (
                           <div key={i} className="flex items-center justify-between text-xs">
-                            <span className="font-medium text-gray-300">{l.lotNo}</span>
+                            <span className="font-medium text-gray-300">
+                              {l.lotNo}
+                              {l.quality && <span className="block text-[10px] text-indigo-400 font-normal">{l.quality}</span>}
+                            </span>
                             <span className="text-gray-500">{than} than × {lw?.weightPerThan ?? '?'} kg/than</span>
                             <span className={`font-semibold ${weight > 0 ? 'text-gray-200' : 'text-red-400'}`}>
                               {weight > 0 ? `${weight.toFixed(1)} kg` : 'No data'}

@@ -110,7 +110,7 @@ export default function DyeingForm() {
   const [markaEntries, setMarkaEntries] = useState<MarkaEntry[]>([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
 
   // Available lots for searchable dropdown
-  const [availableLots, setAvailableLots] = useState<{ lotNo: string; greyThan: number; despatchThan: number; stock: number }[]>([])
+  const [availableLots, setAvailableLots] = useState<{ lotNo: string; greyThan: number; despatchThan: number; stock: number; quality: string }[]>([])
   const [lotDropIdx, setLotDropIdx] = useState<number | null>(null)
   const [lotSearch, setLotSearch] = useState('')
 
@@ -1252,11 +1252,15 @@ export default function DyeingForm() {
                     <div className="space-y-1 mb-2">
                       {markaEntries.filter(m => m.lotNo.trim()).map((m, i) => {
                         const lw = lotWeights.find(l => l.lotNo === m.lotNo.trim())
+                        const al = availableLots.find(l => l.lotNo === m.lotNo.trim())
                         const than = parseFloat(m.than) || 0
                         const weight = (lw?.weightPerThan ?? 0) * than
                         return (
                           <div key={i} className="flex items-center justify-between text-xs">
-                            <span className="font-medium text-gray-700">{m.lotNo}</span>
+                            <span className="font-medium text-gray-700">
+                              {m.lotNo}
+                              {al?.quality && <span className="block text-[10px] text-indigo-500 font-normal">{al.quality}</span>}
+                            </span>
                             <span className="text-gray-500">
                               {than} than × {lw?.weightPerThan ?? '?'} kg/than
                             </span>

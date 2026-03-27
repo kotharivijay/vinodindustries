@@ -354,7 +354,6 @@ model ShadeRecipeItem {
   chemicalId Int
   chemical   Chemical @relation(fields: [chemicalId], references: [id])
   quantity   Float    // per 100 kg fabric
-  @@unique([shadeId, chemicalId])
 }
 
 model FoldProgram {

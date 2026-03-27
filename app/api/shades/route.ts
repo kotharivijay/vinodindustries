@@ -34,14 +34,7 @@ export async function POST(req: NextRequest) {
   }
   if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
-  // Deduplicate recipe items by chemicalId (sum quantities for duplicates)
-  const deduped = new Map<number, number>()
-  for (const r of (recipeItems ?? [])) {
-    if (r.chemicalId && r.quantity > 0) {
-      deduped.set(r.chemicalId, (deduped.get(r.chemicalId) ?? 0) + r.quantity)
-    }
-  }
-  const cleanItems = Array.from(deduped.entries()).map(([chemicalId, quantity]) => ({ chemicalId, quantity }))
+  const cleanItems = (recipeItems ?? []).filter(r => r.chemicalId && r.quantity > 0)
 
   try {
     const shade = await (prisma as any).$transaction(async (tx: any) => {
