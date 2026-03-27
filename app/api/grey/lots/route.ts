@@ -13,6 +13,14 @@ export async function GET() {
     _sum: { than: true },
   })
 
+  // Fetch quality name per lot (first grey entry per lot)
+  const qualityEntries = await prisma.greyEntry.findMany({
+    distinct: ['lotNo'],
+    select: { lotNo: true, quality: { select: { name: true } } },
+    orderBy: { id: 'asc' },
+  })
+  const qualityMap = new Map(qualityEntries.map(e => [e.lotNo, e.quality?.name ?? '']))
+
   // Get all despatch entries grouped by lotNo
   const despatchEntries = await prisma.despatchEntry.groupBy({
     by: ['lotNo'],
@@ -35,7 +43,7 @@ export async function GET() {
       const despatchThan = despatchMap.get(g.lotNo) ?? 0
       const ob = obMap.get(g.lotNo) ?? 0
       const stock = ob + greyThan - despatchThan
-      return { lotNo: g.lotNo, greyThan, despatchThan, stock, openingBalance: ob }
+      return { lotNo: g.lotNo, greyThan, despatchThan, stock, openingBalance: ob, quality: qualityMap.get(g.lotNo) ?? '' }
     })
     .filter(l => l.stock > 0) // Only lots with available stock
 
@@ -44,7 +52,7 @@ export async function GET() {
     if (!lots.some(l => l.lotNo === lotNo)) {
       const despThan = despatchMap.get(lotNo) ?? 0
       const stock = ob - despThan
-      if (stock > 0) lots.push({ lotNo, greyThan: 0, despatchThan: despThan, stock, openingBalance: ob })
+      if (stock > 0) lots.push({ lotNo, greyThan: 0, despatchThan: despThan, stock, openingBalance: ob, quality: qualityMap.get(lotNo) ?? '' })
     }
   }
 

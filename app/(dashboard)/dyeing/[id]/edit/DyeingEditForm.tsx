@@ -27,10 +27,10 @@ export default function DyeingEditForm({ id }: { id: string }) {
   const [stockInfo, setStockInfo] = useState<{ stock: number; greyThan: number; despatchThan: number } | null>(null)
 
   const [form, setForm] = useState({ date: '', slipNo: '', notes: '' })
-  const [lots, setLots] = useState<{ lotNo: string; than: string; stockStatus?: StockStatus; stockInfo?: { stock: number; greyThan: number; despatchThan: number } | null }[]>([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
+  const [lots, setLots] = useState<{ lotNo: string; than: string; quality?: string; stockStatus?: StockStatus; stockInfo?: { stock: number; greyThan: number; despatchThan: number } | null }[]>([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
 
   // Available lots for searchable dropdown
-  const [availableLots, setAvailableLots] = useState<{ lotNo: string; greyThan: number; despatchThan: number; stock: number }[]>([])
+  const [availableLots, setAvailableLots] = useState<{ lotNo: string; greyThan: number; despatchThan: number; stock: number; quality: string }[]>([])
   const [lotDropIdx, setLotDropIdx] = useState<number | null>(null)
   const [lotSearch, setLotSearch] = useState('')
 
@@ -116,12 +116,13 @@ export default function DyeingEditForm({ id }: { id: string }) {
     setLots(prev => prev.filter((_, idx) => idx !== i))
   }
 
-  function selectLot(lotIdx: number, lot: { lotNo: string; greyThan: number; despatchThan: number; stock: number }) {
+  function selectLot(lotIdx: number, lot: { lotNo: string; greyThan: number; despatchThan: number; stock: number; quality: string }) {
     setLots(prev => {
       const updated = [...prev]
       updated[lotIdx] = {
         ...updated[lotIdx],
         lotNo: lot.lotNo,
+        quality: lot.quality,
         stockStatus: lot.stock > 0 ? 'ok' : 'no_stock',
         stockInfo: { stock: lot.stock, greyThan: lot.greyThan, despatchThan: lot.despatchThan },
       }
@@ -439,8 +440,11 @@ export default function DyeingEditForm({ id }: { id: string }) {
                       className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white cursor-pointer ${lotDropIdx === i ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300'}`}
                       onClick={() => { setLotDropIdx(lotDropIdx === i ? null : i); setLotSearch('') }}
                     >
-                      <span className={`flex-1 text-sm ${lot.lotNo ? 'font-medium text-gray-800' : 'text-gray-400'}`}>
+                      <span className={`flex-1 text-sm flex items-center gap-1.5 ${lot.lotNo ? 'font-medium text-gray-800' : 'text-gray-400'}`}>
                         {lot.lotNo || 'Select lot...'}
+                        {lot.lotNo && lot.quality && (
+                          <span className="text-[10px] font-normal text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded">{lot.quality}</span>
+                        )}
                       </span>
                       {lot.stockStatus === 'ok' && (
                         <span className="text-green-600 text-[10px] font-semibold bg-green-50 border border-green-200 px-1 py-0.5 rounded shrink-0">OK</span>
@@ -474,7 +478,10 @@ export default function DyeingEditForm({ id }: { id: string }) {
                               className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-50 flex items-center justify-between ${lot.lotNo === l.lotNo ? 'bg-purple-50 font-medium' : ''}`}
                               onClick={e => { e.stopPropagation(); selectLot(i, l) }}
                             >
-                              <span className="font-medium">{l.lotNo}</span>
+                              <span className="font-medium flex items-center gap-1.5">
+                                {l.lotNo}
+                                {l.quality && <span className="text-[10px] font-normal text-indigo-500 bg-indigo-50 border border-indigo-100 px-1 py-0.5 rounded">{l.quality}</span>}
+                              </span>
                               <span className="text-xs text-gray-400">Stock: {l.stock} than</span>
                             </button>
                           ))}
