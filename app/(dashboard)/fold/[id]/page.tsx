@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-interface ShadeOption { id: number; name: string }
+interface ShadeOption { id: number; name: string; description?: string | null }
 
 interface FoldBatchLot {
   id: number
@@ -120,11 +120,16 @@ function ShadePicker({
                 key={s.id}
                 type="button"
                 onClick={() => select(s)}
-                className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/30 ${
-                  batch.shade?.id === s.id ? 'bg-indigo-50 dark:bg-indigo-900/30 font-semibold text-indigo-700 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200'
+                className={`w-full text-left px-3 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 ${
+                  batch.shade?.id === s.id ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
                 }`}
               >
-                {s.name}
+                <span className={`block text-sm font-medium ${batch.shade?.id === s.id ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200'}`}>
+                  {s.name}
+                </span>
+                {s.description && (
+                  <span className="block text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 leading-tight">{s.description}</span>
+                )}
               </button>
             ))}
             {filtered.length === 0 && !search && (
