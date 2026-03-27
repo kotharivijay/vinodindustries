@@ -57,7 +57,9 @@ export async function GET(req: NextRequest) {
     })
     const totalAmount = sumResult._sum.amount || 0
 
-    return NextResponse.json({ sales, total, totalAmount })
+    const resp = NextResponse.json({ sales, total, totalAmount })
+    resp.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=300')
+    return resp
   } catch {
     return NextResponse.json({ sales: [], total: 0, totalAmount: 0 })
   }

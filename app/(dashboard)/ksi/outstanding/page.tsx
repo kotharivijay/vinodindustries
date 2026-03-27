@@ -4,6 +4,16 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
+// Debounce hook — delays value update until user stops typing
+function useDebounce<T>(value: T, delay = 350): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+  return debounced
+}
+
 interface Bill {
   id: number
   firmCode: string
@@ -54,6 +64,7 @@ export default function KSIOutstandingPage() {
 
   const [typeFilter, setTypeFilter] = useState(searchParams.get('type') || '')
   const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 350)   // only fires API after 350ms pause
   const [parentFilter, setParentFilter] = useState('')
   const [sort, setSort] = useState<SortMode>('amount-desc')
   const [expandedParty, setExpandedParty] = useState<string | null>(null)
@@ -71,13 +82,13 @@ export default function KSIOutstandingPage() {
     if (node) observerRef.current.observe(node)
   }, [loadingMore, hasMore])
 
-  useEffect(() => { setPage(1); loadData(1, true) }, [typeFilter, search, parentFilter, sort])
+  useEffect(() => { setPage(1); loadData(1, true) }, [typeFilter, debouncedSearch, parentFilter, sort])
 
   async function loadData(p: number = 1, reset = false) {
     if (reset) setLoading(true)
     const params = new URLSearchParams({ firm: FIRM, sort, page: String(p), limit: String(PAGE_SIZE) })
     if (typeFilter) params.set('type', typeFilter)
-    if (search) params.set('search', search)
+    if (debouncedSearch) params.set('search', debouncedSearch)
     if (parentFilter) params.set('parent', parentFilter)
     try {
       const res = await fetch(`/api/tally/outstanding?${params}`)

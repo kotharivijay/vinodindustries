@@ -1,7 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
+import useSWR from 'swr'
+
+const fetcher = (url: string) => fetch(url).then(r => { if (!r.ok) throw new Error('Failed'); return r.json() })
 
 function formatINR(n: number) {
   const abs = Math.abs(n)
@@ -61,32 +64,20 @@ export default function KSITallyDashboard() {
   const fy = currentFY()
   const [dateFrom, setDateFrom] = useState(fy.from)
   const [dateTo, setDateTo] = useState(fy.to)
-  const [data, setData] = useState<DashData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  // SWR: caches dashboard data per date range — instant re-render on revisit
+  const swrKey = `/api/tally/ksi-dashboard?dateFrom=${dateFrom}&dateTo=${dateTo}`
+  const { data, error: swrError, isLoading: loading, mutate } = useSWR<DashData>(swrKey, fetcher, {
+    revalidateOnFocus: false,       // don't refetch just because tab regains focus
+    dedupingInterval: 60_000,       // dedupe identical requests within 60s
+    keepPreviousData: true,         // show old data while fetching new date range
+  })
+  const error = swrError?.message || ''
 
   // Sync state
   const [syncPhase, setSyncPhase] = useState<SyncPhase>('idle')
   const [syncLog, setSyncLog] = useState<string[]>([])
   const [showSyncLog, setShowSyncLog] = useState(false)
   const [showCashBreakdown, setShowCashBreakdown] = useState(false)
-
-  useEffect(() => { load() }, [dateFrom, dateTo])
-
-  async function load() {
-    setLoading(true)
-    setError('')
-    try {
-      const params = new URLSearchParams({ dateFrom, dateTo })
-      const res = await fetch(`/api/tally/ksi-dashboard?${params}`)
-      const d = await res.json()
-      if (d.error) throw new Error(d.error)
-      setData(d)
-    } catch (e: any) {
-      setError(e.message)
-    }
-    setLoading(false)
-  }
 
   async function handleSync(type: 'ledgers' | 'outstanding' | 'sales' | 'all') {
     setSyncPhase('syncing')
@@ -125,7 +116,8 @@ export default function KSITallyDashboard() {
         }
       }
       setSyncPhase('done')
-      setTimeout(() => load(), 500)
+      // Invalidate SWR cache so dashboard reloads fresh data
+      mutate()
     } catch (e: any) {
       setSyncLog(prev => [...prev, `✗ Error: ${e.message}`])
       setSyncPhase('error')
@@ -224,7 +216,7 @@ export default function KSITallyDashboard() {
 
       {error && (
         <div className="bg-red-900/30 border border-red-700 text-red-300 rounded-xl px-4 py-3 mb-4 text-sm">
-          {error} — <button onClick={load} className="underline">Retry</button>
+          {error} — <button onClick={() => mutate()} className="underline">Retry</button>
         </div>
       )}
 

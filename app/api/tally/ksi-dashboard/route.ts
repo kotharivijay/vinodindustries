@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
       select: { partyName: true, closingBalance: true, overdueDays: true },
     })
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       totalReceivable,
       totalPayable,
       cashBankBalance,
@@ -99,6 +99,9 @@ export async function GET(req: NextRequest) {
       recentTx,
       topOverdue,
     })
+    // Cache for 2 min, serve stale for 10 min while revalidating in background
+    response.headers.set('Cache-Control', 's-maxage=120, stale-while-revalidate=600')
+    return response
   } catch (e: any) {
     console.error('KSI dashboard error:', e.message)
     return NextResponse.json({ error: e.message }, { status: 500 })

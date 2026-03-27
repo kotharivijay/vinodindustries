@@ -3,6 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 
+function useDebounce<T>(value: T, delay = 350): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay)
+    return () => clearTimeout(t)
+  }, [value, delay])
+  return debounced
+}
+
 interface Sale {
   id: number
   date: string | null
@@ -56,6 +65,7 @@ export default function KSISalesPage() {
   const [dateFrom, setDateFrom] = useState(fy.from)
   const [dateTo, setDateTo] = useState(fy.to)
   const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 350)
   const [vchTypeFilter, setVchTypeFilter] = useState('')
   const [sort, setSort] = useState('date-desc')
 
@@ -72,14 +82,14 @@ export default function KSISalesPage() {
     if (node) observerRef.current.observe(node)
   }, [loadingMore, hasMore])
 
-  useEffect(() => { setPage(1); loadData(1, true) }, [dateFrom, dateTo, search, vchTypeFilter, sort])
+  useEffect(() => { setPage(1); loadData(1, true) }, [dateFrom, dateTo, debouncedSearch, vchTypeFilter, sort])
 
   async function loadData(p: number = 1, reset = false) {
     if (reset) setLoading(true)
     const params = new URLSearchParams({ firm: FIRM, sort, page: String(p), limit: String(PAGE_SIZE) })
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
-    if (search) params.set('search', search)
+    if (debouncedSearch) params.set('search', debouncedSearch)
     try {
       const res = await fetch(`/api/tally/sales?${params}`)
       const data = await res.json()
