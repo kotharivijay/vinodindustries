@@ -23,11 +23,15 @@ function ChemicalDropdown({ value, chemicals, onChange }: {
   const selected = chemicals.find(c => c.id === value)
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    const handler = (e: MouseEvent | TouchEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
     document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('touchstart', handler as EventListener)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('touchstart', handler as EventListener)
+    }
   }, [])
 
   const filtered = chemicals.filter(c =>
@@ -53,6 +57,7 @@ function ChemicalDropdown({ value, chemicals, onChange }: {
               key={c.id}
               type="button"
               onMouseDown={e => { e.preventDefault(); onChange(c); setOpen(false); setQuery('') }}
+              onTouchEnd={e => { e.preventDefault(); onChange(c); setOpen(false); setQuery('') }}
               className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 ${c.id === value ? 'bg-indigo-50 dark:bg-indigo-900/30 font-medium text-indigo-700 dark:text-indigo-400' : 'text-gray-800 dark:text-gray-200'}`}
             >
               {c.name} <span className="text-xs text-gray-400">{c.unit}</span>
@@ -259,7 +264,7 @@ export default function ShadesPage() {
 
       <div className="flex gap-4 h-[calc(100vh-180px)]">
         {/* Left — Shade list */}
-        <div className={`flex flex-col ${editorOpen ? 'hidden md:flex md:w-72 lg:w-80' : 'flex-1'} shrink-0`}>
+        <div className={`flex flex-col ${editorOpen ? 'hidden md:flex md:w-72 lg:w-80' : 'flex-1'} shrink-0 min-h-0`}>
           <input
             type="text"
             placeholder="Search shades..."
@@ -301,9 +306,9 @@ export default function ShadesPage() {
           )}
         </div>
 
-        {/* Right — Editor */}
+        {/* Right — Editor (full-screen overlay on mobile) */}
         {editorOpen && (
-          <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
+          <div className="fixed inset-0 z-40 md:static md:inset-auto md:flex-1 bg-white dark:bg-gray-800 md:rounded-xl md:border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden">
             {/* Editor header */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 dark:border-gray-700">
               <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100">
