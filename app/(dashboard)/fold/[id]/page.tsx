@@ -1,11 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import useSWR from 'swr'
 import * as XLSX from 'xlsx'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+interface ShadeOption { id: number; name: string }
 
 interface FoldBatchLot {
   id: number
@@ -19,7 +21,7 @@ interface FoldBatch {
   id: number
   batchNo: number
   shadeName?: string
-  shade?: { name: string }
+  shade?: { id: number; name: string }
   lots: FoldBatchLot[]
 }
 
@@ -32,12 +34,134 @@ interface FoldProgram {
   batches: FoldBatch[]
 }
 
+// ── Inline shade picker ────────────────────────────────────────────────────
+function ShadePicker({
+  batch,
+  shades,
+  onSave,
+}: {
+  batch: FoldBatch
+  shades: ShadeOption[]
+  onSave: (batchId: number, shadeId: number | null, shadeName: string | null) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  const current = batch.shade?.name ?? batch.shadeName
+  const filtered = shades.filter(s => !search || s.name.toLowerCase().includes(search.toLowerCase()))
+
+  async function select(shade: ShadeOption | null) {
+    setSaving(true)
+    await onSave(batch.id, shade?.id ?? null, shade ? null : null)
+    setSaving(false)
+    setOpen(false)
+    setSearch('')
+  }
+
+  async function useCustom() {
+    if (!search.trim()) return
+    setSaving(true)
+    await onSave(batch.id, null, search.trim())
+    setSaving(false)
+    setOpen(false)
+    setSearch('')
+  }
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => { setOpen(o => !o); setSearch('') }}
+        className={`ml-2 text-xs px-2 py-0.5 rounded-full border transition flex items-center gap-1 ${
+          saving ? 'opacity-50' : 'hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300'
+        } ${current
+          ? 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+          : 'bg-indigo-50 dark:bg-indigo-900/30 border-dashed border-indigo-300 dark:border-indigo-600 text-indigo-500 dark:text-indigo-400'
+        }`}
+        disabled={saving}
+      >
+        {saving ? '...' : (current ?? '+ shade')}
+        <span className="text-gray-400 dark:text-gray-500 text-[10px]">✏️</span>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full mt-1 z-30 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-2xl w-56 flex flex-col">
+          <input
+            autoFocus
+            type="text"
+            placeholder="Search shade..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full px-3 py-2 text-sm border-b border-gray-100 dark:border-gray-700 bg-transparent text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none rounded-t-xl"
+          />
+          <div className="overflow-y-auto max-h-52">
+            {current && (
+              <button
+                type="button"
+                onClick={() => select(null)}
+                className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border-b border-gray-100 dark:border-gray-700"
+              >
+                ✕ Remove shade
+              </button>
+            )}
+            {filtered.map(s => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => select(s)}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/30 ${
+                  batch.shade?.id === s.id ? 'bg-indigo-50 dark:bg-indigo-900/30 font-semibold text-indigo-700 dark:text-indigo-300' : 'text-gray-800 dark:text-gray-200'
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+            {filtered.length === 0 && !search && (
+              <p className="px-3 py-2 text-xs text-gray-400">No shades in master</p>
+            )}
+            {search.trim() && !shades.some(s => s.name.toLowerCase() === search.toLowerCase()) && (
+              <button
+                type="button"
+                onClick={useCustom}
+                className="w-full text-left px-3 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 border-t border-gray-100 dark:border-gray-700"
+              >
+                + Use &quot;{search.trim()}&quot; as custom
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function FoldDetailPage() {
   const router = useRouter()
   const params = useParams()
   const id = params.id as string
   const { data: program, isLoading, mutate } = useSWR<FoldProgram>(`/api/fold/${id}`, fetcher)
+  const { data: shades = [] } = useSWR<ShadeOption[]>('/api/shades', fetcher)
   const [confirming, setConfirming] = useState(false)
+
+  async function updateBatchShade(batchId: number, shadeId: number | null, shadeName: string | null) {
+    await fetch('/api/fold/batch', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ batchId, shadeId, shadeName }),
+    })
+    mutate()
+  }
 
   async function confirmProgram() {
     setConfirming(true)
@@ -223,14 +347,13 @@ export default function FoldDetailPage() {
       {/* Batches */}
       <div className="space-y-4">
         {program.batches.map(batch => {
-          const shade = batch.shade?.name ?? batch.shadeName
           const batchTotal = batch.lots.reduce((s, l) => s + l.than, 0)
           return (
             <div key={batch.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 flex items-center justify-between">
-                <div>
+                <div className="flex items-center">
                   <span className="font-bold text-indigo-700 dark:text-indigo-400 text-sm">Batch {batch.batchNo}</span>
-                  {shade && <span className="ml-2 text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 px-2 py-0.5 rounded-full">{shade}</span>}
+                  <ShadePicker batch={batch} shades={shades} onSave={updateBatchShade} />
                 </div>
                 <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{batchTotal} than</span>
               </div>
