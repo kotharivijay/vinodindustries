@@ -7,7 +7,7 @@ const FIRM_TALLY: Record<string, string> = {
   VI: 'Vinod Industries - (from 1-Apr-25)',
   VCF: 'Vimal Cotton Fabrics',
   VF: 'Vijay Fabrics - (from 1-Apr-2019)',
-  KSI: 'Kothari Synthetic Industries - (from 1-Apr-25)',
+  KSI: 'Kothari Synthetic Industries -( from 2023)',
 }
 
 function buildLedgerXML(tallyCompany: string): string {
