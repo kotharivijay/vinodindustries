@@ -2,6 +2,19 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import useSWR from 'swr'
+
+const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+function useDebounce(delay = 300) {
+  const [debounced, setDebounced] = useState('')
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const set = (v: string) => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => setDebounced(v), delay)
+  }
+  return [debounced, set] as const
+}
 
 interface Bill {
   id: number
@@ -56,7 +69,6 @@ export default function OutstandingPage() {
   const [total, setTotal] = useState(0)
   const [totalReceivable, setTotalReceivable] = useState(0)
   const [totalPayable, setTotalPayable] = useState(0)
-  const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -64,6 +76,7 @@ export default function OutstandingPage() {
   const [firm, setFirm] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useDebounce()
   const [parentFilter, setParentFilter] = useState('')
   const [sort, setSort] = useState<SortMode>('amount-desc')
   const [expandedParty, setExpandedParty] = useState<string | null>(null)
@@ -88,39 +101,61 @@ export default function OutstandingPage() {
     if (node) observerRef.current.observe(node)
   }, [loadingMore, hasMore])
 
-  useEffect(() => { setPage(1); loadData(1, true) }, [firm, typeFilter, search, parentFilter, sort])
-
-  async function loadData(p: number = 1, reset = false) {
-    if (reset) setLoading(true)
+  // Build SWR key from filters
+  const swrKey = useMemo(() => {
     const params = new URLSearchParams()
     if (firm) params.set('firm', firm)
     if (typeFilter) params.set('type', typeFilter)
-    if (search) params.set('search', search)
+    if (debouncedSearch) params.set('search', debouncedSearch)
     if (parentFilter) params.set('parent', parentFilter)
     params.set('sort', sort)
-    params.set('page', String(p))
+    params.set('page', '1')
+    params.set('limit', String(PAGE_SIZE))
+    return `/api/tally/outstanding?${params}`
+  }, [firm, typeFilter, debouncedSearch, parentFilter, sort])
+
+  const { data: swrData, isLoading: loading, mutate } = useSWR(swrKey, fetcher, {
+    dedupingInterval: 5000,
+    revalidateOnFocus: false,
+  })
+
+  // Update local state from SWR
+  useEffect(() => {
+    if (swrData) {
+      setBills(swrData.bills || [])
+      setTotal(swrData.total || 0)
+      setTotalReceivable(swrData.totalReceivable || 0)
+      setTotalPayable(swrData.totalPayable || 0)
+      setHasMore((swrData.bills || []).length === PAGE_SIZE)
+      setPage(1)
+    }
+  }, [swrData])
+
+  // Debounce search input
+  function handleSearch(v: string) {
+    setSearch(v)
+    setDebouncedSearch(v)
+  }
+
+  async function loadMore() {
+    const np = page + 1
+    setPage(np)
+    setLoadingMore(true)
+    const params = new URLSearchParams()
+    if (firm) params.set('firm', firm)
+    if (typeFilter) params.set('type', typeFilter)
+    if (debouncedSearch) params.set('search', debouncedSearch)
+    if (parentFilter) params.set('parent', parentFilter)
+    params.set('sort', sort)
+    params.set('page', String(np))
     params.set('limit', String(PAGE_SIZE))
     try {
       const res = await fetch(`/api/tally/outstanding?${params}`)
       const data = await res.json()
-      if (reset) setBills(data.bills || [])
-      else setBills(prev => [...prev, ...(data.bills || [])])
-      setTotal(data.total || 0)
-      setTotalReceivable(data.totalReceivable || 0)
-      setTotalPayable(data.totalPayable || 0)
+      setBills(prev => [...prev, ...(data.bills || [])])
       setHasMore((data.bills || []).length === PAGE_SIZE)
-    } catch {
-      if (reset) setBills([])
-    }
-    setLoading(false)
+    } catch {}
     setLoadingMore(false)
-  }
-
-  function loadMore() {
-    const np = page + 1
-    setPage(np)
-    setLoadingMore(true)
-    loadData(np, false)
   }
 
   // Get unique parent values from bills for filter dropdown
@@ -210,7 +245,7 @@ export default function OutstandingPage() {
     setSyncElapsed(Math.floor((Date.now() - startTime) / 1000))
     setOverallProgress(100)
     setSyncing(false)
-    loadData(1, true)
+    mutate()
   }
 
   return (
@@ -259,7 +294,7 @@ export default function OutstandingPage() {
           ))}
         </div>
         <input type="text" className="flex-1 min-w-[150px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          placeholder="Search party..." value={search} onChange={e => setSearch(e.target.value)} />
+          placeholder="Search party..." value={search} onChange={e => handleSearch(e.target.value)} />
         <select className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" value={parentFilter} onChange={e => setParentFilter(e.target.value)}>
           <option value="">All Groups</option>
           {uniqueParents.map(p => <option key={p} value={p}>{p}</option>)}

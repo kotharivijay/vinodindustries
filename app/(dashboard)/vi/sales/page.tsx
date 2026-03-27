@@ -1,8 +1,21 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import useSWR from 'swr'
+
+const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+function useDebounce(delay = 300) {
+  const [debounced, setDebounced] = useState('')
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const set = (v: string) => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => setDebounced(v), delay)
+  }
+  return [debounced, set] as const
+}
 
 interface SaleEntry {
   id: number
@@ -52,13 +65,13 @@ export default function SalesRegisterPage() {
   const [sales, setSales] = useState<SaleEntry[]>([])
   const [total, setTotal] = useState(0)
   const [totalAmount, setTotalAmount] = useState(0)
-  const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
 
   const [firm, setFirm] = useState('')
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useDebounce()
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [sort, setSort] = useState<SortMode>('date-desc')
@@ -83,38 +96,59 @@ export default function SalesRegisterPage() {
     if (node) observerRef.current.observe(node)
   }, [loadingMore, hasMore])
 
-  useEffect(() => { setPage(1); loadData(1, true) }, [firm, search, dateFrom, dateTo, sort])
-
-  async function loadData(p: number = 1, reset = false) {
-    if (reset) setLoading(true)
+  // Build SWR key from filters
+  const swrKey = useMemo(() => {
     const params = new URLSearchParams()
     if (firm) params.set('firm', firm)
-    if (search) params.set('search', search)
+    if (debouncedSearch) params.set('search', debouncedSearch)
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
     params.set('sort', sort)
-    params.set('page', String(p))
+    params.set('page', '1')
+    params.set('limit', String(PAGE_SIZE))
+    return `/api/tally/sales?${params}`
+  }, [firm, debouncedSearch, dateFrom, dateTo, sort])
+
+  const { data: swrData, isLoading: loading, mutate } = useSWR(swrKey, fetcher, {
+    dedupingInterval: 5000,
+    revalidateOnFocus: false,
+  })
+
+  // Update local state from SWR
+  useEffect(() => {
+    if (swrData) {
+      setSales(swrData.sales || [])
+      setTotal(swrData.total || 0)
+      setTotalAmount(swrData.totalAmount || 0)
+      setHasMore((swrData.sales || []).length === PAGE_SIZE)
+      setPage(1)
+    }
+  }, [swrData])
+
+  function handleSearch(v: string) {
+    setSearch(v)
+    setDebouncedSearch(v)
+  }
+
+  async function loadMore() {
+    const np = page + 1
+    setPage(np)
+    setLoadingMore(true)
+    const params = new URLSearchParams()
+    if (firm) params.set('firm', firm)
+    if (debouncedSearch) params.set('search', debouncedSearch)
+    if (dateFrom) params.set('dateFrom', dateFrom)
+    if (dateTo) params.set('dateTo', dateTo)
+    params.set('sort', sort)
+    params.set('page', String(np))
     params.set('limit', String(PAGE_SIZE))
     try {
       const res = await fetch(`/api/tally/sales?${params}`)
       const data = await res.json()
-      if (reset) setSales(data.sales || [])
-      else setSales(prev => [...prev, ...(data.sales || [])])
-      setTotal(data.total || 0)
-      setTotalAmount(data.totalAmount || 0)
+      setSales(prev => [...prev, ...(data.sales || [])])
       setHasMore((data.sales || []).length === PAGE_SIZE)
-    } catch {
-      if (reset) setSales([])
-    }
-    setLoading(false)
+    } catch {}
     setLoadingMore(false)
-  }
-
-  function loadMore() {
-    const np = page + 1
-    setPage(np)
-    setLoadingMore(true)
-    loadData(np, false)
   }
 
   // SSE sync
@@ -172,7 +206,7 @@ export default function SalesRegisterPage() {
     setSyncElapsed(Math.floor((Date.now() - startTime) / 1000))
     setOverallProgress(100)
     setSyncing(false)
-    loadData(1, true)
+    mutate()
   }
 
   return (
@@ -227,7 +261,7 @@ export default function SalesRegisterPage() {
       {/* Search + Sort + Sync */}
       <div className="flex flex-wrap gap-2 mb-3">
         <input type="text" className="flex-1 min-w-[150px] border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          placeholder="Search party, item, voucher..." value={search} onChange={e => setSearch(e.target.value)} />
+          placeholder="Search party, item, voucher..." value={search} onChange={e => handleSearch(e.target.value)} />
         <select className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" value={sort} onChange={e => setSort(e.target.value as SortMode)}>
           <option value="date-desc">Date New→Old</option>
           <option value="date-asc">Date Old→New</option>
