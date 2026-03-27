@@ -26,7 +26,6 @@ function buildBillXML(tallyCompany: string, report: string): string {
 
 function parseBills(text: string, type: string): any[] {
   const bills: any[] = []
-  // Split by BILLFIXED blocks
   const parts = text.split(/<BILLFIXED>/).slice(1)
 
   for (const part of parts) {
