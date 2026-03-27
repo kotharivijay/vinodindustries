@@ -34,23 +34,37 @@ export async function POST(req: NextRequest) {
   }
   if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
+  // Deduplicate recipe items by chemicalId (sum quantities for duplicates)
+  const deduped = new Map<number, number>()
+  for (const r of (recipeItems ?? [])) {
+    if (r.chemicalId && r.quantity > 0) {
+      deduped.set(r.chemicalId, (deduped.get(r.chemicalId) ?? 0) + r.quantity)
+    }
+  }
+  const cleanItems = Array.from(deduped.entries()).map(([chemicalId, quantity]) => ({ chemicalId, quantity }))
+
   try {
     const shade = await (prisma as any).$transaction(async (tx: any) => {
-      const s = await tx.shade.create({
-        data: { name: name.trim(), description: description?.trim() || null },
-      })
-      if (recipeItems?.length) {
+      // Upsert shade by name
+      let s = await tx.shade.findUnique({ where: { name: name.trim() } })
+      if (s) {
+        // Update description and replace recipe items
+        await tx.shade.update({ where: { id: s.id }, data: { description: description?.trim() || null } })
+        await tx.shadeRecipeItem.deleteMany({ where: { shadeId: s.id } })
+      } else {
+        s = await tx.shade.create({
+          data: { name: name.trim(), description: description?.trim() || null },
+        })
+      }
+      if (cleanItems.length) {
         await tx.shadeRecipeItem.createMany({
-          data: recipeItems
-            .filter(r => r.chemicalId && r.quantity > 0)
-            .map(r => ({ shadeId: s.id, chemicalId: r.chemicalId, quantity: r.quantity })),
+          data: cleanItems.map(r => ({ shadeId: s.id, chemicalId: r.chemicalId, quantity: r.quantity })),
         })
       }
       return tx.shade.findUnique({ where: { id: s.id }, include: recipeInclude })
     })
     return NextResponse.json(shade)
   } catch (e: any) {
-    if (e.code === 'P2002') return NextResponse.json({ error: 'Shade already exists' }, { status: 409 })
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
