@@ -11,7 +11,7 @@ export async function GET() {
 
   if (!tunnelUrl) return NextResponse.json({ error: 'TALLY_TUNNEL_URL not set' })
 
-  const companyName = 'Kothari Synthetic Industries'
+  const companyName = 'Kothari Synthetic Industries - (from 1-Apr-25)'
 
   const xml = `<ENVELOPE>
 <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>LedgerExport</ID></HEADER>

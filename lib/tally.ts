@@ -5,7 +5,7 @@ const FIRMS: Record<string, { code: string; name: string; tallyName: string }> =
   VI: { code: 'VI', name: 'Vinod Industries', tallyName: 'Vinod Industries - (from 1-Apr-25)' },
   VCF: { code: 'VCF', name: 'Vimal Cotton Fabrics', tallyName: 'Vimal Cotton Fabrics' },
   VF: { code: 'VF', name: 'Vijay Fabrics', tallyName: 'Vijay Fabrics - (from 1-Apr-2019)' },
-  KSI: { code: 'KSI', name: 'Kothari Synthetic Industries', tallyName: 'Kothari Synthetic Industries' },
+  KSI: { code: 'KSI', name: 'Kothari Synthetic Industries', tallyName: 'Kothari Synthetic Industries - (from 1-Apr-25)' },
 }
 
 export function getFirms() { return FIRMS }
