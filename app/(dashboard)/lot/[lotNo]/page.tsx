@@ -151,6 +151,11 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
           <p className="text-xs text-gray-400">{greyEntries.length} entries</p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Fold</p>
+          <p className="text-2xl font-bold text-indigo-600 mt-1">{foldThan}</p>
+          <p className="text-xs text-gray-400">{foldEntries.length} batch{foldEntries.length !== 1 ? 'es' : ''}</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Dyeing</p>
           <p className="text-2xl font-bold text-purple-600 mt-1">{dyeingThan}</p>
           <p className="text-xs text-gray-400">{dyeingEntries.length} entries</p>
@@ -159,11 +164,6 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
           <p className="text-xs text-gray-500 uppercase tracking-wide">Finish</p>
           <p className="text-2xl font-bold text-teal-600 mt-1">{finishThan}</p>
           <p className="text-xs text-gray-400">{finishEntries.length} entries</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Fold</p>
-          <p className="text-2xl font-bold text-indigo-600 mt-1">{foldThan}</p>
-          <p className="text-xs text-gray-400">{foldEntries.length} batch{foldEntries.length !== 1 ? 'es' : ''}</p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Despatched</p>
