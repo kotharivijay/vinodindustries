@@ -22,18 +22,31 @@ export async function GET() {
   return NextResponse.json(shades)
 }
 
-// POST /api/shades — create shade
+// POST /api/shades — create shade (optionally with recipeItems)
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { name, description } = await req.json()
+  const { name, description, recipeItems } = await req.json() as {
+    name: string
+    description?: string
+    recipeItems?: { chemicalId: number; quantity: number }[]
+  }
   if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
   try {
-    const shade = await (prisma as any).shade.create({
-      data: { name: name.trim(), description: description?.trim() || null },
-      include: recipeInclude,
+    const shade = await (prisma as any).$transaction(async (tx: any) => {
+      const s = await tx.shade.create({
+        data: { name: name.trim(), description: description?.trim() || null },
+      })
+      if (recipeItems?.length) {
+        await tx.shadeRecipeItem.createMany({
+          data: recipeItems
+            .filter(r => r.chemicalId && r.quantity > 0)
+            .map(r => ({ shadeId: s.id, chemicalId: r.chemicalId, quantity: r.quantity })),
+        })
+      }
+      return tx.shade.findUnique({ where: { id: s.id }, include: recipeInclude })
     })
     return NextResponse.json(shade)
   } catch (e: any) {

@@ -50,6 +50,9 @@ interface ChemicalMaster {
   currentPrice: number | null
 }
 
+interface DyeingProcessItem { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }
+interface DyeingProcess { id: number; name: string; description?: string; items: DyeingProcessItem[] }
+
 interface SavedEntry {
   id: number
   date: string
@@ -103,6 +106,10 @@ export default function BatchDyeingPage() {
   const [chemDropIdx, setChemDropIdx] = useState<number | null>(null)
   const [chemSearch, setChemSearch] = useState('')
 
+  // Process presets
+  const [processes, setProcesses] = useState<DyeingProcess[]>([])
+  const [showPresets, setShowPresets] = useState(false)
+
   // ─── Load data ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -110,10 +117,12 @@ export default function BatchDyeingPage() {
       fetch('/api/dyeing/batches').then(r => r.json()),
       fetch('/api/dyeing/batch').then(r => r.json()),
       fetch('/api/masters/chemicals').then(r => r.json()).catch(() => []),
-    ]).then(([batchData, entryData, chemData]) => {
+      fetch('/api/dyeing/processes').then(r => r.json()).catch(() => []),
+    ]).then(([batchData, entryData, chemData, processData]) => {
       setBatches(Array.isArray(batchData) ? batchData : [])
       setSavedEntries(Array.isArray(entryData) ? entryData : [])
       setMasterChemicals(Array.isArray(chemData) ? chemData : [])
+      setProcesses(Array.isArray(processData) ? processData : [])
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
@@ -231,6 +240,27 @@ export default function BatchDyeingPage() {
     })
     setChemDropIdx(null)
     setChemSearch('')
+  }
+
+  function applyPreset(process: DyeingProcess) {
+    const rows: ChemicalRow[] = process.items.map(item => {
+      const master = masterChemicals.find(m => m.id === item.chemicalId)
+      const rate = master?.currentPrice != null ? String(master.currentPrice) : ''
+      const qty = String(item.quantity)
+      const rateNum = parseFloat(rate)
+      const qtyNum = parseFloat(qty)
+      const cost = !isNaN(rateNum) && !isNaN(qtyNum) ? Math.round(rateNum * qtyNum * 100) / 100 : null
+      return {
+        chemicalId: item.chemicalId,
+        name: item.chemical.name,
+        quantity: qty,
+        unit: item.chemical.unit || 'kg',
+        rate,
+        cost,
+      }
+    })
+    setChemicals(rows)
+    setShowPresets(false)
   }
 
   // ─── Totals ─────────────────────────────────────────────────────────────────
@@ -497,6 +527,39 @@ export default function BatchDyeingPage() {
                   + Add Chemical
                 </button>
               </div>
+
+              {/* Process Presets */}
+              {processes.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-gray-500 shrink-0">Process Presets:</span>
+                    {processes.slice(0, showPresets ? processes.length : 4).map(p => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          if (chemicals.length > 0 && !confirm(`Replace ${chemicals.length} chemical(s) with "${p.name}" preset?`)) return
+                          applyPreset(p)
+                        }}
+                        title={p.description || `${p.items.length} chemicals`}
+                        className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition shrink-0"
+                      >
+                        {p.name}
+                        <span className="ml-1 text-indigo-400">({p.items.length})</span>
+                      </button>
+                    ))}
+                    {processes.length > 4 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPresets(v => !v)}
+                        className="text-xs text-gray-400 hover:text-gray-600 shrink-0"
+                      >
+                        {showPresets ? 'less' : `+${processes.length - 4} more`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {chemicals.length === 0 ? (
                 <p className="text-xs text-gray-400 text-center py-4">
