@@ -9,6 +9,9 @@ type StockStatus = 'idle' | 'loading' | 'ok' | 'no_stock' | 'not_found'
 
 interface ChemicalMaster { id: number; name: string; unit: string; currentPrice: number | null }
 
+interface DyeingProcessItem { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }
+interface DyeingProcess { id: number; name: string; description?: string; items: DyeingProcessItem[] }
+
 interface ChemicalRow {
   name: string
   chemicalId: number | null
@@ -85,6 +88,18 @@ export default function DyeingForm() {
   const [speechSupported, setSpeechSupported] = useState(false)
   const recognitionRef = useRef<any>(null)
 
+  // Voice command mode
+  const [commandMode, setCommandMode] = useState(false)
+  const [cmdToast, setCmdToast] = useState<string | null>(null)
+  const cmdRecognitionRef = useRef<any>(null)
+  const cmdDebounceRef = useRef<Record<string, number>>({})
+  const cmdToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const commandModeRef = useRef(false) // stable ref for callbacks
+
+  // Floating bubble drag state
+  const [bubblePos, setBubblePos] = useState<{ x: number; y: number } | null>(null)
+  const bubbleDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number; dragging: boolean } | null>(null)
+
   // Extraction state
   const [extracting, setExtracting] = useState(false)
   const [extractError, setExtractError] = useState('')
@@ -95,7 +110,7 @@ export default function DyeingForm() {
   const [markaEntries, setMarkaEntries] = useState<MarkaEntry[]>([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
 
   // Available lots for searchable dropdown
-  const [availableLots, setAvailableLots] = useState<{ lotNo: string; greyThan: number; despatchThan: number; stock: number }[]>([])
+  const [availableLots, setAvailableLots] = useState<{ lotNo: string; greyThan: number; despatchThan: number; stock: number; quality: string }[]>([])
   const [lotDropIdx, setLotDropIdx] = useState<number | null>(null)
   const [lotSearch, setLotSearch] = useState('')
 
@@ -112,6 +127,25 @@ export default function DyeingForm() {
   const [chemicals, setChemicals] = useState<ChemicalRow[]>([])
   const [masterChemicals, setMasterChemicals] = useState<ChemicalMaster[]>([])
   const [ocrNames, setOcrNames] = useState<string[]>([])  // original OCR names for alias learning
+  const [processes, setProcesses] = useState<DyeingProcess[]>([])
+  const [showPresets, setShowPresets] = useState(false)
+
+  // Chemical Tags (voice note shortcuts stored in localStorage)
+  const [tags, setTags] = useState<{ tag: string; chemical: string }[]>([])
+  const [showTagPanel, setShowTagPanel] = useState(false)
+  const [newTag, setNewTag] = useState('')
+  const [newTagChem, setNewTagChem] = useState('')
+  const [cloudSaved, setCloudSaved] = useState(false)
+
+  // Save to Shade Master
+  const [showSaveShade, setShowSaveShade] = useState(false)
+  const [shadeNameInput, setShadeNameInput] = useState('')
+  const [shadeDescInput, setShadeDescInput] = useState('')
+  const [lotWeights, setLotWeights] = useState<{ lotNo: string; weightPerThan: number; kgPerMtr: number; grayMtr: number; quality: string }[]>([])
+  const [loadingWeights, setLoadingWeights] = useState(false)
+  const [savingShade, setSavingShade] = useState(false)
+  const [shadeError, setShadeError] = useState('')
+  const [shadeSaved, setShadeSaved] = useState(false)
 
   // Lot stock check
   const [stockStatus, setStockStatus] = useState<StockStatus>('idle')
@@ -125,13 +159,26 @@ export default function DyeingForm() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  // Load chemical master on mount
+  // Load chemical master + processes + tags on mount
   useEffect(() => {
     fetch('/api/chemicals')
       .then(r => r.json())
       .then(d => setMasterChemicals(Array.isArray(d) ? d : []))
       .catch(() => {})
+    fetch('/api/dyeing/processes')
+      .then(r => r.json())
+      .then(d => setProcesses(Array.isArray(d) ? d : []))
+      .catch(() => {})
+    try {
+      const stored = localStorage.getItem('vi_chem_tags')
+      if (stored) setTags(JSON.parse(stored))
+    } catch {}
   }, [])
+
+  // Save tags to localStorage on change
+  useEffect(() => {
+    try { localStorage.setItem('vi_chem_tags', JSON.stringify(tags)) } catch {}
+  }, [tags])
 
   // Load available lots on mount
   useEffect(() => {
@@ -142,6 +189,26 @@ export default function DyeingForm() {
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     setSpeechSupported(!!SR)
+  }, [])
+
+  // Load bubble position from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('vi_bubble_pos')
+      if (saved) setBubblePos(JSON.parse(saved))
+      else setBubblePos({ x: window.innerWidth - 80, y: window.innerHeight - 160 })
+    } catch {
+      setBubblePos({ x: window.innerWidth - 80, y: window.innerHeight - 160 })
+    }
+  }, [])
+
+  // Cleanup command mode on unmount
+  useEffect(() => {
+    return () => {
+      commandModeRef.current = false
+      try { cmdRecognitionRef.current?.stop() } catch {}
+      if (cmdToastTimerRef.current) clearTimeout(cmdToastTimerRef.current)
+    }
   }, [])
 
   // Check for existing draft batch on mount
@@ -241,6 +308,7 @@ export default function DyeingForm() {
         .then(batch => {
           if (batch?.id) {
             setDraftBatchId(batch.id)
+            setCloudSaved(true)
             // Map draft item IDs to queue items
             setQueue(prev => prev.map((q, idx) => {
               const draftItem = batch.items?.[idx]
@@ -493,6 +561,134 @@ export default function DyeingForm() {
     setIsRecording(true)
   }
 
+  // ─── Voice Command Mode ────────────────────────────────────────────────────
+
+  function showCmdToast(msg: string) {
+    setCmdToast(msg)
+    if (cmdToastTimerRef.current) clearTimeout(cmdToastTimerRef.current)
+    cmdToastTimerRef.current = setTimeout(() => setCmdToast(null), 2500)
+  }
+
+  function canFire(cmd: string, cooldownMs = 1500): boolean {
+    const now = Date.now()
+    const last = cmdDebounceRef.current[cmd] ?? 0
+    if (now - last < cooldownMs) return false
+    cmdDebounceRef.current[cmd] = now
+    return true
+  }
+
+  // Stable refs so recognition callbacks always see latest state
+  const setShowZoomRef = useRef(setShowZoom)
+  setShowZoomRef.current = setShowZoom
+  const imagePreviewRef = useRef<string | null>(null)
+  imagePreviewRef.current = imagePreview
+
+  function handleVoiceCommand(transcript: string) {
+    const t = transcript.toLowerCase().trim()
+
+    // "slip" / "show" / "image" / "open" → open slip zoom
+    if (/\b(slip|show|image|open|photo)\b/.test(t)) {
+      if (canFire('open') && imagePreviewRef.current) {
+        setShowZoomRef.current(true)
+        showCmdToast('🎙 "slip" → opened image')
+      }
+      return
+    }
+
+    // "close" / "back" / "hide" → close zoom
+    if (/\b(close|back|hide|done)\b/.test(t)) {
+      if (canFire('close')) {
+        setShowZoomRef.current(false)
+        showCmdToast('🎙 "close" → closed image')
+      }
+      return
+    }
+
+    // "next" → advance queue
+    if (/\bnext\b/.test(t)) {
+      if (canFire('next')) {
+        showCmdToast('🎙 "next" → advancing...')
+        advanceQueue()
+      }
+      return
+    }
+
+    // "skip" → skip current
+    if (/\bskip\b/.test(t)) {
+      if (canFire('skip')) {
+        showCmdToast('🎙 "skip" → skipping...')
+        skipQueueItem()
+      }
+      return
+    }
+
+    // "extract" / "scan" → AI extract
+    if (/\b(extract|scan|read)\b/.test(t)) {
+      if (canFire('extract') && imageBase64) {
+        showCmdToast('🎙 "extract" → running AI...')
+        handleExtract()
+      }
+      return
+    }
+  }
+
+  function startCommandMode() {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) return
+
+    // Stop voice note if running
+    if (isRecording) {
+      recognitionRef.current?._active && (recognitionRef.current._active = false)
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+    }
+
+    const recognition = new SR()
+    recognition.lang = 'en-IN'
+    recognition.continuous = true
+    recognition.interimResults = true
+
+    recognition.onresult = (e: any) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const transcript = e.results[i][0]?.transcript ?? ''
+        if (transcript.trim()) handleVoiceCommand(transcript)
+      }
+    }
+
+    recognition.onend = () => {
+      // Auto-restart while command mode is still active
+      if (commandModeRef.current) {
+        try { recognition.start() } catch { /* already started */ }
+      }
+    }
+
+    recognition.onerror = (e: any) => {
+      if (e.error === 'not-allowed') {
+        setCommandMode(false)
+        commandModeRef.current = false
+      }
+    }
+
+    cmdRecognitionRef.current = recognition
+    recognition.start()
+    setCommandMode(true)
+    commandModeRef.current = true
+    showCmdToast('🎙 Command mode ON — say "slip", "close", "next"...')
+  }
+
+  function stopCommandMode() {
+    commandModeRef.current = false
+    setCommandMode(false)
+    try { cmdRecognitionRef.current?.stop() } catch {}
+    cmdRecognitionRef.current = null
+    showCmdToast('🎙 Command mode OFF')
+  }
+
+  function toggleCommandMode() {
+    if (commandMode) stopCommandMode()
+    else startCommandMode()
+  }
+
   // ─── OCR / AI Extraction ──────────────────────────────────────────────────
 
   // Levenshtein distance for fuzzy matching
@@ -529,14 +725,31 @@ export default function DyeingForm() {
     return { chemicalId: null, rate: '', matchedName: '' }
   }
 
+  function applyTags(text: string): string {
+    let result = text
+    for (const { tag, chemical } of tags) {
+      if (!tag.trim() || !chemical.trim()) continue
+      const re = new RegExp(`\\b${tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi')
+      result = result.replace(re, chemical)
+    }
+    return result
+  }
+
   async function handleExtract() {
     if (!imageBase64) return
     setExtracting(true); setExtractError('')
 
+    const tagMap: Record<string, string> = {}
+    for (const { tag, chemical } of tags) {
+      if (tag.trim() && chemical.trim()) tagMap[tag.toLowerCase()] = chemical
+    }
+
+    const processedVoice = voiceText ? applyTags(voiceText) : null
+
     const res = await fetch('/api/dyeing/extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ imageBase64, mediaType: imageType, voiceNote: voiceText || null }),
+      body: JSON.stringify({ imageBase64, mediaType: imageType, voiceNote: processedVoice || null, tags: Object.keys(tagMap).length > 0 ? tagMap : undefined }),
     })
 
     const data = await res.json()
@@ -614,6 +827,25 @@ export default function DyeingForm() {
         }
       })
       setChemicals(rows)
+
+      // Auto-learn tags: if OCR name differs from matched master name, save as tag
+      const autoTags: { tag: string; chemical: string }[] = []
+      rows.forEach((row, i) => {
+        if (!row.chemicalId) return
+        const ocr = (data.ocrNames?.[i] ?? '').trim()
+        if (!ocr || ocr.toLowerCase() === row.name.toLowerCase()) return
+        autoTags.push({ tag: ocr, chemical: row.name })
+      })
+      if (autoTags.length > 0) {
+        setTags(prev => {
+          const updated = [...prev]
+          for (const at of autoTags) {
+            const exists = updated.some(t => t.tag.toLowerCase() === at.tag.toLowerCase())
+            if (!exists) updated.push(at)
+          }
+          return updated
+        })
+      }
     }
 
     setExtracted(true)
@@ -760,6 +992,78 @@ export default function DyeingForm() {
     setChemicals(prev => prev.filter((_, idx) => idx !== i))
   }
 
+  function applyPreset(process: DyeingProcess) {
+    const rows: ChemicalRow[] = process.items.map(item => {
+      const master = masterChemicals.find(m => m.id === item.chemicalId)
+      const rate = master?.currentPrice?.toString() ?? ''
+      const qty = String(item.quantity)
+      const rateNum = parseFloat(rate)
+      const qtyNum = parseFloat(qty)
+      const cost = !isNaN(rateNum) && !isNaN(qtyNum) ? parseFloat((rateNum * qtyNum).toFixed(2)) : null
+      return {
+        name: item.chemical.name,
+        chemicalId: item.chemicalId,
+        quantity: qty,
+        unit: item.chemical.unit || 'kg',
+        rate,
+        cost,
+        matched: true,
+      }
+    })
+    setChemicals(rows)
+    setShowPresets(false)
+  }
+
+  // ─── Save to Shade Master ─────────────────────────────────────────────────
+
+  async function openSaveShade() {
+    setShowSaveShade(true)
+    setShadeSaved(false)
+    setShadeError('')
+    setShadeNameInput('')
+    setShadeDescInput('')
+    setLotWeights([])
+    setLoadingWeights(true)
+    const validLots = markaEntries.filter(m => m.lotNo.trim())
+    if (validLots.length === 0) { setLoadingWeights(false); return }
+    const lotsParam = validLots.map(m => m.lotNo.trim()).join(',')
+    const res = await fetch(`/api/grey/lot-weight?lots=${encodeURIComponent(lotsParam)}`)
+    const data = await res.json()
+    setLotWeights(Array.isArray(data.lots) ? data.lots : [])
+    setLoadingWeights(false)
+  }
+
+  function calcBatchWeight(): number {
+    return markaEntries.reduce((sum, m) => {
+      const lw = lotWeights.find(l => l.lotNo === m.lotNo.trim())
+      return sum + (lw?.weightPerThan ?? 0) * (parseFloat(m.than) || 0)
+    }, 0)
+  }
+
+  async function saveToShade() {
+    if (!shadeNameInput.trim()) { setShadeError('Shade name is required'); return }
+    const batchWeight = calcBatchWeight()
+    if (batchWeight <= 0) { setShadeError('Cannot compute batch weight — check lot data in Grey register'); return }
+    const validChemicals = chemicals.filter(c => c.chemicalId && c.name.trim() && parseFloat(c.quantity) > 0)
+    if (validChemicals.length === 0) { setShadeError('No matched chemicals to save'); return }
+
+    setSavingShade(true); setShadeError('')
+    const recipeItems = validChemicals.map(c => ({
+      chemicalId: c.chemicalId!,
+      quantity: Math.round((parseFloat(c.quantity) / batchWeight) * 100 * 1000) / 1000,
+    }))
+
+    const res = await fetch('/api/shades', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: shadeNameInput.trim(), description: shadeDescInput.trim() || null, recipeItems }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setShadeError(data.error ?? 'Failed to save'); setSavingShade(false); return }
+    setSavingShade(false)
+    setShadeSaved(true)
+  }
+
   // ─── Submit ───────────────────────────────────────────────────────────────
 
   async function handleSubmit(e: React.FormEvent) {
@@ -813,6 +1117,46 @@ export default function DyeingForm() {
     }
   }
 
+  // ─── Floating Bubble Drag ─────────────────────────────────────────────────
+
+  function onBubblePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    bubbleDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: bubblePos?.x ?? window.innerWidth - 80,
+      origY: bubblePos?.y ?? window.innerHeight - 160,
+      dragging: false,
+    }
+  }
+
+  function onBubblePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const d = bubbleDragRef.current
+    if (!d) return
+    const dx = e.clientX - d.startX
+    const dy = e.clientY - d.startY
+    if (!d.dragging && Math.abs(dx) < 5 && Math.abs(dy) < 5) return
+    d.dragging = true
+    const x = Math.max(28, Math.min(window.innerWidth - 28, d.origX + dx))
+    const y = Math.max(28, Math.min(window.innerHeight - 28, d.origY + dy))
+    setBubblePos({ x, y })
+  }
+
+  function onBubblePointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    const d = bubbleDragRef.current
+    bubbleDragRef.current = null
+    if (!d) return
+    if (!d.dragging) {
+      // Tap — open zoom
+      if (imagePreviewRef.current) setShowZoom(true)
+      return
+    }
+    // Save final position
+    const x = Math.max(28, Math.min(window.innerWidth - 28, d.origX + (e.clientX - d.startX)))
+    const y = Math.max(28, Math.min(window.innerHeight - 28, d.origY + (e.clientY - d.startY)))
+    try { localStorage.setItem('vi_bubble_pos', JSON.stringify({ x, y })) } catch {}
+  }
+
   // ─── Derived ──────────────────────────────────────────────────────────────
 
   const totalCost = chemicals.reduce((sum, c) => sum + (c.cost ?? 0), 0)
@@ -823,47 +1167,230 @@ export default function DyeingForm() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
+  const batchWeight = calcBatchWeight()
+  const normalizedChemicals = chemicals.filter(c => c.chemicalId && parseFloat(c.quantity) > 0).map(c => ({
+    ...c,
+    normQty: batchWeight > 0 ? Math.round((parseFloat(c.quantity) / batchWeight) * 100 * 1000) / 1000 : 0,
+  }))
+
   return (
     <div className="p-4 md:p-8 max-w-3xl">
       {showZoom && imagePreview && <ZoomModal src={imagePreview} onClose={() => setShowZoom(false)} />}
 
+      {/* ── Floating Slip Bubble ── */}
+      {bubblePos && (
+        <div
+          onPointerDown={onBubblePointerDown}
+          onPointerMove={onBubblePointerMove}
+          onPointerUp={onBubblePointerUp}
+          style={{ left: bubblePos.x - 28, top: bubblePos.y - 28, touchAction: 'none' }}
+          className={`fixed z-40 w-14 h-14 rounded-full shadow-2xl border-2 select-none cursor-grab active:cursor-grabbing overflow-hidden flex items-center justify-center transition-all ${
+            commandMode ? 'border-teal-400 ring-4 ring-teal-200 animate-pulse' : imagePreview ? 'border-indigo-400' : 'border-gray-300'
+          }`}
+        >
+          {imagePreview ? (
+            <img src={imagePreview} alt="slip" className="w-full h-full object-cover pointer-events-none" />
+          ) : (
+            <div className="w-full h-full bg-gray-100 flex flex-col items-center justify-center gap-0.5">
+              <span className="text-lg leading-none">📄</span>
+              <span className="text-[8px] text-gray-400 font-medium leading-none">SLIP</span>
+            </div>
+          )}
+          {/* Queue badge */}
+          {queueTotal > 0 && (
+            <div className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 leading-none">
+              {queueDone}/{queueTotal}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Save to Shade Master Modal ── */}
+      {showSaveShade && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700 shrink-0">
+              <div>
+                <h2 className="text-base font-bold text-white">Save to Shade Master</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Normalises chemical quantities to per 100 kg</p>
+              </div>
+              <button onClick={() => setShowSaveShade(false)} className="text-gray-400 hover:text-gray-200 text-2xl leading-none">×</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {shadeError && <p className="text-xs text-red-400 bg-red-900/30 border border-red-700 rounded-lg px-3 py-2">{shadeError}</p>}
+              {shadeSaved && (
+                <div className="text-sm text-emerald-400 bg-emerald-900/30 border border-emerald-700 rounded-lg px-4 py-3 font-medium">
+                  ✓ Shade &quot;{shadeNameInput}&quot; saved to Shade Master!
+                </div>
+              )}
+
+              {/* Shade Name + Description */}
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-white mb-1">Shade Name *</label>
+                  <input type="text" value={shadeNameInput} onChange={e => setShadeNameInput(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="e.g. APC1, Navy Blue 12..." />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-white mb-1">Description (optional)</label>
+                  <input type="text" value={shadeDescInput} onChange={e => setShadeDescInput(e.target.value)}
+                    className="w-full bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="e.g. 4% shade, reactive dye..." />
+                </div>
+              </div>
+
+              {/* Lot Weight Breakdown */}
+              <div className="bg-gray-800 border border-gray-700 rounded-xl p-3">
+                <p className="text-xs font-semibold text-white mb-2">Batch Weight Calculation</p>
+                {loadingWeights ? (
+                  <p className="text-xs text-gray-500 animate-pulse">Loading lot data...</p>
+                ) : (
+                  <>
+                    <div className="space-y-1 mb-2">
+                      {markaEntries.filter(m => m.lotNo.trim()).map((m, i) => {
+                        const lw = lotWeights.find(l => l.lotNo === m.lotNo.trim())
+                        const al = availableLots.find(l => l.lotNo === m.lotNo.trim())
+                        const quality = lw?.quality || al?.quality
+                        const than = parseFloat(m.than) || 0
+                        const weight = (lw?.weightPerThan ?? 0) * than
+                        return (
+                          <div key={i} className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-gray-200">
+                              {m.lotNo}
+                              {quality && <span className="block text-[10px] text-indigo-400 font-normal">{quality}</span>}
+                            </span>
+                            <span className="text-gray-400">
+                              {than} than × {lw?.weightPerThan ?? '?'} kg/than
+                            </span>
+                            <span className={`font-semibold ${weight > 0 ? 'text-gray-100' : 'text-red-400'}`}>
+                              {weight > 0 ? `${weight.toFixed(1)} kg` : 'No data'}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div className="flex items-center justify-between border-t border-gray-700 pt-2">
+                      <span className="text-xs font-semibold text-white">Total Batch Weight</span>
+                      <span className={`text-sm font-bold ${batchWeight > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {batchWeight > 0 ? `${batchWeight.toFixed(2)} kg` : 'Cannot compute'}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Normalized Recipe Preview */}
+              {batchWeight > 0 && normalizedChemicals.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-white mb-2">
+                    Normalized Recipe (per 100 kg fabric)
+                  </p>
+                  <div className="border border-gray-700 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-800 border-b border-gray-700">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-semibold text-gray-300">Chemical</th>
+                          <th className="text-right px-3 py-2 font-semibold text-gray-300">Slip Qty</th>
+                          <th className="text-right px-3 py-2 font-semibold text-emerald-400">Per 100 kg</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {normalizedChemicals.map((c, i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-gray-900' : 'bg-gray-800'}>
+                            <td className="px-3 py-2 font-medium text-gray-200">{c.name}</td>
+                            <td className="px-3 py-2 text-right text-gray-400">{c.quantity} {c.unit}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-emerald-400">{c.normQty} {c.unit}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {normalizedChemicals.length < chemicals.filter(c => c.name.trim()).length && (
+                    <p className="text-[10px] text-amber-400 mt-1">
+                      ⚠ {chemicals.filter(c => c.name.trim()).length - normalizedChemicals.length} unmatched chemical(s) excluded (not in Chemical Master)
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex gap-3 justify-end px-5 py-4 border-t border-gray-700 shrink-0">
+              <button type="button" onClick={() => setShowSaveShade(false)}
+                className="px-4 py-2 border border-gray-600 rounded-lg text-sm text-gray-300 hover:bg-gray-700">
+                {shadeSaved ? 'Close' : 'Cancel'}
+              </button>
+              {!shadeSaved && (
+                <button type="button" onClick={saveToShade} disabled={savingShade || batchWeight <= 0 || loadingWeights}
+                  className="px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60">
+                  {savingShade ? 'Saving...' : '💾 Save to Shade Master'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Voice Command Toast ── */}
+      {cmdToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-sm font-medium px-5 py-2.5 rounded-full shadow-xl animate-fade-in whitespace-nowrap">
+          {cmdToast}
+        </div>
+      )}
+
       <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">&larr; Back</button>
-        <h1 className="text-2xl font-bold text-gray-800">New Dyeing Slip</h1>
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600 rounded-lg px-4 py-2 text-sm font-medium transition">&larr; Back</button>
+        <h1 className="text-2xl font-bold text-white">New Dyeing Slip</h1>
+        {speechSupported && (
+          <button
+            type="button"
+            onClick={toggleCommandMode}
+            title={commandMode ? 'Voice commands ON — click to stop' : 'Enable voice commands'}
+            className={`ml-auto flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium transition ${
+              commandMode
+                ? 'bg-teal-500 text-white shadow-lg ring-4 ring-teal-200 animate-pulse'
+                : 'bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100'
+            }`}
+          >
+            <span className="text-base">🎙</span>
+            <span className="hidden sm:inline">{commandMode ? 'Listening...' : 'Voice CMD'}</span>
+          </button>
+        )}
       </div>
 
-      {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
+      {error && <div className="bg-red-900/30 border border-red-700 text-red-300 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
 
       {/* ── Resume Draft Dialog ── */}
       {showResume && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-          <p className="text-sm font-medium text-amber-800 mb-2">
-            You have {pendingDraftCount} unsaved slip{pendingDraftCount > 1 ? 's' : ''} from a previous session
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={resumeDraft}
-              className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700"
-            >
-              Resume
-            </button>
-            <button
-              type="button"
-              onClick={discardDraft}
-              className="border border-amber-300 text-amber-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-100"
-            >
-              Discard
-            </button>
+        <div className="bg-amber-900/30 border border-amber-700 rounded-xl p-4 mb-4 flex items-start gap-3">
+          <span className="text-2xl">📋</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-amber-300 mb-0.5">
+              {pendingDraftCount} slip{pendingDraftCount > 1 ? 's' : ''} waiting from your last session
+            </p>
+            <p className="text-xs text-amber-400 mb-3">Your images were saved to cloud. You can continue right where you left off.</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={resumeDraft}
+                className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700 flex items-center gap-1.5">
+                ▶ Resume ({pendingDraftCount} pending)
+              </button>
+              <button type="button" onClick={discardDraft}
+                className="border border-amber-700 text-amber-400 px-3 py-2 rounded-lg text-sm hover:bg-amber-900/40">
+                Discard
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       {/* ── Queue Panel ── */}
       {queueTotal > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+        <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 p-4 mb-4">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-gray-700">
+            <h2 className="text-sm font-semibold text-white">
               Slip Queue: {queueDone}/{queueTotal} done
             </h2>
             <div className="flex gap-2">
@@ -871,7 +1398,7 @@ export default function DyeingForm() {
                 <button
                   type="button"
                   onClick={skipQueueItem}
-                  className="text-xs text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg px-3 py-1"
+                  className="text-xs text-gray-400 hover:text-gray-200 border border-gray-600 rounded-lg px-3 py-1"
                 >
                   Skip
                 </button>
@@ -879,7 +1406,7 @@ export default function DyeingForm() {
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="text-xs text-purple-600 hover:text-purple-800 font-medium"
+                className="text-xs text-purple-400 hover:text-purple-300 font-medium"
               >
                 + Add More
               </button>
@@ -887,7 +1414,7 @@ export default function DyeingForm() {
           </div>
 
           {/* Progress bar */}
-          <div className="w-full bg-gray-200 rounded-full h-1.5 mb-3">
+          <div className="w-full bg-gray-700 rounded-full h-1.5 mb-3">
             <div
               className="bg-purple-500 h-1.5 rounded-full transition-all"
               style={{ width: `${queueTotal > 0 ? (queueDone / queueTotal) * 100 : 0}%` }}
@@ -895,7 +1422,10 @@ export default function DyeingForm() {
           </div>
 
           {uploadingDrafts && (
-            <p className="text-xs text-purple-500 mb-2 animate-pulse">Saving to cloud...</p>
+            <p className="text-xs text-purple-400 mb-2 animate-pulse">☁ Saving to cloud — you can resume later if you exit...</p>
+          )}
+          {!uploadingDrafts && cloudSaved && (
+            <p className="text-xs text-green-400 mb-2">☁ Saved to cloud — safe to exit and resume later</p>
           )}
 
           {/* Thumbnails */}
@@ -906,10 +1436,10 @@ export default function DyeingForm() {
                 type="button"
                 onClick={() => jumpToQueueItem(idx)}
                 className={`shrink-0 w-12 h-12 rounded-lg border-2 overflow-hidden relative ${
-                  item.status === 'active' ? 'border-purple-500 ring-2 ring-purple-300' :
-                  item.status === 'saved' ? 'border-green-400 opacity-70' :
-                  item.status === 'skipped' ? 'border-gray-300 opacity-40' :
-                  'border-gray-200'
+                  item.status === 'active' ? 'border-purple-500 ring-2 ring-purple-700' :
+                  item.status === 'saved' ? 'border-green-500 opacity-70' :
+                  item.status === 'skipped' ? 'border-gray-600 opacity-40' :
+                  'border-gray-600'
                 }`}
               >
                 <img src={item.preview} alt={`Slip ${idx + 1}`} className="w-full h-full object-cover" />
@@ -924,8 +1454,8 @@ export default function DyeingForm() {
 
           {/* All done message */}
           {allQueueDone && (
-            <div className="mt-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center justify-between">
-              <span className="text-sm font-medium text-green-700">All {queueDone} slips saved!</span>
+            <div className="mt-3 bg-green-900/30 border border-green-700 rounded-lg px-4 py-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-green-400">All {queueDone} slips saved!</span>
               <button
                 type="button"
                 onClick={() => router.push('/dyeing')}
@@ -939,8 +1469,8 @@ export default function DyeingForm() {
       )}
 
       {/* ── Section 1: Image + AI ── */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Step 1 — Upload Slip Image (optional)</h2>
+      <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 p-5 mb-4">
+        <h2 className="text-sm font-semibold text-white mb-3">Step 1 — Upload Slip Image (optional)</h2>
 
         <div className="flex gap-3 flex-wrap">
           {/* Image preview or upload button */}
@@ -972,7 +1502,7 @@ export default function DyeingForm() {
               <button
                 type="button"
                 onClick={() => cameraRef.current?.click()}
-                className="h-36 w-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-purple-400 hover:text-purple-500 transition"
+                className="h-36 w-20 border-2 border-dashed border-gray-600 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-500 hover:border-purple-500 hover:text-purple-400 transition"
               >
                 <span className="text-2xl">📷</span>
                 <span className="text-[10px] text-center leading-tight">Camera</span>
@@ -980,7 +1510,7 @@ export default function DyeingForm() {
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="h-36 w-20 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-400 hover:border-purple-400 hover:text-purple-500 transition"
+                className="h-36 w-20 border-2 border-dashed border-gray-600 rounded-lg flex flex-col items-center justify-center gap-1 text-gray-500 hover:border-purple-500 hover:text-purple-400 transition"
               >
                 <span className="text-2xl">🖼</span>
                 <span className="text-[10px] text-center leading-tight">Gallery</span>
@@ -1006,19 +1536,100 @@ export default function DyeingForm() {
               >
                 <span>{isRecording ? '⏹ Stop' : '🎤 Voice Note'}</span>
               </button>
-              {!speechSupported && <p className="text-xs text-gray-400 mt-1 text-center">Use Chrome for voice</p>}
+              {!speechSupported && <p className="text-xs text-gray-500 mt-1 text-center">Use Chrome for voice</p>}
             </div>
 
             {/* Voice text area */}
             {(voiceText || isRecording) && (
               <textarea
-                className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-600 resize-none w-full"
+                className="border border-gray-600 bg-gray-700 text-gray-100 placeholder-gray-500 rounded-lg px-2 py-1.5 text-xs resize-none w-full focus:outline-none focus:ring-1 focus:ring-purple-500"
                 rows={3}
                 placeholder="Voice note transcript..."
                 value={voiceText}
                 onChange={e => setVoiceText(e.target.value)}
               />
             )}
+
+            {/* ── Chemical Tags Panel ── */}
+            <div className="border border-gray-700 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowTagPanel(v => !v)}
+                className="flex items-center gap-2 w-full px-3 py-2 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 transition"
+              >
+                <span className="font-medium">🏷 Chemical Tags</span>
+                {tags.length > 0 && (
+                  <span className="bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded text-[10px] font-semibold">{tags.length}</span>
+                )}
+                <span className="ml-auto text-gray-500">{showTagPanel ? '▲' : '▼'}</span>
+              </button>
+
+              {showTagPanel && (
+                <div className="p-3 space-y-2 bg-gray-700">
+                  <p className="text-[10px] text-gray-500">Short names the AI expands in voice notes. Auto-learned from your extractions.</p>
+
+                  {tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {tags.map((t, i) => (
+                        <div key={i} className="flex items-center gap-1 bg-indigo-900/40 border border-indigo-700 rounded-full px-2 py-0.5 text-xs">
+                          <span className="font-semibold text-indigo-300">{t.tag}</span>
+                          <span className="text-indigo-500">→</span>
+                          <span className="text-gray-300">{t.chemical}</span>
+                          <button
+                            type="button"
+                            onClick={() => setTags(prev => prev.filter((_, idx) => idx !== i))}
+                            className="text-red-400 hover:text-red-300 ml-0.5 leading-none"
+                          >&times;</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add new tag */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <input
+                      type="text"
+                      placeholder="Short tag (e.g. acid)"
+                      value={newTag}
+                      onChange={e => setNewTag(e.target.value)}
+                      className="border border-gray-600 bg-gray-800 text-gray-100 placeholder-gray-500 rounded-lg px-2 py-1 text-xs w-28 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <span className="text-gray-500 text-xs">→</span>
+                    <input
+                      type="text"
+                      placeholder="Full chemical name"
+                      value={newTagChem}
+                      onChange={e => setNewTagChem(e.target.value)}
+                      list="tag-chem-list"
+                      className="border border-gray-600 bg-gray-800 text-gray-100 placeholder-gray-500 rounded-lg px-2 py-1 text-xs flex-1 min-w-[120px] focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <datalist id="tag-chem-list">
+                      {masterChemicals.map(m => <option key={m.id} value={m.name} />)}
+                    </datalist>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!newTag.trim() || !newTagChem.trim()) return
+                        setTags(prev => {
+                          const updated = [...prev]
+                          const existing = updated.findIndex(t => t.tag.toLowerCase() === newTag.trim().toLowerCase())
+                          if (existing >= 0) {
+                            updated[existing] = { tag: newTag.trim(), chemical: newTagChem.trim() }
+                          } else {
+                            updated.push({ tag: newTag.trim(), chemical: newTagChem.trim() })
+                          }
+                          return updated
+                        })
+                        setNewTag(''); setNewTagChem('')
+                      }}
+                      className="bg-indigo-600 text-white px-2.5 py-1 rounded-lg text-xs font-medium hover:bg-indigo-700"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Extract button — always show when image exists */}
             {imageBase64 && (
@@ -1043,13 +1654,13 @@ export default function DyeingForm() {
             )}
 
             {!imageBase64 && (
-              <p className="text-xs text-gray-400 text-center">Upload an image, then tap &quot;Extract with AI&quot;</p>
+              <p className="text-xs text-gray-500 text-center">Upload an image, then tap &quot;Extract with AI&quot;</p>
             )}
           </div>
         </div>
 
         {extractError && (
-          <div className="mt-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg px-3 py-2 text-xs">
+          <div className="mt-3 bg-amber-900/30 border border-amber-700 text-amber-300 rounded-lg px-3 py-2 text-xs">
             {extractError}
           </div>
         )}
@@ -1057,8 +1668,8 @@ export default function DyeingForm() {
 
       {/* ── Section 2: Form Fields ── */}
       <form onSubmit={handleSubmit}>
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Step 2 — Slip Details</h2>
+        <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 p-5 mb-4">
+          <h2 className="text-sm font-semibold text-white mb-3">Step 2 — Slip Details</h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Date *">
@@ -1076,11 +1687,11 @@ export default function DyeingForm() {
           {/* ── Marka Entries (Lot + Than) ── */}
           <div className="mt-4">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-gray-700">
+              <h3 className="text-sm font-semibold text-white">
                 Marka — Lot Entries
                 {markaEntries.length > 1 && <span className="ml-2 text-xs font-normal text-gray-400">{markaEntries.length} lots</span>}
               </h3>
-              <button type="button" onClick={addMarkaEntry} className="text-xs text-purple-600 hover:text-purple-800 font-medium">
+              <button type="button" onClick={addMarkaEntry} className="text-xs text-purple-400 hover:text-purple-300 font-medium">
                 + Add Lot
               </button>
             </div>
@@ -1092,37 +1703,37 @@ export default function DyeingForm() {
                   .filter(l => !selectedLotNos.includes(l.lotNo))
                   .filter(l => !lotSearch || l.lotNo.toLowerCase().includes(lotSearch.toLowerCase()))
                 return (
-                <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                <div key={i} className="border border-gray-600 rounded-xl p-3 bg-gray-700">
                   {/* Row 1: # + Lot selector + remove */}
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs text-gray-400 w-5 shrink-0">#{i + 1}</span>
+                    <span className="text-xs text-gray-500 w-5 shrink-0">#{i + 1}</span>
                     <div className="flex-1 relative">
                       <div
-                        className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white cursor-pointer ${lotDropIdx === i ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300'}`}
+                        className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-gray-800 cursor-pointer ${lotDropIdx === i ? 'ring-2 ring-purple-500 border-purple-500' : 'border-gray-600'}`}
                         onClick={() => { setLotDropIdx(lotDropIdx === i ? null : i); setLotSearch('') }}
                       >
-                        <span className={`flex-1 text-sm ${m.lotNo ? 'font-medium text-gray-800' : 'text-gray-400'}`}>
+                        <span className={`flex-1 text-sm ${m.lotNo ? 'font-medium text-gray-100' : 'text-gray-500'}`}>
                           {m.lotNo || 'Select lot...'}
                         </span>
                         {m.stockStatus === 'ok' && (
-                          <span className="text-green-600 text-[10px] font-semibold bg-green-50 border border-green-200 px-1 py-0.5 rounded shrink-0">OK</span>
+                          <span className="text-green-400 text-[10px] font-semibold bg-green-900/30 border border-green-700 px-1 py-0.5 rounded shrink-0">OK</span>
                         )}
                         {m.stockStatus === 'no_stock' && (
-                          <span className="text-amber-600 text-[10px] font-semibold bg-amber-50 border border-amber-200 px-1 py-0.5 rounded shrink-0">Low</span>
+                          <span className="text-amber-400 text-[10px] font-semibold bg-amber-900/30 border border-amber-700 px-1 py-0.5 rounded shrink-0">Low</span>
                         )}
                         {m.stockStatus === 'not_found' && (
-                          <span className="text-red-600 text-[10px] font-semibold bg-red-50 border border-red-200 px-1 py-0.5 rounded shrink-0">N/A</span>
+                          <span className="text-red-400 text-[10px] font-semibold bg-red-900/30 border border-red-700 px-1 py-0.5 rounded shrink-0">N/A</span>
                         )}
-                        <span className="text-gray-400 text-xs shrink-0">&#9660;</span>
+                        <span className="text-gray-500 text-xs shrink-0">&#9660;</span>
                       </div>
 
                       {/* Searchable lot dropdown */}
                       {lotDropIdx === i && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
+                        <div className="absolute left-0 right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
                           <input
                             type="text"
                             autoFocus
-                            className="w-full border-b border-gray-200 px-3 py-2 text-sm focus:outline-none rounded-t-lg"
+                            className="w-full border-b border-gray-700 bg-gray-800 text-gray-100 placeholder-gray-500 px-3 py-2 text-sm focus:outline-none rounded-t-lg"
                             placeholder="Search lot number..."
                             value={lotSearch}
                             onChange={e => setLotSearch(e.target.value)}
@@ -1133,20 +1744,20 @@ export default function DyeingForm() {
                               <button
                                 key={l.lotNo}
                                 type="button"
-                                className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-50 flex items-center justify-between ${m.lotNo === l.lotNo ? 'bg-purple-50 font-medium' : ''}`}
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-900/30 flex items-center justify-between text-gray-200 ${m.lotNo === l.lotNo ? 'bg-purple-900/30 font-medium' : ''}`}
                                 onClick={e => { e.stopPropagation(); selectLot(i, l) }}
                               >
                                 <span className="font-medium">{l.lotNo}</span>
-                                <span className="text-xs text-gray-400">Stock: {l.stock} than</span>
+                                <span className="text-xs text-gray-500">Stock: {l.stock} than</span>
                               </button>
                             ))}
                             {filteredLots.length === 0 && !lotSearch && (
-                              <p className="px-3 py-2 text-xs text-gray-400">No lots with available stock</p>
+                              <p className="px-3 py-2 text-xs text-gray-500">No lots with available stock</p>
                             )}
                             {filteredLots.length === 0 && lotSearch && (
                               <button
                                 type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 text-amber-700 border-t border-gray-100 flex items-center gap-1"
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-amber-900/30 text-amber-400 border-t border-gray-700 flex items-center gap-1"
                                 onClick={e => {
                                   e.stopPropagation()
                                   updateMarka(i, 'lotNo', lotSearch.trim())
@@ -1166,21 +1777,21 @@ export default function DyeingForm() {
                       <button
                         type="button"
                         onClick={() => removeMarkaEntry(i)}
-                        className="text-red-400 hover:text-red-600 text-xl leading-none shrink-0 w-6 text-center"
+                        className="text-red-400 hover:text-red-300 text-xl leading-none shrink-0 w-6 text-center"
                       >&times;</button>
                     )}
                   </div>
 
                   {/* Row 2: Stock info line */}
-                  {m.stockStatus === 'loading' && <p className="text-xs text-gray-400 pl-7 mb-2">Checking stock...</p>}
-                  {m.stockStatus === 'not_found' && <p className="text-xs text-red-500 pl-7 mb-2">Lot not found in Grey register</p>}
+                  {m.stockStatus === 'loading' && <p className="text-xs text-gray-500 pl-7 mb-2">Checking stock...</p>}
+                  {m.stockStatus === 'not_found' && <p className="text-xs text-red-400 pl-7 mb-2">Lot not found in Grey register</p>}
                   {m.stockStatus === 'no_stock' && m.stockInfo && (
-                    <p className="text-xs text-amber-600 pl-7 mb-2">
+                    <p className="text-xs text-amber-400 pl-7 mb-2">
                       Grey: {m.stockInfo.greyThan} | Despatched: {m.stockInfo.despatchThan} | Balance: <strong>{m.stockInfo.stock}</strong>
                     </p>
                   )}
                   {m.stockStatus === 'ok' && m.stockInfo && (
-                    <p className="text-xs text-green-600 pl-7 mb-2">
+                    <p className="text-xs text-green-400 pl-7 mb-2">
                       Grey: {m.stockInfo.greyThan} | Despatched: {m.stockInfo.despatchThan} | Balance: <strong>{m.stockInfo.stock}</strong>
                     </p>
                   )}
@@ -1190,7 +1801,7 @@ export default function DyeingForm() {
                     <label className="block text-[10px] text-gray-400 mb-0.5">Than *</label>
                     <input
                       type="number"
-                      className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                      className="w-full border border-gray-600 bg-gray-800 text-gray-100 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                       value={m.than}
                       onChange={e => updateMarka(i, 'than', e.target.value)}
                       required
@@ -1205,19 +1816,60 @@ export default function DyeingForm() {
         </div>
 
         {/* ── Section 3: Chemicals ── */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+        <div className="bg-gray-800 rounded-xl shadow-sm border border-gray-700 p-5 mb-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-700">
+            <h2 className="text-sm font-semibold text-white">
               Step 3 — Chemicals Used
               {chemicals.length > 0 && <span className="ml-2 text-xs font-normal text-gray-400">{chemicals.length} items</span>}
             </h2>
-            <button type="button" onClick={addChemicalRow} className="text-xs text-purple-600 hover:text-purple-800 font-medium">
-              + Add Chemical
-            </button>
+            <div className="flex items-center gap-2">
+              {chemicals.some(c => c.chemicalId) && (
+                <button type="button" onClick={openSaveShade}
+                  className="text-xs text-emerald-400 hover:text-emerald-300 font-medium bg-emerald-900/30 border border-emerald-700 rounded-lg px-2.5 py-1 hover:bg-emerald-900/50 transition">
+                  💾 Save to Shade
+                </button>
+              )}
+              <button type="button" onClick={addChemicalRow} className="text-xs text-purple-400 hover:text-purple-300 font-medium">
+                + Add Chemical
+              </button>
+            </div>
           </div>
 
+          {/* Process Presets */}
+          {processes.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-medium text-gray-400">Process Presets:</span>
+                {processes.slice(0, showPresets ? processes.length : 4).map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      if (chemicals.length > 0 && !confirm(`Replace ${chemicals.length} chemical(s) with "${p.name}" preset?`)) return
+                      applyPreset(p)
+                    }}
+                    title={p.description || `${p.items.length} chemicals`}
+                    className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-900/40 text-indigo-300 border border-indigo-700 hover:bg-indigo-900/60 transition shrink-0"
+                  >
+                    {p.name}
+                    <span className="ml-1 text-indigo-400">({p.items.length})</span>
+                  </button>
+                ))}
+                {processes.length > 4 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPresets(v => !v)}
+                    className="text-xs text-gray-500 hover:text-gray-300 shrink-0"
+                  >
+                    {showPresets ? 'less' : `+${processes.length - 4} more`}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {chemicals.length === 0 ? (
-            <p className="text-xs text-gray-400 text-center py-4">
+            <p className="text-xs text-gray-500 text-center py-4">
               No chemicals added yet. Upload a slip image and click &quot;Extract with AI&quot;, or click &quot;+ Add Row&quot; to enter manually.
             </p>
           ) : (
@@ -1354,7 +2006,7 @@ export default function DyeingForm() {
         <div className="flex gap-3 justify-end">
           <button
             type="button" onClick={() => router.back()}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+            className="px-4 py-2 border border-gray-600 rounded-lg text-sm text-gray-300 hover:bg-gray-700"
           >
             Cancel
           </button>
@@ -1389,12 +2041,12 @@ export default function DyeingForm() {
   )
 }
 
-const inp = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400'
+const inp = 'w-full bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500'
 
 function Field({ label, children, span = 1 }: { label: string; children: React.ReactNode; span?: number }) {
   return (
     <div className={span === 2 ? 'sm:col-span-2' : ''}>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
+      <label className="block text-xs font-medium text-white mb-1">{label}</label>
       {children}
     </div>
   )

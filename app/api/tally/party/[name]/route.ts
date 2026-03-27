@@ -28,7 +28,7 @@ export async function GET(
     state: string | null
   }[] = []
   try {
-    ledgerInfo = await viPrisma.tallyLedger.findMany({
+    ledgerInfo = await (viPrisma as any).tallyLedger.findMany({
       where: { name: { equals: partyName, mode: 'insensitive' } },
       select: {
         id: true,

@@ -54,7 +54,9 @@ export async function GET(req: NextRequest) {
       if (t.type === 'payable') totalPayable = t._sum.closingBalance || 0
     }
 
-    return NextResponse.json({ bills, total, totalReceivable, totalPayable })
+    const resp = NextResponse.json({ bills, total, totalReceivable, totalPayable })
+    resp.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=300')
+    return resp
   } catch {
     return NextResponse.json({ bills: [], total: 0, totalReceivable: 0, totalPayable: 0 })
   }

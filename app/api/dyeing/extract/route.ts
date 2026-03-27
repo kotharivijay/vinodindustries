@@ -139,21 +139,25 @@ function formatLot(raw: string): string {
   return val
 }
 
-async function extractWithOpenAI(imageBase64: string, mediaType: string, voiceNote: string | null) {
+async function extractWithOpenAI(imageBase64: string, mediaType: string, voiceNote: string | null, tags?: Record<string, string>) {
   const { default: OpenAI } = await import('openai')
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+  let userText = voiceNote
+    ? `Extract all data from this dyeing slip.\n\nUser voice note for context: "${voiceNote}"`
+    : 'Extract all data from this dyeing slip.'
+
+  if (tags && Object.keys(tags).length > 0) {
+    const hints = Object.entries(tags).map(([k, v]) => `"${k}" = "${v}"`).join(', ')
+    userText += `\n\nChemical name shortcuts (expand these in chemical names): ${hints}`
+  }
 
   const userContent: any[] = [
     {
       type: 'image_url',
       image_url: { url: `data:${mediaType};base64,${imageBase64}`, detail: 'high' },
     },
-    {
-      type: 'text',
-      text: voiceNote
-        ? `Extract all data from this dyeing slip.\n\nUser voice note for context: "${voiceNote}"`
-        : 'Extract all data from this dyeing slip.',
-    },
+    { type: 'text', text: userText },
   ]
 
   const response = await client.chat.completions.create({
@@ -169,12 +173,17 @@ async function extractWithOpenAI(imageBase64: string, mediaType: string, voiceNo
   return response.choices[0]?.message?.content ?? ''
 }
 
-async function extractWithClaude(imageBase64: string, mediaType: string, voiceNote: string | null) {
+async function extractWithClaude(imageBase64: string, mediaType: string, voiceNote: string | null, tags?: Record<string, string>) {
   const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-  const prompt = voiceNote
-    ? `Extract all data from this dyeing slip.\n\nUser voice note for context: "${voiceNote}"\n\n${SYSTEM_PROMPT}`
+  let contextNote = voiceNote ? `User voice note for context: "${voiceNote}"\n\n` : ''
+  if (tags && Object.keys(tags).length > 0) {
+    const hints = Object.entries(tags).map(([k, v]) => `"${k}" = "${v}"`).join(', ')
+    contextNote += `Chemical name shortcuts (expand in chemical names): ${hints}\n\n`
+  }
+  const prompt = contextNote
+    ? `${contextNote}${SYSTEM_PROMPT}`
     : SYSTEM_PROMPT
 
   const response = await client.messages.create({
@@ -206,7 +215,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { imageBase64, mediaType, voiceNote } = await req.json()
+  const { imageBase64, mediaType, voiceNote, tags } = await req.json()
   if (!imageBase64) return NextResponse.json({ error: 'Image required' }, { status: 400 })
 
   const type = mediaType || 'image/jpeg'
@@ -224,8 +233,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const text = useOpenAI
-      ? await extractWithOpenAI(imageBase64, type, voiceNote)
-      : await extractWithClaude(imageBase64, type, voiceNote)
+      ? await extractWithOpenAI(imageBase64, type, voiceNote, tags)
+      : await extractWithClaude(imageBase64, type, voiceNote, tags)
 
     const extracted = parseJSON(text)
 
