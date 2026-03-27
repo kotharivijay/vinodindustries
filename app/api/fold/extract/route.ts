@@ -42,10 +42,13 @@ Return ONLY valid JSON in this exact format (no markdown, no explanation):
 }
 
 Rules:
+- CRITICAL: Each Sn/serial number row MUST be its own separate batch entry — even if two rows have the same shade name, they are DIFFERENT batches with different batch numbers
+- Do NOT merge or group rows with the same shade into one batch — every row in the sheet = one batch object
 - Lot numbers are in format PREFIX-NUMBER (e.g. PS-1325, AJ-325, KT-42)
 - Than values are integers (quantity of fabric pieces)
 - Skip lots with 0 or empty than
 - Shade names should be exact as written
+- If a shade cell appears merged/blank for a row, use the same shade name as the row above it
 - If you can't read a value clearly, make your best guess
 - Return empty batches array if no data found`
         },

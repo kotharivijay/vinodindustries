@@ -89,19 +89,25 @@ function parseImportSheet(file: File): Promise<ParsedBatch[]> {
 
         if (lotCols.length === 0) { reject(new Error('No lot columns found after the Shade Name column')); return }
 
-        // Parse data rows
+        // Parse data rows — each Sn row = its own batch
         const batches: ParsedBatch[] = []
+        let lastShade = ''
         for (let i = hIdx + 1; i < rows.length; i++) {
           const row = rows[i]
           const snVal = row[snIdx]
           if (snVal === '' || snVal === null || isNaN(Number(snVal))) break
 
-          const shade = String(row[shadeIdx] ?? '').trim()
+          // Carry forward shade if cell is blank (merged cells in Excel)
+          const shadeRaw = String(row[shadeIdx] ?? '').trim()
+          if (shadeRaw) lastShade = shadeRaw
+          const shade = lastShade
+
           const lots = lotCols
             .map(col => ({ lotNo: String(col.lotNo).trim(), than: Number(row[col.idx]) || 0 }))
             .filter(l => l.than > 0)
 
-          if (lots.length > 0) batches.push({ batchNo: Number(snVal), shade, lots })
+          // Always push a batch per Sn row (even if no lots — applyImport handles empty)
+          batches.push({ batchNo: Number(snVal), shade, lots })
         }
 
         if (batches.length === 0) reject(new Error('No batch data found — check sheet format'))
