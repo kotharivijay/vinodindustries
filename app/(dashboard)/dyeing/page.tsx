@@ -325,6 +325,9 @@ export default function DyeingListPage() {
                               )}
                             </div>
                           )}
+                          {e.shadeName && (
+                            <span className="inline-block bg-purple-900/40 text-purple-300 text-xs font-semibold px-2 py-0.5 rounded-full mt-1">{e.shadeName}</span>
+                          )}
                           {e.partyName && <p className="text-[10px] text-gray-400 mt-1">{e.partyName}</p>}
                           {e.notes && <p className="text-[10px] text-gray-500 mt-0.5 truncate">{e.notes}</p>}
                         </div>
@@ -356,6 +359,7 @@ export default function DyeingListPage() {
                               onChange={e => { e.stopPropagation(); setFilterLotNo(e.target.value); setDebouncedFilterLot(e.target.value) }}
                               onClick={e => e.stopPropagation()} />
                           </th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">Shade</th>
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-purple-400"
                             onClick={() => toggleSort('party')}>
                             <span className="flex items-center gap-1">
@@ -388,6 +392,11 @@ export default function DyeingListPage() {
                                   </Link>
                                 ))}
                               </div>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {e.shadeName
+                                ? <span className="inline-block bg-purple-900/40 text-purple-300 text-xs font-semibold px-2 py-0.5 rounded-full">{e.shadeName}</span>
+                                : <span className="text-gray-600">—</span>}
                             </td>
                             <td className="px-3 py-2.5 text-sm text-gray-400">{e.partyName ?? '—'}</td>
                             <td className="px-3 py-2.5 text-right font-semibold text-gray-200">{dTotalThan}</td>

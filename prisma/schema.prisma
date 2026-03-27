@@ -80,6 +80,7 @@ model DyeingEntry {
   slipNo      Int
   lotNo       String
   than        Int
+  shadeName   String?
   notes       String?
   foldBatchId Int?
   foldBatch   FoldBatch?           @relation(fields: [foldBatchId], references: [id])

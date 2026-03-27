@@ -82,6 +82,7 @@ export async function POST(req: NextRequest) {
       slipNo: parseInt(data.slipNo),
       lotNo: lots[0].lotNo,
       than: lots[0].than,
+      shadeName: data.shadeName?.trim() || null,
       notes: data.notes || null,
       chemicals: chemData.length ? { create: chemData } : undefined,
       lots: { create: lots },
