@@ -42,6 +42,16 @@ export default function DyeingEditForm({ id }: { id: string }) {
 
   const totalCost = useMemo(() => chemicals.reduce((sum, c) => sum + (c.cost ?? 0), 0), [chemicals])
 
+  // Save to Shade Master
+  const [showSaveShade, setShowSaveShade] = useState(false)
+  const [shadeNameInput, setShadeNameInput] = useState('')
+  const [shadeDescInput, setShadeDescInput] = useState('')
+  const [lotWeights, setLotWeights] = useState<{ lotNo: string; weightPerThan: number }[]>([])
+  const [loadingWeights, setLoadingWeights] = useState(false)
+  const [savingShade, setSavingShade] = useState(false)
+  const [shadeError, setShadeError] = useState('')
+  const [shadeSaved, setShadeSaved] = useState(false)
+
   // Load chemical master
   useEffect(() => {
     fetch('/api/chemicals').then(r => r.json()).then(d => setMasterChemicals(Array.isArray(d) ? d : [])).catch(() => {})
@@ -182,6 +192,48 @@ export default function DyeingEditForm({ id }: { id: string }) {
     else { setStockStatus('ok'); setStockInfo(data) }
   }
 
+  // ─── Save to Shade Master ─────────────────────────────────────────────────
+
+  async function openSaveShade() {
+    setShowSaveShade(true); setShadeSaved(false); setShadeError('')
+    setShadeNameInput(''); setShadeDescInput(''); setLotWeights([])
+    setLoadingWeights(true)
+    const validLots = lots.filter(l => l.lotNo.trim())
+    if (!validLots.length) { setLoadingWeights(false); return }
+    const res = await fetch(`/api/grey/lot-weight?lots=${encodeURIComponent(validLots.map(l => l.lotNo.trim()).join(','))}`)
+    const data = await res.json()
+    setLotWeights(Array.isArray(data.lots) ? data.lots : [])
+    setLoadingWeights(false)
+  }
+
+  const batchWeight = lots.reduce((sum, l) => {
+    const lw = lotWeights.find(w => w.lotNo === l.lotNo.trim())
+    return sum + (lw?.weightPerThan ?? 0) * (parseFloat(l.than) || 0)
+  }, 0)
+
+  const normalizedChemicals = chemicals
+    .filter(c => c.chemicalId && parseFloat(c.quantity) > 0)
+    .map(c => ({ ...c, normQty: batchWeight > 0 ? Math.round((parseFloat(c.quantity) / batchWeight) * 100 * 1000) / 1000 : 0 }))
+
+  async function saveToShade() {
+    if (!shadeNameInput.trim()) { setShadeError('Shade name is required'); return }
+    if (batchWeight <= 0) { setShadeError('Cannot compute batch weight — check lot data in Grey register'); return }
+    if (!normalizedChemicals.length) { setShadeError('No matched chemicals to save'); return }
+    setSavingShade(true); setShadeError('')
+    const res = await fetch('/api/shades', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: shadeNameInput.trim(),
+        description: shadeDescInput.trim() || null,
+        recipeItems: normalizedChemicals.map(c => ({ chemicalId: c.chemicalId!, quantity: c.normQty })),
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setShadeError(data.error ?? 'Failed to save'); setSavingShade(false); return }
+    setSavingShade(false); setShadeSaved(true)
+  }
+
   // ─── Submit ────────────────────────────────────────────────────────────────
 
   async function handleSubmit(e: React.FormEvent) {
@@ -226,6 +278,115 @@ export default function DyeingEditForm({ id }: { id: string }) {
 
   return (
     <div className="p-4 md:p-8 max-w-xl">
+
+      {/* ── Save to Shade Master Modal ── */}
+      {showSaveShade && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+              <div>
+                <h2 className="text-base font-bold text-gray-800">Save to Shade Master</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Normalises chemical quantities to per 100 kg</p>
+              </div>
+              <button onClick={() => setShowSaveShade(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {shadeError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{shadeError}</p>}
+              {shadeSaved && (
+                <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 font-medium">
+                  ✓ Shade &quot;{shadeNameInput}&quot; saved to Shade Master!
+                </div>
+              )}
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Shade Name *</label>
+                  <input type="text" value={shadeNameInput} onChange={e => setShadeNameInput(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    placeholder="e.g. APC1, Navy Blue 12..." />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Description (optional)</label>
+                  <input type="text" value={shadeDescInput} onChange={e => setShadeDescInput(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    placeholder="e.g. 4% shade, reactive dye..." />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                <p className="text-xs font-semibold text-gray-600 mb-2">Batch Weight Calculation</p>
+                {loadingWeights ? (
+                  <p className="text-xs text-gray-400 animate-pulse">Loading lot data...</p>
+                ) : (
+                  <>
+                    <div className="space-y-1 mb-2">
+                      {lots.filter(l => l.lotNo.trim()).map((l, i) => {
+                        const lw = lotWeights.find(w => w.lotNo === l.lotNo.trim())
+                        const than = parseFloat(l.than) || 0
+                        const weight = (lw?.weightPerThan ?? 0) * than
+                        return (
+                          <div key={i} className="flex items-center justify-between text-xs">
+                            <span className="font-medium text-gray-700">{l.lotNo}</span>
+                            <span className="text-gray-500">{than} than × {lw?.weightPerThan ?? '?'} kg/than</span>
+                            <span className={`font-semibold ${weight > 0 ? 'text-gray-800' : 'text-red-500'}`}>
+                              {weight > 0 ? `${weight.toFixed(1)} kg` : 'No data'}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div className="flex items-center justify-between border-t border-gray-200 pt-2">
+                      <span className="text-xs font-semibold text-gray-600">Total Batch Weight</span>
+                      <span className={`text-sm font-bold ${batchWeight > 0 ? 'text-emerald-700' : 'text-red-500'}`}>
+                        {batchWeight > 0 ? `${batchWeight.toFixed(2)} kg` : 'Cannot compute'}
+                      </span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {batchWeight > 0 && normalizedChemicals.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Normalized Recipe (per 100 kg fabric)</p>
+                  <div className="border border-gray-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-semibold text-gray-600">Chemical</th>
+                          <th className="text-right px-3 py-2 font-semibold text-gray-600">Slip Qty</th>
+                          <th className="text-right px-3 py-2 font-semibold text-emerald-700">Per 100 kg</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {normalizedChemicals.map((c, i) => (
+                          <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="px-3 py-2 font-medium text-gray-800">{c.name}</td>
+                            <td className="px-3 py-2 text-right text-gray-500">{c.quantity} {c.unit}</td>
+                            <td className="px-3 py-2 text-right font-semibold text-emerald-700">{c.normQty} {c.unit}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end px-5 py-4 border-t border-gray-100 shrink-0">
+              <button type="button" onClick={() => setShowSaveShade(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+                {shadeSaved ? 'Close' : 'Cancel'}
+              </button>
+              {!shadeSaved && (
+                <button type="button" onClick={saveToShade} disabled={savingShade || batchWeight <= 0 || loadingWeights}
+                  className="px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60">
+                  {savingShade ? 'Saving...' : '💾 Save to Shade Master'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center gap-4 mb-6">
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">&larr; Back</button>
         <h1 className="text-xl font-bold text-gray-800">Edit Dyeing Slip</h1>
@@ -393,9 +554,17 @@ export default function DyeingEditForm({ id }: { id: string }) {
               Chemicals Used
               {chemicals.length > 0 && <span className="ml-2 text-xs font-normal text-gray-400">{chemicals.length} items</span>}
             </h2>
-            <button type="button" onClick={addChemicalRow} className="text-xs text-purple-600 hover:text-purple-800 font-medium">
-              + Add Chemical
-            </button>
+            <div className="flex items-center gap-2">
+              {chemicals.some(c => c.chemicalId) && (
+                <button type="button" onClick={openSaveShade}
+                  className="text-xs text-emerald-700 hover:text-emerald-900 font-medium bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 hover:bg-emerald-100 transition">
+                  💾 Save to Shade
+                </button>
+              )}
+              <button type="button" onClick={addChemicalRow} className="text-xs text-purple-600 hover:text-purple-800 font-medium">
+                + Add Chemical
+              </button>
+            </div>
           </div>
 
           {chemicals.length === 0 ? (
