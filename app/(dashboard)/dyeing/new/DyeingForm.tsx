@@ -1693,10 +1693,18 @@ export default function DyeingForm() {
 
             <Field label="Shade Name">
               <input type="text" className={inp} value={shadeName} onChange={e => setShadeName(e.target.value)}
-                placeholder="e.g. RED-12, NAVY-05..." list="shade-master-list" />
-              <datalist id="shade-master-list">
-                {masterShadeNames.map(n => <option key={n} value={n} />)}
-              </datalist>
+                placeholder="Type or pick from master below..." />
+              {masterShadeNames.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {masterShadeNames.map(n => (
+                    <button key={n} type="button"
+                      onClick={() => setShadeName(n)}
+                      className={`text-[11px] px-2 py-0.5 rounded-full border transition ${shadeName === n ? 'bg-purple-600 border-purple-500 text-white font-semibold' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'}`}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              )}
             </Field>
 
             <Field label="Notes">

@@ -326,10 +326,13 @@ export default function DyeingListPage() {
                               )}
                             </div>
                           )}
-                          {e.shadeName && (
-                            <span className="inline-block bg-purple-900/40 text-purple-300 text-xs font-semibold px-2 py-0.5 rounded-full mt-1">{e.shadeName}</span>
-                          )}
                           {e.partyName && <p className="text-[10px] text-gray-400 mt-1">{e.partyName}</p>}
+                          {e.shadeName && (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="text-[10px] text-gray-500 uppercase tracking-wide">Shade</span>
+                              <span className="inline-block bg-purple-700/50 text-purple-200 text-xs font-bold px-2.5 py-0.5 rounded-full border border-purple-600/40">{e.shadeName}</span>
+                            </div>
+                          )}
                           {e.notes && <p className="text-[10px] text-gray-500 mt-0.5 truncate">{e.notes}</p>}
                         </div>
                       )
