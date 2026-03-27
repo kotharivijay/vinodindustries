@@ -25,6 +25,7 @@ interface DyeingEntry {
   than: number
   notes: string | null
   chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
+  shadeName?: string | null
   lots?: { id: number; lotNo: string; than: number }[]
   partyName?: string | null
 }
