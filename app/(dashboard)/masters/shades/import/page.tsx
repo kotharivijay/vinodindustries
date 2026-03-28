@@ -64,16 +64,24 @@ const STATUS_LABELS: Record<string, string> = {
 
 function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      // result is data:<mediaType>;base64,<data>
-      const [prefix, data] = result.split(',')
-      const mediaType = prefix.split(':')[1].split(';')[0]
-      resolve({ base64: data, mediaType })
+    const img = new window.Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      // Resize to max 1600px wide to keep base64 small
+      const MAX = 1600
+      let w = img.width, h = img.height
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX }
+      if (h > MAX) { w = Math.round(w * MAX / h); h = MAX }
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+      const [, data] = dataUrl.split(',')
+      resolve({ base64: data, mediaType: 'image/jpeg' })
     }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
+    img.onerror = reject
+    img.src = url
   })
 }
 
