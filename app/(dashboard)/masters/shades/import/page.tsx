@@ -583,7 +583,8 @@ export default function ShadeImportPage() {
     setUploading(true)
     setUploadError('')
     try {
-      const XLSX = (await import('xlsx')).default
+      const xlsxModule = await import('xlsx')
+      const XLSX = xlsxModule.default || xlsxModule
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array' })
 
