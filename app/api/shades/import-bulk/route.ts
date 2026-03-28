@@ -74,23 +74,20 @@ export async function POST(req: NextRequest) {
     // Learn OCR aliases: if ocrName differs from the actual chemical name, upsert alias
     for (const c of cleanItems) {
       if (c.ocrName && c.ocrName.trim()) {
-        const chemical = await db.chemical.findUnique({
-          where: { id: c.chemicalId },
-          select: { name: true },
-        })
-        if (chemical && c.ocrName.trim().toLowerCase() !== chemical.name.toLowerCase()) {
-          await db.chemicalAlias.upsert({
-            where: {
-              alias: c.ocrName.trim(),
-            },
-            update: {
-              chemicalId: c.chemicalId,
-            },
-            create: {
-              alias: c.ocrName.trim(),
-              chemicalId: c.chemicalId,
-            },
+        try {
+          const chemical = await db.chemical.findUnique({
+            where: { id: c.chemicalId },
+            select: { name: true },
           })
+          if (chemical && c.ocrName.trim().toLowerCase() !== chemical.name.toLowerCase()) {
+            await db.chemicalAlias.upsert({
+              where: { ocrName: c.ocrName.trim().toLowerCase() },
+              update: { chemicalId: c.chemicalId, hitCount: { increment: 1 } },
+              create: { ocrName: c.ocrName.trim().toLowerCase(), chemicalId: c.chemicalId },
+            })
+          }
+        } catch (_) {
+          // Alias learning is best-effort — don't fail the save
         }
       }
     }

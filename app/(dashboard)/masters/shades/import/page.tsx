@@ -591,21 +591,26 @@ export default function ShadeImportPage() {
 
       for (const sheetName of wb.SheetNames) {
         const ws = wb.Sheets[sheetName]
+        if (!ws) continue
         const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
-        if (rows.length === 0) continue
+        if (!rows || rows.length === 0) continue
 
         // Detect column names (flexible headers)
-        const cols = Object.keys(rows[0])
-        const shadeCol = cols.find(c => /shade.*no|shade.*num|shade.*code|shade/i.test(c))
-        const descCol = cols.find(c => /desc|color.*name|colour|name/i.test(c))
+        const cols = Object.keys(rows[0] || {})
+        if (cols.length === 0) continue
 
-        if (!shadeCol) continue // skip sheets without shade column
+        const shadeCol = cols.find(c => /shade|s\.?\s*no/i.test(c))
+        const descCol = cols.find(c => /desc|colour|color\s*name/i.test(c))
+
+        // If no shade column, treat first column as shade no
+        const useShadeCol = shadeCol || cols[0]
 
         // Remaining columns are chemicals with % values
-        const chemCols = cols.filter(c => c !== shadeCol && c !== descCol && c !== '__rowNum__')
+        const chemCols = cols.filter(c => c !== useShadeCol && c !== descCol)
 
         for (const row of rows) {
-          const shadeNo = String(row[shadeCol] ?? '').trim()
+          if (!row) continue
+          const shadeNo = String(row[useShadeCol] ?? '').trim()
           if (!shadeNo) continue
 
           const description = descCol ? String(row[descCol] ?? '').trim() : ''
@@ -618,12 +623,14 @@ export default function ShadeImportPage() {
             }
           }
 
-          recipes.push({ shadeNo, description, chemicals })
+          if (chemicals.length > 0) {
+            recipes.push({ shadeNo, description, chemicals })
+          }
         }
       }
 
       if (recipes.length === 0) {
-        setUploadError('No shade recipes found in Excel. Ensure columns: Shade No, Description, Chemical names with % values')
+        setUploadError('No shade recipes found. Excel format: first column = Shade No, other columns = chemical names with % values as data')
         return
       }
 
@@ -631,33 +638,38 @@ export default function ShadeImportPage() {
       const matched = recipes.map(r => ({
         ...r,
         chemicals: r.chemicals.map(c => {
+          if (!colorChemicals || colorChemicals.length === 0) return c
           const lower = c.name.toLowerCase()
           const exact = colorChemicals.find(ch => ch.name.toLowerCase() === lower)
           if (exact) return { ...c, matchedId: exact.id, matchedName: exact.name }
-          // Contains match
           const contains = colorChemicals.find(ch => ch.name.toLowerCase().includes(lower) || lower.includes(ch.name.toLowerCase()))
           if (contains) return { ...c, matchedId: contains.id, matchedName: contains.name }
           return c
         }),
       }))
 
-      // Create a fake queue item for review
+      // Create queue item for review (minimal base64 placeholder)
       const res = await fetch('/api/shades/import-queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           images: [{
-            base64: 'excel',  // placeholder
+            base64: 'ZXhjZWw=',  // "excel" in base64
             mediaType: 'application/xlsx',
-            pageLabel: file.name,
+            pageLabel: file.name || 'Excel Import',
           }],
         }),
       })
       if (!res.ok) {
-        setUploadError('Failed to create queue item')
+        const errData = await res.json().catch(() => ({ error: 'Failed to create queue item' }))
+        setUploadError(errData.error ?? 'Failed to create queue item')
         return
       }
       const data = await res.json()
+      if (!data.created || !data.created[0]) {
+        setUploadError('Failed to create queue item')
+        return
+      }
       const queueItem = data.created[0]
 
       // Immediately set recipes and status to reviewing
@@ -670,6 +682,8 @@ export default function ShadeImportPage() {
         const updated = await patchRes.json()
         await loadAll()
         setReviewItem(updated)
+      } else {
+        setUploadError('Failed to save parsed recipes')
       }
     } catch (e: any) {
       setUploadError(e.message ?? 'Failed to parse Excel file')
