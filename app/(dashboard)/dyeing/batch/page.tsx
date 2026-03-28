@@ -334,9 +334,9 @@ export default function BatchDyeingPage() {
     return (
       <div className="p-4 max-w-2xl mx-auto">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-1/2" />
-          <div className="h-40 bg-gray-200 rounded" />
-          <div className="h-40 bg-gray-200 rounded" />
+          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
+          <div className="h-40 bg-gray-200 dark:bg-gray-700 rounded" />
+          <div className="h-40 bg-gray-200 dark:bg-gray-700 rounded" />
         </div>
       </div>
     )
@@ -347,8 +347,8 @@ export default function BatchDyeingPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">Dyeing Slip (Batch)</h1>
-          <p className="text-xs text-gray-400 mt-0.5">Create dyeing slips from fold program batches</p>
+          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Dyeing Slip (Batch)</h1>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Create dyeing slips from fold program batches</p>
         </div>
         <Link
           href="/dyeing"
@@ -359,10 +359,10 @@ export default function BatchDyeingPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-4">
+      <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 mb-4">
         <button
           className={`flex-1 text-sm font-medium rounded-md py-2 transition ${
-            tab === 'new' ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700'
+            tab === 'new' ? 'bg-white dark:bg-gray-700 shadow text-purple-700' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
           onClick={() => setTab('new')}
         >
@@ -370,7 +370,7 @@ export default function BatchDyeingPage() {
         </button>
         <button
           className={`flex-1 text-sm font-medium rounded-md py-2 transition ${
-            tab === 'list' ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700'
+            tab === 'list' ? 'bg-white dark:bg-gray-700 shadow text-purple-700' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
           onClick={() => setTab('list')}
         >
@@ -383,35 +383,35 @@ export default function BatchDyeingPage() {
         <div className="space-y-4">
           {/* Alerts */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
               {error}
             </div>
           )}
           {success && (
-            <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3">
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 text-green-700 text-sm rounded-xl px-4 py-3">
               {success}
             </div>
           )}
 
           {/* Step 1: Select Batch */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
               Step 1 — Select Fold Batch
             </h2>
 
             {batches.length === 0 ? (
-              <p className="text-xs text-gray-400 text-center py-4">
+              <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
                 No fold batches found. Create a fold program first.
               </p>
             ) : (
               <div className="relative" ref={dropdownRef}>
                 <div
-                  className={`flex items-center gap-2 border rounded-lg px-3 py-2.5 bg-white cursor-pointer ${
-                    dropdownOpen ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300'
+                  className={`flex items-center gap-2 border rounded-lg px-3 py-2.5 bg-white dark:bg-gray-700 cursor-pointer ${
+                    dropdownOpen ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300 dark:border-gray-600'
                   }`}
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                 >
-                  <span className={`flex-1 text-sm ${selectedBatch ? 'font-medium text-gray-800' : 'text-gray-400'}`}>
+                  <span className={`flex-1 text-sm ${selectedBatch ? 'font-medium text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>
                     {selectedBatch
                       ? `Fold ${selectedBatch.foldNo} / Batch ${selectedBatch.batchNo} — ${selectedBatch.shadeName} (${selectedBatch.lots.map(l => l.lotNo).join(', ')}: ${selectedBatch.totalThan} than)`
                       : 'Select a batch...'}
@@ -421,15 +421,15 @@ export default function BatchDyeingPage() {
                       {selectedBatch.totalWeight.toFixed(1)} kg
                     </span>
                   )}
-                  <span className="text-gray-400 text-xs shrink-0">&#9660;</span>
+                  <span className="text-gray-400 dark:text-gray-500 text-xs shrink-0">&#9660;</span>
                 </div>
 
                 {dropdownOpen && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-20 max-h-72 flex flex-col">
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-20 max-h-72 flex flex-col">
                     <input
                       type="text"
                       autoFocus
-                      className="w-full border-b border-gray-200 px-3 py-2.5 text-sm focus:outline-none rounded-t-lg"
+                      className="w-full border-b border-gray-200 dark:border-gray-600 px-3 py-2.5 text-sm focus:outline-none rounded-t-lg dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400"
                       placeholder="Search by fold no, shade, lot..."
                       value={batchSearch}
                       onChange={e => setBatchSearch(e.target.value)}
@@ -440,13 +440,13 @@ export default function BatchDyeingPage() {
                         <button
                           key={b.batchId}
                           type="button"
-                          className={`w-full text-left px-3 py-2.5 text-sm hover:bg-purple-50 border-b border-gray-50 ${
-                            selectedBatchId === b.batchId ? 'bg-purple-50 font-medium' : ''
+                          className={`w-full text-left px-3 py-2.5 text-sm hover:bg-purple-50 dark:hover:bg-purple-900/20 border-b border-gray-50 dark:border-gray-700 ${
+                            selectedBatchId === b.batchId ? 'bg-purple-50 dark:bg-purple-900/20 font-medium' : ''
                           }`}
                           onClick={() => selectBatch(b.batchId)}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-medium text-gray-800">
+                            <span className="font-medium text-gray-800 dark:text-gray-100">
                               {b.foldNo} / Batch {b.batchNo}
                             </span>
                             <span className="text-xs text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
@@ -454,15 +454,15 @@ export default function BatchDyeingPage() {
                             </span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs text-gray-500">{b.shadeName}</span>
-                            <span className="text-xs text-gray-400">
+                            <span className="text-xs text-gray-500 dark:text-gray-400">{b.shadeName}</span>
+                            <span className="text-xs text-gray-400 dark:text-gray-500">
                               ({b.lots.map(l => `${l.lotNo}: ${l.than}T`).join(', ')})
                             </span>
                           </div>
                         </button>
                       ))}
                       {filteredBatches.length === 0 && (
-                        <p className="px-3 py-4 text-xs text-gray-400 text-center">No matching batches</p>
+                        <p className="px-3 py-4 text-xs text-gray-400 dark:text-gray-500 text-center">No matching batches</p>
                       )}
                     </div>
                   </div>
@@ -473,8 +473,8 @@ export default function BatchDyeingPage() {
 
           {/* Step 2: Auto-filled Details */}
           {selectedBatch && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-3">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
                 Step 2 — Batch Details
                 <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
                   {selectedBatch.shadeName}
@@ -484,14 +484,14 @@ export default function BatchDyeingPage() {
               {/* Lot Cards */}
               <div className="space-y-2 mb-4">
                 {selectedBatch.lots.map((lot, i) => (
-                  <div key={i} className="flex items-center justify-between border border-gray-200 rounded-xl p-3 bg-gray-50">
+                  <div key={i} className="flex items-center justify-between border border-gray-200 dark:border-gray-600 rounded-xl p-3 bg-gray-50 dark:bg-gray-900">
                     <div>
-                      <span className="text-sm font-semibold text-gray-800">{lot.lotNo}</span>
-                      <span className="ml-2 text-xs text-gray-400">{lot.than} than</span>
+                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{lot.lotNo}</span>
+                      <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{lot.than} than</span>
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-gray-500">{lot.weightPerThan.toFixed(2)} kg/than</p>
-                      <p className="text-sm font-semibold text-gray-700">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{lot.weightPerThan.toFixed(2)} kg/than</p>
+                      <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
                         {(lot.weightPerThan * lot.than).toFixed(1)} kg
                       </p>
                     </div>
@@ -500,8 +500,8 @@ export default function BatchDyeingPage() {
               </div>
 
               {/* Total weight card */}
-              <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
-                <span className="text-sm font-semibold text-gray-700">Total Batch Weight</span>
+              <div className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/20 border border-purple-200 rounded-xl px-4 py-3">
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Total Batch Weight</span>
                 <span className="text-lg font-bold text-purple-700">
                   {selectedBatch.totalWeight.toFixed(1)} kg
                 </span>
@@ -511,12 +511,12 @@ export default function BatchDyeingPage() {
 
           {/* Step 3: Chemicals */}
           {selectedBatch && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-gray-700">
+                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
                   Step 3 — Chemicals
                   {chemicals.length > 0 && (
-                    <span className="ml-2 text-xs font-normal text-gray-400">{chemicals.length} items</span>
+                    <span className="ml-2 text-xs font-normal text-gray-400 dark:text-gray-500">{chemicals.length} items</span>
                   )}
                 </h2>
                 <button
@@ -532,7 +532,7 @@ export default function BatchDyeingPage() {
               {processes.length > 0 && (
                 <div className="mb-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-medium text-gray-500 shrink-0">Process Presets:</span>
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Process Presets:</span>
                     {processes.slice(0, showPresets ? processes.length : 4).map(p => (
                       <button
                         key={p.id}
@@ -552,7 +552,7 @@ export default function BatchDyeingPage() {
                       <button
                         type="button"
                         onClick={() => setShowPresets(v => !v)}
-                        className="text-xs text-gray-400 hover:text-gray-600 shrink-0"
+                        className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 shrink-0"
                       >
                         {showPresets ? 'less' : `+${processes.length - 4} more`}
                       </button>
@@ -562,24 +562,24 @@ export default function BatchDyeingPage() {
               )}
 
               {chemicals.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-4">
+                <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
                   No recipe found for this shade. Click &quot;+ Add Chemical&quot; to add manually.
                 </p>
               ) : (
                 <div className="space-y-3">
                   {chemicals.map((c, i) => (
-                    <div key={i} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                    <div key={i} className="border border-gray-200 dark:border-gray-600 rounded-xl p-3 bg-gray-50 dark:bg-gray-900">
                       {/* Chemical name row */}
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs text-gray-400 w-5 shrink-0">#{i + 1}</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500 w-5 shrink-0">#{i + 1}</span>
                         <div className="flex-1 relative">
                           <div
-                            className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white cursor-pointer ${
-                              chemDropIdx === i ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300'
+                            className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white dark:bg-gray-700 cursor-pointer ${
+                              chemDropIdx === i ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300 dark:border-gray-600'
                             }`}
                             onClick={() => { setChemDropIdx(chemDropIdx === i ? null : i); setChemSearch('') }}
                           >
-                            <span className={`flex-1 text-sm ${c.name ? 'font-medium text-gray-800' : 'text-gray-400'}`}>
+                            <span className={`flex-1 text-sm ${c.name ? 'font-medium text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>
                               {c.name || 'Select chemical...'}
                             </span>
                             {c.chemicalId && (
@@ -587,16 +587,16 @@ export default function BatchDyeingPage() {
                                 &#10003;
                               </span>
                             )}
-                            <span className="text-gray-400 text-xs shrink-0">&#9660;</span>
+                            <span className="text-gray-400 dark:text-gray-500 text-xs shrink-0">&#9660;</span>
                           </div>
 
                           {/* Chemical dropdown */}
                           {chemDropIdx === i && (
-                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
                               <input
                                 type="text"
                                 autoFocus
-                                className="w-full border-b border-gray-200 px-3 py-2 text-sm focus:outline-none rounded-t-lg"
+                                className="w-full border-b border-gray-200 dark:border-gray-600 px-3 py-2 text-sm focus:outline-none rounded-t-lg dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400"
                                 placeholder="Search chemical..."
                                 value={chemSearch}
                                 onChange={e => setChemSearch(e.target.value)}
@@ -609,14 +609,14 @@ export default function BatchDyeingPage() {
                                     <button
                                       key={m.id}
                                       type="button"
-                                      className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-50 flex items-center justify-between ${
-                                        c.chemicalId === m.id ? 'bg-purple-50 font-medium' : ''
+                                      className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-purple-900/20 dark:text-gray-200 flex items-center justify-between ${
+                                        c.chemicalId === m.id ? 'bg-purple-50 dark:bg-purple-900/20 font-medium' : ''
                                       }`}
                                       onClick={e => { e.stopPropagation(); selectMasterChemical(i, m) }}
                                     >
                                       <span>{m.name}</span>
                                       {m.currentPrice != null && (
-                                        <span className="text-xs text-gray-400">
+                                        <span className="text-xs text-gray-400 dark:text-gray-500">
                                           &#8377;{m.currentPrice}/{m.unit}
                                         </span>
                                       )}
@@ -625,7 +625,7 @@ export default function BatchDyeingPage() {
                                 {chemSearch.trim() && !masterChemicals.some(m => m.name.toLowerCase() === chemSearch.toLowerCase()) && (
                                   <button
                                     type="button"
-                                    className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 text-amber-700 border-t border-gray-100 flex items-center gap-1"
+                                    className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 border-t border-gray-100 dark:border-gray-700 flex items-center gap-1"
                                     onClick={e => {
                                       e.stopPropagation()
                                       updateChemical(i, 'name', chemSearch.trim())
@@ -652,20 +652,20 @@ export default function BatchDyeingPage() {
                       {/* Qty / Unit / Rate / Cost */}
                       <div className="grid grid-cols-2 gap-2 pl-7">
                         <div>
-                          <label className="block text-[10px] text-gray-400 mb-0.5">Quantity</label>
+                          <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Quantity</label>
                           <input
                             type="number"
                             step="0.001"
-                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 dark:placeholder-gray-400"
                             value={c.quantity}
                             onChange={e => updateChemical(i, 'quantity', e.target.value)}
                             placeholder="0"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-gray-400 mb-0.5">Unit</label>
+                          <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Unit</label>
                           <select
-                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none bg-white"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                             value={c.unit}
                             onChange={e => updateChemical(i, 'unit', e.target.value)}
                           >
@@ -675,25 +675,25 @@ export default function BatchDyeingPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="block text-[10px] text-gray-400 mb-0.5">
+                          <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">
                             Rate (&#8377;/{c.unit})
                           </label>
                           <input
                             type="number"
                             step="0.01"
-                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 dark:placeholder-gray-400"
                             value={c.rate}
                             onChange={e => updateChemical(i, 'rate', e.target.value)}
                             placeholder="0.00"
                           />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-gray-400 mb-0.5">Cost (&#8377;)</label>
+                          <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Cost (&#8377;)</label>
                           <div
                             className={`w-full border rounded-lg px-3 py-1.5 text-sm font-semibold ${
                               c.cost != null
-                                ? 'border-purple-200 bg-purple-50 text-purple-700'
-                                : 'border-gray-200 bg-white text-gray-400'
+                                ? 'border-purple-200 bg-purple-50 dark:bg-purple-900/20 text-purple-700'
+                                : 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-400 dark:text-gray-500'
                             }`}
                           >
                             {c.cost != null ? `\u20B9${c.cost.toFixed(2)}` : '\u2014'}
@@ -706,16 +706,16 @@ export default function BatchDyeingPage() {
                   {/* Totals */}
                   {totalCost > 0 && (
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between bg-purple-50 border border-purple-200 rounded-xl px-4 py-3">
-                        <span className="text-sm font-semibold text-gray-700">Total Dyeing Cost</span>
+                      <div className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/20 border border-purple-200 rounded-xl px-4 py-3">
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Total Dyeing Cost</span>
                         <span className="text-lg font-bold text-purple-700">
                           &#8377;{totalCost.toFixed(2)}
                         </span>
                       </div>
                       {costPerThan > 0 && (
-                        <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-2">
-                          <span className="text-xs text-gray-500">Cost per Than</span>
-                          <span className="text-sm font-semibold text-gray-700">
+                        <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">Cost per Than</span>
+                          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
                             &#8377;{costPerThan.toFixed(2)} / than
                           </span>
                         </div>
@@ -729,25 +729,25 @@ export default function BatchDyeingPage() {
 
           {/* Step 4: Save */}
           {selectedBatch && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-              <h2 className="text-sm font-semibold text-gray-700 mb-3">Step 4 — Save</h2>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Step 4 — Save</h2>
 
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Slip No *</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Slip No *</label>
                   <input
                     type="number"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 dark:placeholder-gray-400"
                     value={slipNo}
                     onChange={e => setSlipNo(e.target.value)}
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Date *</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Date *</label>
                   <input
                     type="date"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
                     value={date}
                     onChange={e => setDate(e.target.value)}
                     required
@@ -756,9 +756,9 @@ export default function BatchDyeingPage() {
               </div>
 
               <div className="mb-4">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Notes</label>
                 <textarea
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600 dark:placeholder-gray-400"
                   rows={2}
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
@@ -776,7 +776,7 @@ export default function BatchDyeingPage() {
                     setError('')
                     setSuccess('')
                   }}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   Cancel
                 </button>
@@ -798,8 +798,8 @@ export default function BatchDyeingPage() {
       {tab === 'list' && (
         <div className="space-y-3">
           {savedEntries.length === 0 ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 text-center">
-              <p className="text-gray-400 text-sm">No batch dyeing slips saved yet.</p>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 text-center">
+              <p className="text-gray-400 dark:text-gray-500 text-sm">No batch dyeing slips saved yet.</p>
             </div>
           ) : (
             savedEntries.map(entry => {
@@ -810,11 +810,11 @@ export default function BatchDyeingPage() {
               const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo ?? '', than: entry.than }] as any[]
 
               return (
-                <div key={entry.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-gray-800">Slip #{entry.slipNo}</span>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Slip #{entry.slipNo}</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
                         {new Date(entry.date).toLocaleDateString('en-IN')}
                       </span>
                     </div>
@@ -825,7 +825,7 @@ export default function BatchDyeingPage() {
                     )}
                   </div>
 
-                  <div className="text-xs text-gray-500 mb-2">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                     Fold {foldNo} / Batch {batchNo}
                     {' \u2022 '}
                     {lots.map((l: any) => `${l.lotNo} (${l.than}T)`).join(', ')}
@@ -834,19 +834,19 @@ export default function BatchDyeingPage() {
                   {entry.chemicals.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
                       {entry.chemicals.slice(0, 4).map((ch, ci) => (
-                        <span key={ci} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                        <span key={ci} className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
                           {ch.name} {ch.quantity != null ? `${ch.quantity}${ch.unit}` : ''}
                         </span>
                       ))}
                       {entry.chemicals.length > 4 && (
-                        <span className="text-[10px] text-gray-400">+{entry.chemicals.length - 4} more</span>
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500">+{entry.chemicals.length - 4} more</span>
                       )}
                     </div>
                   )}
 
                   {entryTotalCost > 0 && (
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-400">Total Cost</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">Total Cost</span>
                       <span className="text-sm font-semibold text-purple-700">
                         &#8377;{entryTotalCost.toFixed(2)}
                       </span>
@@ -854,7 +854,7 @@ export default function BatchDyeingPage() {
                   )}
 
                   {entry.notes && (
-                    <p className="text-xs text-gray-400 mt-1 italic">{entry.notes}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">{entry.notes}</p>
                   )}
                 </div>
               )
