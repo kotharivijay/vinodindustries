@@ -7,7 +7,7 @@ const FIRM_TALLY: Record<string, string> = {
   VI: 'Vinod Industries - (from 1-Apr-25)',
   VCF: 'Vimal Cotton Fabrics',
   VF: 'Vijay Fabrics - (from 1-Apr-2019)',
-  KSI: 'Kothari Synthetic Industries',
+  KSI: 'Kothari Synthetic Industries -( from 2023)',
 }
 
 function buildBillXML(tallyCompany: string, report: string): string {
@@ -26,7 +26,6 @@ function buildBillXML(tallyCompany: string, report: string): string {
 
 function parseBills(text: string, type: string): any[] {
   const bills: any[] = []
-  // Split by BILLFIXED blocks
   const parts = text.split(/<BILLFIXED>/).slice(1)
 
   for (const part of parts) {
@@ -97,19 +96,20 @@ export async function GET(req: NextRequest) {
         // Fetch Receivable (Bills Receivable)
         send({ type: 'progress', firm: firmCode, stage: 'fetching', message: 'Fetching Bills Receivable...' })
 
+        const apiSecret = process.env.TALLY_API_SECRET || ''
         let receivables: any[] = []
         try {
           const res = await fetch(tunnelUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/xml' },
+            headers: { 'Content-Type': 'text/xml', 'X-Tally-Key': apiSecret },
             body: buildBillXML(tallyName, 'Bills Receivable'),
           })
-          if (!res.ok) throw new Error('HTTP ' + res.status)
+          if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
           const xml = await res.text()
           receivables = parseBills(xml, 'receivable')
           send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Receivable: ${receivables.length} bills. Fetching Payable...` })
-        } catch {
-          send({ type: 'progress', firm: firmCode, stage: 'error', message: 'Failed to fetch receivables' })
+        } catch (e: any) {
+          send({ type: 'progress', firm: firmCode, stage: 'error', message: `✗ Receivables: ${e.message}` })
           continue
         }
 
@@ -118,14 +118,14 @@ export async function GET(req: NextRequest) {
         try {
           const res = await fetch(tunnelUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/xml' },
+            headers: { 'Content-Type': 'text/xml', 'X-Tally-Key': apiSecret },
             body: buildBillXML(tallyName, 'Bills Payable'),
           })
-          if (!res.ok) throw new Error('HTTP ' + res.status)
+          if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
           const xml = await res.text()
           payables = parseBills(xml, 'payable')
-        } catch {
-          send({ type: 'progress', firm: firmCode, stage: 'error', message: 'Failed to fetch payables' })
+        } catch (e: any) {
+          send({ type: 'progress', firm: firmCode, stage: 'error', message: `✗ Payables: ${e.message}` })
           continue
         }
 

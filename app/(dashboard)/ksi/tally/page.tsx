@@ -6,6 +6,8 @@ import useSWR from 'swr'
 
 const fetcher = (url: string) => fetch(url).then(r => { if (!r.ok) throw new Error('Failed'); return r.json() })
 
+interface TallyCompany { name: string; startDate?: string | null; books?: string | null }
+
 function formatINR(n: number) {
   const abs = Math.abs(n)
   const str = abs.toLocaleString('en-IN', {
@@ -78,6 +80,13 @@ export default function KSITallyDashboard() {
   const [syncLog, setSyncLog] = useState<string[]>([])
   const [showSyncLog, setShowSyncLog] = useState(false)
   const [showCashBreakdown, setShowCashBreakdown] = useState(false)
+  const [showCompanies, setShowCompanies] = useState(false)
+  const { data: companiesData, isLoading: companiesLoading, error: companiesError, mutate: refetchCompanies } =
+    useSWR<{ companies: TallyCompany[]; error?: string }>(
+      showCompanies ? '/api/tally/companies' : null,
+      fetcher,
+      { revalidateOnFocus: false, dedupingInterval: 30_000 }
+    )
 
   async function handleSync(type: 'ledgers' | 'outstanding' | 'sales' | 'all') {
     setSyncPhase('syncing')
@@ -169,6 +178,90 @@ export default function KSITallyDashboard() {
             Sync {t}
           </button>
         ))}
+      </div>
+
+      {/* Tally Companies Panel */}
+      <div className="mb-4">
+        <button
+          onClick={() => setShowCompanies(v => !v)}
+          className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1.5 transition"
+        >
+          <span className={`transition-transform ${showCompanies ? 'rotate-90' : ''}`}>▶</span>
+          Tally Companies
+        </button>
+        {showCompanies && (
+          <div className="mt-2 bg-gray-900 border border-gray-700 rounded-xl p-3">
+            {companiesLoading && <p className="text-xs text-gray-500 animate-pulse">Fetching from Tally...</p>}
+            {companiesError && (
+              <p className="text-xs text-red-400">
+                Failed to connect — {companiesError.message}
+                <button onClick={() => refetchCompanies()} className="ml-2 underline">Retry</button>
+              </p>
+            )}
+            {companiesData?.error && (
+              <p className="text-xs text-red-400">{companiesData.error}</p>
+            )}
+            {companiesData?.companies && companiesData.companies.length === 0 && (
+              <p className="text-xs text-gray-500">No companies returned from Tally.</p>
+            )}
+            {companiesData?.companies && companiesData.companies.length > 0 && (() => {
+              const configured = 'Kothari Synthetic Industries'
+              const exactMatch = companiesData.companies.find(c => c.name === configured)
+              const fuzzyMatch = !exactMatch && companiesData.companies.find(c =>
+                c.name.toLowerCase().includes('kothari') || c.name.toLowerCase().includes('synthetic')
+              )
+              return (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] text-gray-500 uppercase font-semibold tracking-wide">
+                      {companiesData.companies.length} companies in Tally
+                    </p>
+                    <p className="text-[10px] text-gray-600">
+                      Configured: <span className="font-mono text-gray-400">{configured}</span>
+                    </p>
+                  </div>
+                  {!exactMatch && fuzzyMatch && (
+                    <div className="bg-amber-900/30 border border-amber-700 rounded-lg px-3 py-2 mb-2">
+                      <p className="text-xs text-amber-300 font-semibold">⚠ Name mismatch detected</p>
+                      <p className="text-[10px] text-amber-400 mt-0.5">
+                        Configured: <span className="font-mono">&quot;{configured}&quot;</span>
+                      </p>
+                      <p className="text-[10px] text-amber-400">
+                        Tally has: <span className="font-mono font-bold">&quot;{fuzzyMatch.name}&quot;</span>
+                      </p>
+                      <p className="text-[10px] text-amber-500 mt-1">
+                        Update <span className="font-mono">lib/tally.ts</span> and all sync routes with the exact Tally name.
+                      </p>
+                    </div>
+                  )}
+                  {exactMatch && (
+                    <div className="bg-green-900/20 border border-green-800 rounded-lg px-3 py-2 mb-2">
+                      <p className="text-xs text-green-400">✓ Company name matches Tally exactly</p>
+                    </div>
+                  )}
+                  {companiesData.companies.map((c, i) => {
+                    const isKsi = c.name === configured
+                    const isFuzzy = !isKsi && (c.name.toLowerCase().includes('kothari') || c.name.toLowerCase().includes('synthetic'))
+                    return (
+                      <div key={i} className={`flex items-center justify-between rounded-lg px-3 py-2 border text-xs ${
+                        isKsi ? 'bg-green-900/20 border-green-800' :
+                        isFuzzy ? 'bg-amber-900/20 border-amber-800' :
+                        'bg-gray-800 border-gray-700'
+                      }`}>
+                        <span className={`font-mono ${isKsi ? 'text-green-300' : isFuzzy ? 'text-amber-300 font-bold' : 'text-gray-300'}`}>
+                          {c.name}
+                          {isKsi && <span className="ml-2 text-green-500 font-sans">← configured</span>}
+                          {isFuzzy && <span className="ml-2 text-amber-500 font-sans font-normal">← use this</span>}
+                        </span>
+                        {c.startDate && <span className="text-gray-600 text-[10px]">{c.startDate}</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </div>
+        )}
       </div>
 
       {/* Sync log */}

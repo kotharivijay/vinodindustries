@@ -7,7 +7,7 @@ const FIRM_TALLY: Record<string, string> = {
   VI: 'Vinod Industries - (from 1-Apr-25)',
   VCF: 'Vimal Cotton Fabrics',
   VF: 'Vijay Fabrics - (from 1-Apr-2019)',
-  KSI: 'Kothari Synthetic Industries',
+  KSI: 'Kothari Synthetic Industries -( from 2023)',
 }
 
 const REPORT_NAME = 'LEARNWELLIVouchersSales'
@@ -225,18 +225,19 @@ export async function GET(req: NextRequest) {
           send({ type: 'progress', firm: firmCode, stage: 'fetching', message: `Fetching ${m.label}... (${progressIndex + 1}/${totalToSync})`, total: totalToSync, progress: progressIndex })
 
           let xml: string
+          const apiSecret = process.env.TALLY_API_SECRET || ''
           try {
             const res = await fetch(tunnelUrl, {
               method: 'POST',
-              headers: { 'Content-Type': 'text/xml' },
+              headers: { 'Content-Type': 'text/xml', 'X-Tally-Key': apiSecret },
               body: buildSalesXML(tallyName, m.from, m.to),
             })
-            if (!res.ok) throw new Error('HTTP ' + res.status)
+            if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
             xml = await res.text()
-          } catch {
+          } catch (e: any) {
             // Connection error — stop here, keep progress
             connectionFailed = true
-            send({ type: 'progress', firm: firmCode, stage: 'error', message: `Connection lost at ${m.label}. ${firmTotal} entries saved. Click Sync again to resume.` })
+            send({ type: 'progress', firm: firmCode, stage: 'error', message: `✗ ${m.label}: ${e.message}. ${firmTotal} saved. Sync again to resume.` })
             break
           }
 

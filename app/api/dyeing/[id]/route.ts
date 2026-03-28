@@ -51,6 +51,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       slipNo: parseInt(data.slipNo),
       lotNo: lots[0].lotNo,
       than: lots[0].than,
+      shadeName: data.shadeName?.trim() || null,
       notes: data.notes || null,
     },
   })

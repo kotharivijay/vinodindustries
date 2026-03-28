@@ -126,6 +126,7 @@ export default function DyeingForm() {
   // Chemicals state
   const [chemicals, setChemicals] = useState<ChemicalRow[]>([])
   const [masterChemicals, setMasterChemicals] = useState<ChemicalMaster[]>([])
+  const [masterShadeNames, setMasterShadeNames] = useState<string[]>([])
   const [ocrNames, setOcrNames] = useState<string[]>([])  // original OCR names for alias learning
   const [processes, setProcesses] = useState<DyeingProcess[]>([])
   const [showPresets, setShowPresets] = useState(false)
@@ -136,6 +137,9 @@ export default function DyeingForm() {
   const [newTag, setNewTag] = useState('')
   const [newTagChem, setNewTagChem] = useState('')
   const [cloudSaved, setCloudSaved] = useState(false)
+
+  // Shade reference saved on the slip
+  const [shadeName, setShadeName] = useState('')
 
   // Save to Shade Master
   const [showSaveShade, setShowSaveShade] = useState(false)
@@ -164,6 +168,10 @@ export default function DyeingForm() {
     fetch('/api/chemicals')
       .then(r => r.json())
       .then(d => setMasterChemicals(Array.isArray(d) ? d : []))
+      .catch(() => {})
+    fetch('/api/shades')
+      .then(r => r.json())
+      .then(d => setMasterShadeNames(Array.isArray(d) ? d.map((s: any) => s.name) : []))
       .catch(() => {})
     fetch('/api/dyeing/processes')
       .then(r => r.json())
@@ -283,6 +291,7 @@ export default function DyeingForm() {
               setVoiceText('')
               setOcrNames([])
               setChemicals([])
+              setShadeName('')
               setMarkaEntries([{ lotNo: '', than: '', stockStatus: 'idle', stockInfo: null }])
               setForm({ date: new Date().toISOString().split('T')[0], slipNo: '', lotNo: '', than: '', notes: '' })
               setStockStatus('idle')
@@ -1020,7 +1029,7 @@ export default function DyeingForm() {
     setShowSaveShade(true)
     setShadeSaved(false)
     setShadeError('')
-    setShadeNameInput('')
+    setShadeNameInput(shadeName.trim()) // pre-fill from slip's shade reference
     setShadeDescInput('')
     setLotWeights([])
     setLoadingWeights(true)
@@ -1062,6 +1071,8 @@ export default function DyeingForm() {
     if (!res.ok) { setShadeError(data.error ?? 'Failed to save'); setSavingShade(false); return }
     setSavingShade(false)
     setShadeSaved(true)
+    // Also set shade reference on the slip
+    if (shadeNameInput.trim()) setShadeName(shadeNameInput.trim())
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────────
@@ -1093,6 +1104,7 @@ export default function DyeingForm() {
           rate: c.rate ? parseFloat(c.rate) : null,
           cost: c.cost,
         })),
+      shadeName: shadeName.trim() || null,
       ocrNames, // pass original OCR names for alias learning
     }
 
@@ -1677,6 +1689,22 @@ export default function DyeingForm() {
             </Field>
             <Field label="Slip No *">
               <input type="number" className={inp} value={form.slipNo} onChange={e => set('slipNo', e.target.value)} required placeholder="e.g. 266" />
+            </Field>
+
+            <Field label="Shade Name">
+              <input type="text" className={inp} value={shadeName} onChange={e => setShadeName(e.target.value)}
+                placeholder="Type or pick from master below..." />
+              {masterShadeNames.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {masterShadeNames.map(n => (
+                    <button key={n} type="button"
+                      onClick={() => setShadeName(n)}
+                      className={`text-[11px] px-2 py-0.5 rounded-full border transition ${shadeName === n ? 'bg-purple-600 border-purple-500 text-white font-semibold' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'}`}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              )}
             </Field>
 
             <Field label="Notes">
