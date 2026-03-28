@@ -14,12 +14,21 @@ export function getFirm(code: string) { return FIRMS[code] }
 export async function queryTally(xml: string): Promise<string> {
   if (!TUNNEL_URL) throw new Error('TALLY_TUNNEL_URL not configured')
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/xml',
+    'X-Tally-Key': API_SECRET,
+  }
+  // Cloudflare Access service token headers
+  const cfClientId = process.env.CF_ACCESS_CLIENT_ID
+  const cfClientSecret = process.env.CF_ACCESS_CLIENT_SECRET
+  if (cfClientId && cfClientSecret) {
+    headers['CF-Access-Client-Id'] = cfClientId
+    headers['CF-Access-Client-Secret'] = cfClientSecret
+  }
+
   const res = await fetch(TUNNEL_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'text/xml',
-      'X-Tally-Key': API_SECRET,
-    },
+    headers,
     body: xml,
   })
 
