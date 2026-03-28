@@ -26,32 +26,79 @@ function buildBillXML(tallyCompany: string, report: string): string {
 
 function parseBills(text: string, type: string): any[] {
   const bills: any[] = []
-  const parts = text.split(/<BILLFIXED>/).slice(1)
 
-  for (const part of parts) {
-    const billDate = part.match(/<BILLDATE>([^<]*)<\/BILLDATE>/)?.[1] || ''
-    const billRef = part.match(/<BILLREF>([^<]*)<\/BILLREF>/)?.[1] || ''
-    const partyName = part.match(/<BILLPARTY>([^<]*)<\/BILLPARTY>/)?.[1]?.trim() || ''
-    const closingBalance = parseFloat((part.match(/<BILLCL>([^<]*)<\/BILLCL>/)?.[1] || '0').replace(/,/g, '')) || 0
-    const dueDate = part.match(/<BILLDUE>([^<]*)<\/BILLDUE>/)?.[1] || ''
-    const overdueDays = parseInt(part.match(/<BILLOVERDUE>([^<]*)<\/BILLOVERDUE>/)?.[1] || '0') || 0
-    const vchType = part.match(/<BILLVCHTYPE>([^<]*)<\/BILLVCHTYPE>/)?.[1] || ''
-    const vchNumber = part.match(/<BILLVCHNUMBER>([^<]*)<\/BILLVCHNUMBER>/)?.[1] || ''
-    const vchAmount = parseFloat((part.match(/<BILLVCHAMOUNT>([^<]*)<\/BILLVCHAMOUNT>/)?.[1] || '0').replace(/,/g, '')) || 0
+  // Detect format: XML has <BILLFIXED>, CSV is comma-separated lines
+  if (text.includes('<BILLFIXED>')) {
+    // XML format
+    const parts = text.split(/<BILLFIXED>/).slice(1)
+    for (const part of parts) {
+      const billDate = part.match(/<BILLDATE>([^<]*)<\/BILLDATE>/)?.[1] || ''
+      const billRef = part.match(/<BILLREF>([^<]*)<\/BILLREF>/)?.[1] || ''
+      const partyName = part.match(/<BILLPARTY>([^<]*)<\/BILLPARTY>/)?.[1]?.trim() || ''
+      const closingBalance = parseFloat((part.match(/<BILLCL>([^<]*)<\/BILLCL>/)?.[1] || '0').replace(/,/g, '')) || 0
+      const dueDate = part.match(/<BILLDUE>([^<]*)<\/BILLDUE>/)?.[1] || ''
+      const overdueDays = parseInt(part.match(/<BILLOVERDUE>([^<]*)<\/BILLOVERDUE>/)?.[1] || '0') || 0
+      const vchType = part.match(/<BILLVCHTYPE>([^<]*)<\/BILLVCHTYPE>/)?.[1] || ''
+      const vchNumber = part.match(/<BILLVCHNUMBER>([^<]*)<\/BILLVCHNUMBER>/)?.[1] || ''
+      const vchAmount = parseFloat((part.match(/<BILLVCHAMOUNT>([^<]*)<\/BILLVCHAMOUNT>/)?.[1] || '0').replace(/,/g, '')) || 0
+      if (partyName && billRef) {
+        bills.push({ partyName, type, billRef, billDate: parseTallyDate(billDate), dueDate: parseTallyDate(dueDate), overdueDays, closingBalance: Math.abs(closingBalance), vchType, vchNumber, vchAmount })
+      }
+    }
+  } else {
+    // CSV format: date,"billRef","partyName",amount,dueDate,"overdueDays"
+    // Each bill starts with a date line, followed by voucher detail lines
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+    let curParty = '', curBillRef = '', curBillDate = '', curDueDate = '', curOverdue = 0, curAmount = 0
 
-    if (partyName && billRef) {
-      bills.push({
-        partyName,
-        type,
-        billRef,
-        billDate: parseTallyDate(billDate),
-        dueDate: parseTallyDate(dueDate),
-        overdueDays,
-        closingBalance: Math.abs(closingBalance),
-        vchType,
-        vchNumber,
-        vchAmount,
-      })
+    for (const line of lines) {
+      // Parse CSV fields — handle quoted values
+      const fields: string[] = []
+      let current = '', inQuote = false
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i]
+        if (ch === '"') { inQuote = !inQuote; continue }
+        if (ch === ',' && !inQuote) { fields.push(current.trim()); current = ''; continue }
+        current += ch
+      }
+      fields.push(current.trim())
+
+      if (fields.length < 4) continue
+
+      // Bill header line: date, billRef, partyName, amount, dueDate, overdueDays
+      // Voucher detail line: date, vchType, vchNumber, amount (no party)
+      const firstField = fields[0]
+      const hasDate = /^\d{1,2}-[A-Za-z]{3}-\d{2,4}$/.test(firstField)
+      if (!hasDate) continue
+
+      // Check if this is a bill header (has party name with spaces/letters in field 2)
+      const field2 = fields[2] || ''
+      const isPartyLine = field2.length > 3 && /[A-Za-z]/.test(field2) && !/^(Sales|Purchase|Receipt|Payment|Journal|Contra|Credit Note|Debit Note)$/i.test(field2)
+
+      if (isPartyLine && fields.length >= 5) {
+        // Bill header: date, billRef, partyName, amount, dueDate, overdueDays
+        curBillDate = firstField
+        curBillRef = fields[1] || ''
+        curParty = field2
+        curAmount = parseFloat((fields[3] || '0').replace(/,/g, '')) || 0
+        curDueDate = fields[4] || ''
+        curOverdue = parseInt(fields[5] || '0') || 0
+
+        if (curParty && curBillRef) {
+          bills.push({
+            partyName: curParty,
+            type,
+            billRef: curBillRef,
+            billDate: parseTallyDate(curBillDate),
+            dueDate: parseTallyDate(curDueDate),
+            overdueDays: curOverdue,
+            closingBalance: Math.abs(curAmount),
+            vchType: '',
+            vchNumber: curBillRef,
+            vchAmount: Math.abs(curAmount),
+          })
+        }
+      }
     }
   }
   return bills
