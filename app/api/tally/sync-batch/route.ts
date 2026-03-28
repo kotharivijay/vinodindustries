@@ -24,12 +24,19 @@ export async function POST(req: NextRequest) {
 
   // Deduplicate within batch (Tally may have duplicate ledger names)
   const now = new Date()
+  function parseMobiles(raw: string | null): { m1: string | null; m2: string | null; m3: string | null } {
+    if (!raw) return { m1: null, m2: null, m3: null }
+    const nums = raw.split(/[,;|\/\s]+/).map(n => n.replace(/[^0-9+]/g, '').trim()).filter(n => n.length >= 7 && n.length <= 15)
+    return { m1: nums[0] || null, m2: nums[1] || null, m3: nums[2] || null }
+  }
+
   const seen = new Set<string>()
   const data: any[] = []
   for (const l of ledgers) {
     const key = `${firmCode}|${(l.name || '').trim()}`
     if (seen.has(key) || !l.name?.trim()) continue
     seen.add(key)
+    const { m1, m2, m3 } = parseMobiles(l.mobileNos)
     data.push({
       firmCode,
       name: l.name.trim(),
@@ -38,6 +45,9 @@ export async function POST(req: NextRequest) {
       gstNo: l.gstNo || null,
       panNo: l.panNo || null,
       mobileNos: l.mobileNos || null,
+      mobileNo1: m1,
+      mobileNo2: m2,
+      mobileNo3: m3,
       state: l.state || null,
       lastSynced: now,
     })

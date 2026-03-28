@@ -472,7 +472,10 @@ model TallyLedger {
   address        String?
   gstNo          String?
   panNo          String?
-  mobileNos      String?  // comma-separated
+  mobileNos      String?  // original comma-separated
+  mobileNo1      String?  // parsed first number
+  mobileNo2      String?  // parsed second number
+  mobileNo3      String?  // parsed third number
   state          String?
   stateCode      String?
   openingBalance Float?
@@ -521,6 +524,22 @@ model TallySales {
   narration    String?
   lastSynced   DateTime?
   createdAt    DateTime @default(now())
+  @@index([firmCode, partyName])
+}
+
+// ─── Tally Receipt/Payment ──────────────────────────────────────────────────
+
+model TallyReceipt {
+  id         Int      @id @default(autoincrement())
+  firmCode   String
+  date       DateTime?
+  vchNumber  String?
+  partyName  String?
+  amount     Float?
+  vchType    String?  // Receipt, Payment
+  narration  String?
+  lastSynced DateTime?
+  createdAt  DateTime @default(now())
   @@index([firmCode, partyName])
 }
 
