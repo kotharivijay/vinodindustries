@@ -34,7 +34,12 @@ export async function GET() {
   try {
     const res = await fetch(tunnelUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'text/xml', 'X-Tally-Key': apiSecret },
+      headers: {
+        'Content-Type': 'text/xml',
+        'X-Tally-Key': apiSecret,
+        ...(process.env.CF_ACCESS_CLIENT_ID && { 'CF-Access-Client-Id': process.env.CF_ACCESS_CLIENT_ID }),
+        ...(process.env.CF_ACCESS_CLIENT_SECRET && { 'CF-Access-Client-Secret': process.env.CF_ACCESS_CLIENT_SECRET }),
+      },
       body: xml,
     })
 

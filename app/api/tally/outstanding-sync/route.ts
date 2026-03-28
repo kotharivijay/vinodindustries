@@ -84,6 +84,10 @@ export async function GET(req: NextRequest) {
         controller.close()
         return
       }
+      const tallyHeaders: Record<string, string> = { 'Content-Type': 'text/xml' }
+      if (process.env.TALLY_API_SECRET) tallyHeaders['X-Tally-Key'] = process.env.TALLY_API_SECRET
+      if (process.env.CF_ACCESS_CLIENT_ID) tallyHeaders['CF-Access-Client-Id'] = process.env.CF_ACCESS_CLIENT_ID
+      if (process.env.CF_ACCESS_CLIENT_SECRET) tallyHeaders['CF-Access-Client-Secret'] = process.env.CF_ACCESS_CLIENT_SECRET
 
       const db = viPrisma as any
       let totalSaved = 0
@@ -95,13 +99,11 @@ export async function GET(req: NextRequest) {
 
         // Fetch Receivable (Bills Receivable)
         send({ type: 'progress', firm: firmCode, stage: 'fetching', message: 'Fetching Bills Receivable...' })
-
-        const apiSecret = process.env.TALLY_API_SECRET || ''
         let receivables: any[] = []
         try {
           const res = await fetch(tunnelUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/xml', 'X-Tally-Key': apiSecret },
+            headers: tallyHeaders,
             body: buildBillXML(tallyName, 'Bills Receivable'),
           })
           if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
@@ -118,7 +120,7 @@ export async function GET(req: NextRequest) {
         try {
           const res = await fetch(tunnelUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'text/xml', 'X-Tally-Key': apiSecret },
+            headers: tallyHeaders,
             body: buildBillXML(tallyName, 'Bills Payable'),
           })
           if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)
