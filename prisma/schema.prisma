@@ -118,6 +118,7 @@ model Chemical {
   id           Int                    @id @default(autoincrement())
   name         String                 @unique
   unit         String                 @default("kg")
+  category     String?                // 'color' | 'auxiliary'
   currentPrice Float?
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
@@ -354,7 +355,8 @@ model ShadeRecipeItem {
   shade      Shade    @relation(fields: [shadeId], references: [id], onDelete: Cascade)
   chemicalId Int
   chemical   Chemical @relation(fields: [chemicalId], references: [id])
-  quantity   Float    // per 100 kg fabric
+  quantity   Float    // per 100 kg fabric or %
+  isPercent  Boolean  @default(false)
 }
 
 model FoldProgram {
@@ -534,4 +536,23 @@ model LotManualReservation {
   updatedBy   String   // user email
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())
+}
+
+// ─── Shade Import Queue ───────────────────────────────────────────────────────
+
+model ShadeImportQueue {
+  id           Int      @id @default(autoincrement())
+  userId       String   // user email
+  imageBase64  String   // base64 encoded image
+  mediaType    String   @default("image/jpeg")
+  driveFileId  String?  // Google Drive file ID (once uploaded)
+  driveUrl     String?  // Google Drive view URL
+  pageLabel    String?  // "Page 1", "Page 2" etc
+  status       String   @default("pending") // pending | processing | reviewing | done | skipped
+  ocrRaw       String?  // raw GPT-4 Vision response
+  recipes      Json?    // extracted recipes array
+  savedCount   Int      @default(0)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

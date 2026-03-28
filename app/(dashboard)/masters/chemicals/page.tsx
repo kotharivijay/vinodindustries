@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 const UNITS = ['kg', 'liter', 'gram', 'ml', 'piece', 'bag', 'drum']
 
 interface PriceHistory { id: number; price: number; source: string; note: string | null; date: string }
-interface Chemical { id: number; name: string; unit: string; currentPrice: number | null; updatedAt: string; priceHistory: PriceHistory[] }
+interface Chemical { id: number; name: string; unit: string; currentPrice: number | null; updatedAt: string; priceHistory: PriceHistory[]; category: string | null }
 interface ProcessItem { chemicalId: number; chemical: { id: number; name: string; unit: string }; quantity: number }
 interface DyeingProcess { id: number; name: string; description?: string; items: ProcessItem[] }
 
@@ -336,6 +336,54 @@ function PriceModal({ chemical, onClose, onUpdated }: { chemical: Chemical; onCl
   )
 }
 
+// ─── Category Badge ───────────────────────────────────────────────────────────
+
+function CategoryBadge({ category, onClick }: { category: string | null; onClick?: () => void }) {
+  if (category === 'color') {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="Click to change category"
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700 hover:bg-purple-200 dark:hover:bg-purple-800/50 transition cursor-pointer select-none"
+      >
+        🎨 Color
+      </button>
+    )
+  }
+  if (category === 'auxiliary') {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="Click to change category"
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-700 hover:bg-sky-200 dark:hover:bg-sky-800/50 transition cursor-pointer select-none"
+      >
+        ⚙️ Auxiliary
+      </button>
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Click to set category"
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600 transition cursor-pointer select-none"
+    >
+      — Set
+    </button>
+  )
+}
+
+const CATEGORY_CYCLE: Record<string, string | null> = {
+  color: 'auxiliary',
+  auxiliary: null,
+}
+function nextCategory(current: string | null): string | null {
+  if (current === null) return 'color'
+  return CATEGORY_CYCLE[current] ?? null
+}
+
 // ─── History Panel ────────────────────────────────────────────────────────────
 
 function HistoryPanel({ chemical }: { chemical: Chemical }) {
@@ -421,6 +469,19 @@ export default function ChemicalsPage() {
     const res = await fetch(`/api/chemicals/${id}`, { method: 'DELETE' })
     if (res.ok) setChemicals(prev => prev.filter(c => c.id !== id))
     else alert('Cannot delete')
+  }
+
+  async function handleCategoryToggle(c: Chemical) {
+    const newCategory = nextCategory(c.category)
+    const res = await fetch(`/api/chemicals/${c.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: newCategory }),
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setChemicals(prev => prev.map(ch => ch.id === c.id ? { ...ch, category: updated.category } : ch))
+    }
   }
 
   async function saveProcess(name: string, description: string, items: DraftItem[]) {
@@ -562,6 +623,7 @@ export default function ChemicalsPage() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">#</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Category</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Unit</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Price</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Updated</th>
@@ -574,6 +636,9 @@ export default function ChemicalsPage() {
                       <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <td className="px-4 py-3 text-gray-400 text-xs">{i + 1}</td>
                         <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-100">{c.name}</td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          <CategoryBadge category={c.category} onClick={() => handleCategoryToggle(c)} />
+                        </td>
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{c.unit}</td>
                         <td className="px-4 py-3 text-right">
                           {c.currentPrice != null ? <span className="font-semibold text-gray-800 dark:text-gray-100">₹{c.currentPrice.toFixed(2)}</span> : <span className="text-gray-400 text-xs">Not set</span>}
@@ -581,6 +646,7 @@ export default function ChemicalsPage() {
                         <td className="px-4 py-3 text-gray-400 text-xs hidden sm:table-cell">{fmt(c.updatedAt)}</td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <span className="md:hidden"><CategoryBadge category={c.category} onClick={() => handleCategoryToggle(c)} /></span>
                             <button onClick={() => setPriceModal(c)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">Update Price</button>
                             <button onClick={() => setExpandedId(expandedId === c.id ? null : c.id)} className="text-xs text-gray-500 hover:text-gray-700">{expandedId === c.id ? 'Hide' : 'History'}</button>
                             <button onClick={() => handleDelete(c.id, c.name)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
@@ -588,7 +654,7 @@ export default function ChemicalsPage() {
                         </td>
                       </tr>
                       {expandedId === c.id && (
-                        <tr key={`hist-${c.id}`}><td colSpan={6} className="px-4 pb-3"><HistoryPanel chemical={c} /></td></tr>
+                        <tr key={`hist-${c.id}`}><td colSpan={7} className="px-4 pb-3"><HistoryPanel chemical={c} /></td></tr>
                       )}
                     </>
                   ))}
