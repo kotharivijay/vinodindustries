@@ -26,7 +26,7 @@ export async function POST(
   const itemId = parseInt(id)
   if (!itemId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
 
-  const userId = (session.user as any).id
+  const userId = session.user?.email ?? ''
 
   const item = await db.shadeImportQueue.findFirst({
     where: { id: itemId, userId },

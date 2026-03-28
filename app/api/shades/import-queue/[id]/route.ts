@@ -29,7 +29,7 @@ export async function PATCH(
   const itemId = parseInt(id)
   if (!itemId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
 
-  const userId = (session.user as any).id
+  const userId = session.user?.email ?? ''
 
   const existing = await db.shadeImportQueue.findFirst({
     where: { id: itemId, userId },
@@ -64,7 +64,7 @@ export async function DELETE(
   const itemId = parseInt(id)
   if (!itemId) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
 
-  const userId = (session.user as any).id
+  const userId = session.user?.email ?? ''
 
   const item = await db.shadeImportQueue.findFirst({
     where: { id: itemId, userId },

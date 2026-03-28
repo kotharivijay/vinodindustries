@@ -26,7 +26,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const items = await db.shadeImportQueue.findMany({
-    where: { userId: (session.user as any).id },
+    where: { userId: session.user?.email ?? '' },
     orderBy: { sortOrder: 'asc' },
   })
   return NextResponse.json(items)
@@ -37,7 +37,7 @@ export async function DELETE() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const userId = (session.user as any).id
+  const userId = session.user?.email ?? ''
 
   // Also delete Drive files for items that have driveFileId
   const items = await db.shadeImportQueue.findMany({
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const userId = (session.user as any).id
+  const userId = session.user?.email ?? ''
   const { images } = await req.json() as {
     images: { base64: string; mediaType: string; pageLabel?: string }[]
   }
