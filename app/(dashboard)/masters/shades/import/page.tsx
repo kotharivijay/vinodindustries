@@ -76,7 +76,7 @@ function readFileAsBase64(file: File): Promise<{ base64: string; mediaType: stri
       const canvas = document.createElement('canvas')
       canvas.width = w; canvas.height = h
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.6)
       const [, data] = dataUrl.split(',')
       resolve({ base64: data, mediaType: 'image/jpeg' })
     }
@@ -540,26 +540,26 @@ export default function ShadeImportPage() {
     setUploadError('')
 
     try {
-      const images = await Promise.all(
-        Array.from(files).map(async (file, i) => {
-          const { base64, mediaType } = await readFileAsBase64(file)
-          return {
-            base64,
-            mediaType,
-            pageLabel: file.name || `Image ${i + 1}`,
-          }
+      const fileArr = Array.from(files)
+      for (let i = 0; i < fileArr.length; i++) {
+        const file = fileArr[i]
+        const { base64, mediaType } = await readFileAsBase64(file)
+        const res = await fetch('/api/shades/import-queue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            images: [{
+              base64,
+              mediaType,
+              pageLabel: file.name || `Image ${i + 1}`,
+            }],
+          }),
         })
-      )
-
-      const res = await fetch('/api/shades/import-queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setUploadError(data.error ?? 'Upload failed')
-        return
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({ error: 'Upload failed' }))
+          setUploadError(data.error ?? `Upload failed for image ${i + 1}`)
+          return
+        }
       }
       await loadAll()
     } catch (e: any) {
@@ -581,7 +581,7 @@ export default function ShadeImportPage() {
       setQueue(q => q.map(x => x.id === item.id ? updated : x))
       setReviewItem(updated)
     } else {
-      const d = await res.json()
+      const d = await res.json().catch(() => ({ error: 'OCR failed' }))
       alert(d.error ?? 'OCR failed')
     }
     setOcrLoading(null)

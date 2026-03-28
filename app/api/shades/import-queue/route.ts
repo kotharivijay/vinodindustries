@@ -5,6 +5,8 @@ import { authOptions } from '@/lib/auth'
 import { google } from 'googleapis'
 import { Readable } from 'stream'
 
+export const maxDuration = 60
+
 const db = prisma as any
 
 function getDriveClient() {
