@@ -76,10 +76,15 @@ export default function OrdersPage() {
   }, [isLoading, summary.total])
 
   // Close dropdowns on outside click
+  const partyDDRef = useRef<HTMLDivElement>(null)
+  const agentDDRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const handler = () => { setShowPartyDD(false); setShowAgentDD(false) }
-    document.addEventListener('click', handler)
-    return () => document.removeEventListener('click', handler)
+    const handler = (e: MouseEvent) => {
+      if (partyDDRef.current && !partyDDRef.current.contains(e.target as Node)) setShowPartyDD(false)
+      if (agentDDRef.current && !agentDDRef.current.contains(e.target as Node)) setShowAgentDD(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   const handleSync = useCallback(async () => {
@@ -241,7 +246,7 @@ export default function OrdersPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
         {/* Party Dropdown + OS */}
         <div className="flex gap-2">
-          <div className="flex-1 relative" onClick={e => e.stopPropagation()}>
+          <div className="flex-1 relative" ref={partyDDRef}>
             <button onClick={() => { setShowPartyDD(!showPartyDD); setShowAgentDD(false) }}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm border ${partyFilter ? 'bg-indigo-900/30 border-indigo-500 text-indigo-300 font-semibold' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
               {partyFilter || 'All Parties'}
@@ -274,7 +279,7 @@ export default function OrdersPage() {
 
         {/* Agent Dropdown + OS */}
         <div className="flex gap-2">
-          <div className="flex-1 relative" onClick={e => e.stopPropagation()}>
+          <div className="flex-1 relative" ref={agentDDRef}>
             <button onClick={() => { setShowAgentDD(!showAgentDD); setShowPartyDD(false) }}
               className={`w-full text-left px-3 py-2 rounded-lg text-sm border ${agentFilter ? 'bg-blue-900/30 border-blue-500 text-blue-300 font-semibold' : 'bg-gray-800 border-gray-700 text-gray-400'}`}>
               {agentFilter || 'All Agents'}
