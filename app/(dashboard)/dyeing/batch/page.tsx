@@ -596,6 +596,31 @@ export default function BatchDyeingPage() {
             </div>
           )}
 
+          {/* Process Buttons — above chemicals */}
+          {selectedBatch && processes.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Add Process (Auxiliary)</h2>
+              <div className="flex flex-wrap gap-2">
+                {processes.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => openProcessPopup(p)}
+                    title={p.description || `${p.items.length} chemicals`}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition ${
+                      isProcessAdded(p.name)
+                        ? 'bg-green-900/30 text-green-400 border-green-700'
+                        : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-100 dark:hover:bg-indigo-900/40'
+                    }`}
+                  >
+                    {isProcessAdded(p.name) ? '✅ ' : '🧪 '}{p.name}
+                    <span className="ml-1 opacity-60 text-xs">({p.items.length})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Step 3: Chemicals */}
           {selectedBatch && (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
@@ -614,31 +639,6 @@ export default function BatchDyeingPage() {
                   + Add Chemical
                 </button>
               </div>
-
-              {/* Process Buttons */}
-              {processes.length > 0 && (
-                <div className="mb-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Quick Process:</span>
-                    {processes.map(p => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => openProcessPopup(p)}
-                        title={p.description || `${p.items.length} chemicals`}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition shrink-0 ${
-                          isProcessAdded(p.name)
-                            ? 'bg-green-900/30 text-green-400 border-green-700'
-                            : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-100 dark:hover:bg-indigo-900/40'
-                        }`}
-                      >
-                        {isProcessAdded(p.name) ? '✅ ' : ''}{p.name}
-                        <span className="ml-1 opacity-60">({p.items.length})</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {chemicals.length === 0 ? (
                 <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
