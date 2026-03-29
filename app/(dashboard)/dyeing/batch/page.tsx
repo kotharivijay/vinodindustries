@@ -127,7 +127,7 @@ export default function BatchDyeingPage() {
     Promise.all([
       fetch('/api/dyeing/batches').then(r => r.json()),
       fetch('/api/dyeing/batch').then(r => r.json()),
-      fetch('/api/masters/chemicals').then(r => r.json()).catch(() => []),
+      fetch('/api/chemicals').then(r => r.json()).catch(() => []),
       fetch('/api/dyeing/processes').then(r => r.json()).catch(() => []),
       fetch('/api/dyeing/machines').then(r => r.json()).catch(() => []),
       fetch('/api/dyeing/operators?active=true').then(r => r.json()).catch(() => []),
