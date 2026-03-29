@@ -644,7 +644,7 @@ export default function DyeingListPage() {
                     Gallery
                   </button>
                 </div>
-                <input ref={confirmCameraRef} type="file" accept="image/*" capture="environment" className="hidden"
+                <input ref={confirmCameraRef} type="file" accept="image/jpeg,image/png" capture="environment" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleConfirmPhoto(f); e.target.value = '' }} />
                 <input ref={confirmGalleryRef} type="file" accept="image/*" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; if (f) handleConfirmPhoto(f); e.target.value = '' }} />

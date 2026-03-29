@@ -21,6 +21,8 @@ export async function GET() {
             shade: { select: { name: true } },
           },
         },
+        machine: true,
+        operator: true,
       },
       orderBy: { date: 'desc' },
     })
@@ -62,6 +64,7 @@ export async function POST(req: NextRequest) {
           unit: c.unit || 'kg',
           rate: c.rate != null ? parseFloat(c.rate) : null,
           cost: c.cost != null ? parseFloat(c.cost) : null,
+          processTag: c.processTag || null,
         }))
       : []
 
@@ -74,13 +77,24 @@ export async function POST(req: NextRequest) {
         lotNo: lots[0]?.lotNo ?? '',
         than: totalThan,
         notes: data.notes || null,
+        shadeName: data.shadeName || null,
         foldBatchId: parseInt(data.foldBatchId),
+        machineId: data.machineId ? parseInt(data.machineId) : null,
+        operatorId: data.operatorId ? parseInt(data.operatorId) : null,
         chemicals: chemData.length ? { create: chemData } : undefined,
         lots: lots.length ? { create: lots } : undefined,
       },
       include: {
         chemicals: { include: { chemical: true } },
         lots: true,
+        foldBatch: {
+          include: {
+            foldProgram: { select: { foldNo: true } },
+            shade: { select: { name: true } },
+          },
+        },
+        machine: true,
+        operator: true,
       },
     })
 
