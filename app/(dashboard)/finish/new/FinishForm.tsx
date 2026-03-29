@@ -476,7 +476,7 @@ export default function FinishForm() {
       {showZoom && imagePreview && <ZoomModal src={imagePreview} onClose={() => setShowZoom(false)} />}
 
       {/* Hidden file inputs */}
-      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageSelect} />
+      <input ref={cameraRef} type="file" accept="image/*" capture className="hidden" onChange={handleImageSelect} />
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
 
       <div className="flex items-center gap-4 mb-6">

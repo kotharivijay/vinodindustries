@@ -755,7 +755,7 @@ export default function ShadeImportPage() {
             type="file"
             accept="image/*"
             multiple
-            capture="environment"
+            capture
             className="hidden"
             onChange={e => handleFilesSelected(e.target.files)}
           />
