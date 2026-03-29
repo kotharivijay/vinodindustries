@@ -20,16 +20,68 @@ function levenshtein(a: string, b: string): number {
   return dp[m][n]
 }
 
+// Extract suffix (last token, usually the code like "3G", "F3BS", "HE4BD")
+function getSuffix(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  return parts.length > 0 ? parts[parts.length - 1].toLowerCase() : ''
+}
+
+// Extract prefix (everything except last token, like "Navy Blue")
+function getPrefix(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  return parts.length > 1 ? parts.slice(0, -1).join(' ').toLowerCase() : ''
+}
+
 function findBestChemical(ocrName: string, chemicals: { id: number; name: string }[]): { id: number; name: string } | null {
   if (!ocrName || chemicals.length === 0) return null
   const lower = ocrName.toLowerCase().trim()
 
+  // 1. Exact full match
   const exact = chemicals.find(c => c.name.toLowerCase() === lower)
   if (exact) return exact
 
+  const ocrSuffix = getSuffix(lower)
+  const ocrPrefix = getPrefix(lower)
+
+  // 2. Exact suffix match — highest priority (e.g. "3G" matches "Navy Blue 3G")
+  if (ocrSuffix) {
+    const suffixMatches = chemicals.filter(c => getSuffix(c.name.toLowerCase()) === ocrSuffix)
+    if (suffixMatches.length === 1) return suffixMatches[0]
+    // Multiple suffix matches — narrow down by prefix similarity
+    if (suffixMatches.length > 1 && ocrPrefix) {
+      const prefixToo = suffixMatches.find(c => getPrefix(c.name.toLowerCase()).includes(ocrPrefix) || ocrPrefix.includes(getPrefix(c.name.toLowerCase())))
+      if (prefixToo) return prefixToo
+      // Fuzzy prefix among suffix matches
+      let bestDist = Infinity, best: typeof chemicals[0] | null = null
+      for (const c of suffixMatches) {
+        const dist = levenshtein(ocrPrefix, getPrefix(c.name.toLowerCase()))
+        if (dist < bestDist) { bestDist = dist; best = c }
+      }
+      if (best) return best
+    }
+  }
+
+  // 3. Fuzzy suffix match (e.g. "F3B5" ≈ "F3BS")
+  if (ocrSuffix) {
+    let bestSuffDist = Infinity, bestSuff: typeof chemicals[0] | null = null
+    for (const c of chemicals) {
+      const cSuffix = getSuffix(c.name.toLowerCase())
+      if (!cSuffix) continue
+      const dist = levenshtein(ocrSuffix, cSuffix)
+      const maxLen = Math.max(ocrSuffix.length, cSuffix.length)
+      if (dist < bestSuffDist && dist <= Math.max(1, maxLen * 0.3)) {
+        bestSuffDist = dist
+        bestSuff = c
+      }
+    }
+    if (bestSuff) return bestSuff
+  }
+
+  // 4. Contains match
   const contains = chemicals.find(c => c.name.toLowerCase().includes(lower) || lower.includes(c.name.toLowerCase()))
   if (contains) return contains
 
+  // 5. Full string Levenshtein fallback
   let bestDist = Infinity, best: typeof chemicals[0] | null = null
   for (const c of chemicals) {
     const dist = levenshtein(lower, c.name.toLowerCase())
