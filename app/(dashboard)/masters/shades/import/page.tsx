@@ -588,7 +588,8 @@ export default function ShadeImportPage() {
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array' })
 
-      const recipes: OcrRecipe[] = []
+      // Collect all dye rows across all sheets, grouped by shade name
+      const shadeMap = new Map<string, { name: string; percent: number }[]>()
 
       for (const sheetName of wb.SheetNames) {
         const ws = wb.Sheets[sheetName]
@@ -596,46 +597,48 @@ export default function ShadeImportPage() {
         const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
         if (!rows || rows.length === 0) continue
 
-        // Detect column names (flexible headers)
         const cols = Object.keys(rows[0] || {})
-        if (cols.length === 0) continue
+        if (cols.length < 3) continue
 
-        const shadeCol = cols.find(c => /shade|s\.?\s*no/i.test(c))
-        const descCol = cols.find(c => /desc|colour|color\s*name/i.test(c))
+        // Detect columns: Colour Name, Dye Name, % Shade
+        // Format: Col A = Recipe #, Col B = Colour Name, Col C = Dye Name, Col D = % Shade
+        const colB = cols.find(c => /colour|color|shade\s*name/i.test(c))
+        const colC = cols.find(c => /dye\s*name|dye|chemical/i.test(c))
+        const colD = cols.find(c => /%\s*shade|percent|shade\s*%|%/i.test(c))
 
-        // If no shade column, treat first column as shade no
-        const useShadeCol = shadeCol || cols[0]
-
-        // Remaining columns are chemicals with % values
-        const chemCols = cols.filter(c => c !== useShadeCol && c !== descCol)
+        // Fallback: if no headers detected, use positional (B=1, C=2, D=3)
+        const useColB = colB || cols[1] || cols[0]
+        const useColC = colC || cols[2] || cols[1]
+        const useColD = colD || cols[3] || cols[2]
 
         for (const row of rows) {
           if (!row) continue
-          const shadeNo = String(row[useShadeCol] ?? '').trim()
-          if (!shadeNo) continue
+          const shadeName = String(row[useColB] ?? '').trim()
+          const dyeName = String(row[useColC] ?? '').trim()
+          const pctRaw = parseFloat(row[useColD])
 
-          const description = descCol ? String(row[descCol] ?? '').trim() : ''
-          const chemicals: { name: string; percent: number }[] = []
+          // Skip header rows (no dye name) and empty rows
+          if (!shadeName || !dyeName || isNaN(pctRaw) || pctRaw <= 0) continue
 
-          for (const cc of chemCols) {
-            const val = parseFloat(row[cc])
-            if (!isNaN(val) && val > 0) {
-              chemicals.push({ name: cc.trim(), percent: val })
-            }
-          }
-
-          if (chemicals.length > 0) {
-            recipes.push({ shadeNo, description, chemicals })
-          }
+          const key = shadeName.toUpperCase()
+          if (!shadeMap.has(key)) shadeMap.set(key, [])
+          shadeMap.get(key)!.push({ name: dyeName, percent: pctRaw })
         }
       }
 
-      if (recipes.length === 0) {
-        setUploadError('No shade recipes found. Excel format: first column = Shade No, other columns = chemical names with % values as data')
+      if (shadeMap.size === 0) {
+        setUploadError('No recipes found. Expected columns: Colour Name, Dye Name (Master List), % Shade')
         return
       }
 
-      // Fuzzy match chemical names to master
+      // Convert map to recipe array
+      const recipes: OcrRecipe[] = Array.from(shadeMap.entries()).map(([key, chems]) => ({
+        shadeNo: key,
+        description: key,
+        chemicals: chems,
+      }))
+
+      // Fuzzy match dye names to chemical master
       const matched = recipes.map(r => ({
         ...r,
         chemicals: r.chemicals.map(c => {
