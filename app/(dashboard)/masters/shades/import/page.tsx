@@ -507,6 +507,7 @@ export default function ShadeImportPage() {
 
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
+  const filesInputRef = useRef<HTMLInputElement>(null)
 
   // Load queue, color chemicals, existing shade names
   const loadAll = useCallback(async () => {
@@ -573,6 +574,7 @@ export default function ShadeImportPage() {
       // Reset inputs so same files can be selected again
       if (cameraInputRef.current) cameraInputRef.current.value = ''
       if (galleryInputRef.current) galleryInputRef.current.value = ''
+      if (filesInputRef.current) filesInputRef.current.value = ''
     }
   }
 
@@ -727,6 +729,15 @@ export default function ShadeImportPage() {
               <span>Gallery</span>
               <span className="text-xs text-gray-400">(multi)</span>
             </button>
+            <button
+              onClick={() => filesInputRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-60 transition"
+            >
+              <span>📁</span>
+              <span>Files</span>
+              <span className="text-xs text-gray-400">(WhatsApp)</span>
+            </button>
             {uploading && (
               <div className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400">
                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
@@ -752,6 +763,14 @@ export default function ShadeImportPage() {
             ref={galleryInputRef}
             type="file"
             accept="image/*"
+            multiple
+            className="hidden"
+            onChange={e => handleFilesSelected(e.target.files)}
+          />
+          <input
+            ref={filesInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
             multiple
             className="hidden"
             onChange={e => handleFilesSelected(e.target.files)}
