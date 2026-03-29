@@ -75,19 +75,28 @@ model GreyEntry {
 // ─── Dyeing Slip Entry ─────────────────────────────────────────────────────────
 
 model DyeingEntry {
-  id          Int                  @id @default(autoincrement())
-  date        DateTime
-  slipNo      Int
-  lotNo       String
-  than        Int
-  shadeName   String?
-  notes       String?
-  foldBatchId Int?
-  foldBatch   FoldBatch?           @relation(fields: [foldBatchId], references: [id])
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  chemicals   DyeingSlipChemical[]
-  lots        DyeingEntryLot[]
+  id              Int                  @id @default(autoincrement())
+  date            DateTime
+  slipNo          Int
+  lotNo           String
+  than            Int
+  shadeName       String?
+  notes           String?
+  foldBatchId     Int?
+  foldBatch       FoldBatch?           @relation(fields: [foldBatchId], references: [id])
+  dyeingDoneAt    DateTime?
+  dyeingPhotoUrl  String?
+  dyeingDriveId   String?
+  dyeingNotes     String?
+  colorC          Float?
+  colorM          Float?
+  colorY          Float?
+  colorK          Float?
+  colorHex        String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  chemicals       DyeingSlipChemical[]
+  lots            DyeingEntryLot[]
 }
 
 model DyeingEntryLot {
