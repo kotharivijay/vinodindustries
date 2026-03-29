@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import OpenAI from 'openai'
+import Anthropic from '@anthropic-ai/sdk'
 
 export const maxDuration = 60
 
@@ -24,19 +24,15 @@ function findBestChemical(ocrName: string, chemicals: { id: number; name: string
   if (!ocrName || chemicals.length === 0) return null
   const lower = ocrName.toLowerCase().trim()
 
-  // Exact match first
   const exact = chemicals.find(c => c.name.toLowerCase() === lower)
   if (exact) return exact
 
-  // Contains match
   const contains = chemicals.find(c => c.name.toLowerCase().includes(lower) || lower.includes(c.name.toLowerCase()))
   if (contains) return contains
 
-  // Fuzzy match — find closest by Levenshtein distance
   let bestDist = Infinity, best: typeof chemicals[0] | null = null
   for (const c of chemicals) {
     const dist = levenshtein(lower, c.name.toLowerCase())
-    // Only accept if distance is <= 40% of the longer string
     const maxLen = Math.max(lower.length, c.name.length)
     if (dist < bestDist && dist <= maxLen * 0.4) {
       bestDist = dist
@@ -64,22 +60,19 @@ export async function POST(
   })
   if (!item) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Set status to processing
   await db.shadeImportQueue.update({
     where: { id: itemId },
     data: { status: 'processing' },
   })
 
   try {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) throw new Error('OPENAI_API_KEY not set')
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY not set')
 
-    // Fetch all color chemicals from master for better OCR matching
     const allChemicals = await db.chemical.findMany({
       where: { category: 'color' },
       select: { id: true, name: true },
     })
-    // Also get aliases
     const aliases = await db.chemicalAlias.findMany({
       select: { ocrName: true, chemicalId: true },
     })
@@ -97,26 +90,35 @@ Rules:
 - Common OCR misreads: "disp" → "Disp", "msp" → could be "Disp". Always prefer the closest match from the known list above.
 Return ONLY a valid JSON array, no explanation.`
 
-    const openai = new OpenAI({ apiKey })
-    const dataUrl = `data:${item.mediaType};base64,${item.imageBase64}`
+    const anthropic = new Anthropic({ apiKey })
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+    const mediaType = item.mediaType === 'image/png' ? 'image/png'
+      : item.mediaType === 'image/webp' ? 'image/webp'
+      : item.mediaType === 'image/gif' ? 'image/gif'
+      : 'image/jpeg'
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
       messages: [
         {
           role: 'user',
           content: [
-            { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } },
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType, data: item.imageBase64 },
+            },
             { type: 'text', text: ocrPrompt },
           ],
         },
       ],
     })
 
-    const ocrRaw = response.choices[0]?.message?.content ?? ''
+    const ocrRaw = response.content
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text)
+      .join('')
 
-    // Parse JSON from the response
     let recipes: any[] = []
     try {
       const cleaned = ocrRaw.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
@@ -133,14 +135,12 @@ Return ONLY a valid JSON array, no explanation.`
     for (const recipe of recipes) {
       if (!recipe.chemicals) continue
       for (const chem of recipe.chemicals) {
-        // Check alias first
         const aliasLower = (chem.name || '').toLowerCase().trim()
         const alias = aliases.find((a: any) => a.ocrName.toLowerCase() === aliasLower)
         if (alias) {
           const matched = allChemicals.find((c: any) => c.id === alias.chemicalId)
           if (matched) { chem.matchedId = matched.id; chem.matchedName = matched.name; continue }
         }
-        // Fuzzy match
         const best = findBestChemical(chem.name, allChemicals)
         if (best) { chem.matchedId = best.id; chem.matchedName = best.name }
       }
