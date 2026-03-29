@@ -507,7 +507,6 @@ export default function ShadeImportPage() {
 
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
-  const excelInputRef = useRef<HTMLInputElement>(null)
 
   // Load queue, color chemicals, existing shade names
   const loadAll = useCallback(async () => {
@@ -574,126 +573,6 @@ export default function ShadeImportPage() {
       // Reset inputs so same files can be selected again
       if (cameraInputRef.current) cameraInputRef.current.value = ''
       if (galleryInputRef.current) galleryInputRef.current.value = ''
-    }
-  }
-
-  // Handle Excel import
-  async function handleExcelImport(file: File | null) {
-    if (!file) return
-    setUploading(true)
-    setUploadError('')
-    try {
-      const xlsxModule = await import('xlsx')
-      const XLSX = xlsxModule.default || xlsxModule
-      const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: 'array' })
-
-      // Collect all dye rows across all sheets, grouped by shade name
-      const shadeMap = new Map<string, { name: string; percent: number }[]>()
-
-      for (const sheetName of wb.SheetNames) {
-        const ws = wb.Sheets[sheetName]
-        if (!ws) continue
-        const rows: any[] = XLSX.utils.sheet_to_json(ws, { defval: '' })
-        if (!rows || rows.length === 0) continue
-
-        const cols = Object.keys(rows[0] || {})
-        if (cols.length < 3) continue
-
-        // Detect columns: Colour Name, Dye Name, % Shade
-        // Format: Col A = Recipe #, Col B = Colour Name, Col C = Dye Name, Col D = % Shade
-        const colB = cols.find(c => /colour|color|shade\s*name/i.test(c))
-        const colC = cols.find(c => /dye\s*name|dye|chemical/i.test(c))
-        const colD = cols.find(c => /%\s*shade|percent|shade\s*%|%/i.test(c))
-
-        // Fallback: if no headers detected, use positional (B=1, C=2, D=3)
-        const useColB = colB || cols[1] || cols[0]
-        const useColC = colC || cols[2] || cols[1]
-        const useColD = colD || cols[3] || cols[2]
-
-        for (const row of rows) {
-          if (!row) continue
-          const shadeName = String(row[useColB] ?? '').trim()
-          const dyeName = String(row[useColC] ?? '').trim()
-          const pctRaw = parseFloat(row[useColD])
-
-          // Skip header rows (no dye name) and empty rows
-          if (!shadeName || !dyeName || isNaN(pctRaw) || pctRaw <= 0) continue
-
-          const key = shadeName.toUpperCase()
-          if (!shadeMap.has(key)) shadeMap.set(key, [])
-          shadeMap.get(key)!.push({ name: dyeName, percent: pctRaw })
-        }
-      }
-
-      if (shadeMap.size === 0) {
-        setUploadError('No recipes found. Expected columns: Colour Name, Dye Name (Master List), % Shade')
-        return
-      }
-
-      // Convert map to recipe array
-      const recipes: OcrRecipe[] = Array.from(shadeMap.entries()).map(([key, chems]) => ({
-        shadeNo: key,
-        description: key,
-        chemicals: chems,
-      }))
-
-      // Fuzzy match dye names to chemical master
-      const matched = recipes.map(r => ({
-        ...r,
-        chemicals: r.chemicals.map(c => {
-          if (!colorChemicals || colorChemicals.length === 0) return c
-          const lower = c.name.toLowerCase()
-          const exact = colorChemicals.find(ch => ch.name.toLowerCase() === lower)
-          if (exact) return { ...c, matchedId: exact.id, matchedName: exact.name }
-          const contains = colorChemicals.find(ch => ch.name.toLowerCase().includes(lower) || lower.includes(ch.name.toLowerCase()))
-          if (contains) return { ...c, matchedId: contains.id, matchedName: contains.name }
-          return c
-        }),
-      }))
-
-      // Create queue item for review (minimal base64 placeholder)
-      const res = await fetch('/api/shades/import-queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          images: [{
-            base64: 'ZXhjZWw=',  // "excel" in base64
-            mediaType: 'application/xlsx',
-            pageLabel: file.name || 'Excel Import',
-          }],
-        }),
-      })
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: 'Failed to create queue item' }))
-        setUploadError(errData.error ?? 'Failed to create queue item')
-        return
-      }
-      const data = await res.json()
-      if (!data.created || !data.created[0]) {
-        setUploadError('Failed to create queue item')
-        return
-      }
-      const queueItem = data.created[0]
-
-      // Immediately set recipes and status to reviewing
-      const patchRes = await fetch(`/api/shades/import-queue/${queueItem.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'reviewing', recipes: matched }),
-      })
-      if (patchRes.ok) {
-        const updated = await patchRes.json()
-        await loadAll()
-        setReviewItem(updated)
-      } else {
-        setUploadError('Failed to save parsed recipes')
-      }
-    } catch (e: any) {
-      setUploadError(e.message ?? 'Failed to parse Excel file')
-    } finally {
-      setUploading(false)
-      if (excelInputRef.current) excelInputRef.current.value = ''
     }
   }
 
@@ -848,14 +727,6 @@ export default function ShadeImportPage() {
               <span>Gallery</span>
               <span className="text-xs text-gray-400">(multi)</span>
             </button>
-            <button
-              onClick={() => excelInputRef.current?.click()}
-              disabled={uploading}
-              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700 disabled:opacity-60 transition"
-            >
-              <span>📊</span>
-              <span>Excel Import</span>
-            </button>
             {uploading && (
               <div className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400">
                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
@@ -884,13 +755,6 @@ export default function ShadeImportPage() {
             multiple
             className="hidden"
             onChange={e => handleFilesSelected(e.target.files)}
-          />
-          <input
-            ref={excelInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={e => handleExcelImport(e.target.files?.[0] ?? null)}
           />
         </div>
 
