@@ -10,14 +10,46 @@ const include = {
   },
 }
 
+// Default processes to seed if none exist
+const DEFAULT_PROCESSES: { name: string; chemicals: string[]; quantities: number[] }[] = [
+  { name: 'Scouring', chemicals: ['Caustic Soda Flakes', 'Soda Ash', 'Hydrogen Peroxide', 'XNI'], quantities: [2, 3, 1.5, 0.5] },
+  { name: 'Anti Fungus', chemicals: ['AFR'], quantities: [0.3] },
+  { name: 'Levelling', chemicals: ['Level PEL'], quantities: [0.5] },
+  { name: 'Washing', chemicals: ['Soaping Agent'], quantities: [1] },
+]
+
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const processes = await (prisma as any).dyeingProcess.findMany({
+  let processes = await (prisma as any).dyeingProcess.findMany({
     orderBy: { name: 'asc' },
     include,
   })
+
+  // Auto-seed default processes if none exist
+  if (processes.length === 0) {
+    for (const dp of DEFAULT_PROCESSES) {
+      try {
+        const chemIds: { chemicalId: number; quantity: number }[] = []
+        for (let i = 0; i < dp.chemicals.length; i++) {
+          const chem = await (prisma as any).chemical.findFirst({ where: { name: { contains: dp.chemicals[i], mode: 'insensitive' } } })
+          if (chem) chemIds.push({ chemicalId: chem.id, quantity: dp.quantities[i] })
+        }
+        await (prisma as any).dyeingProcess.create({
+          data: {
+            name: dp.name,
+            items: { create: chemIds },
+          },
+        })
+      } catch (_) { /* skip if already exists or chemical not found */ }
+    }
+    processes = await (prisma as any).dyeingProcess.findMany({
+      orderBy: { name: 'asc' },
+      include,
+    })
+  }
+
   return NextResponse.json(processes)
 }
 
