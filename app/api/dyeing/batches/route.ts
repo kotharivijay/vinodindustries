@@ -17,6 +17,14 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
+    // Get fold batch IDs that already have a DyeingEntry linked
+    const db = prisma as any
+    const usedBatches = await db.dyeingEntry.findMany({
+      where: { foldBatchId: { not: null } },
+      select: { foldBatchId: true },
+    })
+    const usedBatchIds = new Set(usedBatches.map((e: any) => e.foldBatchId))
+
     // Fetch all fold programs with batches, lots, shade, recipe
     const programs = await prisma.foldProgram.findMany({
       include: {
@@ -73,10 +81,11 @@ export async function GET() {
       return 0
     }
 
-    // Build response
+    // Build response — exclude batches already linked to a DyeingEntry
     const result = []
     for (const prog of programs) {
       for (const batch of prog.batches) {
+        if (usedBatchIds.has(batch.id)) continue
         const lots = batch.lots.map(lot => {
           const wpt = calcWeightPerThan(lot.lotNo)
           return {

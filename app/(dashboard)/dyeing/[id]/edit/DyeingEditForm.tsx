@@ -15,7 +15,11 @@ interface ChemicalRow {
   rate: string
   cost: number | null
   matched: boolean
+  processTag: string | null
 }
+
+interface MachineOption { id: number; number: number; name: string; isActive: boolean }
+interface OperatorOption { id: number; name: string; mobileNo: string | null; isActive: boolean }
 
 export default function DyeingEditForm({ id }: { id: string }) {
   const router = useRouter()
@@ -52,9 +56,18 @@ export default function DyeingEditForm({ id }: { id: string }) {
   const [shadeError, setShadeError] = useState('')
   const [shadeSaved, setShadeSaved] = useState(false)
 
-  // Load chemical master
+  // Machine & Operator
+  const [machines, setMachines] = useState<MachineOption[]>([])
+  const [operators, setOperators] = useState<OperatorOption[]>([])
+  const [selectedMachineId, setSelectedMachineId] = useState<number | null>(null)
+  const [selectedOperatorId, setSelectedOperatorId] = useState<number | null>(null)
+  const [shadeName, setShadeName] = useState('')
+
+  // Load chemical master + machines + operators
   useEffect(() => {
     fetch('/api/chemicals').then(r => r.json()).then(d => setMasterChemicals(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch('/api/dyeing/machines').then(r => r.json()).then(d => setMachines(Array.isArray(d) ? d.filter((m: any) => m.isActive) : [])).catch(() => {})
+    fetch('/api/dyeing/operators?active=true').then(r => r.json()).then(d => setOperators(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
 
   // Load available lots on mount
@@ -79,6 +92,11 @@ export default function DyeingEditForm({ id }: { id: string }) {
         setLots([{ lotNo: e.lotNo, than: String(e.than) }])
       }
 
+      // Load machine/operator/shade
+      if (e.machineId) setSelectedMachineId(e.machineId)
+      if (e.operatorId) setSelectedOperatorId(e.operatorId)
+      if (e.shadeName) setShadeName(e.shadeName)
+
       // Load chemicals
       if (e.chemicals?.length) {
         setChemicals(e.chemicals.map((c: any) => ({
@@ -89,6 +107,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
           rate: c.rate != null ? String(c.rate) : '',
           cost: c.cost ?? null,
           matched: c.chemicalId != null,
+          processTag: c.processTag ?? null,
         })))
       }
       setLoading(false)
@@ -173,7 +192,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
   }
 
   function addChemicalRow() {
-    setChemicals(prev => [...prev, { name: '', chemicalId: null, quantity: '', unit: 'kg', rate: '', cost: null, matched: false }])
+    setChemicals(prev => [...prev, { name: '', chemicalId: null, quantity: '', unit: 'kg', rate: '', cost: null, matched: false, processTag: null }])
   }
 
   function removeChemical(i: number) {
@@ -258,7 +277,11 @@ export default function DyeingEditForm({ id }: { id: string }) {
           unit: c.unit,
           rate: c.rate ? parseFloat(c.rate) : null,
           cost: c.cost,
+          processTag: c.processTag || null,
         })),
+      shadeName: shadeName.trim() || null,
+      machineId: selectedMachineId,
+      operatorId: selectedOperatorId,
     }
 
     const res = await fetch(`/api/dyeing/${id}`, {
@@ -410,6 +433,21 @@ export default function DyeingEditForm({ id }: { id: string }) {
             </Field>
             <Field label="Slip No *">
               <input type="number" className={inp} value={form.slipNo} onChange={e => set('slipNo', e.target.value)} required />
+            </Field>
+            <Field label="Machine">
+              <select className={inp} value={selectedMachineId ?? ''} onChange={e => setSelectedMachineId(e.target.value ? parseInt(e.target.value) : null)}>
+                <option value="">-- Select Machine --</option>
+                {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Operator">
+              <select className={inp} value={selectedOperatorId ?? ''} onChange={e => setSelectedOperatorId(e.target.value ? parseInt(e.target.value) : null)}>
+                <option value="">-- Select Operator --</option>
+                {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Shade Name">
+              <input type="text" className={inp} value={shadeName} onChange={e => setShadeName(e.target.value)} placeholder="Shade name" />
             </Field>
             <Field label="Notes">
               <input type="text" className={inp} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Any remarks" />

@@ -14,6 +14,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       include: {
         chemicals: { include: { chemical: true } },
         lots: true,
+        machine: true,
+        operator: true,
       },
     })
     if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -53,6 +55,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       than: lots[0].than,
       shadeName: data.shadeName?.trim() || null,
       notes: data.notes || null,
+      machineId: data.machineId !== undefined ? (data.machineId ? parseInt(data.machineId) : null) : undefined,
+      operatorId: data.operatorId !== undefined ? (data.operatorId ? parseInt(data.operatorId) : null) : undefined,
     },
   })
 
@@ -77,6 +81,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           unit: c.unit || 'kg',
           rate: c.rate != null ? parseFloat(c.rate) : null,
           cost: c.cost != null ? parseFloat(c.cost) : null,
+          processTag: c.processTag || null,
         })),
       })
     }
@@ -87,6 +92,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     include: {
       chemicals: { include: { chemical: true } },
       lots: true,
+      machine: true,
+      operator: true,
     },
   })
   return NextResponse.json(updated)

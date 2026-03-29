@@ -72,22 +72,55 @@ model GreyEntry {
   updatedAt     DateTime  @updatedAt
 }
 
+// ─── Jet Dyeing Machine ────────────────────────────────────────────────────
+model DyeingMachine {
+  id        Int           @id @default(autoincrement())
+  number    Int           @unique
+  name      String
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  entries   DyeingEntry[]
+}
+
+// ─── Dyeing Operator ───────────────────────────────────────────────────────
+model DyeingOperator {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique
+  mobileNo  String?
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  entries   DyeingEntry[]
+}
+
 // ─── Dyeing Slip Entry ─────────────────────────────────────────────────────────
 
 model DyeingEntry {
-  id          Int                  @id @default(autoincrement())
-  date        DateTime
-  slipNo      Int
-  lotNo       String
-  than        Int
-  shadeName   String?
-  notes       String?
-  foldBatchId Int?
-  foldBatch   FoldBatch?           @relation(fields: [foldBatchId], references: [id])
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  chemicals   DyeingSlipChemical[]
-  lots        DyeingEntryLot[]
+  id              Int                  @id @default(autoincrement())
+  date            DateTime
+  slipNo          Int
+  lotNo           String
+  than            Int
+  shadeName       String?
+  notes           String?
+  foldBatchId     Int?
+  foldBatch       FoldBatch?           @relation(fields: [foldBatchId], references: [id])
+  dyeingDoneAt    DateTime?
+  dyeingPhotoUrl  String?
+  dyeingDriveId   String?
+  dyeingNotes     String?
+  machineId       Int?
+  machine         DyeingMachine?   @relation(fields: [machineId], references: [id])
+  operatorId      Int?
+  operator        DyeingOperator?  @relation(fields: [operatorId], references: [id])
+  colorC          Float?
+  colorM          Float?
+  colorY          Float?
+  colorK          Float?
+  colorHex        String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  chemicals       DyeingSlipChemical[]
+  lots            DyeingEntryLot[]
 }
 
 model DyeingEntryLot {
@@ -109,6 +142,7 @@ model DyeingSlipChemical {
   unit       String       @default("kg")
   rate       Float?
   cost       Float?
+  processTag String?      // "shade" | "Scouring" | "Anti Fungus" | process name
   createdAt  DateTime     @default(now())
 }
 
