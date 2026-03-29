@@ -527,7 +527,7 @@ export default function ColorLabPage() {
                 ref={fileRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
+                capture
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]

@@ -2248,7 +2248,7 @@ export default function DyeingForm() {
         ref={cameraRef}
         type="file"
         accept="image/*"
-        capture="environment"
+        capture
         className="hidden"
         onChange={handleImageSelect}
       />
