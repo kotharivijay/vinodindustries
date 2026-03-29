@@ -41,7 +41,11 @@ interface ChemicalRow {
   unit: string
   rate: string
   cost: number | null
+  processTag: string | null
 }
+
+interface MachineOption { id: number; number: number; name: string; isActive: boolean }
+interface OperatorOption { id: number; name: string; mobileNo: string | null; isActive: boolean }
 
 interface ChemicalMaster {
   id: number
@@ -108,7 +112,14 @@ export default function BatchDyeingPage() {
 
   // Process presets
   const [processes, setProcesses] = useState<DyeingProcess[]>([])
-  const [showPresets, setShowPresets] = useState(false)
+  const [processPopup, setProcessPopup] = useState<DyeingProcess | null>(null)
+  const [processQtys, setProcessQtys] = useState<Record<number, string>>({})
+
+  // Machine & Operator
+  const [machines, setMachines] = useState<MachineOption[]>([])
+  const [operators, setOperators] = useState<OperatorOption[]>([])
+  const [selectedMachineId, setSelectedMachineId] = useState<number | null>(null)
+  const [selectedOperatorId, setSelectedOperatorId] = useState<number | null>(null)
 
   // ─── Load data ──────────────────────────────────────────────────────────────
 
@@ -118,11 +129,15 @@ export default function BatchDyeingPage() {
       fetch('/api/dyeing/batch').then(r => r.json()),
       fetch('/api/masters/chemicals').then(r => r.json()).catch(() => []),
       fetch('/api/dyeing/processes').then(r => r.json()).catch(() => []),
-    ]).then(([batchData, entryData, chemData, processData]) => {
+      fetch('/api/dyeing/machines').then(r => r.json()).catch(() => []),
+      fetch('/api/dyeing/operators?active=true').then(r => r.json()).catch(() => []),
+    ]).then(([batchData, entryData, chemData, processData, machineData, operatorData]) => {
       setBatches(Array.isArray(batchData) ? batchData : [])
       setSavedEntries(Array.isArray(entryData) ? entryData : [])
       setMasterChemicals(Array.isArray(chemData) ? chemData : [])
       setProcesses(Array.isArray(processData) ? processData : [])
+      setMachines(Array.isArray(machineData) ? machineData.filter((m: any) => m.isActive) : [])
+      setOperators(Array.isArray(operatorData) ? operatorData : [])
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
@@ -173,6 +188,7 @@ export default function BatchDyeingPage() {
           unit: r.unit,
           rate: r.rate != null ? String(r.rate) : '',
           cost: r.rate != null ? Math.round(r.calculatedQty * r.rate * 100) / 100 : null,
+          processTag: 'shade',
         }))
       )
     }
@@ -217,7 +233,7 @@ export default function BatchDyeingPage() {
   function addChemicalRow() {
     setChemicals(prev => [
       ...prev,
-      { chemicalId: null, name: '', quantity: '', unit: 'kg', rate: '', cost: null },
+      { chemicalId: null, name: '', quantity: '', unit: 'kg', rate: '', cost: null, processTag: null },
     ])
   }
 
@@ -243,6 +259,8 @@ export default function BatchDyeingPage() {
   }
 
   function applyPreset(process: DyeingProcess) {
+    // Remove existing chemicals from this process, then add fresh
+    const withoutOld = chemicals.filter(c => c.processTag !== process.name)
     const rows: ChemicalRow[] = process.items.map(item => {
       const master = masterChemicals.find(m => m.id === item.chemicalId)
       const rate = master?.currentPrice != null ? String(master.currentPrice) : ''
@@ -257,10 +275,47 @@ export default function BatchDyeingPage() {
         unit: item.chemical.unit || 'kg',
         rate,
         cost,
+        processTag: process.name,
       }
     })
-    setChemicals(rows)
-    setShowPresets(false)
+    setChemicals([...withoutOld, ...rows])
+  }
+
+  // Open process popup instead of directly applying
+  function openProcessPopup(process: DyeingProcess) {
+    const qtys: Record<number, string> = {}
+    process.items.forEach(item => { qtys[item.chemicalId] = String(item.quantity) })
+    setProcessQtys(qtys)
+    setProcessPopup(process)
+  }
+
+  function confirmProcessPopup() {
+    if (!processPopup) return
+    const withoutOld = chemicals.filter(c => c.processTag !== processPopup.name)
+    const rows: ChemicalRow[] = processPopup.items.map(item => {
+      const master = masterChemicals.find(m => m.id === item.chemicalId)
+      const rate = master?.currentPrice != null ? String(master.currentPrice) : ''
+      const qty = processQtys[item.chemicalId] || String(item.quantity)
+      const rateNum = parseFloat(rate)
+      const qtyNum = parseFloat(qty)
+      const cost = !isNaN(rateNum) && !isNaN(qtyNum) ? Math.round(rateNum * qtyNum * 100) / 100 : null
+      return {
+        chemicalId: item.chemicalId,
+        name: item.chemical.name,
+        quantity: qty,
+        unit: item.chemical.unit || 'kg',
+        rate,
+        cost,
+        processTag: processPopup.name,
+      }
+    })
+    setChemicals([...withoutOld, ...rows])
+    setProcessPopup(null)
+  }
+
+  // Check if a process is already added
+  function isProcessAdded(processName: string): boolean {
+    return chemicals.some(c => c.processTag === processName)
   }
 
   // ─── Totals ─────────────────────────────────────────────────────────────────
@@ -294,8 +349,11 @@ export default function BatchDyeingPage() {
           date,
           slipNo: parseInt(slipNo),
           foldBatchId: selectedBatch.batchId,
+          machineId: selectedMachineId,
+          operatorId: selectedOperatorId,
           lots: selectedBatch.lots.map(l => ({ lotNo: l.lotNo, than: l.than })),
           notes: notes.trim() || null,
+          shadeName: selectedBatch.shadeName || null,
           chemicals: chemicals.map(c => ({
             chemicalId: c.chemicalId,
             name: c.name,
@@ -303,6 +361,7 @@ export default function BatchDyeingPage() {
             unit: c.unit,
             rate: c.rate ? parseFloat(c.rate) : null,
             cost: c.cost,
+            processTag: c.processTag || null,
           })),
         }),
       })
@@ -320,6 +379,8 @@ export default function BatchDyeingPage() {
       setSelectedBatchId(null)
       setChemicals([])
       setNotes('')
+      setSelectedMachineId(null)
+      setSelectedOperatorId(null)
       setSlipNo(String(parseInt(slipNo) + 1))
     } catch (err: any) {
       setError(err.message || 'Failed to save')
@@ -506,6 +567,32 @@ export default function BatchDyeingPage() {
                   {selectedBatch.totalWeight.toFixed(1)} kg
                 </span>
               </div>
+
+              {/* Machine & Operator */}
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Machine</label>
+                  <select
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={selectedMachineId ?? ''}
+                    onChange={e => setSelectedMachineId(e.target.value ? parseInt(e.target.value) : null)}
+                  >
+                    <option value="">-- Select --</option>
+                    {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Operator</label>
+                  <select
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={selectedOperatorId ?? ''}
+                    onChange={e => setSelectedOperatorId(e.target.value ? parseInt(e.target.value) : null)}
+                  >
+                    <option value="">-- Select --</option>
+                    {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
           )}
 
@@ -528,24 +615,25 @@ export default function BatchDyeingPage() {
                 </button>
               </div>
 
-              {/* Process Presets */}
+              {/* Process Buttons */}
               {processes.length > 0 && (
                 <div className="mb-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Process Presets:</span>
-                    {processes.slice(0, showPresets ? processes.length : 4).map(p => (
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 shrink-0">Quick Process:</span>
+                    {processes.map(p => (
                       <button
                         key={p.id}
                         type="button"
-                        onClick={() => {
-                          if (chemicals.length > 0 && !confirm(`Replace ${chemicals.length} chemical(s) with "${p.name}" preset?`)) return
-                          applyPreset(p)
-                        }}
+                        onClick={() => openProcessPopup(p)}
                         title={p.description || `${p.items.length} chemicals`}
-                        className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition shrink-0"
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition shrink-0 ${
+                          isProcessAdded(p.name)
+                            ? 'bg-green-900/30 text-green-400 border-green-700'
+                            : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-100 dark:hover:bg-indigo-900/40'
+                        }`}
                       >
-                        {p.name}
-                        <span className="ml-1 text-indigo-400">({p.items.length})</span>
+                        {isProcessAdded(p.name) ? '✅ ' : ''}{p.name}
+                        <span className="ml-1 opacity-60">({p.items.length})</span>
                       </button>
                     ))}
                     {processes.length > 4 && (
@@ -648,6 +736,13 @@ export default function BatchDyeingPage() {
                           &times;
                         </button>
                       </div>
+
+                      {/* Process tag badge */}
+                      {c.processTag && (
+                        <div className="ml-7 mb-1">
+                          <span className="text-[10px] font-medium bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded">{c.processTag}</span>
+                        </div>
+                      )}
 
                       {/* Qty / Unit / Rate / Cost */}
                       <div className="grid grid-cols-2 gap-2 pl-7">
@@ -860,6 +955,39 @@ export default function BatchDyeingPage() {
               )
             })
           )}
+        </div>
+      )}
+      {/* Process Popup Modal */}
+      {processPopup && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setProcessPopup(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">{processPopup.name}</h3>
+              <button onClick={() => setProcessPopup(null)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div className="space-y-3">
+              {processPopup.items.map(item => (
+                <div key={item.chemicalId} className="flex items-center gap-3 border border-gray-200 dark:border-gray-600 rounded-lg p-3 bg-gray-50 dark:bg-gray-900">
+                  <span className="flex-1 text-sm text-gray-800 dark:text-gray-100">{item.chemical.name}</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm text-center bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    value={processQtys[item.chemicalId] ?? String(item.quantity)}
+                    onChange={e => setProcessQtys(prev => ({ ...prev, [item.chemicalId]: e.target.value }))}
+                  />
+                  <span className="text-xs text-gray-400 w-6">{item.chemical.unit}</span>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={confirmProcessPopup}
+              className="mt-4 w-full bg-green-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-700 transition"
+            >
+              Add to Slip ✓
+            </button>
+          </div>
         </div>
       )}
     </div>
