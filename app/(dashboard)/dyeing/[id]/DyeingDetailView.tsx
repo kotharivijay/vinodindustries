@@ -20,8 +20,11 @@ interface Entry {
   lotNo: string
   than: number
   notes: string | null
+  shadeName?: string | null
   lots: Lot[]
   chemicals: Chemical[]
+  machine?: { id: number; name: string } | null
+  operator?: { id: number; name: string } | null
 }
 
 export default function DyeingDetailView({ id }: { id: string }) {
@@ -50,9 +53,14 @@ export default function DyeingDetailView({ id }: { id: string }) {
       <div className="flex items-center gap-4 mb-6">
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">&larr; Back</button>
         <h1 className="text-xl font-bold text-gray-800">Slip #{entry.slipNo}</h1>
-        <Link href={`/dyeing/${id}/edit`} className="ml-auto text-sm font-medium text-purple-600 hover:text-purple-800 border border-purple-200 rounded-lg px-3 py-1.5">
-          Edit
-        </Link>
+        <div className="ml-auto flex gap-2">
+          <Link href={`/dyeing/${id}/print`} target="_blank" className="text-sm font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg px-3 py-1.5">
+            Print
+          </Link>
+          <Link href={`/dyeing/${id}/edit`} className="text-sm font-medium text-purple-600 hover:text-purple-800 border border-purple-200 rounded-lg px-3 py-1.5">
+            Edit
+          </Link>
+        </div>
       </div>
 
       {/* Slip Info Card */}
@@ -67,6 +75,24 @@ export default function DyeingDetailView({ id }: { id: string }) {
             <p className="text-xs text-gray-400">Slip No</p>
             <p className="font-medium text-gray-800">{entry.slipNo}</p>
           </div>
+          {entry.shadeName && (
+            <div>
+              <p className="text-xs text-gray-400">Shade</p>
+              <p className="font-medium text-gray-800">{entry.shadeName}</p>
+            </div>
+          )}
+          {entry.machine && (
+            <div>
+              <p className="text-xs text-gray-400">Machine</p>
+              <p className="font-medium text-gray-800">{entry.machine.name}</p>
+            </div>
+          )}
+          {entry.operator && (
+            <div>
+              <p className="text-xs text-gray-400">Operator</p>
+              <p className="font-medium text-gray-800">{entry.operator.name}</p>
+            </div>
+          )}
           {entry.notes && (
             <div className="col-span-2">
               <p className="text-xs text-gray-400">Notes</p>

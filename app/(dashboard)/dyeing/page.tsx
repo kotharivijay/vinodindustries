@@ -35,6 +35,8 @@ interface DyeingEntry {
   colorY?: number | null
   colorK?: number | null
   colorHex?: string | null
+  machine?: { id: number; name: string } | null
+  operator?: { id: number; name: string } | null
 }
 
 interface LotSummaryRow {
@@ -491,6 +493,12 @@ export default function DyeingListPage() {
                             </div>
                           )}
                           {e.partyName && <p className="text-[10px] text-gray-400 mt-1">{e.partyName}</p>}
+                          {(e.machine || e.operator) && (
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              {e.machine && <span className="text-[10px] text-gray-400 bg-gray-700 px-1.5 py-0.5 rounded">{e.machine.name}</span>}
+                              {e.operator && <span className="text-[10px] text-gray-400 bg-gray-700 px-1.5 py-0.5 rounded">{e.operator.name}</span>}
+                            </div>
+                          )}
                           {e.shadeName && (
                             <div className="flex items-center gap-1.5 mt-1">
                               <span className="text-[10px] text-gray-500 uppercase tracking-wide">Shade</span>
@@ -499,6 +507,7 @@ export default function DyeingListPage() {
                           )}
                           {e.notes && <p className="text-[10px] text-gray-500 mt-0.5 truncate">{e.notes}</p>}
                           <DyeingStatus e={e} />
+                          <Link href={`/dyeing/${e.id}/print`} target="_blank" className="mt-1 inline-flex items-center gap-1 text-[10px] text-gray-400 hover:text-purple-300">&#128424;&#65039; Print Slip</Link>
                         </div>
                       )
                     })}
@@ -577,6 +586,7 @@ export default function DyeingListPage() {
                               <DyeingStatusCell e={e} />
                             </td>
                             <td className="px-3 py-2.5 whitespace-nowrap">
+                              <Link href={`/dyeing/${e.id}/print`} target="_blank" className="text-gray-400 hover:text-purple-300 text-xs font-medium mr-3">Print</Link>
                               <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-400 hover:text-indigo-300 text-xs font-medium mr-3">Edit</button>
                               <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-300 text-xs font-medium disabled:opacity-40">
                                 {deletingId === e.id ? '...' : 'Delete'}

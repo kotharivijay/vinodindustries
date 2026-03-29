@@ -20,7 +20,12 @@ interface ChemicalRow {
   rate: string
   cost: number | null
   matched: boolean
+  processTag: string | null
 }
+
+interface MachineOption { id: number; number: number; name: string; isActive: boolean }
+interface OperatorOption { id: number; name: string; mobileNo: string | null; isActive: boolean }
+interface ShadeWithRecipe { id: number; name: string; recipeItems: { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }[] }
 
 // ─── Image Zoom Modal ─────────────────────────────────────────────────────────
 
@@ -138,8 +143,22 @@ export default function DyeingForm() {
   const [newTagChem, setNewTagChem] = useState('')
   const [cloudSaved, setCloudSaved] = useState(false)
 
+  // Machine & Operator
+  const [machines, setMachines] = useState<MachineOption[]>([])
+  const [operators, setOperators] = useState<OperatorOption[]>([])
+  const [selectedMachineId, setSelectedMachineId] = useState<number | null>(null)
+  const [selectedOperatorId, setSelectedOperatorId] = useState<number | null>(null)
+
   // Shade reference saved on the slip
   const [shadeName, setShadeName] = useState('')
+  const [shadesWithRecipe, setShadesWithRecipe] = useState<ShadeWithRecipe[]>([])
+  const [selectedShadeId, setSelectedShadeId] = useState<number | null>(null)
+  const [shadeDropOpen, setShadeDropOpen] = useState(false)
+  const [shadeSearch, setShadeSearch] = useState('')
+
+  // Process buttons - track which processes are added
+  const [addedProcesses, setAddedProcesses] = useState<Set<number>>(new Set())
+  const [processPopup, setProcessPopup] = useState<{ process: DyeingProcess; items: { chemicalId: number; name: string; unit: string; quantity: string }[] } | null>(null)
 
   // Save to Shade Master
   const [showSaveShade, setShowSaveShade] = useState(false)
@@ -171,7 +190,19 @@ export default function DyeingForm() {
       .catch(() => {})
     fetch('/api/shades')
       .then(r => r.json())
-      .then(d => setMasterShadeNames(Array.isArray(d) ? d.map((s: any) => s.name) : []))
+      .then(d => {
+        const arr = Array.isArray(d) ? d : []
+        setMasterShadeNames(arr.map((s: any) => s.name))
+        setShadesWithRecipe(arr)
+      })
+      .catch(() => {})
+    fetch('/api/dyeing/machines')
+      .then(r => r.json())
+      .then(d => setMachines(Array.isArray(d) ? d.filter((m: any) => m.isActive) : []))
+      .catch(() => {})
+    fetch('/api/dyeing/operators?active=true')
+      .then(r => r.json())
+      .then(d => setOperators(Array.isArray(d) ? d : []))
       .catch(() => {})
     fetch('/api/dyeing/processes')
       .then(r => r.json())
@@ -833,6 +864,7 @@ export default function DyeingForm() {
           rate,
           cost,
           matched: chemicalId !== null,
+          processTag: null,
         }
       })
       setChemicals(rows)
@@ -994,7 +1026,7 @@ export default function DyeingForm() {
   }
 
   function addChemicalRow() {
-    setChemicals(prev => [...prev, { name: '', chemicalId: null, quantity: '', unit: 'kg', rate: '', cost: null, matched: false }])
+    setChemicals(prev => [...prev, { name: '', chemicalId: null, quantity: '', unit: 'kg', rate: '', cost: null, matched: false, processTag: null }])
   }
 
   function removeChemical(i: number) {
@@ -1017,10 +1049,70 @@ export default function DyeingForm() {
         rate,
         cost,
         matched: true,
+        processTag: process.name,
       }
     })
     setChemicals(rows)
     setShowPresets(false)
+  }
+
+  // Apply shade recipe to chemicals
+  function applyShadeRecipe(shade: ShadeWithRecipe) {
+    if (chemicals.length > 0 && chemicals.some(c => c.name.trim())) {
+      if (!confirm(`Replace shade chemicals with "${shade.name}" recipe?`)) return
+    }
+    // Remove existing "shade" tagged chemicals, keep other tagged ones
+    const nonShadeChemicals = chemicals.filter(c => c.processTag !== 'shade')
+    const shadeRows: ChemicalRow[] = shade.recipeItems.map(item => {
+      const master = masterChemicals.find(m => m.id === item.chemicalId)
+      const rate = master?.currentPrice?.toString() ?? ''
+      const qty = String(item.quantity)
+      const rateNum = parseFloat(rate)
+      const qtyNum = parseFloat(qty)
+      const cost = !isNaN(rateNum) && !isNaN(qtyNum) ? parseFloat((rateNum * qtyNum).toFixed(2)) : null
+      return {
+        name: item.chemical.name,
+        chemicalId: item.chemicalId,
+        quantity: qty,
+        unit: item.chemical.unit || 'kg',
+        rate,
+        cost,
+        matched: true,
+        processTag: 'shade',
+      }
+    })
+    setChemicals([...shadeRows, ...nonShadeChemicals])
+    setShadeName(shade.name)
+    setSelectedShadeId(shade.id)
+    setShadeDropOpen(false)
+    setShadeSearch('')
+  }
+
+  // Add process chemicals (additive, not replace)
+  function addProcessChemicals(process: DyeingProcess, items: { chemicalId: number; name: string; unit: string; quantity: string }[]) {
+    // Remove previously added chemicals from same process
+    const withoutOld = chemicals.filter(c => c.processTag !== process.name)
+    const newRows: ChemicalRow[] = items.filter(item => item.quantity.trim()).map(item => {
+      const master = masterChemicals.find(m => m.id === item.chemicalId)
+      const rate = master?.currentPrice?.toString() ?? ''
+      const qty = item.quantity
+      const rateNum = parseFloat(rate)
+      const qtyNum = parseFloat(qty)
+      const cost = !isNaN(rateNum) && !isNaN(qtyNum) ? parseFloat((rateNum * qtyNum).toFixed(2)) : null
+      return {
+        name: item.name,
+        chemicalId: item.chemicalId,
+        quantity: qty,
+        unit: item.unit || 'kg',
+        rate,
+        cost,
+        matched: true,
+        processTag: process.name,
+      }
+    })
+    setChemicals([...withoutOld, ...newRows])
+    setAddedProcesses(prev => new Set([...prev, process.id]))
+    setProcessPopup(null)
   }
 
   // ─── Save to Shade Master ─────────────────────────────────────────────────
@@ -1103,8 +1195,11 @@ export default function DyeingForm() {
           unit: c.unit,
           rate: c.rate ? parseFloat(c.rate) : null,
           cost: c.cost,
+          processTag: c.processTag || null,
         })),
       shadeName: shadeName.trim() || null,
+      machineId: selectedMachineId,
+      operatorId: selectedOperatorId,
       ocrNames, // pass original OCR names for alias learning
     }
 
@@ -1691,23 +1786,73 @@ export default function DyeingForm() {
               <input type="number" className={inp} value={form.slipNo} onChange={e => set('slipNo', e.target.value)} required placeholder="e.g. 266" />
             </Field>
 
-            <Field label="Shade Name">
-              <input type="text" className={inp} value={shadeName} onChange={e => setShadeName(e.target.value)}
-                placeholder="Type or pick from master below..." />
-              {masterShadeNames.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {masterShadeNames.map(n => (
-                    <button key={n} type="button"
-                      onClick={() => setShadeName(n)}
-                      className={`text-[11px] px-2 py-0.5 rounded-full border transition ${shadeName === n ? 'bg-purple-600 border-purple-500 text-white font-semibold' : 'bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600'}`}>
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              )}
+            <Field label="Machine">
+              <select className={inp} value={selectedMachineId ?? ''} onChange={e => setSelectedMachineId(e.target.value ? parseInt(e.target.value) : null)}>
+                <option value="">-- Select Machine --</option>
+                {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
             </Field>
 
-            <Field label="Notes">
+            <Field label="Operator">
+              <select className={inp} value={selectedOperatorId ?? ''} onChange={e => setSelectedOperatorId(e.target.value ? parseInt(e.target.value) : null)}>
+                <option value="">-- Select Operator --</option>
+                {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </Field>
+
+            <Field label="Shade (Recipe)" span={2}>
+              <div className="relative">
+                <div
+                  className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-gray-700 cursor-pointer ${shadeDropOpen ? 'ring-2 ring-purple-500 border-purple-500' : 'border-gray-600'}`}
+                  onClick={() => { setShadeDropOpen(!shadeDropOpen); setShadeSearch('') }}
+                >
+                  <span className={`flex-1 text-sm ${shadeName ? 'font-medium text-gray-100' : 'text-gray-500'}`}>
+                    {shadeName || 'Select shade to auto-fill recipe...'}
+                  </span>
+                  {shadeName && (
+                    <button type="button" onClick={e => { e.stopPropagation(); setShadeName(''); setSelectedShadeId(null); setChemicals(prev => prev.filter(c => c.processTag !== 'shade')) }}
+                      className="text-gray-400 hover:text-red-400 text-xs">Clear</button>
+                  )}
+                  <span className="text-gray-500 text-xs shrink-0">&#9660;</span>
+                </div>
+                {shadeDropOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-gray-800 border border-gray-600 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
+                    <input
+                      type="text" autoFocus
+                      className="w-full border-b border-gray-700 bg-gray-800 text-gray-100 placeholder-gray-500 px-3 py-2 text-sm focus:outline-none rounded-t-lg"
+                      placeholder="Search shade..."
+                      value={shadeSearch}
+                      onChange={e => setShadeSearch(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                    />
+                    <div className="overflow-y-auto max-h-48">
+                      {shadesWithRecipe
+                        .filter(s => !shadeSearch || s.name.toLowerCase().includes(shadeSearch.toLowerCase()))
+                        .map(s => (
+                          <button key={s.id} type="button"
+                            className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-900/30 text-gray-200 ${selectedShadeId === s.id ? 'bg-purple-900/30 font-medium' : ''}`}
+                            onClick={e => { e.stopPropagation(); applyShadeRecipe(s) }}>
+                            <span className="font-medium">{s.name}</span>
+                            <span className="text-xs text-gray-500 ml-2">({s.recipeItems.length} chemicals)</span>
+                          </button>
+                        ))}
+                      {shadesWithRecipe.filter(s => !shadeSearch || s.name.toLowerCase().includes(shadeSearch.toLowerCase())).length === 0 && (
+                        <p className="px-3 py-2 text-xs text-gray-500">No shades found</p>
+                      )}
+                      {shadeSearch.trim() && !shadesWithRecipe.some(s => s.name.toLowerCase() === shadeSearch.toLowerCase()) && (
+                        <button type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-amber-900/30 text-amber-400 border-t border-gray-700"
+                          onClick={e => { e.stopPropagation(); setShadeName(shadeSearch.trim()); setShadeDropOpen(false); setShadeSearch('') }}>
+                          Use &quot;{shadeSearch.trim()}&quot; as custom name
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Field>
+
+            <Field label="Notes" span={2}>
               <input type="text" className={inp} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Any remarks from slip" />
             </Field>
           </div>
@@ -1863,35 +2008,82 @@ export default function DyeingForm() {
             </div>
           </div>
 
-          {/* Process Presets */}
+          {/* Process Buttons */}
           {processes.length > 0 && (
             <div className="mb-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-medium text-gray-400">Process Presets:</span>
-                {processes.slice(0, showPresets ? processes.length : 4).map(p => (
+              <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1">
+                <span className="text-xs font-medium text-gray-400 shrink-0">Processes:</span>
+                {processes.map(p => {
+                  const isAdded = addedProcesses.has(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setProcessPopup({
+                          process: p,
+                          items: p.items.map(item => ({
+                            chemicalId: item.chemicalId,
+                            name: item.chemical.name,
+                            unit: item.chemical.unit || 'kg',
+                            quantity: String(item.quantity),
+                          })),
+                        })
+                      }}
+                      title={p.description || `${p.items.length} chemicals`}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition shrink-0 ${
+                        isAdded
+                          ? 'bg-green-900/40 text-green-300 border border-green-700'
+                          : 'bg-indigo-900/40 text-indigo-300 border border-indigo-700 hover:bg-indigo-900/60'
+                      }`}
+                    >
+                      {isAdded ? '\u2705 ' : ''}{p.name}
+                      <span className={`ml-1 ${isAdded ? 'text-green-400' : 'text-indigo-400'}`}>({p.items.length})</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Process Popup */}
+          {processPopup && (
+            <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setProcessPopup(null)}>
+              <div className="bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[80vh] overflow-y-auto border border-gray-700" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-4 border-b border-gray-700">
+                  <h3 className="text-base font-bold text-white">{processPopup.process.name}</h3>
+                  <button onClick={() => setProcessPopup(null)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+                </div>
+                <div className="p-4 space-y-3">
+                  {processPopup.items.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-3">
+                      <span className="text-sm text-gray-200 flex-1">{item.name}</span>
+                      <input
+                        type="number" step="0.001"
+                        className="w-24 bg-gray-700 border border-gray-600 text-gray-100 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 text-right"
+                        value={item.quantity}
+                        onChange={e => {
+                          setProcessPopup(prev => {
+                            if (!prev) return prev
+                            const updated = [...prev.items]
+                            updated[idx] = { ...updated[idx], quantity: e.target.value }
+                            return { ...prev, items: updated }
+                          })
+                        }}
+                      />
+                      <span className="text-xs text-gray-500 w-8">{item.unit}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-4 border-t border-gray-700">
                   <button
-                    key={p.id}
                     type="button"
-                    onClick={() => {
-                      if (chemicals.length > 0 && !confirm(`Replace ${chemicals.length} chemical(s) with "${p.name}" preset?`)) return
-                      applyPreset(p)
-                    }}
-                    title={p.description || `${p.items.length} chemicals`}
-                    className="px-3 py-1 rounded-full text-xs font-medium bg-indigo-900/40 text-indigo-300 border border-indigo-700 hover:bg-indigo-900/60 transition shrink-0"
+                    onClick={() => addProcessChemicals(processPopup.process, processPopup.items)}
+                    className="w-full bg-purple-600 text-white font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-purple-700 transition"
                   >
-                    {p.name}
-                    <span className="ml-1 text-indigo-400">({p.items.length})</span>
+                    Add to Slip
                   </button>
-                ))}
-                {processes.length > 4 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowPresets(v => !v)}
-                    className="text-xs text-gray-500 hover:text-gray-300 shrink-0"
-                  >
-                    {showPresets ? 'less' : `+${processes.length - 4} more`}
-                  </button>
-                )}
+                </div>
               </div>
             </div>
           )}
@@ -1915,6 +2107,9 @@ export default function DyeingForm() {
                         <span className={`flex-1 text-sm ${c.name ? 'font-medium text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>
                           {c.name || 'Select chemical...'}
                         </span>
+                        {c.processTag && (
+                          <span className="text-[10px] font-medium bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded shrink-0">{c.processTag}</span>
+                        )}
                         {c.matched && (
                           <span className="text-green-600 dark:text-green-400 text-[10px] font-semibold bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 px-1 py-0.5 rounded shrink-0">✓</span>
                         )}

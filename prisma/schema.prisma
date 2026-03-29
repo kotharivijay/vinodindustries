@@ -72,6 +72,26 @@ model GreyEntry {
   updatedAt     DateTime  @updatedAt
 }
 
+// ─── Jet Dyeing Machine ────────────────────────────────────────────────────
+model DyeingMachine {
+  id        Int           @id @default(autoincrement())
+  number    Int           @unique
+  name      String
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  entries   DyeingEntry[]
+}
+
+// ─── Dyeing Operator ───────────────────────────────────────────────────────
+model DyeingOperator {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique
+  mobileNo  String?
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  entries   DyeingEntry[]
+}
+
 // ─── Dyeing Slip Entry ─────────────────────────────────────────────────────────
 
 model DyeingEntry {
@@ -88,6 +108,10 @@ model DyeingEntry {
   dyeingPhotoUrl  String?
   dyeingDriveId   String?
   dyeingNotes     String?
+  machineId       Int?
+  machine         DyeingMachine?   @relation(fields: [machineId], references: [id])
+  operatorId      Int?
+  operator        DyeingOperator?  @relation(fields: [operatorId], references: [id])
   colorC          Float?
   colorM          Float?
   colorY          Float?
@@ -118,6 +142,7 @@ model DyeingSlipChemical {
   unit       String       @default("kg")
   rate       Float?
   cost       Float?
+  processTag String?      // "shade" | "Scouring" | "Anti Fungus" | process name
   createdAt  DateTime     @default(now())
 }
 

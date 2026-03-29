@@ -36,6 +36,8 @@ const ksiNavGroups = [
       { href: '/masters/chemicals', label: 'Chemicals', icon: '🧪' },
       { href: '/masters/shades', label: 'Shades', icon: '🎨' },
       { href: '/masters/shades/import', label: 'Shade Import', icon: '📥' },
+      { href: '/masters/machines', label: 'Machine Master', icon: '⚙️' },
+      { href: '/masters/operators', label: 'Operator Master', icon: '👷' },
     ],
   },
   {
