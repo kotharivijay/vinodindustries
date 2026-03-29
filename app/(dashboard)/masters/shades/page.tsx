@@ -144,6 +144,7 @@ export default function ShadesPage() {
   const { data: chemicals } = useSWR<Chemical[]>('/api/chemicals', fetcher)
 
   const [search, setSearch] = useState('')
+  const [sortMode, setSortMode] = useState<'prefix' | 'name' | 'recent'>('prefix')
   const [selected, setSelected] = useState<Shade | null>(null)
   const [isNew, setIsNew] = useState(false)
 
@@ -233,10 +234,30 @@ export default function ShadesPage() {
     closeEditor()
   }
 
-  const filtered = (shades ?? []).filter(s =>
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    (s.description ?? '').toLowerCase().includes(search.toLowerCase())
-  )
+  // Extract prefix and number from shade name like "PS/MAGIC/12" → { prefix: "PS/MAGIC/", num: 12 }
+  function parseShadeNo(name: string): { prefix: string; num: number } {
+    const match = name.match(/^(.*?)(\d+)\s*$/)
+    if (match) return { prefix: match[1], num: parseInt(match[2]) }
+    return { prefix: name, num: 0 }
+  }
+
+  const filtered = (shades ?? [])
+    .filter(s =>
+      s.name.toLowerCase().includes(search.toLowerCase()) ||
+      (s.description ?? '').toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (sortMode === 'recent') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      if (sortMode === 'name') return a.name.localeCompare(b.name)
+      // prefix sort: group by prefix, then sort by number
+      const pa = parseShadeNo(a.name), pb = parseShadeNo(b.name)
+      const prefixCmp = pa.prefix.localeCompare(pb.prefix)
+      if (prefixCmp !== 0) return prefixCmp
+      return pa.num - pb.num
+    })
+
+  // Get unique prefixes for display
+  const prefixes = [...new Set(filtered.map(s => parseShadeNo(s.name).prefix))].filter(p => p)
 
   const editorOpen = isNew || selected !== null
 
@@ -268,10 +289,33 @@ export default function ShadesPage() {
           <input
             type="text"
             placeholder="Search shades..."
-            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm mb-3 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm mb-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            <span className="text-[10px] text-gray-500">Sort:</span>
+            {([['prefix', 'Prefix'], ['name', 'A-Z'], ['recent', 'Recent']] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setSortMode(key)}
+                className={`text-[10px] px-2 py-0.5 rounded border ${sortMode === key ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'}`}>
+                {label}
+              </button>
+            ))}
+            {sortMode === 'prefix' && prefixes.length > 1 && (
+              <>
+                <span className="text-[10px] text-gray-400 ml-1">|</span>
+                {prefixes.slice(0, 10).map(p => (
+                  <button key={p} onClick={() => setSearch(p)}
+                    className={`text-[10px] px-1.5 py-0.5 rounded ${search === p ? 'bg-purple-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+                    {p.replace(/\/$/, '')}
+                  </button>
+                ))}
+                {search && prefixes.includes(search) && (
+                  <button onClick={() => setSearch('')} className="text-[10px] text-red-400 hover:text-red-300 ml-1">Clear</button>
+                )}
+              </>
+            )}
+          </div>
 
           {isLoading ? (
             <div className="text-gray-400 text-sm">Loading...</div>
