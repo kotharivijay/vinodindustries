@@ -545,6 +545,88 @@ model TallyReceipt {
   @@index([firmCode, partyName])
 }
 
+// ─── Sales Orders (Google Sheets) ─────────────────────────────────────────────
+
+model SalesOrder {
+  id           Int      @id @default(autoincrement())
+  firmCode     String
+  date         String?
+  orderNo      String?
+  partyOrderNo String?
+  partyName    String?
+  itemName     String?
+  orderQty     Float?
+  dispatchMtr  Float?
+  desDate      String?
+  balance      Float?
+  rate         Float?
+  discount     String?
+  agentName    String?
+  remark       String?
+  status       String?
+  lastSynced   DateTime?
+  createdAt    DateTime @default(now())
+  @@index([firmCode, partyName])
+  @@index([firmCode, agentName])
+}
+
+// ─── Contacts ─────────────────────────────────────────────────────────────────
+
+model Contact {
+  id            Int      @id @default(autoincrement())
+  firmCode      String
+  name          String
+  mobile1       String?
+  mobile2       String?
+  mobile3       String?
+  contactPerson String?
+  tag           String?
+  agentName     String?
+  address       String?
+  state         String?
+  gstNo         String?
+  source        String?
+  lastSynced    DateTime?
+  createdAt     DateTime @default(now())
+  @@unique([firmCode, name])
+  @@index([firmCode, tag])
+}
+
+// ─── Call Log ─────────────────────────────────────────────────────────────────
+
+model CallLog {
+  id            Int      @id @default(autoincrement())
+  partyName     String
+  firmCode      String?
+  callDate      DateTime
+  note          String?
+  promiseDate   DateTime?
+  promiseAmt    Float?
+  nextFollowUp  DateTime?
+  calledBy      String?
+  createdAt     DateTime @default(now())
+  @@index([partyName])
+}
+
+// ─── Bank Payments ────────────────────────────────────────────────────────────
+
+model BankPayment {
+  id           Int      @id @default(autoincrement())
+  firmCode     String
+  voucherDate  String?
+  description  String?
+  instNo       String?
+  partyName    String?
+  withdrawal   Float?
+  deposit      Float?
+  narration    String?
+  paymentDays  Int?
+  source       String?
+  lastSynced   DateTime?
+  createdAt    DateTime @default(now())
+  @@index([firmCode, partyName])
+}
+
 // ─── Lot Manual Reservation ───────────────────────────────────────────────────
 
 model LotManualReservation {

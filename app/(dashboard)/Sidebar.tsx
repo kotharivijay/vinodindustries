@@ -64,6 +64,9 @@ const viNavGroups = [
       { href: '/vi/ledgers', label: 'Ledger Master', icon: '📒' },
       { href: '/vi/outstanding', label: 'Outstanding', icon: '💰' },
       { href: '/vi/sales', label: 'Sales Register', icon: '📈' },
+      { href: '/vi/orders', label: 'Orders', icon: '📋' },
+      { href: '/vi/contacts', label: 'Contacts', icon: '👥' },
+      { href: '/vi/calls', label: 'Call Reminders', icon: '🔔' },
     ],
   },
   {
