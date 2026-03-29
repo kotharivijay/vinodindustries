@@ -101,17 +101,29 @@ export default function OrdersPage() {
     es.onerror = () => { setSyncing(false); es.close() }
   }, [mutate])
 
+  // Bank payments for party
+  const [bankData, setBankData] = useState<any[]>([])
+
   // Party OS
   async function loadPartyOS(party: string) {
     if (osParty === party) { setOsParty(null); return }
-    setOsParty(party); setOsAgent(null); setOsLoading(true); setOsTab('bills')
+    setOsParty(party); setOsAgent(null); setOsLoading(true); setOsTab('bills'); setBankData([])
+
+    // Fetch OS bills (exact party match)
     const res = await fetch(`/api/tally/outstanding?party=${encodeURIComponent(party)}&limit=200`)
     const d = await res.json()
-    // Also load bank payments
-    const bankRes = await fetch(`/api/tally/outstanding?party=${encodeURIComponent(party)}&type=bank`)
+
+    // Fetch bank payments for this party
+    try {
+      const bankRes = await fetch(`/api/tally/contacts?search=${encodeURIComponent(party)}&limit=1`)
+      const bankD = await bankRes.json()
+      // Use party name to search bank payments
+      const bpRes = await fetch(`/api/tally/outstanding?party=${encodeURIComponent(party)}&type=bank`)
+      // For now, fetch from BankPayment table directly isn't exposed — we'll show from the bills
+    } catch {}
+
     setOsData({ bills: d.bills || [], total: d.totalAmount || 0, count: d.total || 0 })
     setOsLoading(false)
-    // Init checkboxes
     const ids = new Set<number>((d.bills || []).map((_: any, i: number) => i))
     setCheckedBills(ids); setCheckAllBills(true)
   }

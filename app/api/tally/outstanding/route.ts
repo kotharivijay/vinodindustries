@@ -15,12 +15,16 @@ export async function GET(req: NextRequest) {
   const page = parseInt(req.nextUrl.searchParams.get('page') || '1') || 1
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '50') || 50, 200)
 
+  const party = req.nextUrl.searchParams.get('party') || ''
+  const agent = req.nextUrl.searchParams.get('agent') || ''
+
   const db = viPrisma as any
   try {
     const where: any = {}
     if (firm) where.firmCode = firm
-    if (type) where.type = type
-    if (search) where.partyName = { contains: search, mode: 'insensitive' }
+    if (type && type !== 'bank') where.type = type
+    if (party) where.partyName = { equals: party, mode: 'insensitive' }
+    else if (search) where.partyName = { contains: search, mode: 'insensitive' }
     if (parent) where.parent = { contains: parent, mode: 'insensitive' }
 
     let orderBy: any = { closingBalance: 'desc' }
@@ -54,7 +58,10 @@ export async function GET(req: NextRequest) {
       if (t.type === 'payable') totalPayable = t._sum.closingBalance || 0
     }
 
-    const resp = NextResponse.json({ bills, total, totalReceivable, totalPayable })
+    // Sum for filtered results
+    const totalAmount = bills.reduce((s: number, b: any) => s + Math.abs(b.closingBalance || 0), 0)
+
+    const resp = NextResponse.json({ bills, total, totalReceivable, totalPayable, totalAmount })
     resp.headers.set('Cache-Control', 's-maxage=60, stale-while-revalidate=300')
     return resp
   } catch {
