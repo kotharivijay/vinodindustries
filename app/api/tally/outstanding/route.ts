@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const parent = req.nextUrl.searchParams.get('parent') || ''
   const sortParam = req.nextUrl.searchParams.get('sort') || 'amount-desc'
   const page = parseInt(req.nextUrl.searchParams.get('page') || '1') || 1
-  const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '50') || 50, 200)
+  const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '50') || 50, 10000)
 
   const party = req.nextUrl.searchParams.get('party') || ''
   const agent = req.nextUrl.searchParams.get('agent') || ''
