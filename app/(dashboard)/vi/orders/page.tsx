@@ -147,10 +147,13 @@ export default function OrdersPage() {
       return
     }
 
-    // Step 2: Fetch all outstanding and filter for agent's parties
+    // Normalize: decode HTML entities, collapse spaces, lowercase
+    const norm = (s: string) => s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim().toLowerCase()
+    const partySet = new Set(partyNames.map(norm))
+
+    // Step 2: Fetch all outstanding and fuzzy-match for agent's parties
     const res = await fetch(`/api/tally/outstanding?limit=5000`)
     const d = await res.json()
-    const partySet = new Set(partyNames.map(p => p.toLowerCase().trim()))
 
     const partyMap: Record<string, { bills: any[]; total: number }> = {}
     let grandTotal = 0
@@ -158,7 +161,8 @@ export default function OrdersPage() {
 
     for (const b of (d.bills || [])) {
       const pName = (b.partyName || '').trim()
-      if (!partySet.has(pName.toLowerCase())) continue
+      const pNorm = norm(pName)
+      if (!partySet.has(pNorm)) continue
       if (!partyMap[pName]) partyMap[pName] = { bills: [], total: 0 }
       partyMap[pName].bills.push(b)
       partyMap[pName].total += Math.abs(b.closingBalance || 0)
