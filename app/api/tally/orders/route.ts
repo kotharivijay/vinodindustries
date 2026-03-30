@@ -64,6 +64,14 @@ export async function GET(req: NextRequest) {
     db.salesOrder.findMany({ where: allWhere, select: { itemName: true }, distinct: ['itemName'], orderBy: { itemName: 'asc' } }),
   ])
 
+  // Tally agent groups (parent ledger names containing "Agent")
+  const tallyAgents = await db.tallyLedger.findMany({
+    where: { parent: { contains: 'agent', mode: 'insensitive' } },
+    select: { parent: true },
+    distinct: ['parent'],
+    orderBy: { parent: 'asc' },
+  })
+
   return NextResponse.json({
     orders,
     total,
@@ -78,6 +86,7 @@ export async function GET(req: NextRequest) {
     dropdowns: {
       parties: parties.map((p: any) => p.partyName).filter(Boolean),
       agents: agents.map((a: any) => a.agentName).filter(Boolean),
+      tallyAgents: tallyAgents.map((a: any) => a.parent).filter(Boolean),
       items: items.map((i: any) => i.itemName).filter(Boolean),
     },
   })

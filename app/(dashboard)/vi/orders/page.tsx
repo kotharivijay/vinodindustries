@@ -67,7 +67,9 @@ export default function OrdersPage() {
   const totalPages = Math.ceil(total / 50)
 
   const filteredParties = (dropdowns.parties || []).filter((p: string) => !partySearch || p.toLowerCase().includes(partySearch.toLowerCase()))
-  const filteredAgents = (dropdowns.agents || []).filter((a: string) => !agentSearch || a.toLowerCase().includes(agentSearch.toLowerCase()))
+  // Use Tally agent groups (parent ledger) for OS, order agents for filtering
+  const tallyAgents = dropdowns.tallyAgents || []
+  const filteredAgents = tallyAgents.filter((a: string) => !agentSearch || a.toLowerCase().includes(agentSearch.toLowerCase()))
 
   // Auto-sync
   const autoSynced = useRef(false)
@@ -128,22 +130,44 @@ export default function OrdersPage() {
     setCheckedBills(ids); setCheckAllBills(true)
   }
 
-  // Agent OS
+  // Agent OS — agent = parent ledger group in Tally
+  // Parties under agent have parent = agent name in TallyLedger
   async function loadAgentOS(agent: string) {
     if (osAgent === agent) { setOsAgent(null); return }
     setOsAgent(agent); setOsParty(null); setAgentOsLoading(true); setAgentView('party')
-    const res = await fetch(`/api/tally/outstanding?agent=${encodeURIComponent(agent)}&limit=500`)
-    const d = await res.json()
-    // Group bills by party
-    const partyMap: Record<string, { bills: any[]; total: number }> = {}
-    for (const b of (d.bills || [])) {
-      const key = b.partyName || 'Unknown'
-      if (!partyMap[key]) partyMap[key] = { bills: [], total: 0 }
-      partyMap[key].bills.push(b)
-      partyMap[key].total += Math.abs(b.closingBalance || 0)
+
+    // Step 1: Get all parties under this agent (parent = agent name in ledger)
+    const ledgerRes = await fetch(`/api/tally/ledgers?parent=${encodeURIComponent(agent)}&limit=500`)
+    const ledgerData = await ledgerRes.json()
+    const partyNames: string[] = (ledgerData.ledgers || []).map((l: any) => l.name)
+
+    if (partyNames.length === 0) {
+      setAgentOsData({ parties: [], grandTotal: 0, totalBills: 0 })
+      setAgentOsLoading(false)
+      return
     }
+
+    // Step 2: Fetch all outstanding and filter for agent's parties
+    const res = await fetch(`/api/tally/outstanding?limit=5000`)
+    const d = await res.json()
+    const partySet = new Set(partyNames.map(p => p.toLowerCase().trim()))
+
+    const partyMap: Record<string, { bills: any[]; total: number }> = {}
+    let grandTotal = 0
+    let totalBills = 0
+
+    for (const b of (d.bills || [])) {
+      const pName = (b.partyName || '').trim()
+      if (!partySet.has(pName.toLowerCase())) continue
+      if (!partyMap[pName]) partyMap[pName] = { bills: [], total: 0 }
+      partyMap[pName].bills.push(b)
+      partyMap[pName].total += Math.abs(b.closingBalance || 0)
+      grandTotal += Math.abs(b.closingBalance || 0)
+      totalBills++
+    }
+
     const parties = Object.entries(partyMap).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total)
-    setAgentOsData({ parties, grandTotal: d.totalAmount || 0, totalBills: d.total || 0 })
+    setAgentOsData({ parties, grandTotal, totalBills })
     setAgentOsLoading(false)
   }
 
