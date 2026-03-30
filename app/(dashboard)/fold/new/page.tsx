@@ -220,6 +220,10 @@ export default function NewFoldPage() {
   const [foldNo, setFoldNo] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
+  const [selectedParties, setSelectedParties] = useState<Set<string>>(new Set())
+  const [partyDropOpen, setPartyDropOpen] = useState(false)
+  const [partySearch, setPartySearch] = useState('')
+  const partyDropRef = useRef<HTMLDivElement>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [lotDropKey, setLotDropKey] = useState<string | null>(null)
@@ -233,6 +237,15 @@ export default function NewFoldPage() {
 
   // Refs for Than inputs — keyed by "batchIdx-lotIdx"
   const thanRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+
+  // Close party dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (partyDropRef.current && !partyDropRef.current.contains(e.target as Node)) setPartyDropOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   // Detect mobile viewport
   useEffect(() => {
@@ -426,7 +439,16 @@ export default function NewFoldPage() {
     }
   }
 
-  const allLots = (stockData?.parties ?? []).flatMap(p => p.lots).filter(l => l.foldAvailable > 0)
+  const allLots = (stockData?.parties ?? [])
+    .filter(p => selectedParties.size === 0 || selectedParties.has(p.party))
+    .flatMap(p => p.lots)
+    .filter(l => l.foldAvailable > 0)
+
+  // Get unique party names from stock data for selection
+  const availableParties = (stockData?.parties ?? [])
+    .filter(p => p.lots.some(l => l.foldAvailable > 0))
+    .map(p => p.party)
+    .sort()
 
   // Derive active batch/lot from lotDropKey for bottom sheet
   const activeKeys = lotDropKey ? lotDropKey.split('-').map(Number) : null
@@ -491,6 +513,78 @@ export default function NewFoldPage() {
             onChange={e => setNotes(e.target.value)}
           />
         </div>
+      </div>
+
+      {/* Party Filter — multi-select dropdown */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 mb-4">
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Filter by Party</label>
+        <div className="relative" ref={partyDropRef}>
+          <div
+            className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white dark:bg-gray-700 cursor-pointer min-h-[40px] flex-wrap ${partyDropOpen ? 'ring-2 ring-indigo-500 border-indigo-500' : 'border-gray-300 dark:border-gray-600'}`}
+            onClick={() => { setPartyDropOpen(!partyDropOpen); setPartySearch('') }}
+          >
+            {selectedParties.size === 0 ? (
+              <span className="text-sm text-gray-400">Select parties...</span>
+            ) : (
+              Array.from(selectedParties).map(party => (
+                <span key={party} className="inline-flex items-center gap-1 bg-indigo-600 text-white text-xs font-medium px-2 py-0.5 rounded-full">
+                  {party}
+                  <button type="button" onClick={e => { e.stopPropagation(); setSelectedParties(prev => { const n = new Set(prev); n.delete(party); return n }) }}
+                    className="text-indigo-200 hover:text-white text-sm leading-none">&times;</button>
+                </span>
+              ))
+            )}
+            {selectedParties.size > 0 && (
+              <button type="button" onClick={e => { e.stopPropagation(); setSelectedParties(new Set()) }}
+                className="text-xs text-red-400 hover:text-red-300 ml-auto shrink-0">Clear</button>
+            )}
+          </div>
+          {partyDropOpen && (
+            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-xl z-30 max-h-60 flex flex-col">
+              <input
+                type="text" autoFocus
+                className="w-full border-b border-gray-200 dark:border-gray-700 bg-transparent text-sm px-3 py-2 focus:outline-none dark:text-gray-100 dark:placeholder-gray-500"
+                placeholder="Search party..."
+                value={partySearch}
+                onChange={e => setPartySearch(e.target.value)}
+                onClick={e => e.stopPropagation()}
+              />
+              <div className="overflow-y-auto max-h-48">
+                {availableParties
+                  .filter(p => !partySearch || p.toLowerCase().includes(partySearch.toLowerCase()))
+                  .map(party => {
+                    const isSelected = selectedParties.has(party)
+                    const partyLots = (stockData?.parties ?? []).find(p => p.party === party)?.lots.filter(l => l.foldAvailable > 0).length ?? 0
+                    return (
+                      <button key={party} type="button"
+                        className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-indigo-50 dark:hover:bg-indigo-900/20 ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}`}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setSelectedParties(prev => {
+                            const n = new Set(prev)
+                            if (n.has(party)) n.delete(party); else n.add(party)
+                            return n
+                          })
+                        }}>
+                        <span className="flex items-center gap-2">
+                          <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-500'}`}>
+                            {isSelected ? '✓' : ''}
+                          </span>
+                          <span className="text-gray-800 dark:text-gray-100">{party}</span>
+                        </span>
+                        <span className="text-xs text-gray-400">{partyLots} lots</span>
+                      </button>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
+        </div>
+        {selectedParties.size > 0 && (
+          <p className="text-[10px] text-gray-500 mt-2">
+            {allLots.length} lot{allLots.length !== 1 ? 's' : ''} available from {selectedParties.size} part{selectedParties.size !== 1 ? 'ies' : 'y'}
+          </p>
+        )}
       </div>
 
       {/* Batches */}
