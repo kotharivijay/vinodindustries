@@ -224,6 +224,10 @@ export default function NewFoldPage() {
   const [partyDropOpen, setPartyDropOpen] = useState(false)
   const [partySearch, setPartySearch] = useState('')
   const partyDropRef = useRef<HTMLDivElement>(null)
+  const [selectedQualities, setSelectedQualities] = useState<Set<string>>(new Set())
+  const [qualityDropOpen, setQualityDropOpen] = useState(false)
+  const [qualitySearch, setQualitySearch] = useState('')
+  const qualityDropRef = useRef<HTMLDivElement>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [lotDropKey, setLotDropKey] = useState<string | null>(null)
@@ -238,10 +242,11 @@ export default function NewFoldPage() {
   // Refs for Than inputs — keyed by "batchIdx-lotIdx"
   const thanRefs = useRef<Map<string, HTMLInputElement>>(new Map())
 
-  // Close party dropdown on outside click
+  // Close party/quality dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (partyDropRef.current && !partyDropRef.current.contains(e.target as Node)) setPartyDropOpen(false)
+      if (qualityDropRef.current && !qualityDropRef.current.contains(e.target as Node)) setQualityDropOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -439,16 +444,24 @@ export default function NewFoldPage() {
     }
   }
 
-  const allLots = (stockData?.parties ?? [])
+  // Lots filtered by party first (for quality computation)
+  const partyFilteredLots = (stockData?.parties ?? [])
     .filter(p => selectedParties.size === 0 || selectedParties.has(p.party))
     .flatMap(p => p.lots)
     .filter(l => l.foldAvailable > 0)
+
+  // Then filter by quality
+  const allLots = partyFilteredLots
+    .filter(l => selectedQualities.size === 0 || selectedQualities.has(l.quality))
 
   // Get unique party names from stock data for selection
   const availableParties = (stockData?.parties ?? [])
     .filter(p => p.lots.some(l => l.foldAvailable > 0))
     .map(p => p.party)
     .sort()
+
+  // Get unique qualities from party-filtered lots
+  const availableQualities = [...new Set(partyFilteredLots.map(l => l.quality))].filter(q => q && q !== '-').sort()
 
   // Derive active batch/lot from lotDropKey for bottom sheet
   const activeKeys = lotDropKey ? lotDropKey.split('-').map(Number) : null
@@ -580,9 +593,76 @@ export default function NewFoldPage() {
             </div>
           )}
         </div>
-        {selectedParties.size > 0 && (
+        {/* Quality multi-select dropdown */}
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2 mt-3">Filter by Quality</label>
+        <div className="relative" ref={qualityDropRef}>
+          <div
+            className={`flex items-center gap-2 border rounded-lg px-3 py-2 bg-white dark:bg-gray-700 cursor-pointer min-h-[40px] flex-wrap ${qualityDropOpen ? 'ring-2 ring-purple-500 border-purple-500' : 'border-gray-300 dark:border-gray-600'}`}
+            onClick={() => { setQualityDropOpen(!qualityDropOpen); setQualitySearch('') }}
+          >
+            {selectedQualities.size === 0 ? (
+              <span className="text-sm text-gray-400">All qualities</span>
+            ) : (
+              Array.from(selectedQualities).map(q => (
+                <span key={q} className="inline-flex items-center gap-1 bg-purple-600 text-white text-xs font-medium px-2 py-0.5 rounded-full">
+                  {q}
+                  <button type="button" onClick={e => { e.stopPropagation(); setSelectedQualities(prev => { const n = new Set(prev); n.delete(q); return n }) }}
+                    className="text-purple-200 hover:text-white text-sm leading-none">&times;</button>
+                </span>
+              ))
+            )}
+            {selectedQualities.size > 0 && (
+              <button type="button" onClick={e => { e.stopPropagation(); setSelectedQualities(new Set()) }}
+                className="text-xs text-red-400 hover:text-red-300 ml-auto shrink-0">Clear</button>
+            )}
+          </div>
+          {qualityDropOpen && (
+            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-xl z-30 max-h-60 flex flex-col">
+              <input
+                type="text" autoFocus
+                className="w-full border-b border-gray-200 dark:border-gray-700 bg-transparent text-sm px-3 py-2 focus:outline-none dark:text-gray-100 dark:placeholder-gray-500"
+                placeholder="Search quality..."
+                value={qualitySearch}
+                onChange={e => setQualitySearch(e.target.value)}
+                onClick={e => e.stopPropagation()}
+              />
+              <div className="overflow-y-auto max-h-48">
+                {availableQualities
+                  .filter(q => !qualitySearch || q.toLowerCase().includes(qualitySearch.toLowerCase()))
+                  .map(quality => {
+                    const isSelected = selectedQualities.has(quality)
+                    const qtyLots = partyFilteredLots.filter(l => l.quality === quality).length
+                    return (
+                      <button key={quality} type="button"
+                        className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-purple-50 dark:hover:bg-purple-900/20 ${isSelected ? 'bg-purple-50 dark:bg-purple-900/20' : ''}`}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setSelectedQualities(prev => {
+                            const n = new Set(prev)
+                            if (n.has(quality)) n.delete(quality); else n.add(quality)
+                            return n
+                          })
+                        }}>
+                        <span className="flex items-center gap-2">
+                          <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'border-gray-300 dark:border-gray-500'}`}>
+                            {isSelected ? '✓' : ''}
+                          </span>
+                          <span className="text-gray-800 dark:text-gray-100">{quality}</span>
+                        </span>
+                        <span className="text-xs text-gray-400">{qtyLots} lots</span>
+                      </button>
+                    )
+                  })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {(selectedParties.size > 0 || selectedQualities.size > 0) && (
           <p className="text-[10px] text-gray-500 mt-2">
-            {allLots.length} lot{allLots.length !== 1 ? 's' : ''} available from {selectedParties.size} part{selectedParties.size !== 1 ? 'ies' : 'y'}
+            {allLots.length} lot{allLots.length !== 1 ? 's' : ''} available
+            {selectedParties.size > 0 ? ` from ${selectedParties.size} part${selectedParties.size !== 1 ? 'ies' : 'y'}` : ''}
+            {selectedQualities.size > 0 ? ` · ${selectedQualities.size} qualit${selectedQualities.size !== 1 ? 'ies' : 'y'}` : ''}
           </p>
         )}
       </div>
