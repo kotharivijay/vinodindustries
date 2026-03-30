@@ -220,6 +220,7 @@ export default function NewFoldPage() {
   const [foldNo, setFoldNo] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
+  const [selectedParties, setSelectedParties] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [lotDropKey, setLotDropKey] = useState<string | null>(null)
@@ -426,7 +427,16 @@ export default function NewFoldPage() {
     }
   }
 
-  const allLots = (stockData?.parties ?? []).flatMap(p => p.lots).filter(l => l.foldAvailable > 0)
+  const allLots = (stockData?.parties ?? [])
+    .filter(p => selectedParties.size === 0 || selectedParties.has(p.party))
+    .flatMap(p => p.lots)
+    .filter(l => l.foldAvailable > 0)
+
+  // Get unique party names from stock data for selection
+  const availableParties = (stockData?.parties ?? [])
+    .filter(p => p.lots.some(l => l.foldAvailable > 0))
+    .map(p => p.party)
+    .sort()
 
   // Derive active batch/lot from lotDropKey for bottom sheet
   const activeKeys = lotDropKey ? lotDropKey.split('-').map(Number) : null
@@ -491,6 +501,52 @@ export default function NewFoldPage() {
             onChange={e => setNotes(e.target.value)}
           />
         </div>
+      </div>
+
+      {/* Party Filter */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 mb-4">
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+          Filter by Party
+          {selectedParties.size > 0 && (
+            <button onClick={() => setSelectedParties(new Set())} className="ml-2 text-red-400 hover:text-red-300 text-[10px]">Clear all</button>
+          )}
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {availableParties.map(party => {
+            const isSelected = selectedParties.has(party)
+            const partyLots = (stockData?.parties ?? []).find(p => p.party === party)?.lots.filter(l => l.foldAvailable > 0).length ?? 0
+            return (
+              <button
+                key={party}
+                type="button"
+                onClick={() => {
+                  setSelectedParties(prev => {
+                    const next = new Set(prev)
+                    if (next.has(party)) next.delete(party)
+                    else next.add(party)
+                    return next
+                  })
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
+                  isSelected
+                    ? 'bg-indigo-600 border-indigo-600 text-white'
+                    : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
+                }`}
+              >
+                {party}
+                <span className={`ml-1 ${isSelected ? 'text-indigo-200' : 'text-gray-400'}`}>({partyLots})</span>
+              </button>
+            )
+          })}
+          {availableParties.length === 0 && (
+            <p className="text-xs text-gray-400">No parties with available stock</p>
+          )}
+        </div>
+        {selectedParties.size > 0 && (
+          <p className="text-[10px] text-gray-500 mt-2">
+            {allLots.length} lot{allLots.length !== 1 ? 's' : ''} available from {selectedParties.size} part{selectedParties.size !== 1 ? 'ies' : 'y'}
+          </p>
+        )}
       </div>
 
       {/* Batches */}
