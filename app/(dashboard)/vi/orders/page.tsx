@@ -152,7 +152,7 @@ export default function OrdersPage() {
     const partySet = new Set(partyNames.map(norm))
 
     // Step 2: Fetch all outstanding and fuzzy-match for agent's parties
-    const res = await fetch(`/api/tally/outstanding?limit=5000`)
+    const res = await fetch(`/api/tally/outstanding?limit=10000`)
     const d = await res.json()
 
     const partyMap: Record<string, { bills: any[]; total: number }> = {}
