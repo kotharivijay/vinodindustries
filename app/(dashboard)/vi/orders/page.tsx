@@ -191,6 +191,239 @@ export default function OrdersPage() {
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank')
   }
 
+  // Generate JPG image of Agent OS and share via WhatsApp
+  async function shareAgentAsImage() {
+    if (!agentOsData?.parties?.length || !osAgent) return
+    const today = new Date().toLocaleDateString('en-IN')
+    const parties = agentOsData.parties
+    const W = 360, rowH = 28, headerH = 80, footerH = 40, padY = 10
+    const H = headerH + (parties.length * rowH) + footerH + padY * 2
+
+    const canvas = document.createElement('canvas')
+    canvas.width = W * 2 // retina
+    canvas.height = H * 2
+    const ctx = canvas.getContext('2d')!
+    ctx.scale(2, 2)
+
+    // Background
+    ctx.fillStyle = '#1a1a2e'
+    ctx.fillRect(0, 0, W, H)
+
+    // Header
+    ctx.fillStyle = '#16213e'
+    ctx.fillRect(0, 0, W, headerH)
+    ctx.fillStyle = '#e94560'
+    ctx.fillRect(0, headerH - 3, W, 3)
+
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 14px Arial'
+    ctx.fillText('📊 Agent Outstanding', 12, 22)
+    ctx.fillStyle = '#a0a0c0'
+    ctx.font = '11px Arial'
+    ctx.fillText(osAgent, 12, 40)
+    ctx.fillText('As on: ' + today, 12, 55)
+
+    ctx.fillStyle = '#e94560'
+    ctx.font = 'bold 13px Arial'
+    ctx.textAlign = 'right'
+    ctx.fillText('₹' + fmtNum(Math.round(agentOsData.grandTotal)), W - 12, 22)
+    ctx.fillStyle = '#a0a0c0'
+    ctx.font = '10px Arial'
+    ctx.fillText(parties.length + ' parties | ' + agentOsData.totalBills + ' bills', W - 12, 40)
+    ctx.textAlign = 'left'
+
+    // Column headers
+    const y0 = headerH + padY
+    ctx.fillStyle = '#a0a0c0'
+    ctx.font = 'bold 9px Arial'
+    ctx.fillText('#', 12, y0)
+    ctx.fillText('PARTY NAME', 28, y0)
+    ctx.textAlign = 'right'
+    ctx.fillText('OUTSTANDING', W - 12, y0)
+    ctx.textAlign = 'left'
+
+    // Rows
+    parties.forEach((p: any, i: number) => {
+      const y = y0 + 14 + i * rowH
+      // Alternate row bg
+      if (i % 2 === 0) { ctx.fillStyle = '#1a1a3e'; ctx.fillRect(0, y - 10, W, rowH) }
+
+      ctx.fillStyle = '#c0c0d0'
+      ctx.font = '10px Arial'
+      ctx.fillText(String(i + 1), 12, y + 4)
+
+      // Party name (truncate)
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '11px Arial'
+      const maxNameW = W - 120
+      let name = p.name
+      while (ctx.measureText(name).width > maxNameW && name.length > 5) name = name.slice(0, -1)
+      if (name !== p.name) name += '...'
+      ctx.fillText(name, 28, y + 4)
+
+      // Amount
+      ctx.fillStyle = '#e94560'
+      ctx.font = 'bold 11px Arial'
+      ctx.textAlign = 'right'
+      ctx.fillText('₹' + fmtNum(Math.round(p.total)), W - 12, y + 4)
+      ctx.textAlign = 'left'
+
+      // Bills count
+      ctx.fillStyle = '#808090'
+      ctx.font = '9px Arial'
+      ctx.textAlign = 'right'
+      ctx.fillText(p.bills.length + ' bills', W - 12, y + 16)
+      ctx.textAlign = 'left'
+    })
+
+    // Footer
+    const fy = y0 + 14 + parties.length * rowH + 4
+    ctx.fillStyle = '#16213e'
+    ctx.fillRect(0, fy - 6, W, footerH)
+    ctx.fillStyle = '#e94560'
+    ctx.fillRect(0, fy - 6, W, 2)
+
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 12px Arial'
+    ctx.fillText('GRAND TOTAL', 12, fy + 14)
+    ctx.textAlign = 'right'
+    ctx.fillText('₹' + fmtNum(Math.round(agentOsData.grandTotal)), W - 12, fy + 14)
+    ctx.textAlign = 'left'
+
+    // Convert to JPG blob
+    canvas.toBlob(async (blob) => {
+      if (!blob) return
+      const file = new File([blob], `agent_os_${osAgent.replace(/[^a-zA-Z0-9]/g, '_')}_${today.replace(/\//g, '-')}.jpg`, { type: 'image/jpeg' })
+
+      // Try Web Share API (mobile)
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: 'Agent Outstanding - ' + osAgent })
+          return
+        } catch {}
+      }
+
+      // Fallback: download
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = file.name
+      a.click()
+      URL.revokeObjectURL(url)
+    }, 'image/jpeg', 0.92)
+  }
+
+  // Generate JPG for Party OS bills
+  async function sharePartyOsAsImage() {
+    if (!osData?.bills?.length || !osParty) return
+    const today = new Date().toLocaleDateString('en-IN')
+    const selected = osData.bills.filter((_: any, i: number) => checkedBills.has(i))
+    if (!selected.length) return
+
+    const totalAmt = selected.reduce((s: number, b: any) => s + Math.abs(b.closingBalance || 0), 0)
+    const W = 360, rowH = 26, headerH = 70, footerH = 40, padY = 10
+    const H = headerH + (selected.length * rowH) + footerH + padY * 2
+
+    const canvas = document.createElement('canvas')
+    canvas.width = W * 2
+    canvas.height = H * 2
+    const ctx = canvas.getContext('2d')!
+    ctx.scale(2, 2)
+
+    // Background
+    ctx.fillStyle = '#1a1a2e'
+    ctx.fillRect(0, 0, W, H)
+
+    // Header
+    ctx.fillStyle = '#16213e'
+    ctx.fillRect(0, 0, W, headerH)
+    ctx.fillStyle = '#e65100'
+    ctx.fillRect(0, headerH - 3, W, 3)
+
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 13px Arial'
+    ctx.fillText('📋 Outstanding Bills', 12, 20)
+    ctx.fillStyle = '#a0a0c0'
+    ctx.font = '11px Arial'
+    ctx.fillText(osParty, 12, 38)
+    ctx.fillText('As on: ' + today, 12, 53)
+
+    ctx.fillStyle = '#e65100'
+    ctx.font = 'bold 13px Arial'
+    ctx.textAlign = 'right'
+    ctx.fillText('₹' + fmtNum(Math.round(totalAmt)), W - 12, 20)
+    ctx.fillStyle = '#a0a0c0'
+    ctx.font = '10px Arial'
+    ctx.fillText(selected.length + ' bills', W - 12, 38)
+    ctx.textAlign = 'left'
+
+    // Column headers
+    const y0 = headerH + padY
+    ctx.fillStyle = '#a0a0c0'
+    ctx.font = 'bold 9px Arial'
+    ctx.fillText('BILL NO', 12, y0)
+    ctx.fillText('DATE', 120, y0)
+    ctx.textAlign = 'right'
+    ctx.fillText('AMOUNT', W - 60, y0)
+    ctx.fillText('AGE', W - 12, y0)
+    ctx.textAlign = 'left'
+
+    // Rows
+    selected.forEach((b: any, i: number) => {
+      const y = y0 + 14 + i * rowH
+      if (i % 2 === 0) { ctx.fillStyle = '#1a1a3e'; ctx.fillRect(0, y - 10, W, rowH) }
+
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '10px Arial'
+      const billNo = (b.billRef || '-').slice(0, 18)
+      ctx.fillText(billNo, 12, y + 4)
+
+      ctx.fillStyle = '#c0c0d0'
+      ctx.fillText(b.billDate ? fmtDate(b.billDate) : '-', 120, y + 4)
+
+      ctx.fillStyle = '#e65100'
+      ctx.font = 'bold 10px Arial'
+      ctx.textAlign = 'right'
+      ctx.fillText('₹' + fmtNum(Math.abs(Math.round(b.closingBalance || 0))), W - 60, y + 4)
+
+      const days = b.overdueDays || 0
+      ctx.fillStyle = days >= 90 ? '#ef4444' : days >= 45 ? '#f97316' : days >= 15 ? '#eab308' : '#22c55e'
+      ctx.font = 'bold 9px Arial'
+      ctx.fillText(days + 'd', W - 12, y + 4)
+      ctx.textAlign = 'left'
+    })
+
+    // Footer
+    const fy = y0 + 14 + selected.length * rowH + 4
+    ctx.fillStyle = '#16213e'
+    ctx.fillRect(0, fy - 6, W, footerH)
+    ctx.fillStyle = '#e65100'
+    ctx.fillRect(0, fy - 6, W, 2)
+
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 12px Arial'
+    ctx.fillText('TOTAL', 12, fy + 14)
+    ctx.textAlign = 'right'
+    ctx.fillText('₹' + fmtNum(Math.round(totalAmt)), W - 12, fy + 14)
+    ctx.textAlign = 'left'
+
+    ctx.fillStyle = '#a0a0c0'
+    ctx.font = '9px Arial'
+    ctx.fillText('Please arrange payment at earliest.', 12, fy + 28)
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) return
+      const file = new File([blob], `os_${osParty.replace(/[^a-zA-Z0-9]/g, '_')}_${today.replace(/\//g, '-')}.jpg`, { type: 'image/jpeg' })
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: 'Outstanding - ' + osParty }); return } catch {}
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = file.name; a.click()
+      URL.revokeObjectURL(url)
+    }, 'image/jpeg', 0.92)
+  }
+
   const fmtNum = (n: number) => n?.toLocaleString('en-IN') || '0'
   const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : ''
   const ageBadge = (days: number) => {
@@ -371,7 +604,10 @@ export default function OrdersPage() {
                 <label className="text-xs text-gray-400 flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={checkAllBills} onChange={e => { setCheckAllBills(e.target.checked); setCheckedBills(e.target.checked ? new Set(osData.bills.map((_: any, i: number) => i)) : new Set()) }} /> Select All
                 </label>
-                <button onClick={shareOsWhatsApp} className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold hover:bg-green-700">💬 WhatsApp</button>
+                <div className="flex gap-1.5">
+                  <button onClick={sharePartyOsAsImage} className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold hover:bg-green-700">📸 Image</button>
+                  <button onClick={shareOsWhatsApp} className="bg-green-700 text-white px-3 py-1 rounded-full text-xs font-bold hover:bg-green-800">💬 Text</button>
+                </div>
               </div>
               {/* Bills */}
               <div className="max-h-64 overflow-y-auto">
@@ -416,7 +652,10 @@ export default function OrdersPage() {
                   <button onClick={() => setAgentView('party')} className={`px-3 py-1 rounded-full text-xs font-semibold ${agentView === 'party' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400'}`}>Party Wise</button>
                   <button onClick={() => setAgentView('bill')} className={`px-3 py-1 rounded-full text-xs font-semibold ${agentView === 'bill' ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400'}`}>Bill Wise ({agentOsData.totalBills})</button>
                 </div>
-                <button onClick={shareAgentWhatsApp} className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold hover:bg-green-700">💬 Share</button>
+                <div className="flex gap-1.5">
+                  <button onClick={shareAgentAsImage} className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold hover:bg-green-700">📸 Image</button>
+                  <button onClick={shareAgentWhatsApp} className="bg-green-700 text-white px-3 py-1 rounded-full text-xs font-bold hover:bg-green-800">💬 Text</button>
+                </div>
               </div>
 
               {agentView === 'party' ? (
