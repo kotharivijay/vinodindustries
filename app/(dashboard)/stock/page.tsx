@@ -155,10 +155,16 @@ export default function StockPage() {
     let list = data.parties
     if (search.trim()) {
       const q = search.toLowerCase()
-      list = list.filter(p =>
-        p.party.toLowerCase().includes(q) ||
-        p.lots.some(l => l.lotNo.toLowerCase().includes(q) || l.quality.toLowerCase().includes(q))
-      )
+      // Filter lots within each party, then keep parties that have matching lots or matching party name
+      list = list
+        .map(p => {
+          const partyMatch = p.party.toLowerCase().includes(q)
+          if (partyMatch) return p // show all lots if party name matches
+          const matchingLots = p.lots.filter(l => l.lotNo.toLowerCase().includes(q) || l.quality.toLowerCase().includes(q))
+          if (matchingLots.length === 0) return null
+          return { ...p, lots: matchingLots, totalStock: matchingLots.reduce((s, l) => s + l.stock, 0) }
+        })
+        .filter(Boolean) as typeof list
     }
     list = [...list]
     switch (sort) {
