@@ -29,7 +29,21 @@ interface PartyStock {
   lots: LotStock[]
 }
 
-type SortMode = 'party-asc' | 'party-desc' | 'stock-desc' | 'stock-asc'
+type SortMode = 'party-asc' | 'party-desc' | 'stock-desc' | 'stock-asc' | 'lot-asc' | 'lot-desc'
+
+// Parse lot number: "PS-100" → { prefix: "PS-", num: 100 }, "PSRG-25" → { prefix: "PSRG-", num: 25 }
+function parseLotNo(lotNo: string): { prefix: string; num: number } {
+  const match = lotNo.match(/^(.*?)(\d+)\s*$/)
+  if (match) return { prefix: match[1], num: parseInt(match[2]) }
+  return { prefix: lotNo, num: 0 }
+}
+
+function compareLotNo(a: string, b: string): number {
+  const pa = parseLotNo(a), pb = parseLotNo(b)
+  const prefixCmp = pa.prefix.localeCompare(pb.prefix)
+  if (prefixCmp !== 0) return prefixCmp
+  return pa.num - pb.num
+}
 
 export default function StockPage() {
   const router = useRouter()
@@ -166,12 +180,19 @@ export default function StockPage() {
         })
         .filter(Boolean) as typeof list
     }
+    // Sort lots within each party by prefix then number
+    list = list.map(p => ({
+      ...p,
+      lots: [...p.lots].sort((a, b) => compareLotNo(a.lotNo, b.lotNo)),
+    }))
     list = [...list]
     switch (sort) {
       case 'party-asc': list.sort((a, b) => a.party.localeCompare(b.party)); break
       case 'party-desc': list.sort((a, b) => b.party.localeCompare(a.party)); break
       case 'stock-desc': list.sort((a, b) => b.totalStock - a.totalStock); break
       case 'stock-asc': list.sort((a, b) => a.totalStock - b.totalStock); break
+      case 'lot-asc': list.sort((a, b) => { const la = a.lots[0]?.lotNo ?? ''; const lb = b.lots[0]?.lotNo ?? ''; return compareLotNo(la, lb) }); break
+      case 'lot-desc': list.sort((a, b) => { const la = a.lots[0]?.lotNo ?? ''; const lb = b.lots[0]?.lotNo ?? ''; return compareLotNo(lb, la) }); break
     }
     return list
   }, [data, search, sort])
@@ -297,8 +318,10 @@ export default function StockPage() {
           {([
             ['party-asc', 'Party A-Z'],
             ['party-desc', 'Party Z-A'],
-            ['stock-desc', 'Stock High→Low'],
-            ['stock-asc', 'Stock Low→High'],
+            ['lot-asc', 'Lot 1→9'],
+            ['lot-desc', 'Lot 9→1'],
+            ['stock-desc', 'Stock ↓'],
+            ['stock-asc', 'Stock ↑'],
           ] as [SortMode, string][]).map(([key, label]) => (
             <button
               key={key}
