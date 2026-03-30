@@ -17,6 +17,17 @@ export async function GET() {
     foldMap.set(key, (foldMap.get(key) ?? 0) + fl.than)
   }
 
+  // Fetch dyeing entry lots WITHOUT fold program (direct dyeing slips)
+  const dyeingLots = await (prisma as any).dyeingEntryLot.findMany({
+    select: { lotNo: true, than: true, entry: { select: { foldBatchId: true } } },
+  })
+  const dyeingUsedMap = new Map<string, number>()
+  for (const dl of dyeingLots) {
+    if (dl.entry?.foldBatchId) continue // already counted via foldMap
+    const key = dl.lotNo.toLowerCase()
+    dyeingUsedMap.set(key, (dyeingUsedMap.get(key) ?? 0) + dl.than)
+  }
+
   // Fetch manual reservations
   const reservations = await (prisma as any).lotManualReservation.findMany({
     select: { lotNo: true, usedThan: true, note: true },
@@ -79,6 +90,7 @@ export async function GET() {
 
     const detail = lotDetailMap.get(key)
     const foldProgrammed = foldMap.get(key) ?? 0
+    const dyeingUsed = dyeingUsedMap.get(key) ?? 0
     const reservation = reservationMap.get(key)
     const manuallyUsed = reservation?.usedThan ?? 0
     lotStocks.push({
@@ -92,7 +104,7 @@ export async function GET() {
       foldProgrammed,
       manuallyUsed,
       manuallyUsedNote: reservation?.note ?? null,
-      foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed),
+      foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
     })
   }
 
@@ -109,6 +121,7 @@ export async function GET() {
     if (stock <= 0) continue
 
     const foldProgrammed = foldMap.get(key) ?? 0
+    const dyeingUsed = dyeingUsedMap.get(key) ?? 0
     const reservation = reservationMap.get(key)
     const manuallyUsed = reservation?.usedThan ?? 0
     lotStocks.push({
@@ -122,7 +135,7 @@ export async function GET() {
       foldProgrammed,
       manuallyUsed,
       manuallyUsedNote: reservation?.note ?? null,
-      foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed),
+      foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
     })
   }
 
