@@ -257,7 +257,7 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
           onClick={printViaShare}
           className="text-[10px] text-gray-400 hover:text-gray-300 underline"
         >
-          {typeof navigator !== 'undefined' && navigator.share ? 'Share' : 'Copy Text'}
+          {typeof navigator !== 'undefined' && 'share' in navigator ? 'Share' : 'Copy Text'}
         </button>
       </div>
     </div>
