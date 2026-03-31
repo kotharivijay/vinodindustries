@@ -14,6 +14,19 @@ interface Chemical {
   cost: number | null
   processTag?: string | null
 }
+interface Addition {
+  id: number
+  roundNo: number
+  type: string
+  defectType: string | null
+  defectPhoto: string | null
+  reason: string | null
+  createdAt: string
+  machine?: { name: string } | null
+  operator?: { name: string } | null
+  chemicals: Chemical[]
+}
+
 interface Entry {
   id: number
   date: string
@@ -31,6 +44,9 @@ interface Entry {
     foldProgram?: { foldNo: string }
     shade?: { name: string }
   } | null
+  status?: string
+  totalRounds?: number
+  additions?: Addition[]
 }
 
 export default function DyeingDetailView({ id }: { id: string }) {
@@ -171,19 +187,120 @@ export default function DyeingDetailView({ id }: { id: string }) {
           {totalCost > 0 && (
             <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl px-4 py-3">
-                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Total Dyeing Cost</span>
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Round 1 Cost</span>
                 <span className="text-lg font-bold text-purple-700 dark:text-purple-400">&#8377;{totalCost.toFixed(2)}</span>
               </div>
-              {costPerThan > 0 && (
-                <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl px-4 py-3">
-                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Cost per Than</span>
-                  <span className="text-lg font-bold text-indigo-700 dark:text-indigo-400">&#8377;{costPerThan.toFixed(2)}</span>
-                </div>
-              )}
             </div>
           )}
         </div>
       )}
+
+      {/* Additions / Re-Dye History */}
+      {entry.additions && entry.additions.length > 0 && (
+        <div className="space-y-4 mb-4">
+          {entry.additions.map((a) => {
+            const addCost = a.chemicals?.reduce((s: number, c: Chemical) => s + (c.cost ?? 0), 0) ?? 0
+            return (
+              <div key={a.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                      Round {a.roundNo} {a.type === 're-dye' ? '(Re-Dye)' : '(Addition)'}
+                    </h2>
+                    {a.defectType && (
+                      <span className="text-[10px] font-medium bg-red-900/30 text-red-300 px-1.5 py-0.5 rounded capitalize">{a.defectType}</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-400">{new Date(a.createdAt).toLocaleDateString('en-IN')}</span>
+                </div>
+
+                {a.reason && (
+                  <p className="text-xs text-gray-400 mb-2">Reason: {a.reason}</p>
+                )}
+
+                {(a.machine || a.operator) && (
+                  <div className="flex gap-4 text-xs text-gray-400 mb-2">
+                    {a.machine && <span>Machine: {a.machine.name}</span>}
+                    {a.operator && <span>Operator: {a.operator.name}</span>}
+                  </div>
+                )}
+
+                {a.defectPhoto && (
+                  <div className="mb-2">
+                    <a href={a.defectPhoto} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline">View Defect Photo</a>
+                  </div>
+                )}
+
+                {a.chemicals?.length > 0 && (
+                  <div className="space-y-1.5">
+                    {a.chemicals.map((c: Chemical) => (
+                      <div key={c.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-900 rounded-lg px-3 py-2">
+                        <span className="text-sm text-gray-800 dark:text-gray-100">{c.name}</span>
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          {c.quantity != null && <span>{c.quantity} {c.unit}</span>}
+                          {c.cost != null && c.cost > 0 && <span className="text-purple-400 font-medium">&#8377;{c.cost.toFixed(2)}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {addCost > 0 && (
+                  <div className="mt-3 flex items-center justify-between bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2">
+                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Round {a.roundNo} Cost</span>
+                    <span className="text-sm font-bold text-red-600 dark:text-red-400">+&#8377;{addCost.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Actual Total (all rounds) */}
+      {(() => {
+        const additionsCost = entry.additions?.reduce((s, a) =>
+          s + (a.chemicals?.reduce((s2: number, c: Chemical) => s2 + (c.cost ?? 0), 0) ?? 0), 0) ?? 0
+        const actualTotal = totalCost + additionsCost
+        if (actualTotal > 0 && additionsCost > 0) {
+          return (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-4">
+              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Cost Summary</h2>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-500">Round 1 (Planned)</span>
+                  <span className="text-sm text-gray-300">&#8377;{totalCost.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-red-400">Additions / Re-Dye</span>
+                  <span className="text-sm text-red-400">+&#8377;{additionsCost.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-gray-700 pt-2">
+                  <span className="text-sm font-bold text-gray-200">Actual Total</span>
+                  <span className="text-lg font-bold text-purple-400">&#8377;{actualTotal.toFixed(2)}</span>
+                </div>
+                {costPerThan > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">Actual Cost/Than</span>
+                    <span className="text-sm text-indigo-400">&#8377;{(actualTotal / totalThan).toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        }
+        if (totalCost > 0 && additionsCost === 0 && costPerThan > 0) {
+          return (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-4">
+              <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl px-4 py-3">
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Cost per Than</span>
+                <span className="text-lg font-bold text-indigo-700 dark:text-indigo-400">&#8377;{costPerThan.toFixed(2)}</span>
+              </div>
+            </div>
+          )
+        }
+        return null
+      })()}
     </div>
   )
 }

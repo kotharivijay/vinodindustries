@@ -1060,6 +1060,15 @@ export default function BatchDyeingPage() {
                         </span>
                       )}
                       {entry.notes && <span className="text-[10px] text-gray-400 italic truncate max-w-[150px]">{entry.notes}</span>}
+                      {(entry as any).status === 'patchy' && (
+                        <span className="text-[10px] text-red-400 bg-red-900/20 border border-red-800 px-1.5 py-0.5 rounded-full font-medium">Patchy</span>
+                      )}
+                      {(entry as any).status === 're-dyeing' && (
+                        <span className="text-[10px] text-amber-400 bg-amber-900/20 border border-amber-800 px-1.5 py-0.5 rounded-full font-medium">Re-dyeing</span>
+                      )}
+                      {(entry as any).status === 'done' && (
+                        <span className="text-[10px] text-green-400 bg-green-900/20 border border-green-800 px-1.5 py-0.5 rounded-full font-medium">Done</span>
+                      )}
                     </div>
                   </div>
                 )

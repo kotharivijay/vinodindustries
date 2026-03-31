@@ -74,22 +74,24 @@ model GreyEntry {
 
 // ─── Jet Dyeing Machine ────────────────────────────────────────────────────
 model DyeingMachine {
-  id        Int           @id @default(autoincrement())
-  number    Int           @unique
+  id        Int              @id @default(autoincrement())
+  number    Int              @unique
   name      String
-  isActive  Boolean       @default(true)
-  createdAt DateTime      @default(now())
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
   entries   DyeingEntry[]
+  additions DyeingAddition[]
 }
 
 // ─── Dyeing Operator ───────────────────────────────────────────────────────
 model DyeingOperator {
-  id        Int           @id @default(autoincrement())
-  name      String        @unique
+  id        Int              @id @default(autoincrement())
+  name      String           @unique
   mobileNo  String?
-  isActive  Boolean       @default(true)
-  createdAt DateTime      @default(now())
+  isActive  Boolean          @default(true)
+  createdAt DateTime         @default(now())
   entries   DyeingEntry[]
+  additions DyeingAddition[]
 }
 
 // ─── Dyeing Slip Entry ─────────────────────────────────────────────────────────
@@ -117,10 +119,13 @@ model DyeingEntry {
   colorY          Float?
   colorK          Float?
   colorHex        String?
+  status          String               @default("pending")   // pending|patchy|re-dyeing|done
+  totalRounds     Int                  @default(1)
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   chemicals       DyeingSlipChemical[]
   lots            DyeingEntryLot[]
+  additions       DyeingAddition[]
 }
 
 model DyeingEntryLot {
@@ -146,6 +151,40 @@ model DyeingSlipChemical {
   createdAt  DateTime     @default(now())
 }
 
+// ─── Dyeing Addition (for additions and re-dye rounds) ───────────────────────
+
+model DyeingAddition {
+  id            Int                     @id @default(autoincrement())
+  entryId       Int
+  entry         DyeingEntry             @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  roundNo       Int
+  type          String                  // "addition" | "re-dye"
+  defectType    String?                 // "patchy"|"uneven"|"light"|"dark"|"spots"
+  defectPhoto   String?
+  defectDriveId String?
+  reason        String?
+  time          String?
+  machineId     Int?
+  machine       DyeingMachine?          @relation(fields: [machineId], references: [id])
+  operatorId    Int?
+  operator      DyeingOperator?         @relation(fields: [operatorId], references: [id])
+  chemicals     DyeingAdditionItem[]
+  createdAt     DateTime                @default(now())
+}
+
+model DyeingAdditionItem {
+  id            Int              @id @default(autoincrement())
+  additionId    Int
+  addition      DyeingAddition   @relation(fields: [additionId], references: [id], onDelete: Cascade)
+  chemicalId    Int?
+  chemical      Chemical?        @relation(fields: [chemicalId], references: [id])
+  name          String
+  quantity      Float
+  unit          String           @default("kg")
+  rate          Float?
+  cost          Float?
+}
+
 // ─── Chemical Master ───────────────────────────────────────────────────────────
 
 model Chemical {
@@ -162,6 +201,7 @@ model Chemical {
   aliases        ChemicalAlias[]
   recipeUsages   ShadeRecipeItem[]
   processItems   DyeingProcessItem[]
+  additionUsages DyeingAdditionItem[]
 }
 
 model ChemicalPriceHistory {

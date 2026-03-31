@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -25,7 +25,7 @@ interface DyeingEntry {
   lotNo: string
   than: number
   notes: string | null
-  chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
+  chemicals: { name: string; quantity: number | null; unit: string; cost: number | null; chemicalId?: number | null }[]
   shadeName?: string | null
   lots?: { id: number; lotNo: string; than: number }[]
   partyName?: string | null
@@ -43,6 +43,28 @@ interface DyeingEntry {
     foldProgram?: { foldNo: string }
     shade?: { name: string }
   } | null
+  status?: string
+  totalRounds?: number
+  additions?: any[]
+}
+
+interface ChemicalMaster {
+  id: number
+  name: string
+  unit: string
+  currentPrice: number | null
+}
+
+interface MachineOption { id: number; name: string; isActive: boolean }
+interface OperatorOption { id: number; name: string; isActive: boolean }
+interface ProcessItem { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }
+interface DyeingProcess { id: number; name: string; items: ProcessItem[] }
+
+interface ProductionData {
+  totals: { slips: number; than: number; done: number; patchy: number; pending: number; reDyeing: number; totalCost: number; reDyeCost: number }
+  byMachine: any[]
+  byOperator: any[]
+  entries: any[]
 }
 
 interface LotSummaryRow {
@@ -55,7 +77,7 @@ interface LotSummaryRow {
 
 type SortField = 'date' | 'slipNo' | 'lotNo' | 'than' | 'party' | 'fold'
 type SortDir = 'asc' | 'desc'
-type Tab = 'entries' | 'summary'
+type Tab = 'entries' | 'summary' | 'production'
 
 function getValue(e: DyeingEntry, f: SortField): string | number {
   switch (f) {
@@ -155,6 +177,63 @@ export default function DyeingListPage() {
   const confirmCameraRef = useRef<HTMLInputElement>(null)
   const confirmGalleryRef = useRef<HTMLInputElement>(null)
 
+  // ─── Addition / Re-dye modal state ────────────────────────────────────────
+  const [additionEntry, setAdditionEntry] = useState<DyeingEntry | null>(null)
+  const [reDyeEntry, setReDyeEntry] = useState<DyeingEntry | null>(null)
+  const [addChemRows, setAddChemRows] = useState<{chemicalId: number | null; name: string; quantity: string; unit: string; rate: string; cost: number | null}[]>([])
+  const [addReason, setAddReason] = useState('')
+  const [addSaving, setAddSaving] = useState(false)
+  const [addChemDrop, setAddChemDrop] = useState<number | null>(null)
+  const [addChemSearch, setAddChemSearch] = useState('')
+
+  // Re-dye specific
+  const [reDyeDefect, setReDyeDefect] = useState('')
+  const [reDyePhoto, setReDyePhoto] = useState<{base64: string; mediaType: string} | null>(null)
+  const [reDyeMachineId, setReDyeMachineId] = useState<number | null>(null)
+  const [reDyeOperatorId, setReDyeOperatorId] = useState<number | null>(null)
+  const [reDyeReason, setReDyeReason] = useState('')
+  const [reDyeChemRows, setReDyeChemRows] = useState<{chemicalId: number | null; name: string; quantity: string; unit: string; rate: string; cost: number | null}[]>([])
+  const [reDyeSaving, setReDyeSaving] = useState(false)
+  const [reDyeChemDrop, setReDyeChemDrop] = useState<number | null>(null)
+  const [reDyeChemSearch, setReDyeChemSearch] = useState('')
+  const reDyeCameraRef = useRef<HTMLInputElement>(null)
+  const reDyeGalleryRef = useRef<HTMLInputElement>(null)
+
+  // Master data for popups
+  const [masterChemicals, setMasterChemicals] = useState<ChemicalMaster[]>([])
+  const [machines, setMachines] = useState<MachineOption[]>([])
+  const [operators, setOperators] = useState<OperatorOption[]>([])
+  const [processes, setProcesses] = useState<DyeingProcess[]>([])
+
+  // Production tab state
+  const [prodData, setProdData] = useState<ProductionData | null>(null)
+  const [prodLoading, setProdLoading] = useState(false)
+  const [prodPeriod, setProdPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('month')
+  const [prodFrom, setProdFrom] = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0,10) })
+  const [prodTo, setProdTo] = useState(() => new Date().toISOString().slice(0,10))
+  const [prodView, setProdView] = useState<'status' | 'machine' | 'operator'>('status')
+  const [prodStatusFilter, setProdStatusFilter] = useState<string | null>(null)
+  const [expandedMachine, setExpandedMachine] = useState<number | null>(null)
+  const [expandedOperator, setExpandedOperator] = useState<number | null>(null)
+
+  // Load master data for popups (lazy)
+  useEffect(() => {
+    if (additionEntry || reDyeEntry) {
+      if (masterChemicals.length === 0) {
+        fetch('/api/chemicals').then(r => r.json()).then(d => setMasterChemicals(Array.isArray(d) ? d : [])).catch(() => {})
+      }
+      if (machines.length === 0) {
+        fetch('/api/dyeing/machines').then(r => r.json()).then(d => setMachines(Array.isArray(d) ? d.filter((m: any) => m.isActive) : [])).catch(() => {})
+      }
+      if (operators.length === 0) {
+        fetch('/api/dyeing/operators?active=true').then(r => r.json()).then(d => setOperators(Array.isArray(d) ? d : [])).catch(() => {})
+      }
+      if (processes.length === 0) {
+        fetch('/api/dyeing/processes').then(r => r.json()).then(d => setProcesses(Array.isArray(d) ? d : [])).catch(() => {})
+      }
+    }
+  }, [additionEntry, reDyeEntry]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function openConfirm(e: DyeingEntry) {
     setConfirmEntry(e)
     setConfirmPhoto(null)
@@ -208,6 +287,192 @@ export default function DyeingListPage() {
     } finally {
       setConfirming(false)
     }
+  }
+
+  // ─── Addition handlers ──────────────────────────────────────────────────────
+  function openAddition(e: DyeingEntry) {
+    setAdditionEntry(e)
+    setAddChemRows([{ chemicalId: null, name: '', quantity: '', unit: 'kg', rate: '', cost: null }])
+    setAddReason('')
+    setAddSaving(false)
+  }
+
+  function closeAddition() {
+    setAdditionEntry(null)
+    setAddChemRows([])
+    setAddChemDrop(null)
+  }
+
+  async function submitAddition() {
+    if (!additionEntry) return
+    setAddSaving(true)
+    try {
+      const chemicals = addChemRows.filter(r => r.name.trim()).map(r => ({
+        chemicalId: r.chemicalId,
+        name: r.name,
+        quantity: parseFloat(r.quantity) || 0,
+        unit: r.unit,
+        rate: r.rate ? parseFloat(r.rate) : null,
+        cost: r.cost,
+      }))
+      const res = await fetch(`/api/dyeing/${additionEntry.id}/additions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'addition',
+          roundNo: (additionEntry.totalRounds ?? 1),
+          reason: addReason || null,
+          chemicals,
+        }),
+      })
+      if (res.ok) { mutate(); closeAddition() }
+      else { const err = await res.json(); alert(err.error || 'Failed') }
+    } catch { alert('Network error') }
+    finally { setAddSaving(false) }
+  }
+
+  // ─── Re-dye handlers ──────────────────────────────────────────────────────
+  function openReDye(e: DyeingEntry) {
+    setReDyeEntry(e)
+    setReDyeDefect('')
+    setReDyePhoto(null)
+    setReDyeMachineId(e.machine?.id ?? null)
+    setReDyeOperatorId(e.operator?.id ?? null)
+    setReDyeReason('')
+    setReDyeChemRows([{ chemicalId: null, name: '', quantity: '', unit: 'kg', rate: '', cost: null }])
+    setReDyeSaving(false)
+  }
+
+  function closeReDye() {
+    setReDyeEntry(null)
+    setReDyeChemRows([])
+    setReDyeChemDrop(null)
+    setReDyePhoto(null)
+  }
+
+  async function handleReDyePhoto(file: File) {
+    const photo = await readConfirmPhoto(file)
+    setReDyePhoto(photo)
+  }
+
+  function applyProcessToReDye(p: DyeingProcess) {
+    const rows = p.items.map(item => {
+      const master = masterChemicals.find(m => m.id === item.chemicalId)
+      const rate = master?.currentPrice != null ? String(master.currentPrice) : ''
+      const qty = String(item.quantity)
+      const rateNum = parseFloat(rate)
+      const qtyNum = parseFloat(qty)
+      const cost = !isNaN(rateNum) && !isNaN(qtyNum) ? Math.round(rateNum * qtyNum * 100) / 100 : null
+      return { chemicalId: item.chemicalId, name: item.chemical.name, quantity: qty, unit: item.chemical.unit || 'kg', rate, cost }
+    })
+    setReDyeChemRows(prev => [...prev.filter(r => r.name.trim()), ...rows])
+  }
+
+  async function submitReDye() {
+    if (!reDyeEntry) return
+    setReDyeSaving(true)
+    try {
+      const chemicals = reDyeChemRows.filter(r => r.name.trim()).map(r => ({
+        chemicalId: r.chemicalId,
+        name: r.name,
+        quantity: parseFloat(r.quantity) || 0,
+        unit: r.unit,
+        rate: r.rate ? parseFloat(r.rate) : null,
+        cost: r.cost,
+      }))
+      const res = await fetch(`/api/dyeing/${reDyeEntry.id}/additions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 're-dye',
+          roundNo: (reDyeEntry.totalRounds ?? 1) + 1,
+          defectType: reDyeDefect || null,
+          defectPhoto: reDyePhoto?.base64 || null,
+          reason: reDyeReason || null,
+          machineId: reDyeMachineId,
+          operatorId: reDyeOperatorId,
+          chemicals,
+        }),
+      })
+      if (res.ok) {
+        mutate()
+        closeReDye()
+        // Open print for re-dye slip
+        const addition = await res.json()
+        const roundNo = (reDyeEntry.totalRounds ?? 1) + 1
+        window.open(`/dyeing/${reDyeEntry.id}/print?round=${roundNo}`, '_blank')
+      } else { const err = await res.json(); alert(err.error || 'Failed') }
+    } catch { alert('Network error') }
+    finally { setReDyeSaving(false) }
+  }
+
+  // ─── Chemical row helpers for popups ───────────────────────────────────────
+  function updateChemRow(
+    rows: typeof addChemRows,
+    setRows: typeof setAddChemRows,
+    idx: number,
+    field: string,
+    value: string
+  ) {
+    setRows(prev => {
+      const u = [...prev]
+      const row = { ...u[idx], [field]: value }
+      if (field === 'quantity' || field === 'rate') {
+        const qty = parseFloat(field === 'quantity' ? value : row.quantity)
+        const rate = parseFloat(field === 'rate' ? value : row.rate)
+        row.cost = !isNaN(qty) && !isNaN(rate) ? Math.round(qty * rate * 100) / 100 : null
+      }
+      u[idx] = row
+      return u
+    })
+  }
+
+  function selectChemMaster(
+    rows: typeof addChemRows,
+    setRows: typeof setAddChemRows,
+    idx: number,
+    c: ChemicalMaster,
+    setDrop: (v: number | null) => void
+  ) {
+    setRows(prev => {
+      const u = [...prev]
+      const row = { ...u[idx] }
+      row.chemicalId = c.id
+      row.name = c.name
+      row.unit = c.unit
+      if (c.currentPrice != null) {
+        row.rate = String(c.currentPrice)
+        const qty = parseFloat(row.quantity)
+        if (!isNaN(qty)) row.cost = Math.round(qty * c.currentPrice * 100) / 100
+      }
+      u[idx] = row
+      return u
+    })
+    setDrop(null)
+  }
+
+  // ─── Production tab ───────────────────────────────────────────────────────
+  function loadProduction(period?: string) {
+    setProdLoading(true)
+    let from = prodFrom, to = prodTo
+    const now = new Date()
+    const p = period || prodPeriod
+    if (p === 'today') {
+      from = to = now.toISOString().slice(0,10)
+    } else if (p === 'week') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - d.getDay())
+      from = d.toISOString().slice(0,10)
+      to = now.toISOString().slice(0,10)
+    } else if (p === 'month') {
+      from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10)
+      to = now.toISOString().slice(0,10)
+    }
+    setProdFrom(from); setProdTo(to)
+    fetch(`/api/dyeing/production?from=${from}&to=${to}`)
+      .then(r => r.json())
+      .then(d => { setProdData(d); setProdLoading(false) })
+      .catch(() => setProdLoading(false))
   }
 
   async function handleDelete(id: number) {
@@ -343,12 +608,12 @@ export default function DyeingListPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-gray-700">
-        {([['entries', 'All Entries', entries.length], ['summary', 'Lot Summary', lotSummary.length]] as const).map(([key, label, count]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === key ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+      <div className="flex gap-1 mb-5 border-b border-gray-700 overflow-x-auto">
+        {([['entries', 'All Entries', entries.length], ['summary', 'Lot Summary', lotSummary.length], ['production', 'Production', null]] as const).map(([key, label, count]) => (
+          <button key={key} onClick={() => { setTab(key as Tab); if (key === 'production' && !prodData) loadProduction() }}
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px whitespace-nowrap ${tab === key ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
             {label}
-            <span className="ml-2 bg-gray-700 text-gray-300 text-xs rounded-full px-2 py-0.5">{count}</span>
+            {count !== null && <span className="ml-2 bg-gray-700 text-gray-300 text-xs rounded-full px-2 py-0.5">{count}</span>}
           </button>
         ))}
       </div>
@@ -526,8 +791,42 @@ export default function DyeingListPage() {
                             </div>
                           )}
                           {e.notes && <p className="text-[10px] text-gray-500 mt-0.5 truncate">{e.notes}</p>}
+                          {/* Status badge */}
+                          {(e.status === 'patchy') && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-red-400 bg-red-900/20 border border-red-800 px-2 py-0.5 rounded-full mt-1 font-medium">Patchy (Round {e.totalRounds ?? 1})</span>
+                          )}
+                          {(e.status === 're-dyeing') && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-amber-400 bg-amber-900/20 border border-amber-800 px-2 py-0.5 rounded-full mt-1 font-medium">Re-dyeing (Round {e.totalRounds ?? 1})</span>
+                          )}
+                          {/* Round summary */}
+                          {e.additions && e.additions.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              <div className="text-[10px] text-gray-500">
+                                Round 1: {e.chemicals?.length ?? 0} chemicals{(() => { const c = e.chemicals?.reduce((s: number, x: any) => s + (x.cost ?? 0), 0) ?? 0; return c > 0 ? ` \u00b7 \u20B9${c.toFixed(0)}` : '' })()}
+                              </div>
+                              {e.additions.map((a: any) => {
+                                const ac = a.chemicals?.reduce((s: number, x: any) => s + (x.cost ?? 0), 0) ?? 0
+                                return (
+                                  <div key={a.id} className="text-[10px] text-gray-500">
+                                    Round {a.roundNo}: +{a.chemicals?.length ?? 0} chemicals{ac > 0 ? ` \u00b7 +\u20B9${ac.toFixed(0)}` : ''} {a.type === 're-dye' && a.defectType ? `(${a.defectType})` : ''}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                          {/* Addition + Re-Dye buttons */}
+                          {(!e.dyeingDoneAt && e.status !== 'done') && (
+                            <div className="flex gap-2 mt-2">
+                              <button onClick={() => openAddition(e)} className="flex-1 flex items-center justify-center gap-1.5 bg-amber-900/20 border border-amber-700 text-amber-400 rounded-lg px-3 py-2 text-xs font-medium hover:bg-amber-900/30 transition">
+                                + Addition
+                              </button>
+                              <button onClick={() => openReDye(e)} className="flex-1 flex items-center justify-center gap-1.5 bg-red-900/20 border border-red-700 text-red-400 rounded-lg px-3 py-2 text-xs font-medium hover:bg-red-900/30 transition">
+                                Re-Dye
+                              </button>
+                            </div>
+                          )}
                           <DyeingStatus e={e} />
-                          <Link href={`/dyeing/${e.id}/print`} target="_blank" className="mt-1 inline-flex items-center gap-1 text-[10px] text-gray-400 hover:text-purple-300">&#128424;&#65039; Print Slip</Link>
+                          <Link href={`/dyeing/${e.id}/print`} target="_blank" className="mt-1 inline-flex items-center gap-1 text-[10px] text-gray-400 hover:text-purple-300">Print Slip</Link>
                         </div>
                       )
                     })}
@@ -624,18 +923,222 @@ export default function DyeingListPage() {
         </>
       )}
 
+      {/* ── PRODUCTION TAB ── */}
+      {tab === 'production' && (
+        <div>
+          {/* Period selector */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {(['today', 'week', 'month', 'custom'] as const).map(p => (
+              <button key={p} onClick={() => { setProdPeriod(p); if (p !== 'custom') loadProduction(p) }}
+                className={`text-xs px-3 py-1.5 rounded border ${prodPeriod === p ? 'bg-purple-900/40 border-purple-600 text-purple-300 font-medium' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>
+                {p === 'today' ? 'Today' : p === 'week' ? 'This Week' : p === 'month' ? 'This Month' : 'Custom'}
+              </button>
+            ))}
+            {prodPeriod === 'custom' && (
+              <div className="flex gap-2 items-center">
+                <input type="date" value={prodFrom} onChange={e => setProdFrom(e.target.value)}
+                  className="bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1 text-xs" />
+                <span className="text-gray-500 text-xs">to</span>
+                <input type="date" value={prodTo} onChange={e => setProdTo(e.target.value)}
+                  className="bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1 text-xs" />
+                <button onClick={() => loadProduction('custom')} className="bg-purple-600 text-white text-xs px-3 py-1 rounded hover:bg-purple-700">Go</button>
+              </div>
+            )}
+          </div>
+
+          {/* View selector */}
+          <div className="flex gap-2 mb-4">
+            {(['status', 'machine', 'operator'] as const).map(v => (
+              <button key={v} onClick={() => setProdView(v)}
+                className={`text-xs px-3 py-1.5 rounded border ${prodView === v ? 'bg-indigo-900/40 border-indigo-600 text-indigo-300 font-medium' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>
+                {v === 'status' ? 'By Status' : v === 'machine' ? 'By Machine' : 'By Operator'}
+              </button>
+            ))}
+          </div>
+
+          {prodLoading ? <div className="p-12 text-center text-gray-500">Loading...</div> : !prodData ? <div className="p-12 text-center text-gray-500">Click a period to load data.</div> : (
+            <>
+              {/* Stat cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                {[
+                  { label: 'Total Slips', value: prodData.totals.slips, sub: `${prodData.totals.than} than`, color: 'text-white', filter: null },
+                  { label: 'Done', value: prodData.totals.done, sub: null, color: 'text-green-400', filter: 'done' },
+                  { label: 'Patchy', value: prodData.totals.patchy, sub: prodData.totals.reDyeCost > 0 ? `+\u20B9${prodData.totals.reDyeCost.toFixed(0)}` : null, color: 'text-red-400', filter: 'patchy' },
+                  { label: 'Pending', value: prodData.totals.pending, sub: null, color: 'text-amber-400', filter: 'pending' },
+                ].map((card, ci) => (
+                  <button key={ci} onClick={() => setProdStatusFilter(prodStatusFilter === card.filter ? null : card.filter)}
+                    className={`bg-gray-800 rounded-xl border p-4 text-left transition ${prodStatusFilter === card.filter ? 'border-purple-500' : 'border-gray-700 hover:border-gray-600'}`}>
+                    <p className="text-xs text-gray-400 uppercase tracking-wide">{card.label}</p>
+                    <p className={`text-2xl font-bold mt-1 ${card.color}`}>{card.value}</p>
+                    {card.sub && <p className="text-xs text-gray-500 mt-0.5">{card.sub}</p>}
+                  </button>
+                ))}
+              </div>
+
+              {prodData.totals.totalCost > 0 && (
+                <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 mb-5 flex items-center justify-between">
+                  <span className="text-sm text-gray-400">Total Cost</span>
+                  <span className="text-lg font-bold text-purple-400">{'\u20B9'}{prodData.totals.totalCost.toFixed(0)}</span>
+                  {prodData.totals.slips > 0 && prodData.totals.patchy > 0 && (
+                    <span className="text-xs text-red-400">Re-dye rate: {((prodData.totals.patchy / prodData.totals.slips) * 100).toFixed(1)}%</span>
+                  )}
+                </div>
+              )}
+
+              {/* By Status view */}
+              {prodView === 'status' && (
+                <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                  <div className="divide-y divide-gray-700">
+                    {prodData.entries
+                      .filter((e: any) => {
+                        if (!prodStatusFilter) return true
+                        const st = e.status || (e.dyeingDoneAt ? 'done' : 'pending')
+                        return st === prodStatusFilter
+                      })
+                      .map((e: any) => {
+                        const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
+                        const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
+                        const chemCost = e.chemicals?.reduce((s: number, c: any) => s + (c.cost ?? 0), 0) ?? 0
+                        const addCost = e.additions?.reduce((s: number, a: any) => s + (a.chemicals?.reduce((s2: number, c: any) => s2 + (c.cost ?? 0), 0) ?? 0), 0) ?? 0
+                        const st = e.status || (e.dyeingDoneAt ? 'done' : 'pending')
+                        return (
+                          <div key={e.id} className="p-3 flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 text-sm">
+                                <Link href={`/dyeing/${e.id}`} className="text-purple-400 font-medium hover:underline">Slip {e.slipNo}</Link>
+                                <span className="text-gray-500 text-xs">{new Date(e.date).toLocaleDateString('en-IN')}</span>
+                                {st === 'done' && <span className="text-green-400 text-xs">Done</span>}
+                                {st === 'patchy' && <span className="text-red-400 text-xs">Patchy</span>}
+                                {st === 'pending' && <span className="text-amber-400 text-xs">Pending</span>}
+                              </div>
+                              <div className="text-xs text-gray-500 truncate">
+                                {lots.map((l: any) => l.lotNo).join(', ')} ({totalThan} than) {e.shadeName ? `| ${e.shadeName}` : ''}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-sm font-medium text-purple-400">{'\u20B9'}{(chemCost + addCost).toFixed(0)}</div>
+                              {addCost > 0 && <div className="text-[10px] text-red-400">+{'\u20B9'}{addCost.toFixed(0)} re-dye</div>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* By Machine view */}
+              {prodView === 'machine' && (
+                <div className="space-y-3">
+                  {prodData.byMachine.map((m: any) => (
+                    <div key={m.machineId} className="bg-gray-800 rounded-xl border border-gray-700">
+                      <button onClick={() => setExpandedMachine(expandedMachine === m.machineId ? null : m.machineId)}
+                        className="w-full p-4 flex items-center justify-between text-left">
+                        <div>
+                          <h3 className="text-sm font-semibold text-white">{m.name}</h3>
+                          <div className="flex gap-3 text-xs text-gray-400 mt-1">
+                            <span>{m.slips} slips</span>
+                            <span>{m.than} than</span>
+                            <span className="text-green-400">{m.done} done</span>
+                            {m.patchy > 0 && <span className="text-red-400">{m.patchy} patchy</span>}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-medium text-purple-400">{'\u20B9'}{m.cost.toFixed(0)}</div>
+                          <div className="text-xs text-gray-500">{expandedMachine === m.machineId ? '\u25B2' : '\u25BC'}</div>
+                        </div>
+                      </button>
+                      {expandedMachine === m.machineId && (
+                        <div className="border-t border-gray-700 divide-y divide-gray-700/50">
+                          {m.entries.map((e: any) => (
+                            <div key={e.id} className="px-4 py-2 flex items-center justify-between text-xs">
+                              <div>
+                                <Link href={`/dyeing/${e.id}`} className="text-purple-400 hover:underline">Slip {e.slipNo}</Link>
+                                <span className="text-gray-500 ml-2">{e.lotNo} ({e.than} than)</span>
+                              </div>
+                              <span className={e.status === 'done' ? 'text-green-400' : e.status === 'patchy' ? 'text-red-400' : 'text-amber-400'}>{e.status || 'pending'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {prodData.byMachine.length === 0 && <p className="text-center text-gray-500 py-8">No machine data.</p>}
+                </div>
+              )}
+
+              {/* By Operator view */}
+              {prodView === 'operator' && (
+                <div className="space-y-3">
+                  {/* Bar chart comparison */}
+                  {prodData.byOperator.length > 1 && (
+                    <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 mb-4">
+                      <h3 className="text-xs text-gray-400 uppercase tracking-wide mb-3">Comparison</h3>
+                      {(() => {
+                        const maxSlips = Math.max(...prodData.byOperator.map((o: any) => o.slips), 1)
+                        return prodData.byOperator.map((o: any) => (
+                          <div key={o.operatorId} className="mb-2">
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className="text-gray-300">{o.name}</span>
+                              <span className="text-gray-400">{o.slips} slips | {o.done} done {o.patchy > 0 ? `| ${o.patchy} patchy` : ''}</span>
+                            </div>
+                            <div className="w-full bg-gray-700 rounded-full h-3">
+                              <div className="bg-purple-600 h-3 rounded-full transition-all" style={{ width: `${(o.slips / maxSlips) * 100}%` }} />
+                            </div>
+                          </div>
+                        ))
+                      })()}
+                    </div>
+                  )}
+                  {prodData.byOperator.map((o: any) => (
+                    <div key={o.operatorId} className="bg-gray-800 rounded-xl border border-gray-700">
+                      <button onClick={() => setExpandedOperator(expandedOperator === o.operatorId ? null : o.operatorId)}
+                        className="w-full p-4 flex items-center justify-between text-left">
+                        <div>
+                          <h3 className="text-sm font-semibold text-white">{o.name}</h3>
+                          <div className="flex gap-3 text-xs text-gray-400 mt-1">
+                            <span>{o.slips} slips</span>
+                            <span>{o.than} than</span>
+                            <span className="text-green-400">{o.done} done</span>
+                            {o.patchy > 0 && <span className="text-red-400">{o.patchy} patchy</span>}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-medium text-purple-400">{'\u20B9'}{o.cost.toFixed(0)}</div>
+                          <div className="text-xs text-gray-500">{expandedOperator === o.operatorId ? '\u25B2' : '\u25BC'}</div>
+                        </div>
+                      </button>
+                      {expandedOperator === o.operatorId && (
+                        <div className="border-t border-gray-700 divide-y divide-gray-700/50">
+                          {o.entries.map((e: any) => (
+                            <div key={e.id} className="px-4 py-2 flex items-center justify-between text-xs">
+                              <div>
+                                <Link href={`/dyeing/${e.id}`} className="text-purple-400 hover:underline">Slip {e.slipNo}</Link>
+                                <span className="text-gray-500 ml-2">{e.lotNo} ({e.than} than)</span>
+                              </div>
+                              <span className={e.status === 'done' ? 'text-green-400' : e.status === 'patchy' ? 'text-red-400' : 'text-amber-400'}>{e.status || 'pending'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {prodData.byOperator.length === 0 && <p className="text-center text-gray-500 py-8">No operator data.</p>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── Confirm Dyeing Modal ── */}
       {confirmEntry && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-end sm:items-center justify-center">
           <div className="bg-gray-900 w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[95vh] overflow-y-auto border border-gray-700">
-            {/* Modal header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-700">
               <h2 className="text-lg font-bold text-white">Confirm Dyeing Done</h2>
               <button onClick={closeConfirm} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
             </div>
-
             <div className="p-4 space-y-4">
-              {/* Entry info */}
               <div className="bg-gray-800 rounded-lg p-3 border border-gray-700">
                 <div className="flex items-center gap-3 text-sm">
                   <span className="text-gray-400">Slip</span>
@@ -650,27 +1153,15 @@ export default function DyeingListPage() {
                   </div>
                 )}
               </div>
-
-              {/* Photo capture */}
               <div>
                 <label className="block text-xs text-gray-400 mb-2">Photo of dyed fabric</label>
                 <div className="flex gap-2">
-                  <button onClick={() => confirmCameraRef.current?.click()}
-                    className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-600 text-gray-300 rounded-lg px-3 py-3 text-sm hover:bg-gray-700 transition">
-                    Camera
-                  </button>
-                  <button onClick={() => confirmGalleryRef.current?.click()}
-                    className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-600 text-gray-300 rounded-lg px-3 py-3 text-sm hover:bg-gray-700 transition">
-                    Gallery
-                  </button>
+                  <button onClick={() => confirmCameraRef.current?.click()} className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-600 text-gray-300 rounded-lg px-3 py-3 text-sm hover:bg-gray-700 transition">Camera</button>
+                  <button onClick={() => confirmGalleryRef.current?.click()} className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-600 text-gray-300 rounded-lg px-3 py-3 text-sm hover:bg-gray-700 transition">Gallery</button>
                 </div>
-                <input ref={confirmCameraRef} type="file" accept="image/*" capture className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleConfirmPhoto(f); e.target.value = '' }} />
-                <input ref={confirmGalleryRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) handleConfirmPhoto(f); e.target.value = '' }} />
+                <input ref={confirmCameraRef} type="file" accept="image/*" capture className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleConfirmPhoto(f); e.target.value = '' }} />
+                <input ref={confirmGalleryRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleConfirmPhoto(f); e.target.value = '' }} />
               </div>
-
-              {/* Photo preview + CMYK */}
               {confirmPhoto && (
                 <div className="space-y-3">
                   <div className="relative rounded-lg overflow-hidden border border-gray-700">
@@ -681,9 +1172,7 @@ export default function DyeingListPage() {
                       <div className="flex items-center gap-3">
                         <span className="inline-block w-8 h-8 rounded-lg border-2 border-gray-600" style={{ backgroundColor: confirmCmyk.hex }} />
                         <div>
-                          <div className="text-sm font-mono text-gray-200">
-                            C:{confirmCmyk.c} M:{confirmCmyk.m} Y:{confirmCmyk.y} K:{confirmCmyk.k}
-                          </div>
+                          <div className="text-sm font-mono text-gray-200">C:{confirmCmyk.c} M:{confirmCmyk.m} Y:{confirmCmyk.y} K:{confirmCmyk.k}</div>
                           <div className="text-xs text-gray-500 font-mono">{confirmCmyk.hex}</div>
                         </div>
                       </div>
@@ -691,26 +1180,225 @@ export default function DyeingListPage() {
                   )}
                 </div>
               )}
-
-              {/* Date input */}
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Date completed</label>
-                <input type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                <input type="date" value={confirmDate} onChange={e => setConfirmDate(e.target.value)} className="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
               </div>
-
-              {/* Notes */}
               <div>
                 <label className="block text-xs text-gray-400 mb-1">Notes (optional)</label>
-                <textarea value={confirmNotes} onChange={e => setConfirmNotes(e.target.value)}
-                  rows={2} placeholder="Any notes about the dyeing result..."
-                  className="w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none" />
+                <textarea value={confirmNotes} onChange={e => setConfirmNotes(e.target.value)} rows={2} placeholder="Any notes about the dyeing result..." className="w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none" />
+              </div>
+              <button onClick={submitConfirm} disabled={confirming} className="w-full bg-green-600 text-white font-semibold rounded-lg px-4 py-3 text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition">
+                {confirming ? 'Confirming...' : 'Confirm Dyeing Done'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Addition Popup ── */}
+      {additionEntry && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-end sm:items-center justify-center">
+          <div className="bg-gray-900 w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[95vh] overflow-y-auto border border-gray-700">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h2 className="text-lg font-bold text-white">Addition</h2>
+              <button onClick={closeAddition} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="bg-gray-800 rounded-lg p-3 border border-gray-700">
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-gray-400">Slip</span>
+                  <span className="text-purple-400 font-semibold">{additionEntry.slipNo}</span>
+                  <span className="text-gray-600">|</span>
+                  <span className="text-gray-400">Lot</span>
+                  <span className="text-purple-300 font-semibold">{additionEntry.lots?.length ? additionEntry.lots.map(l => l.lotNo).join(', ') : additionEntry.lotNo}</span>
+                </div>
+                {additionEntry.shadeName && (
+                  <span className="inline-block bg-purple-700/50 text-purple-200 text-xs font-bold px-2 py-0.5 rounded-full mt-1">{additionEntry.shadeName}</span>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Reason</label>
+                <input type="text" value={addReason} onChange={e => setAddReason(e.target.value)} placeholder="Why this addition?"
+                  className="w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-2">Chemicals</label>
+                {addChemRows.map((row, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2 items-start">
+                    <div className="flex-1 relative">
+                      <input type="text" placeholder="Search chemical..." value={row.name}
+                        onChange={e => { updateChemRow(addChemRows, setAddChemRows, idx, 'name', e.target.value); setAddChemDrop(idx); setAddChemSearch(e.target.value) }}
+                        onFocus={() => { setAddChemDrop(idx); setAddChemSearch(row.name) }}
+                        className="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500" />
+                      {addChemDrop === idx && (() => {
+                        const q = (addChemSearch || row.name).toLowerCase()
+                        const filtered = masterChemicals.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8)
+                        return filtered.length > 0 ? (
+                          <div className="absolute z-50 w-full bg-gray-800 border border-gray-600 rounded-lg mt-1 max-h-40 overflow-y-auto shadow-xl">
+                            {filtered.map(c => (
+                              <button key={c.id} className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-purple-900/40"
+                                onClick={() => { selectChemMaster(addChemRows, setAddChemRows, idx, c, setAddChemDrop); setAddChemSearch('') }}>
+                                {c.name} <span className="text-gray-500 text-xs">({c.unit})</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null
+                      })()}
+                    </div>
+                    <input type="number" step="0.01" placeholder="Qty" value={row.quantity}
+                      onChange={e => updateChemRow(addChemRows, setAddChemRows, idx, 'quantity', e.target.value)}
+                      className="w-20 bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm" />
+                    <button onClick={() => setAddChemRows(prev => prev.filter((_, i) => i !== idx))} className="text-red-400 text-sm px-1 mt-1">X</button>
+                  </div>
+                ))}
+                <button onClick={() => setAddChemRows(prev => [...prev, { chemicalId: null, name: '', quantity: '', unit: 'kg', rate: '', cost: null }])}
+                  className="text-xs text-purple-400 hover:text-purple-300 border border-purple-700 rounded px-3 py-1.5">+ Add Row</button>
+              </div>
+              <button onClick={submitAddition} disabled={addSaving}
+                className="w-full bg-amber-600 text-white font-semibold rounded-lg px-4 py-3 text-sm hover:bg-amber-700 disabled:opacity-50 transition">
+                {addSaving ? 'Saving...' : 'Save Addition'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Re-Dye Popup ── */}
+      {reDyeEntry && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-end sm:items-center justify-center">
+          <div className="bg-gray-900 w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[95vh] overflow-y-auto border border-gray-700">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h2 className="text-lg font-bold text-white">Re-Dye</h2>
+              <button onClick={closeReDye} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+            </div>
+            <div className="p-4 space-y-4">
+              {/* Entry info */}
+              <div className="bg-gray-800 rounded-lg p-3 border border-gray-700">
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-gray-400">Slip</span>
+                  <span className="text-purple-400 font-semibold">{reDyeEntry.slipNo}</span>
+                  <span className="text-gray-600">|</span>
+                  <span className="text-gray-400">Lot</span>
+                  <span className="text-purple-300 font-semibold">{reDyeEntry.lots?.length ? reDyeEntry.lots.map(l => l.lotNo).join(', ') : reDyeEntry.lotNo}</span>
+                </div>
+                {reDyeEntry.shadeName && (
+                  <span className="inline-block bg-purple-700/50 text-purple-200 text-xs font-bold px-2 py-0.5 rounded-full mt-1">{reDyeEntry.shadeName}</span>
+                )}
               </div>
 
-              {/* Submit */}
-              <button onClick={submitConfirm} disabled={confirming}
-                className="w-full bg-green-600 text-white font-semibold rounded-lg px-4 py-3 text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition">
-                {confirming ? 'Confirming...' : 'Confirm Dyeing Done'}
+              {/* Defect type buttons */}
+              <div>
+                <label className="block text-xs text-gray-400 mb-2">Defect Type</label>
+                <div className="flex flex-wrap gap-2">
+                  {['patchy', 'uneven', 'light', 'dark', 'spots'].map(dt => (
+                    <button key={dt} onClick={() => setReDyeDefect(reDyeDefect === dt ? '' : dt)}
+                      className={`text-xs px-3 py-1.5 rounded-lg border capitalize ${reDyeDefect === dt ? 'bg-red-900/40 border-red-600 text-red-300 font-medium' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>
+                      {dt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Defect photo */}
+              <div>
+                <label className="block text-xs text-gray-400 mb-2">Defect Photo</label>
+                <div className="flex gap-2">
+                  <button onClick={() => reDyeCameraRef.current?.click()} className="flex-1 bg-gray-800 border border-gray-600 text-gray-300 rounded-lg px-3 py-2 text-sm hover:bg-gray-700">Camera</button>
+                  <button onClick={() => reDyeGalleryRef.current?.click()} className="flex-1 bg-gray-800 border border-gray-600 text-gray-300 rounded-lg px-3 py-2 text-sm hover:bg-gray-700">Gallery</button>
+                </div>
+                <input ref={reDyeCameraRef} type="file" accept="image/*" capture className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleReDyePhoto(f); e.target.value = '' }} />
+                <input ref={reDyeGalleryRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleReDyePhoto(f); e.target.value = '' }} />
+                {reDyePhoto && (
+                  <div className="mt-2 rounded-lg overflow-hidden border border-gray-700">
+                    <img src={`data:${reDyePhoto.mediaType};base64,${reDyePhoto.base64}`} alt="Defect" className="w-full max-h-40 object-cover" />
+                  </div>
+                )}
+              </div>
+
+              {/* Machine + Operator */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Machine</label>
+                  <select value={reDyeMachineId ?? ''} onChange={e => setReDyeMachineId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 text-sm">
+                    <option value="">Select</option>
+                    {machines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Operator</label>
+                  <select value={reDyeOperatorId ?? ''} onChange={e => setReDyeOperatorId(e.target.value ? parseInt(e.target.value) : null)}
+                    className="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 text-sm">
+                    <option value="">Select</option>
+                    {operators.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Reason */}
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Reason</label>
+                <input type="text" value={reDyeReason} onChange={e => setReDyeReason(e.target.value)} placeholder="Why re-dyeing?"
+                  className="w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+
+              {/* Process presets */}
+              {processes.length > 0 && (
+                <div>
+                  <label className="block text-xs text-gray-400 mb-2">Apply Process Preset</label>
+                  <div className="flex flex-wrap gap-2">
+                    {processes.map(p => (
+                      <button key={p.id} onClick={() => applyProcessToReDye(p)}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-indigo-700 bg-indigo-900/20 text-indigo-300 hover:bg-indigo-900/40">
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Chemical rows */}
+              <div>
+                <label className="block text-xs text-gray-400 mb-2">Chemicals</label>
+                {reDyeChemRows.map((row, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2 items-start">
+                    <div className="flex-1 relative">
+                      <input type="text" placeholder="Search chemical..." value={row.name}
+                        onChange={e => { updateChemRow(reDyeChemRows, setReDyeChemRows, idx, 'name', e.target.value); setReDyeChemDrop(idx); setReDyeChemSearch(e.target.value) }}
+                        onFocus={() => { setReDyeChemDrop(idx); setReDyeChemSearch(row.name) }}
+                        className="w-full bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500" />
+                      {reDyeChemDrop === idx && (() => {
+                        const q = (reDyeChemSearch || row.name).toLowerCase()
+                        const filtered = masterChemicals.filter(c => c.name.toLowerCase().includes(q)).slice(0, 8)
+                        return filtered.length > 0 ? (
+                          <div className="absolute z-50 w-full bg-gray-800 border border-gray-600 rounded-lg mt-1 max-h-40 overflow-y-auto shadow-xl">
+                            {filtered.map(c => (
+                              <button key={c.id} className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-purple-900/40"
+                                onClick={() => { selectChemMaster(reDyeChemRows, setReDyeChemRows, idx, c, setReDyeChemDrop); setReDyeChemSearch('') }}>
+                                {c.name} <span className="text-gray-500 text-xs">({c.unit})</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null
+                      })()}
+                    </div>
+                    <input type="number" step="0.01" placeholder="Qty" value={row.quantity}
+                      onChange={e => updateChemRow(reDyeChemRows, setReDyeChemRows, idx, 'quantity', e.target.value)}
+                      className="w-20 bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm" />
+                    <input type="number" step="0.01" placeholder="Rate" value={row.rate}
+                      onChange={e => updateChemRow(reDyeChemRows, setReDyeChemRows, idx, 'rate', e.target.value)}
+                      className="w-20 bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm" />
+                    <button onClick={() => setReDyeChemRows(prev => prev.filter((_, i) => i !== idx))} className="text-red-400 text-sm px-1 mt-1">X</button>
+                  </div>
+                ))}
+                <button onClick={() => setReDyeChemRows(prev => [...prev, { chemicalId: null, name: '', quantity: '', unit: 'kg', rate: '', cost: null }])}
+                  className="text-xs text-purple-400 hover:text-purple-300 border border-purple-700 rounded px-3 py-1.5">+ Add Row</button>
+              </div>
+
+              <button onClick={submitReDye} disabled={reDyeSaving}
+                className="w-full bg-red-600 text-white font-semibold rounded-lg px-4 py-3 text-sm hover:bg-red-700 disabled:opacity-50 transition">
+                {reDyeSaving ? 'Saving...' : 'Save & Print Re-Dye Slip'}
               </button>
             </div>
           </div>

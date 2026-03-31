@@ -22,6 +22,10 @@ export async function GET() {
             shade: { select: { name: true } },
           },
         },
+        additions: {
+          include: { chemicals: true, machine: true, operator: true },
+          orderBy: { roundNo: 'asc' },
+        },
       },
       orderBy: { date: 'desc' },
     })
