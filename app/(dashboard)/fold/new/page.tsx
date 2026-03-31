@@ -218,6 +218,7 @@ export default function NewFoldPage() {
   const { data: qualities } = useSWR<{ id: number; name: string }[]>('/api/masters/qualities', fetcher)
 
   const [foldNo, setFoldNo] = useState('')
+  const [existingFoldNos, setExistingFoldNos] = useState<Set<string>>(new Set())
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
   const [selectedParties, setSelectedParties] = useState<Set<string>>(new Set())
@@ -250,6 +251,19 @@ export default function NewFoldPage() {
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Auto-generate fold number
+  useEffect(() => {
+    fetch('/api/fold').then(r => r.json()).then((programs: any[]) => {
+      if (!Array.isArray(programs)) return
+      const nos = new Set(programs.map((p: any) => String(p.foldNo)))
+      setExistingFoldNos(nos)
+      // Find max numeric fold number and set next
+      const nums = programs.map((p: any) => parseInt(p.foldNo)).filter(n => !isNaN(n))
+      const maxNo = nums.length > 0 ? Math.max(...nums) : 0
+      setFoldNo(String(maxNo + 1))
+    }).catch(() => {})
   }, [])
 
   // Detect mobile viewport
@@ -420,6 +434,7 @@ export default function NewFoldPage() {
   async function save() {
     setError('')
     if (!foldNo.trim()) { setError('Fold No is required'); return }
+    if (existingFoldNos.has(foldNo.trim())) { setError(`Fold No ${foldNo} already exists. Use a different number.`); return }
     if (!date) { setError('Date is required'); return }
     for (const b of batches) {
       for (const l of b.lots) {
