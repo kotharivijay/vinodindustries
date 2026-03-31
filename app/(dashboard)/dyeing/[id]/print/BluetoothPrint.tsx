@@ -275,12 +275,18 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       await printer.printDivider('-', W)
 
       // Lots
-      await printer.printLine('LOTS:', true, toEscSize(lotSize))
+      const lotEsc = toEscSize(lotSize)
+      const lotW = lotEsc === 'large' ? Math.floor(W / 2) : W
+      await printer.printLine('LOTS:', true, lotEsc)
       for (const l of data.lots) {
-        await printer.printLine(`  ${l.lotNo}  ${l.than} than`, boldLotNo, toEscSize(lotSize))
+        const thanStr = `${l.than} than`
+        const lotPad = Math.max(1, lotW - 2 - l.lotNo.length - thanStr.length)
+        await printer.printLine(`  ${l.lotNo}${' '.repeat(lotPad)}${thanStr}`, boldLotNo, lotEsc)
       }
       if (data.lots.length > 1) {
-        await printer.printLine(`  Total: ${data.totalThan} than`, boldLotNo, toEscSize(lotSize))
+        const totalStr = `${data.totalThan} than`
+        const totalPad = Math.max(1, lotW - 2 - 6 - totalStr.length)
+        await printer.printLine(`  Total:${' '.repeat(totalPad)}${totalStr}`, boldLotNo, lotEsc)
       }
       await printer.printDivider('-', W)
 
@@ -298,26 +304,27 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       })
 
       const printChem = async (c: { name: string; quantity: number | null; unit: string }, isDye: boolean) => {
-        let qty = '  ---'
+        let qty = '---'
         if (c.quantity != null) {
           if (isDye) {
             qty = String(Math.round(c.quantity * 1000)).padStart(4, '0') + ' gm'
           } else {
-            qty = c.quantity.toFixed(1).padStart(5, ' ') + ' kg'
+            qty = c.quantity.toFixed(1) + ' kg'
           }
         }
-        const maxName = W - 4 - qty.length
+
+        // Print name and qty on same line using normal size for alignment
+        // Then the font size only affects visual weight, not layout
+        const escSize = toEscSize(chemSize)
+        const isWide = escSize === 'large' // large = 2x width, halves chars per line
+        const effectiveW = isWide ? Math.floor(W / 2) : escSize === 'double-height' ? W : W
+
+        const maxName = effectiveW - 2 - qty.length - 1
         const nameStr = c.name.length > maxName ? c.name.slice(0, maxName) : c.name
-        const pad = Math.max(1, W - 2 - nameStr.length - qty.length)
+        const pad = Math.max(1, effectiveW - 2 - nameStr.length - qty.length)
         const line = '  ' + nameStr + dot.repeat(pad) + qty
 
-        // Bold: send bold commands for name/qty separately if needed
-        if (boldChemName || boldQuantity) {
-          // For simplicity on thermal: bold entire line if either is on
-          await printer.printLine(line, boldChemName || boldQuantity, toEscSize(chemSize))
-        } else {
-          await printer.printLine(line, false, toEscSize(chemSize))
-        }
+        await printer.printLine(line, boldChemName || boldQuantity, escSize)
       }
 
       // Round 1
