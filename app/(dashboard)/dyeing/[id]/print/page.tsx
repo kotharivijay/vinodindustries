@@ -99,16 +99,17 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
         @media screen {
           .print-page { max-width: 800px; margin: 0 auto; padding: 24px; }
         }
-        .print-header { font-size: var(--print-header); }
-        .print-lot { font-size: var(--print-lot); }
-        .print-label { font-size: var(--print-label); }
-        .print-chem { font-size: var(--print-chem); }
+        .print-header { font-size: var(--print-header) !important; }
+        .print-lot { font-size: var(--print-lot) !important; }
+        .print-label { font-size: var(--print-label) !important; }
+        .print-chem { font-size: var(--print-chem) !important; }
+        .print-info { font-size: var(--print-chem) !important; }
       `}</style>
 
       {/* Header */}
       <div className="text-center border-b-2 border-black pb-3 mb-4">
         <h1 className="print-header font-bold tracking-wide">KOTHARI SYNTHETIC INDUSTRIES</h1>
-        <p className="text-sm text-gray-600">
+        <p className="print-label text-gray-600">
           {showingSpecificRound ? `Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'Dyeing Report (All Rounds)' : 'Dyeing Slip'}
         </p>
         {isReDyed && !showingSpecificRound && showRound !== 'all' && (
@@ -117,7 +118,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
       </div>
 
       {/* Slip Info Grid */}
-      <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm mb-4 border border-gray-300 rounded p-3">
+      <div className="grid grid-cols-2 gap-x-8 gap-y-1 print-info mb-4 border border-gray-300 rounded p-3">
         <div className="flex gap-2">
           <span className="font-semibold w-24">Slip No:</span>
           <span>{entry.slipNo}</span>
