@@ -226,14 +226,17 @@ export default function DyeingListPage() {
   const lotSummary = useMemo<LotSummaryRow[]>(() => {
     const map = new Map<string, LotSummaryRow>()
     for (const e of entries) {
-      const ex = map.get(e.lotNo)
-      if (!ex) {
-        map.set(e.lotNo, { lotNo: e.lotNo, entries: 1, totalThan: e.than, slips: String(e.slipNo), lastDate: e.date })
-      } else {
-        ex.entries++
-        ex.totalThan += e.than
-        ex.slips = ex.slips + ', ' + e.slipNo
-        if (new Date(e.date) > new Date(ex.lastDate)) ex.lastDate = e.date
+      const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
+      for (const lot of lots) {
+        const ex = map.get(lot.lotNo)
+        if (!ex) {
+          map.set(lot.lotNo, { lotNo: lot.lotNo, entries: 1, totalThan: lot.than, slips: String(e.slipNo), lastDate: e.date })
+        } else {
+          ex.entries++
+          ex.totalThan += lot.than
+          if (!ex.slips.includes(String(e.slipNo))) ex.slips = ex.slips + ', ' + e.slipNo
+          if (new Date(e.date) > new Date(ex.lastDate)) ex.lastDate = e.date
+        }
       }
     }
     return Array.from(map.values()).sort((a, b) => a.lotNo.localeCompare(b.lotNo))
