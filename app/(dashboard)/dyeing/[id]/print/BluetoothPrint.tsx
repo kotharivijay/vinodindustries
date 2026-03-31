@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 
 interface SlipLot { lotNo: string; than: number }
 interface SlipChemical { name: string; quantity: number | null; unit: string; processTag: string | null }
@@ -181,13 +181,30 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
     }
   })
 
+  // Keep printer instance alive for reuse
+  const printerRef = useRef<any>(null)
+
   const printViaBluetooth = useCallback(async () => {
     setState('printing')
     setError('')
     try {
       const { BluetoothPrinter } = await import('@/lib/bluetooth-printer')
-      const printer = new BluetoothPrinter()
-      await printer.connect()
+
+      // Reuse existing printer or create new
+      if (!printerRef.current) {
+        printerRef.current = new BluetoothPrinter()
+      }
+      const printer = printerRef.current
+
+      // Smart connect: try saved device first, then picker
+      const savedId = (() => { try { return localStorage.getItem('bt-printer-id') || undefined } catch { return undefined } })()
+      await printer.smartConnect(savedId)
+
+      // Save device ID for next time
+      const deviceId = printer.getDeviceId()
+      const deviceName = printer.getDeviceName()
+      if (deviceId) try { localStorage.setItem('bt-printer-id', deviceId) } catch {}
+      if (deviceName) try { localStorage.setItem('bt-printer-name', deviceName) } catch {}
 
       const receipt = buildReceipt(data)
       await printer.init()
@@ -201,12 +218,16 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
 
       await printer.feedLines(3)
       await printer.cut()
+      // Don't fully disconnect — keep for next print
       await printer.disconnect()
 
       setState('done')
       setTimeout(() => setState('idle'), 3000)
     } catch (err: any) {
       if (err.message?.includes('cancel')) { setState('idle'); return }
+      // Clear saved device on error so next time shows picker
+      try { localStorage.removeItem('bt-printer-id') } catch {}
+      printerRef.current = null
       setError(err.message || 'Bluetooth error')
       setState('error')
     }
@@ -272,6 +293,24 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       {btAvailable === false && (
         <span className="text-[9px] text-red-400">Bluetooth not available on this browser</span>
       )}
+
+      {/* Show saved printer name + forget option */}
+      {btAvailable !== false && (() => {
+        try {
+          const name = localStorage.getItem('bt-printer-name')
+          if (!name) return null
+          return (
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[9px] text-green-400">Saved: {name}</span>
+              <button onClick={() => {
+                try { localStorage.removeItem('bt-printer-id'); localStorage.removeItem('bt-printer-name') } catch {}
+                printerRef.current = null
+                window.location.reload()
+              }} className="text-[9px] text-red-400 hover:text-red-300 underline">Forget</button>
+            </div>
+          )
+        } catch { return null }
+      })()}
     </div>
   )
 }

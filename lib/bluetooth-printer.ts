@@ -32,8 +32,6 @@ class BluetoothPrinter {
   private characteristic: BluetoothRemoteGATTCharacteristic | null = null
   private connected = false
 
-  private static SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb'
-
   // All known thermal printer service UUIDs
   private static ALL_SERVICE_UUIDS = [
     '000018f0-0000-1000-8000-00805f9b34fb',
@@ -45,20 +43,27 @@ class BluetoothPrinter {
     '0000fee7-0000-1000-8000-00805f9b34fb',
   ]
 
-  async connect(): Promise<boolean> {
+  // Find writable characteristic on a connected server
+  private async findWritable(server: BluetoothRemoteGATTServer): Promise<boolean> {
+    // Try known service UUIDs first
+    for (const serviceUuid of BluetoothPrinter.ALL_SERVICE_UUIDS) {
+      try {
+        const service = await server.getPrimaryService(serviceUuid)
+        const chars = await service.getCharacteristics()
+        for (const char of chars) {
+          if (char.properties.write || char.properties.writeWithoutResponse) {
+            this.characteristic = char
+            this.connected = true
+            return true
+          }
+        }
+      } catch { continue }
+    }
+    // Last resort: discover all services
     try {
-      // Show ALL Bluetooth devices — user picks their printer
-      this.device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: BluetoothPrinter.ALL_SERVICE_UUIDS,
-      })
-
-      const server = await this.device.gatt!.connect()
-
-      // Try each known service UUID to find a writable characteristic
-      for (const serviceUuid of BluetoothPrinter.ALL_SERVICE_UUIDS) {
+      const services = await server.getPrimaryServices()
+      for (const service of services) {
         try {
-          const service = await server.getPrimaryService(serviceUuid)
           const chars = await service.getCharacteristics()
           for (const char of chars) {
             if (char.properties.write || char.properties.writeWithoutResponse) {
@@ -67,29 +72,48 @@ class BluetoothPrinter {
               return true
             }
           }
-        } catch {
-          continue
-        }
+        } catch { continue }
       }
+    } catch {}
+    return false
+  }
 
-      // Last resort: try discovering all services
-      try {
-        const services = await server.getPrimaryServices()
-        for (const service of services) {
-          try {
-            const chars = await service.getCharacteristics()
-            for (const char of chars) {
-              if (char.properties.write || char.properties.writeWithoutResponse) {
-                this.characteristic = char
-                this.connected = true
-                return true
-              }
-            }
-          } catch { continue }
-        }
-      } catch {}
+  // Try reconnect to previously paired device (no picker)
+  async reconnect(savedDeviceId?: string): Promise<boolean> {
+    if (!savedDeviceId) return false
+    try {
+      // getDevices() returns previously authorized devices without showing picker
+      if (!('getDevices' in navigator.bluetooth)) return false
+      const devices = await navigator.bluetooth.getDevices()
+      const saved = devices.find(d => d.id === savedDeviceId)
+      if (!saved || !saved.gatt) return false
 
-      throw new Error('No writable characteristic found on this device')
+      // Listen for advertisement to reconnect
+      this.device = saved
+      const server = await saved.gatt.connect()
+      const found = await this.findWritable(server)
+      if (found) return true
+
+      // Disconnect if no writable found
+      saved.gatt.disconnect()
+      return false
+    } catch {
+      return false
+    }
+  }
+
+  // Connect with device picker (first time or reconnect failed)
+  async connect(): Promise<boolean> {
+    try {
+      this.device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: BluetoothPrinter.ALL_SERVICE_UUIDS,
+      })
+
+      const server = await this.device.gatt!.connect()
+      const found = await this.findWritable(server)
+      if (!found) throw new Error('No writable characteristic found on this device')
+      return true
     } catch (err: unknown) {
       console.error('Bluetooth connect error:', err)
       this.connected = false
@@ -97,7 +121,34 @@ class BluetoothPrinter {
     }
   }
 
+  // Smart connect: try reconnect first, fall back to picker
+  async smartConnect(savedDeviceId?: string): Promise<boolean> {
+    // If already connected, reuse
+    if (this.connected && this.characteristic && this.device?.gatt?.connected) {
+      return true
+    }
+
+    // Try reconnect to saved device
+    if (savedDeviceId) {
+      const reconnected = await this.reconnect(savedDeviceId)
+      if (reconnected) return true
+    }
+
+    // Fall back to picker
+    return this.connect()
+  }
+
+  getDeviceId(): string | null {
+    return this.device?.id ?? null
+  }
+
   async disconnect() {
+    // Don't fully disconnect — keep device reference for reconnect
+    this.connected = false
+    this.characteristic = null
+  }
+
+  async fullDisconnect() {
     if (this.device?.gatt?.connected) {
       this.device.gatt.disconnect()
     }
