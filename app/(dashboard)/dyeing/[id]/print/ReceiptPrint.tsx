@@ -106,11 +106,23 @@ export default function ReceiptPrint({ data }: { data: SlipData }) {
     }
     html += `<div class="divider"></div>`
 
-    // Chemicals
-    const chemTable = (chems: { name: string; quantity: number | null; unit: string }[]) => {
+    // Chemicals — dyes in grams (4-digit), auxiliary in kg
+    const chemTable = (chems: { name: string; quantity: number | null; unit: string }[], isDye: boolean) => {
       let t = `<table class="chem">`
       chems.forEach((c, i) => {
-        t += `<tr><td class="td-num">${i + 1}</td><td class="td-name">${c.name}</td><td class="td-qty">${c.quantity ?? '-'}</td><td class="td-unit">${c.unit}</td></tr>`
+        let qty = '-'
+        let unit = c.unit
+        if (c.quantity != null) {
+          if (isDye) {
+            const grams = Math.round(c.quantity * 1000)
+            qty = String(grams).padStart(4, '0')
+            unit = 'gm'
+          } else {
+            qty = c.quantity.toFixed(1)
+            unit = 'kg'
+          }
+        }
+        t += `<tr><td class="td-num">${i + 1}</td><td class="td-name">${c.name}</td><td class="td-qty">${qty}</td><td class="td-unit">${unit}</td></tr>`
       })
       t += `</table>`
       return t
@@ -119,15 +131,16 @@ export default function ReceiptPrint({ data }: { data: SlipData }) {
     if (showRound === 1 || showRound === 'all') {
       if (showRound === 'all') html += `<div class="section">ROUND 1 (Original)</div>`
       for (const tag of tagOrder) {
-        const label = tag === 'shade' ? 'SHADE CHEMICALS' : tag === 'Other' ? 'OTHER' : tag.toUpperCase()
+        const isDye = tag === 'shade'
+        const label = isDye ? 'DYES (grams)' : tag === 'Other' ? 'OTHER (kg)' : tag.toUpperCase() + ' (kg)'
         html += `<div class="section">${label}</div>`
-        html += chemTable(grouped[tag])
+        html += chemTable(grouped[tag], isDye)
       }
     }
 
     if (showingSpecific && specificAdd) {
       html += `<div class="section">RE-DYE (Round ${showRound})</div>`
-      html += chemTable(specificAdd.chemicals)
+      html += chemTable(specificAdd.chemicals, true)
     }
 
     if (showRound === 'all') {
@@ -135,7 +148,7 @@ export default function ReceiptPrint({ data }: { data: SlipData }) {
         const label = a.type === 're-dye' ? 'Re-Dye' : 'Addition'
         html += `<div class="section">ROUND ${a.roundNo} (${label})${a.defectType ? ` - ${a.defectType}` : ''}</div>`
         if (a.reason) html += `<div style="font-size:10px">Reason: ${a.reason}</div>`
-        html += chemTable(a.chemicals)
+        html += chemTable(a.chemicals, false)
       }
     }
 

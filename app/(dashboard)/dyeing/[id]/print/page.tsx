@@ -172,7 +172,8 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           {showRound === 'all' && <h3 className="text-sm font-bold border-b border-gray-400 pb-1 mb-3">ROUND 1 (Original)</h3>}
           {tagOrder.map(tag => {
             const tagChems = grouped[tag]
-            const label = tag === 'shade' ? 'Shade Chemicals' : tag === '_other' ? 'Other Chemicals' : tag
+            const isDye = tag === 'shade'
+            const label = isDye ? 'Dyes (grams)' : tag === '_other' ? 'Other (kg)' : tag + ' (kg)'
             return (
               <div key={tag} className="mb-4">
                 <h3 className="print-label font-bold uppercase tracking-wide border-b border-gray-400 pb-1 mb-2">
@@ -188,14 +189,27 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
                     </tr>
                   </thead>
                   <tbody>
-                    {tagChems.map((c: any, i: number) => (
+                    {tagChems.map((c: any, i: number) => {
+                      let qty: string = '\u2014'
+                      let unit = c.unit
+                      if (c.quantity != null) {
+                        if (isDye) {
+                          const grams = Math.round(c.quantity * 1000)
+                          qty = String(grams).padStart(4, '0')
+                          unit = 'gm'
+                        } else {
+                          qty = Number(c.quantity).toFixed(1)
+                          unit = 'kg'
+                        }
+                      }
+                      return (
                       <tr key={c.id} className="border-b border-gray-200">
                         <td className="py-1 text-gray-500">{i + 1}</td>
                         <td className="py-1 font-medium">{c.name}</td>
-                        <td className="py-1 text-right font-bold">{c.quantity != null ? c.quantity : '\u2014'}</td>
-                        <td className="py-1 pl-2 text-gray-600">{c.unit}</td>
+                        <td className="py-1 text-right font-bold">{qty}</td>
+                        <td className="py-1 pl-2 text-gray-600">{unit}</td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>

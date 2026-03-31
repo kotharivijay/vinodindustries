@@ -81,24 +81,35 @@ function buildReceipt(data: SlipData, width = 32): string {
     return a.localeCompare(b)
   })
 
-  const chemLine = (c: { name: string; quantity: number | null; unit: string }) => {
-    const qty = c.quantity != null ? `${c.quantity} ${c.unit}` : '---'
+  const chemLine = (c: { name: string; quantity: number | null; unit: string }, isDye: boolean) => {
+    let qty = '---'
+    if (c.quantity != null) {
+      if (isDye) {
+        // Dyes: convert kg to grams, 4-digit padded
+        const grams = Math.round(c.quantity * 1000)
+        qty = String(grams).padStart(4, '0') + ' gm'
+      } else {
+        // Auxiliary: show in kg
+        qty = c.quantity.toFixed(1) + ' kg'
+      }
+    }
     return kv(`  ${c.name}`, qty)
   }
 
   if (showRound === 1 || showRound === 'all') {
     if (showRound === 'all') lines.push('ROUND 1 (Original)')
     for (const tag of tagOrder) {
-      const label = tag === 'shade' ? 'SHADE CHEMICALS' : tag === '_other' ? 'OTHER' : tag.toUpperCase()
+      const isDye = tag === 'shade'
+      const label = isDye ? 'DYES (grams)' : tag === '_other' ? 'OTHER (kg)' : tag.toUpperCase() + ' (kg)'
       lines.push(label)
-      grouped[tag].forEach(c => lines.push(chemLine(c)))
+      grouped[tag].forEach(c => lines.push(chemLine(c, isDye)))
       lines.push(div())
     }
   }
 
   if (showingSpecific && specificAdd) {
     lines.push(`RE-DYE (Round ${showRound})`)
-    specificAdd.chemicals.forEach(c => lines.push(chemLine(c)))
+    specificAdd.chemicals.forEach(c => lines.push(chemLine(c, true)))
     lines.push(div())
   }
 
@@ -107,7 +118,7 @@ function buildReceipt(data: SlipData, width = 32): string {
       const label = a.type === 're-dye' ? 'Re-Dye' : 'Addition'
       lines.push(`ROUND ${a.roundNo} (${label})${a.defectType ? ` - ${a.defectType}` : ''}`)
       if (a.reason) lines.push(`Reason: ${a.reason}`)
-      a.chemicals.forEach(c => lines.push(chemLine(c)))
+      a.chemicals.forEach(c => lines.push(chemLine(c, false)))
       lines.push(div())
     }
   }
