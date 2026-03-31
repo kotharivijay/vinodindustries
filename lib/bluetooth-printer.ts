@@ -34,31 +34,29 @@ class BluetoothPrinter {
 
   private static SERVICE_UUID = '000018f0-0000-1000-8000-00805f9b34fb'
 
-  private static ALT_SERVICE_UUIDS = [
+  // All known thermal printer service UUIDs
+  private static ALL_SERVICE_UUIDS = [
     '000018f0-0000-1000-8000-00805f9b34fb',
     'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
     '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+    '0000ff00-0000-1000-8000-00805f9b34fb',
+    '0000ffe0-0000-1000-8000-00805f9b34fb',
+    '00001101-0000-1000-8000-00805f9b34fb',
+    '0000fee7-0000-1000-8000-00805f9b34fb',
   ]
 
   async connect(): Promise<boolean> {
     try {
+      // Show ALL Bluetooth devices — user picks their printer
       this.device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { services: [BluetoothPrinter.SERVICE_UUID] },
-        ],
-        optionalServices: BluetoothPrinter.ALT_SERVICE_UUIDS,
+        acceptAllDevices: true,
+        optionalServices: BluetoothPrinter.ALL_SERVICE_UUIDS,
       })
-
-      if (!this.device) {
-        this.device = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: BluetoothPrinter.ALT_SERVICE_UUIDS,
-        })
-      }
 
       const server = await this.device.gatt!.connect()
 
-      for (const serviceUuid of BluetoothPrinter.ALT_SERVICE_UUIDS) {
+      // Try each known service UUID to find a writable characteristic
+      for (const serviceUuid of BluetoothPrinter.ALL_SERVICE_UUIDS) {
         try {
           const service = await server.getPrimaryService(serviceUuid)
           const chars = await service.getCharacteristics()
@@ -74,7 +72,24 @@ class BluetoothPrinter {
         }
       }
 
-      throw new Error('No writable characteristic found')
+      // Last resort: try discovering all services
+      try {
+        const services = await server.getPrimaryServices()
+        for (const service of services) {
+          try {
+            const chars = await service.getCharacteristics()
+            for (const char of chars) {
+              if (char.properties.write || char.properties.writeWithoutResponse) {
+                this.characteristic = char
+                this.connected = true
+                return true
+              }
+            }
+          } catch { continue }
+        }
+      } catch {}
+
+      throw new Error('No writable characteristic found on this device')
     } catch (err: unknown) {
       console.error('Bluetooth connect error:', err)
       this.connected = false

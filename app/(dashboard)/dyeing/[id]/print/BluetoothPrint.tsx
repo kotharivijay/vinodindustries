@@ -169,8 +169,17 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
     }
   }, [data])
 
-  // Method 3: Web Bluetooth (if supported)
-  const hasBluetooth = typeof navigator !== 'undefined' && 'bluetooth' in navigator
+  // Method 3: Web Bluetooth
+  const [btAvailable, setBtAvailable] = useState<boolean | null>(null)
+
+  // Check on mount
+  useState(() => {
+    if (typeof navigator !== 'undefined' && 'bluetooth' in navigator) {
+      navigator.bluetooth.getAvailability().then(setBtAvailable).catch(() => setBtAvailable(false))
+    } else {
+      setBtAvailable(false)
+    }
+  })
 
   const printViaBluetooth = useCallback(async () => {
     setState('printing')
@@ -183,7 +192,6 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       const receipt = buildReceipt(data)
       await printer.init()
 
-      // Send receipt line by line
       const encoder = new TextEncoder()
       const lines = receipt.split('\n')
       for (const line of lines) {
@@ -233,33 +241,37 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
 
   return (
     <div className="inline-flex flex-col items-center gap-2">
-      {/* Primary: RawBT (works on all Android) */}
+      {/* Primary: Bluetooth Direct */}
+      {btAvailable !== false && (
+        <button
+          onClick={printViaBluetooth}
+          className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center gap-2"
+        >
+          <span>📡</span>
+          <span>Bluetooth Print</span>
+        </button>
+      )}
+
+      {/* Fallback: RawBT */}
       <button
         onClick={printViaRawBT}
         className="bg-green-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-2"
       >
         <span>🖨️</span>
-        <span>Thermal Print</span>
+        <span>RawBT Print</span>
       </button>
 
-      <div className="flex gap-2">
-        {/* Bluetooth direct (if supported) */}
-        {hasBluetooth && (
-          <button
-            onClick={printViaBluetooth}
-            className="text-[10px] text-blue-500 hover:text-blue-400 underline"
-          >
-            Bluetooth
-          </button>
-        )}
-        {/* Share/Copy */}
-        <button
-          onClick={printViaShare}
-          className="text-[10px] text-gray-400 hover:text-gray-300 underline"
-        >
-          {typeof navigator !== 'undefined' && 'share' in navigator ? 'Share' : 'Copy Text'}
-        </button>
-      </div>
+      {/* Share/Copy */}
+      <button
+        onClick={printViaShare}
+        className="text-[10px] text-gray-400 hover:text-gray-300 underline"
+      >
+        {typeof navigator !== 'undefined' && 'share' in navigator ? 'Share' : 'Copy Text'}
+      </button>
+
+      {btAvailable === false && (
+        <span className="text-[9px] text-red-400">Bluetooth not available on this browser</span>
+      )}
     </div>
   )
 }
