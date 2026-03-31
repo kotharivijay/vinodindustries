@@ -108,8 +108,8 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
 
       {/* Header */}
       <div className="text-center border-b-2 border-black pb-3 mb-4">
-        <h1 className="print-header font-bold tracking-wide">KOTHARI SYNTHETIC INDUSTRIES</h1>
-        <p className="print-label text-gray-600">
+        <h1 data-print="header" className="text-xl font-bold tracking-wide">KOTHARI SYNTHETIC INDUSTRIES</h1>
+        <p data-print="label" className="text-sm text-gray-600">
           {showingSpecificRound ? `Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'Dyeing Report (All Rounds)' : 'Dyeing Slip'}
         </p>
         {isReDyed && !showingSpecificRound && showRound !== 'all' && (
@@ -118,7 +118,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
       </div>
 
       {/* Slip Info Grid */}
-      <div className="grid grid-cols-2 gap-x-8 gap-y-1 print-info mb-4 border border-gray-300 rounded p-3">
+      <div data-print="info" className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm mb-4 border border-gray-300 rounded p-3">
         <div className="flex gap-2">
           <span className="font-semibold w-24">Slip No:</span>
           <span>{entry.slipNo}</span>
@@ -153,7 +153,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
       </div>
 
       {/* Lots */}
-      <div className="print-lot mb-4">
+      <div data-print="lot" className="text-sm mb-4">
         <span className="font-bold">Lots: </span>
         {lots.map((l: any, i: number) => (
           <span key={i} className="font-bold">
@@ -177,10 +177,10 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
             const label = isDye ? 'Dyes (grams)' : tag === '_other' ? 'Other (kg)' : tag + ' (kg)'
             return (
               <div key={tag} className="mb-4">
-                <h3 className="print-label font-bold uppercase tracking-wide border-b border-gray-400 pb-1 mb-2">
+                <h3 data-print="label" className="text-sm font-bold uppercase tracking-wide border-b border-gray-400 pb-1 mb-2">
                   {label}
                 </h3>
-                <table className="w-full print-chem border-collapse">
+                <table data-print="chem" className="w-full text-sm border-collapse">
                   <thead>
                     <tr className="border-b border-gray-300">
                       <th className="text-left py-1 font-semibold w-8">#</th>

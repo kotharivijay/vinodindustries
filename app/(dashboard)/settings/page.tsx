@@ -99,10 +99,10 @@ export default function SettingsPage() {
   }
 
   const sliders: { key: keyof PrintSettings; label: string; min: number; max: number }[] = [
-    { key: 'headerFontSize', label: 'Slip Header (Company Name)', min: 12, max: 28 },
-    { key: 'lotFontSize', label: 'Lot No & Than', min: 10, max: 26 },
-    { key: 'labelFontSize', label: 'Section Labels (Shade, Scouring...)', min: 10, max: 22 },
-    { key: 'chemFontSize', label: 'Chemical Name & Quantity', min: 10, max: 24 },
+    { key: 'headerFontSize', label: 'Slip Header (Company Name)', min: 10, max: 36 },
+    { key: 'lotFontSize', label: 'Lot No & Than', min: 10, max: 36 },
+    { key: 'labelFontSize', label: 'Section Labels (Shade, Scouring...)', min: 10, max: 36 },
+    { key: 'chemFontSize', label: 'Chemical Name & Quantity', min: 10, max: 36 },
   ]
 
   return (

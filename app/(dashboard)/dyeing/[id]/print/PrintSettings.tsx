@@ -8,11 +8,23 @@ export default function PrintSettings() {
       const raw = localStorage.getItem('print-settings')
       if (!raw) return
       const s = JSON.parse(raw)
-      const root = document.documentElement
-      if (s.headerFontSize) root.style.setProperty('--print-header', s.headerFontSize + 'px')
-      if (s.lotFontSize) root.style.setProperty('--print-lot', s.lotFontSize + 'px')
-      if (s.labelFontSize) root.style.setProperty('--print-label', s.labelFontSize + 'px')
-      if (s.chemFontSize) root.style.setProperty('--print-chem', s.chemFontSize + 'px')
+
+      // Apply font sizes directly to elements with data attributes
+      document.querySelectorAll('[data-print="header"]').forEach(el => {
+        (el as HTMLElement).style.fontSize = (s.headerFontSize || 18) + 'px'
+      })
+      document.querySelectorAll('[data-print="lot"]').forEach(el => {
+        (el as HTMLElement).style.fontSize = (s.lotFontSize || 14) + 'px'
+      })
+      document.querySelectorAll('[data-print="label"]').forEach(el => {
+        (el as HTMLElement).style.fontSize = (s.labelFontSize || 13) + 'px'
+      })
+      document.querySelectorAll('[data-print="chem"]').forEach(el => {
+        (el as HTMLElement).style.fontSize = (s.chemFontSize || 12) + 'px'
+      })
+      document.querySelectorAll('[data-print="info"]').forEach(el => {
+        (el as HTMLElement).style.fontSize = (s.chemFontSize || 12) + 'px'
+      })
     } catch {}
   }, [])
   return null

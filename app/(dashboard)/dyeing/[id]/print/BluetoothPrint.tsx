@@ -217,16 +217,124 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       if (deviceId) try { localStorage.setItem('bt-printer-id', deviceId) } catch {}
       if (deviceName) try { localStorage.setItem('bt-printer-name', deviceName) } catch {}
 
-      const receipt = buildReceipt(data)
       await printer.init()
 
-      const encoder = new TextEncoder()
-      const lines = receipt.split('\n')
-      for (const line of lines) {
-        await printer.sendCommand(encoder.encode(line + '\n'))
-        await new Promise(r => setTimeout(r, 10))
+      // Read font size settings
+      let headerSize = 18, lotSize = 14, chemSize = 12, labelSize = 13
+      try {
+        const raw = localStorage.getItem('print-settings')
+        if (raw) {
+          const s = JSON.parse(raw)
+          headerSize = s.headerFontSize || 18
+          lotSize = s.lotFontSize || 14
+          chemSize = s.chemFontSize || 12
+          labelSize = s.labelFontSize || 13
+        }
+      } catch {}
+
+      // Map px to ESC/POS: >= 28 = large (4x), >= 20 = double, < 20 = normal
+      const toEscSize = (px: number): 'normal' | 'double-height' | 'large' =>
+        px >= 28 ? 'large' : px >= 20 ? 'double-height' : 'normal'
+
+      const W = 32
+
+      // Header
+      await printer.printCentered('================================', false, 'normal')
+      await printer.printCentered('KOTHARI SYNTHETIC', true, toEscSize(headerSize))
+      await printer.printCentered('INDUSTRIES', true, toEscSize(headerSize))
+      const showRound = data.roundParam
+      const showingSpecific = typeof showRound === 'number' && showRound > 1
+      const specificAdd = showingSpecific ? data.additions.find(a => a.roundNo === showRound) : null
+      const subtitle = showingSpecific ? `Re-Dye (Round ${showRound})` : showRound === 'all' ? 'All Rounds' : 'Dyeing Slip'
+      await printer.printCentered(subtitle, false, 'normal')
+      if (data.isReDyed && !showingSpecific && showRound !== 'all') {
+        await printer.printCentered(`RE-DYED (${data.totalRounds}x)`, true, 'normal')
+      }
+      await printer.printCentered('================================', false, 'normal')
+
+      // Info
+      await printer.printKeyValue(`Slip: ${data.slipNo}`, `${data.date}`, W)
+      if (data.partyName) await printer.printText(`Party: ${data.partyName}`)
+      if (data.shadeName) await printer.printText(`Shade: ${data.shadeName}`)
+      const machine = showingSpecific && specificAdd?.machineName ? specificAdd.machineName : data.machineName
+      const operator = showingSpecific && specificAdd?.operatorName ? specificAdd.operatorName : data.operatorName
+      if (machine || operator) {
+        const parts: string[] = []
+        if (machine) parts.push(`M:${machine}`)
+        if (operator) parts.push(`Op:${operator}`)
+        await printer.printText(parts.join(' '))
+      }
+      await printer.printDivider('-', W)
+
+      // Lots — use lot font size
+      await printer.printLine('LOTS:', true, toEscSize(lotSize))
+      for (const l of data.lots) {
+        await printer.printLine(`  ${l.lotNo}  ${l.than} than`, true, toEscSize(lotSize))
+      }
+      if (data.lots.length > 1) {
+        await printer.printLine(`  Total: ${data.totalThan} than`, true, toEscSize(lotSize))
+      }
+      await printer.printDivider('-', W)
+
+      // Group chemicals
+      const grouped: Record<string, typeof data.chemicals> = {}
+      for (const c of data.chemicals) {
+        const tag = c.processTag || '_other'
+        if (!grouped[tag]) grouped[tag] = []
+        grouped[tag].push(c)
+      }
+      const tagOrder = Object.keys(grouped).sort((a, b) => {
+        if (a === 'shade') return -1; if (b === 'shade') return 1
+        if (a === '_other') return 1; if (b === '_other') return -1
+        return a.localeCompare(b)
+      })
+
+      const printChem = async (c: { name: string; quantity: number | null; unit: string }, isDye: boolean) => {
+        let qty = '---'
+        if (c.quantity != null) {
+          if (isDye) {
+            qty = String(Math.round(c.quantity * 1000)).padStart(4, '0') + ' gm'
+          } else {
+            qty = c.quantity.toFixed(1) + ' kg'
+          }
+        }
+        await printer.printLine(`  ${c.name}  ${qty}`, false, toEscSize(chemSize))
       }
 
+      // Round 1
+      if (showRound === 1 || showRound === 'all') {
+        if (showRound === 'all') await printer.printLine('ROUND 1 (Original)', true, toEscSize(labelSize))
+        for (const tag of tagOrder) {
+          const isDye = tag === 'shade'
+          const label = isDye ? 'DYES (grams)' : tag === '_other' ? 'OTHER (kg)' : tag.toUpperCase() + ' (kg)'
+          await printer.printLine(label, true, toEscSize(labelSize))
+          for (const c of grouped[tag]) await printChem(c, isDye)
+          await printer.printDivider('-', W)
+        }
+      }
+
+      // Specific round
+      if (showingSpecific && specificAdd) {
+        await printer.printLine(`RE-DYE (Round ${showRound})`, true, toEscSize(labelSize))
+        for (const c of specificAdd.chemicals) await printChem(c, true)
+        await printer.printDivider('-', W)
+      }
+
+      // All rounds additions
+      if (showRound === 'all') {
+        for (const a of data.additions) {
+          const lbl = a.type === 're-dye' ? 'Re-Dye' : 'Addition'
+          await printer.printLine(`ROUND ${a.roundNo} (${lbl})`, true, toEscSize(labelSize))
+          for (const c of a.chemicals) await printChem(c, false)
+          await printer.printDivider('-', W)
+        }
+      }
+
+      await printer.printCentered('================================')
+      await printer.printText('')
+      await printer.printText('Operator: ____________')
+      await printer.printText('')
+      await printer.printText('Supervisor: ____________')
       await printer.feedLines(3)
       await printer.cut()
       // Don't fully disconnect — keep for next print
