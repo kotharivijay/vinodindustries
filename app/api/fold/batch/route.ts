@@ -9,10 +9,11 @@ export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { batchId, shadeId, shadeName } = await req.json() as {
+  const { batchId, shadeId, shadeName, shadeDescription } = await req.json() as {
     batchId: number
     shadeId?: number | null
     shadeName?: string | null
+    shadeDescription?: string | null
   }
   if (!batchId) return NextResponse.json({ error: 'batchId required' }, { status: 400 })
 
@@ -21,6 +22,7 @@ export async function PATCH(req: NextRequest) {
     data: {
       shadeId: shadeId ?? null,
       shadeName: shadeName ?? null,
+      shadeDescription: shadeDescription !== undefined ? (shadeDescription ?? null) : undefined,
     },
   })
 
