@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import PrintTrigger, { PrintButton } from './PrintTrigger'
 import PrintSettings from './PrintSettings'
 import BluetoothPrint from './BluetoothPrint'
+import ReceiptPrint from './ReceiptPrint'
 
 export default async function DyeingPrintPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ round?: string }> }) {
   const { id } = await params
@@ -320,8 +321,27 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
       </div>
 
       {/* Print buttons (screen only) */}
-      <div className="no-print mt-8 flex justify-center items-start gap-4">
+      <div className="no-print mt-8 flex flex-wrap justify-center items-start gap-3">
         <PrintButton />
+        <ReceiptPrint data={{
+          slipNo: entry.slipNo,
+          date: new Date(entry.date).toLocaleDateString('en-IN'),
+          partyName,
+          shadeName: entry.shadeName || null,
+          machineName: entry.machine?.name || null,
+          operatorName: entry.operator?.name || null,
+          lots: lots.map((l: any) => ({ lotNo: l.lotNo, than: l.than })),
+          totalThan,
+          chemicals: chemicals.map((c: any) => ({ name: c.name, quantity: c.quantity, unit: c.unit, processTag: c.processTag || null })),
+          isReDyed,
+          totalRounds,
+          additions: (entry.additions || []).map((a: any) => ({
+            roundNo: a.roundNo, type: a.type, defectType: a.defectType || null, reason: a.reason || null,
+            machineName: a.machine?.name || null, operatorName: a.operator?.name || null,
+            chemicals: (a.chemicals || []).map((c: any) => ({ name: c.name, quantity: c.quantity, unit: c.unit })),
+          })),
+          roundParam: showRound,
+        }} />
         <BluetoothPrint data={{
           slipNo: entry.slipNo,
           date: new Date(entry.date).toLocaleDateString('en-IN'),
