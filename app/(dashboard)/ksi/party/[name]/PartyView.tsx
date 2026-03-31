@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import useSWR from 'swr'
 import * as XLSX from 'xlsx'
@@ -75,6 +76,7 @@ function currentFY() {
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 export default function PartyView({ name }: { name: string }) {
+  const router = useRouter()
   const fy = currentFY()
   const [dateFrom, setDateFrom] = useState(fy.from)
   const [dateTo, setDateTo] = useState(fy.to)
@@ -150,11 +152,11 @@ export default function PartyView({ name }: { name: string }) {
     <div className="p-4 md:p-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
-        <Link href="/ksi/outstanding" className="text-gray-400 hover:text-gray-200 transition">
+        <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-200 transition">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
-        </Link>
+        </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold text-white truncate">{name}</h1>
           {data?.ledger?.parent && <p className="text-xs text-gray-400">{data.ledger.parent}</p>}
