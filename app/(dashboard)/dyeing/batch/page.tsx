@@ -64,11 +64,14 @@ interface SavedEntry {
   lotNo: string
   than: number
   notes: string | null
+  shadeName?: string | null
   foldBatch?: {
     batchNo: number
     foldProgram?: { foldNo: string }
     shade?: { name: string }
   }
+  machine?: { name: string } | null
+  operator?: { name: string } | null
   chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
   lots: { lotNo: string; than: number }[]
 }
@@ -105,6 +108,10 @@ export default function BatchDyeingPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  // Saved tab search/sort
+  const [savedSearch, setSavedSearch] = useState('')
+  const [savedSort, setSavedSort] = useState<'slip-desc' | 'slip-asc' | 'date-desc' | 'date-asc' | 'party' | 'lot'>('slip-desc')
 
   // Chemical dropdown state
   const [chemDropIdx, setChemDropIdx] = useState<number | null>(null)
@@ -337,6 +344,12 @@ export default function BatchDyeingPage() {
     if (!slipNo.trim()) { setError('Slip No is required'); return }
     if (!date) { setError('Date is required'); return }
 
+    // Duplicate slip number check
+    const slipNum = parseInt(slipNo)
+    if (savedEntries.some(e => e.slipNo === slipNum)) {
+      setError(`Slip No ${slipNum} already exists. Use a different number.`); return
+    }
+
     setSaving(true)
     setError('')
     setSuccess('')
@@ -375,13 +388,17 @@ export default function BatchDyeingPage() {
       setSuccess(`Dyeing Batch Slip #${saved.slipNo} saved successfully!`)
       setSavedEntries(prev => [saved, ...prev])
 
+      // Remove used batch from dropdown list
+      const usedBatchId = selectedBatch.batchId
+      setBatches(prev => prev.filter(b => b.batchId !== usedBatchId))
+
       // Reset form
       setSelectedBatchId(null)
       setChemicals([])
       setNotes('')
       setSelectedMachineId(null)
       setSelectedOperatorId(null)
-      setSlipNo(String(parseInt(slipNo) + 1))
+      setSlipNo(String(saved.slipNo + 1))
     } catch (err: any) {
       setError(err.message || 'Failed to save')
     } finally {
@@ -881,73 +898,125 @@ export default function BatchDyeingPage() {
       )}
 
       {/* ─── LIST TAB ─── */}
-      {tab === 'list' && (
-        <div className="space-y-3">
-          {savedEntries.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 text-center">
-              <p className="text-gray-400 dark:text-gray-500 text-sm">No batch dyeing slips saved yet.</p>
+      {tab === 'list' && (() => {
+        const sq = savedSearch.toLowerCase()
+        const filteredSaved = savedEntries.filter(e => {
+          if (!sq) return true
+          const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo ?? '', than: e.than }]
+          const shade = e.foldBatch?.shade?.name ?? e.shadeName ?? ''
+          const party = lots.map((l: any) => l.lotNo).join(' ')
+          const foldNo = e.foldBatch?.foldProgram?.foldNo ?? ''
+          const machName = e.machine?.name ?? ''
+          const opName = e.operator?.name ?? ''
+          const searchStr = `${e.slipNo} ${shade} ${party} ${foldNo} ${machName} ${opName}`.toLowerCase()
+          return searchStr.includes(sq)
+        }).sort((a, b) => {
+          switch (savedSort) {
+            case 'slip-desc': return b.slipNo - a.slipNo
+            case 'slip-asc': return a.slipNo - b.slipNo
+            case 'date-desc': return new Date(b.date).getTime() - new Date(a.date).getTime()
+            case 'date-asc': return new Date(a.date).getTime() - new Date(b.date).getTime()
+            case 'party': {
+              const pa = (a.lots?.[0]?.lotNo ?? a.lotNo ?? '').toLowerCase()
+              const pb = (b.lots?.[0]?.lotNo ?? b.lotNo ?? '').toLowerCase()
+              return pa.localeCompare(pb)
+            }
+            case 'lot': {
+              const la = a.lots?.[0]?.lotNo ?? a.lotNo ?? ''
+              const lb = b.lots?.[0]?.lotNo ?? b.lotNo ?? ''
+              const ma = la.match(/(\d+)$/), mb = lb.match(/(\d+)$/)
+              return (ma ? parseInt(ma[1]) : 0) - (mb ? parseInt(mb[1]) : 0)
+            }
+            default: return 0
+          }
+        })
+
+        return (
+          <div className="space-y-3">
+            {/* Search */}
+            <input
+              type="text"
+              placeholder="Search slip no, lot, shade, fold..."
+              className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              value={savedSearch}
+              onChange={e => setSavedSearch(e.target.value)}
+            />
+            {/* Sort */}
+            <div className="flex gap-1.5 flex-wrap items-center">
+              <span className="text-[10px] text-gray-500">Sort:</span>
+              {([
+                ['slip-desc', 'Slip ↓'], ['slip-asc', 'Slip ↑'], ['date-desc', 'Date ↓'], ['date-asc', 'Date ↑'], ['lot', 'Lot'], ['party', 'Party'],
+              ] as [typeof savedSort, string][]).map(([key, label]) => (
+                <button key={key} onClick={() => setSavedSort(key)}
+                  className={`text-[10px] px-2 py-0.5 rounded border ${savedSort === key ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                  {label}
+                </button>
+              ))}
+              <span className="text-[10px] text-gray-400 ml-auto">{filteredSaved.length} of {savedEntries.length}</span>
             </div>
-          ) : (
-            savedEntries.map(entry => {
-              const entryTotalCost = entry.chemicals.reduce((s, c) => s + (c.cost ?? 0), 0)
-              const foldNo = entry.foldBatch?.foldProgram?.foldNo ?? '?'
-              const batchNo = entry.foldBatch?.batchNo ?? '?'
-              const shade = entry.foldBatch?.shade?.name ?? ''
-              const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo ?? '', than: entry.than }] as any[]
 
-              return (
-                <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Slip #{entry.slipNo}</span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
-                        {new Date(entry.date).toLocaleDateString('en-IN')}
-                      </span>
+            {filteredSaved.length === 0 ? (
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 text-center">
+                <p className="text-gray-400 dark:text-gray-500 text-sm">{savedEntries.length === 0 ? 'No batch dyeing slips saved yet.' : 'No matching slips found.'}</p>
+              </div>
+            ) : (
+              filteredSaved.map(entry => {
+                const foldNo = entry.foldBatch?.foldProgram?.foldNo ?? '?'
+                const batchNo = entry.foldBatch?.batchNo ?? '?'
+                const shade = entry.foldBatch?.shade?.name ?? entry.shadeName ?? ''
+                const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo ?? '', than: entry.than }] as any[]
+
+                return (
+                  <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <Link href={`/dyeing/${entry.id}`} className="text-sm font-bold text-purple-600 dark:text-purple-400 hover:underline">
+                          Slip {entry.slipNo}
+                        </Link>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          {new Date(entry.date).toLocaleDateString('en-IN')}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {shade && (
+                          <span className="text-[10px] font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full">
+                            {shade}
+                          </span>
+                        )}
+                        <Link href={`/dyeing/${entry.id}/print`} target="_blank" className="text-gray-400 hover:text-purple-400 text-sm">🖨️</Link>
+                      </div>
                     </div>
-                    {shade && (
-                      <span className="text-[10px] font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                        {shade}
-                      </span>
-                    )}
-                  </div>
 
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                    Fold {foldNo} / Batch {batchNo}
-                    {' \u2022 '}
-                    {lots.map((l: any) => `${l.lotNo} (${l.than}T)`).join(', ')}
-                  </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                      Fold {foldNo} / Batch {batchNo}
+                      {entry.machine && ` · ${entry.machine.name}`}
+                      {entry.operator && ` · ${entry.operator.name}`}
+                    </div>
 
-                  {entry.chemicals.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {entry.chemicals.slice(0, 4).map((ch, ci) => (
-                        <span key={ci} className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
-                          {ch.name} {ch.quantity != null ? `${ch.quantity}${ch.unit}` : ''}
+                    <div className="flex flex-wrap gap-1.5 mb-1.5">
+                      {lots.map((l: any, li: number) => (
+                        <span key={li} className="text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+                          {l.lotNo} ({l.than}T)
                         </span>
                       ))}
-                      {entry.chemicals.length > 4 && (
-                        <span className="text-[10px] text-gray-400 dark:text-gray-500">+{entry.chemicals.length - 4} more</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] text-gray-400">{entry.chemicals.length} chemicals</span>
+                      {entry.chemicals.reduce((s, c) => s + (c.cost ?? 0), 0) > 0 && (
+                        <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">
+                          ₹{entry.chemicals.reduce((s, c) => s + (c.cost ?? 0), 0).toFixed(0)}
+                        </span>
                       )}
+                      {entry.notes && <span className="text-[10px] text-gray-400 italic truncate max-w-[150px]">{entry.notes}</span>}
                     </div>
-                  )}
-
-                  {entryTotalCost > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-400 dark:text-gray-500">Total Cost</span>
-                      <span className="text-sm font-semibold text-purple-700">
-                        &#8377;{entryTotalCost.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  {entry.notes && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">{entry.notes}</p>
-                  )}
-                </div>
-              )
-            })
-          )}
-        </div>
-      )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )
+      })()}
       {/* Process Popup Modal */}
       {processPopup && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setProcessPopup(null)}>
