@@ -32,6 +32,7 @@ interface PartyStock {
 interface Shade {
   id: number
   name: string
+  description?: string | null
 }
 
 interface LotRow {
@@ -698,6 +699,8 @@ export default function NewFoldPage() {
                     onChange={(id, name) => {
                       updateBatch(batchIdx, 'shadeId', id)
                       updateBatch(batchIdx, 'shadeName', name)
+                      const shade = (shades ?? []).find(s => s.id === id)
+                      if (shade?.description) updateBatch(batchIdx, 'shadeDescription', shade.description)
                     }}
                     onShadeAdded={shade => mutateShades(prev => [...(prev ?? []), shade].sort((a, b) => a.name.localeCompare(b.name)))}
                   />
@@ -1066,6 +1069,7 @@ function ShadeCombobox({ shadeId, shadeName, shades, onChange, onShadeAdded }: {
               className={`w-full text-left px-3 py-2 text-sm transition ${s.id === shadeId ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-medium' : 'text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
             >
               {s.name}
+              {s.description && <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">— {s.description}</span>}
             </button>
           ))}
           {showAdd && (
