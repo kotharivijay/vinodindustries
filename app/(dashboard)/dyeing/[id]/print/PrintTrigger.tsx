@@ -14,13 +14,11 @@ export default function PrintTrigger() {
 
 export function PrintButton() {
   return (
-    <div className="no-print mt-8 text-center">
-      <button
-        onClick={() => window.print()}
-        className="bg-purple-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-purple-700"
-      >
-        Print
-      </button>
-    </div>
+    <button
+      onClick={() => window.print()}
+      className="bg-purple-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-purple-700"
+    >
+      Print
+    </button>
   )
 }
