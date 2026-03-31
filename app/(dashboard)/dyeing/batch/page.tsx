@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import BackButton from '../../BackButton'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -437,9 +438,12 @@ export default function BatchDyeingPage() {
     <div className="p-4 max-w-2xl mx-auto pb-24">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Dyeing Slip (Batch)</h1>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Create dyeing slips from fold program batches</p>
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div>
+            <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Dyeing Slip (Batch)</h1>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Create dyeing slips from fold program batches</p>
+          </div>
         </div>
         <Link
           href="/dyeing"

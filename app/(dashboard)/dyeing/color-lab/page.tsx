@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import BackButton from '../../BackButton'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -383,9 +384,12 @@ export default function ColorLabPage() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Color Lab</h1>
-        <p className="text-sm text-gray-400 mt-1">Analytics, color matching, and recipe suggestions</p>
+      <div className="flex items-center gap-3">
+        <BackButton />
+        <div>
+          <h1 className="text-2xl font-bold">Color Lab</h1>
+          <p className="text-sm text-gray-400 mt-1">Analytics, color matching, and recipe suggestions</p>
+        </div>
       </div>
 
       {/* Tabs */}

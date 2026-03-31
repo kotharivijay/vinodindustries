@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import DespatchImportModal from './DespatchImportModal'
 import DespatchSyncModal from './DespatchSyncModal'
+import BackButton from '../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -227,9 +228,12 @@ export default function DespatchListPage() {
     <div className="p-4 md:p-8">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Despatch</h1>
-          <p className="text-sm text-gray-500 mt-1">{entries.length} entries · {stockSummary.length} lots</p>
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">Despatch</h1>
+            <p className="text-sm text-gray-500 mt-1">{entries.length} entries · {stockSummary.length} lots</p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setShowSync(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
