@@ -57,6 +57,12 @@ const ksiNavGroups = [
       { href: '/vault', label: 'Document Vault', icon: '🔒' },
     ],
   },
+  {
+    label: 'Settings',
+    links: [
+      { href: '/settings', label: 'Print Settings', icon: '🖨️' },
+    ],
+  },
 ]
 
 const viNavGroups = [

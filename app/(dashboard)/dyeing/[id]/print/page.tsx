@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import PrintTrigger, { PrintButton } from './PrintTrigger'
+import PrintSettings from './PrintSettings'
 
 export default async function DyeingPrintPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ round?: string }> }) {
   const { id } = await params
@@ -77,11 +78,18 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
   return (
     <div className="print-page bg-white text-black min-h-screen">
       <PrintTrigger />
+      <PrintSettings />
 
       <style>{`
+        :root {
+          --print-header: 18px;
+          --print-lot: 14px;
+          --print-label: 13px;
+          --print-chem: 12px;
+        }
         @media print {
           body { margin: 0; padding: 0; }
-          .print-page { padding: 10mm; font-size: 11pt; }
+          .print-page { padding: 10mm; }
           .no-print { display: none !important; }
           table { page-break-inside: auto; }
           tr { page-break-inside: avoid; }
@@ -89,11 +97,15 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
         @media screen {
           .print-page { max-width: 800px; margin: 0 auto; padding: 24px; }
         }
+        .print-header { font-size: var(--print-header); }
+        .print-lot { font-size: var(--print-lot); }
+        .print-label { font-size: var(--print-label); }
+        .print-chem { font-size: var(--print-chem); }
       `}</style>
 
       {/* Header */}
       <div className="text-center border-b-2 border-black pb-3 mb-4">
-        <h1 className="text-xl font-bold tracking-wide">KOTHARI SYNTHETIC INDUSTRIES</h1>
+        <h1 className="print-header font-bold tracking-wide">KOTHARI SYNTHETIC INDUSTRIES</h1>
         <p className="text-sm text-gray-600">
           {showingSpecificRound ? `Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'Dyeing Report (All Rounds)' : 'Dyeing Slip'}
         </p>
@@ -138,15 +150,15 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
       </div>
 
       {/* Lots */}
-      <div className="text-sm mb-4">
-        <span className="font-semibold">Lots: </span>
+      <div className="print-lot mb-4">
+        <span className="font-bold">Lots: </span>
         {lots.map((l: any, i: number) => (
-          <span key={i}>
-            {l.lotNo} ({l.than} than){i < lots.length - 1 ? ', ' : ''}
+          <span key={i} className="font-bold">
+            {l.lotNo} <span className="font-normal">({l.than} than)</span>{i < lots.length - 1 ? ', ' : ''}
           </span>
         ))}
         {lots.length > 1 && (
-          <span className="ml-2 font-semibold">Total: {totalThan} than</span>
+          <span className="ml-2 font-bold">Total: {totalThan} than</span>
         )}
       </div>
 
@@ -161,10 +173,10 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
             const label = tag === 'shade' ? 'Shade Chemicals' : tag === '_other' ? 'Other Chemicals' : tag
             return (
               <div key={tag} className="mb-4">
-                <h3 className="text-sm font-bold uppercase tracking-wide border-b border-gray-400 pb-1 mb-2">
+                <h3 className="print-label font-bold uppercase tracking-wide border-b border-gray-400 pb-1 mb-2">
                   {label}
                 </h3>
-                <table className="w-full text-sm border-collapse">
+                <table className="w-full print-chem border-collapse">
                   <thead>
                     <tr className="border-b border-gray-300">
                       <th className="text-left py-1 font-semibold w-8">#</th>
@@ -177,8 +189,8 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
                     {tagChems.map((c: any, i: number) => (
                       <tr key={c.id} className="border-b border-gray-200">
                         <td className="py-1 text-gray-500">{i + 1}</td>
-                        <td className="py-1">{c.name}</td>
-                        <td className="py-1 text-right">{c.quantity != null ? c.quantity : '\u2014'}</td>
+                        <td className="py-1 font-medium">{c.name}</td>
+                        <td className="py-1 text-right font-bold">{c.quantity != null ? c.quantity : '\u2014'}</td>
                         <td className="py-1 pl-2 text-gray-600">{c.unit}</td>
                       </tr>
                     ))}
