@@ -329,11 +329,11 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
 
       // Round 1
       if (showRound === 1 || showRound === 'all') {
-        if (showRound === 'all') await printer.printLine('ROUND 1 (Original)', true, toEscSize(labelSize))
+        if (showRound === 'all') await printer.printLine('ROUND 1 (Original)', true, toEscSize(chemSize))
         for (const tag of tagOrder) {
           const isDye = tag === 'shade'
           const label = isDye ? 'DYES (grams)' : tag === '_other' ? 'OTHER (kg)' : tag.toUpperCase() + ' (kg)'
-          await printer.printLine(label, true, toEscSize(labelSize))
+          await printer.printLine(label, true, toEscSize(chemSize))
           for (const c of grouped[tag]) await printChem(c, isDye)
           await printer.printDivider('-', W)
         }
@@ -341,7 +341,7 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
 
       // Specific round
       if (showingSpecific && specificAdd) {
-        await printer.printLine(`RE-DYE (Round ${showRound})`, true, toEscSize(labelSize))
+        await printer.printLine(`RE-DYE (Round ${showRound})`, true, toEscSize(chemSize))
         for (const c of specificAdd.chemicals) await printChem(c, true)
         await printer.printDivider('-', W)
       }
@@ -350,18 +350,14 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       if (showRound === 'all') {
         for (const a of data.additions) {
           const lbl = a.type === 're-dye' ? 'Re-Dye' : 'Addition'
-          await printer.printLine(`ROUND ${a.roundNo} (${lbl})`, true, toEscSize(labelSize))
+          await printer.printLine(`ROUND ${a.roundNo} (${lbl})`, true, toEscSize(chemSize))
           for (const c of a.chemicals) await printChem(c, false)
           await printer.printDivider('-', W)
         }
       }
 
       await printer.printCentered('================================')
-      await printer.printText('')
-      await printer.printText('Operator: ____________')
-      await printer.printText('')
-      await printer.printText('Supervisor: ____________')
-      await printer.feedLines(3)
+      await printer.feedLines(1)
       await printer.cut()
       // Don't fully disconnect — keep for next print
       await printer.disconnect()
