@@ -4,31 +4,30 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface PrintSettings {
-  lotFontSize: number
-  chemFontSize: number
   headerFontSize: number
+  lotFontSize: number
   labelFontSize: number
+  chemFontSize: number
+  boldChemName: boolean
+  boldQuantity: boolean
+  boldLotNo: boolean
+  dotLeaders: boolean
+  paperWidth: 58 | 80
 }
 
 const DEFAULTS: PrintSettings = {
-  lotFontSize: 14,
-  chemFontSize: 12,
   headerFontSize: 18,
+  lotFontSize: 14,
   labelFontSize: 13,
+  chemFontSize: 12,
+  boldChemName: true,
+  boldQuantity: true,
+  boldLotNo: true,
+  dotLeaders: true,
+  paperWidth: 80,
 }
 
 const STORAGE_KEY = 'print-settings'
-
-const FONT_PRESETS = [
-  { label: 'Small', value: 10 },
-  { label: 'Normal', value: 12 },
-  { label: 'Medium', value: 14 },
-  { label: 'Large', value: 18 },
-  { label: 'X-Large', value: 22 },
-  { label: 'XX-Large', value: 26 },
-  { label: 'XXX-Large', value: 30 },
-  { label: 'MAX', value: 36 },
-]
 
 function loadSettings(): PrintSettings {
   if (typeof window === 'undefined') return DEFAULTS
@@ -43,93 +42,97 @@ function saveSettings(s: PrintSettings) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s))
 }
 
-function getPresetLabel(value: number): string {
-  const preset = FONT_PRESETS.find(p => p.value === value)
-  return preset ? preset.label : `${value}px`
+function Toggle({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
+  return (
+    <button onClick={() => onChange(!value)}
+      className="flex items-center justify-between w-full py-2">
+      <span className="text-sm text-gray-600 dark:text-gray-300">{label}</span>
+      <div className={`w-10 h-5 rounded-full transition relative ${value ? 'bg-purple-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
+        <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition ${value ? 'left-5.5' : 'left-0.5'}`}
+          style={{ left: value ? '22px' : '2px' }} />
+      </div>
+    </button>
+  )
 }
 
-function PreviewSlip({ settings }: { settings: PrintSettings }) {
-  const chems = [
-    { num: 1, name: 'Reactive Navy 3G', qty: '0050', unit: 'gm' },
-    { num: 2, name: 'Salt', qty: '10.0', unit: 'kg' },
-    { num: 3, name: 'Reactive Black B', qty: '0003', unit: 'gm' },
-    { num: 4, name: 'XNI', qty: '0.5', unit: 'kg' },
-  ]
+function PreviewSlip({ s }: { s: PrintSettings }) {
+  const W = s.paperWidth === 58 ? 32 : 48
+  const dot = s.dotLeaders ? '.' : ' '
+
+  const chemRow = (name: string, qty: string, unit: string) => {
+    const nameStr = name.length > W - 10 ? name.slice(0, W - 10) : name
+    const qtyStr = `${qty} ${unit}`
+    const pad = Math.max(1, W - 2 - nameStr.length - qtyStr.length)
+    return `  ${nameStr}${dot.repeat(pad)}${qtyStr}`
+  }
 
   return (
-    <div className="bg-white text-black rounded-xl p-4 border border-gray-300 overflow-x-auto">
-      <h1 className="font-bold text-center border-b-2 border-black pb-2 mb-2" style={{ fontSize: settings.headerFontSize }}>
-        KOTHARI SYNTHETIC INDUSTRIES
-      </h1>
-      <p className="text-center text-gray-500 mb-3" style={{ fontSize: settings.labelFontSize }}>Dyeing Slip</p>
-
-      <div className="mb-3" style={{ fontSize: settings.lotFontSize }}>
-        <span className="font-bold">PS-885</span> <span className="text-gray-600">(30 than)</span>
-        <span className="ml-3 font-bold">PS-890</span> <span className="text-gray-600">(25 than)</span>
-      </div>
-
-      <h3 className="font-bold uppercase border-b border-gray-400 pb-1 mb-2" style={{ fontSize: settings.labelFontSize }}>
-        DYES (grams)
-      </h3>
-      <table className="w-full" style={{ fontSize: settings.chemFontSize }}>
-        <thead>
-          <tr className="border-b border-gray-300">
-            <th className="text-left py-1 w-6">#</th>
-            <th className="text-left py-1">Chemical</th>
-            <th className="text-right py-1 w-20">Qty</th>
-            <th className="text-left py-1 pl-2 w-10">Unit</th>
-          </tr>
-        </thead>
-        <tbody>
-          {chems.map(c => (
-            <tr key={c.num} className="border-b border-gray-200">
-              <td className="py-1 text-gray-500">{c.num}</td>
-              <td className="py-1 font-medium">{c.name}</td>
-              <td className="py-1 text-right font-bold">{c.qty}</td>
-              <td className="py-1 pl-2 text-gray-600">{c.unit}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="mt-3 pt-2 border-t border-gray-300" style={{ fontSize: Math.min(settings.chemFontSize, 12) }}>
-        <div className="flex justify-between">
-          <span>Operator: ____________</span>
-          <span>Supervisor: ____________</span>
-        </div>
-      </div>
+    <div className="bg-white text-black rounded-xl border border-gray-300 overflow-x-auto">
+      <pre className="font-mono p-3 text-xs leading-relaxed whitespace-pre" style={{ fontSize: Math.min(s.chemFontSize, 11) }}>
+        <span style={{ fontSize: s.headerFontSize }} className="font-bold block text-center">KOTHARI SYNTHETIC</span>
+        <span style={{ fontSize: s.headerFontSize }} className="font-bold block text-center">INDUSTRIES</span>
+        <span style={{ fontSize: s.labelFontSize }} className="block text-center text-gray-500">Dyeing Slip</span>
+        <span className="block">{'='.repeat(W)}</span>
+        <span className="block" style={{ fontSize: s.chemFontSize }}>Slip: 1774        Date: 29/03/26</span>
+        <span className="block" style={{ fontSize: s.chemFontSize }}>Party: Prakash Shirting</span>
+        <span className="block" style={{ fontSize: s.chemFontSize }}>Shade: PS/MAGIC/12</span>
+        <span className="block">{'-'.repeat(W)}</span>
+        <span className={`block ${s.boldLotNo ? 'font-bold' : ''}`} style={{ fontSize: s.lotFontSize }}>LOTS:</span>
+        <span className={`block ${s.boldLotNo ? 'font-bold' : ''}`} style={{ fontSize: s.lotFontSize }}>  PS-885              30 than</span>
+        <span className={`block ${s.boldLotNo ? 'font-bold' : ''}`} style={{ fontSize: s.lotFontSize }}>  PS-890              25 than</span>
+        <span className="block">{'-'.repeat(W)}</span>
+        <span className="font-bold block" style={{ fontSize: s.labelFontSize }}>DYES (grams)</span>
+        <span className={`block`} style={{ fontSize: s.chemFontSize }}>
+          <span className={s.boldChemName ? 'font-bold' : ''}>{chemRow('Reactive Navy 3G', '0050', 'gm').split(s.dotLeaders ? '.' : /(?=\d)/)[0]}</span>
+          {s.dotLeaders && '...'}<span className={s.boldQuantity ? 'font-bold' : ''}>0050 gm</span>
+        </span>
+        <span className={`block`} style={{ fontSize: s.chemFontSize }}>
+          <span className={s.boldChemName ? 'font-bold' : ''}>{`  Salt`}</span>
+          {s.dotLeaders ? dot.repeat(W - 2 - 4 - 7) : ' '.repeat(W - 2 - 4 - 7)}<span className={s.boldQuantity ? 'font-bold' : ''}>0003 gm</span>
+        </span>
+        <span className="block">{'-'.repeat(W)}</span>
+        <span className="font-bold block" style={{ fontSize: s.labelFontSize }}>SCOURING (kg)</span>
+        <span className={`block`} style={{ fontSize: s.chemFontSize }}>
+          <span className={s.boldChemName ? 'font-bold' : ''}>{`  Caustic Soda Flakes`}</span>
+          {s.dotLeaders ? dot.repeat(W - 2 - 21 - 6) : ' '.repeat(W - 2 - 21 - 6)}<span className={s.boldQuantity ? 'font-bold' : ''}>2.0 kg</span>
+        </span>
+        <span className={`block`} style={{ fontSize: s.chemFontSize }}>
+          <span className={s.boldChemName ? 'font-bold' : ''}>{`  XNI`}</span>
+          {s.dotLeaders ? dot.repeat(W - 2 - 3 - 6) : ' '.repeat(W - 2 - 3 - 6)}<span className={s.boldQuantity ? 'font-bold' : ''}>0.5 kg</span>
+        </span>
+        <span className="block">{'='.repeat(W)}</span>
+        <span className="block">Operator: ____________</span>
+      </pre>
     </div>
   )
 }
 
 export default function SettingsPage() {
   const router = useRouter()
-  const [settings, setSettings] = useState<PrintSettings>(DEFAULTS)
+  const [s, setS] = useState<PrintSettings>(DEFAULTS)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    setSettings(loadSettings())
-  }, [])
+  useEffect(() => { setS(loadSettings()) }, [])
 
-  function update(key: keyof PrintSettings, value: number) {
-    setSettings(prev => ({ ...prev, [key]: value }))
+  function update<K extends keyof PrintSettings>(key: K, value: PrintSettings[K]) {
+    setS(prev => ({ ...prev, [key]: value }))
     setSaved(false)
   }
 
   function handleSave() {
-    saveSettings(settings)
+    saveSettings(s)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
   function handleReset() {
-    setSettings(DEFAULTS)
+    setS(DEFAULTS)
     saveSettings(DEFAULTS)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
-  const fields: { key: keyof PrintSettings; label: string; icon: string }[] = [
+  const sliders: { key: keyof PrintSettings; label: string; icon: string }[] = [
     { key: 'headerFontSize', label: 'Header (Company Name)', icon: '🏢' },
     { key: 'lotFontSize', label: 'Lot No & Than', icon: '📦' },
     { key: 'labelFontSize', label: 'Section Labels', icon: '🏷️' },
@@ -145,80 +148,86 @@ export default function SettingsPage() {
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Print Settings</h1>
       </div>
 
-      {/* Font Size Settings */}
+      {/* Font Size */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 mb-4">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-4">Font Size</h2>
-
         <div className="space-y-4">
-          {fields.map(f => (
-            <div key={f.key} className="bg-gray-50 dark:bg-gray-900 rounded-xl p-3">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
-                  <span>{f.icon}</span>
-                  <span>{f.label}</span>
-                </label>
-                <span className="text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-2 py-0.5 rounded">
-                  {getPresetLabel(settings[f.key])}
+          {sliders.map(sl => (
+            <div key={sl.key}>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm text-gray-600 dark:text-gray-300">{sl.icon} {sl.label}</label>
+                <span className="text-sm font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 px-2 py-0.5 rounded">
+                  {s[sl.key] as number}px
                 </span>
               </div>
-
-              {/* Dropdown */}
-              <select
-                value={settings[f.key]}
-                onChange={e => update(f.key, parseInt(e.target.value))}
-                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-2"
-              >
-                {FONT_PRESETS.map(p => (
-                  <option key={p.value} value={p.value}>{p.label} ({p.value}px)</option>
-                ))}
-              </select>
-
-              {/* Quick buttons */}
-              <div className="flex gap-1 flex-wrap">
-                {FONT_PRESETS.map(p => (
-                  <button
-                    key={p.value}
-                    onClick={() => update(f.key, p.value)}
-                    className={`text-[10px] px-2 py-0.5 rounded border transition ${
-                      settings[f.key] === p.value
-                        ? 'bg-purple-600 border-purple-600 text-white'
-                        : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
+              <div className="flex items-center gap-3">
+                <button onClick={() => update(sl.key, Math.max(10, (s[sl.key] as number) - 1) as any)}
+                  className="w-8 h-8 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 font-bold text-lg">−</button>
+                <input type="range" min={10} max={36}
+                  value={s[sl.key] as number}
+                  onChange={e => update(sl.key, parseInt(e.target.value) as any)}
+                  className="flex-1 h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-purple-600" />
+                <button onClick={() => update(sl.key, Math.min(36, (s[sl.key] as number) + 1) as any)}
+                  className="w-8 h-8 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 font-bold text-lg">+</button>
               </div>
+              {/* Bluetooth hint */}
+              <p className="text-[9px] text-gray-400 mt-0.5">
+                Bluetooth: {(s[sl.key] as number) >= 28 ? '⬛ 2x Large' : (s[sl.key] as number) >= 20 ? '◼️ 2x Height' : '▪️ Normal'}
+              </p>
             </div>
           ))}
         </div>
+      </div>
 
-        {/* Bluetooth size hint */}
-        <div className="mt-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
-          <p className="text-xs text-blue-700 dark:text-blue-400 font-medium mb-1">Bluetooth Printer Size Mapping:</p>
-          <div className="grid grid-cols-3 gap-1 text-[10px] text-blue-600 dark:text-blue-500">
-            <span>Small-Medium → Normal</span>
-            <span>Large-XL → 2x Height</span>
-            <span>XXL-MAX → 2x Both</span>
+      {/* Font Style */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 mb-4">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Font Style</h2>
+        <div className="space-y-1">
+          <Toggle label="Bold Chemical Name" value={s.boldChemName} onChange={v => update('boldChemName', v)} />
+          <Toggle label="Bold Quantity" value={s.boldQuantity} onChange={v => update('boldQuantity', v)} />
+          <Toggle label="Bold Lot No" value={s.boldLotNo} onChange={v => update('boldLotNo', v)} />
+        </div>
+      </div>
+
+      {/* Column & Paper */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 mb-4">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Layout</h2>
+
+        <Toggle label="Dot Leaders (Name....Qty)" value={s.dotLeaders} onChange={v => update('dotLeaders', v)} />
+
+        <div className="mt-3">
+          <label className="text-sm text-gray-600 dark:text-gray-300 block mb-2">Paper Width (Thermal Printer)</label>
+          <div className="flex gap-2">
+            {([58, 80] as const).map(w => (
+              <button key={w} onClick={() => update('paperWidth', w)}
+                className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${
+                  s.paperWidth === w
+                    ? 'bg-purple-600 border-purple-600 text-white'
+                    : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'
+                }`}>
+                {w}mm {w === 58 ? '(32 chars)' : '(48 chars)'}
+              </button>
+            ))}
           </div>
         </div>
+      </div>
 
-        <div className="flex gap-3 mt-5">
-          <button onClick={handleSave}
-            className="flex-1 bg-purple-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-purple-700 transition">
-            {saved ? '✅ Saved!' : 'Save Settings'}
-          </button>
-          <button onClick={handleReset}
-            className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition">
-            Reset
-          </button>
-        </div>
+      {/* Save/Reset */}
+      <div className="flex gap-3 mb-4">
+        <button onClick={handleSave}
+          className="flex-1 bg-purple-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-purple-700 transition">
+          {saved ? '✅ Saved!' : 'Save Settings'}
+        </button>
+        <button onClick={handleReset}
+          className="px-4 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+          Reset
+        </button>
       </div>
 
       {/* Live Preview */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Live Preview</h2>
-        <PreviewSlip settings={settings} />
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Thermal Print Preview</h2>
+        <PreviewSlip s={s} />
       </div>
     </div>
   )

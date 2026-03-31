@@ -25,6 +25,17 @@ export default function PrintSettings() {
       document.querySelectorAll('[data-print="info"]').forEach(el => {
         (el as HTMLElement).style.fontSize = (s.chemFontSize || 12) + 'px'
       })
+
+      // Bold settings
+      document.querySelectorAll('[data-print-bold="chem-name"]').forEach(el => {
+        (el as HTMLElement).style.fontWeight = s.boldChemName !== false ? 'bold' : 'normal'
+      })
+      document.querySelectorAll('[data-print-bold="quantity"]').forEach(el => {
+        (el as HTMLElement).style.fontWeight = s.boldQuantity !== false ? 'bold' : 'normal'
+      })
+      document.querySelectorAll('[data-print-bold="lot"]').forEach(el => {
+        (el as HTMLElement).style.fontWeight = s.boldLotNo !== false ? 'bold' : 'normal'
+      })
     } catch {}
   }, [])
   return null

@@ -219,16 +219,23 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
 
       await printer.init()
 
-      // Read font size settings
+      // Read all print settings
       let headerSize = 18, lotSize = 14, chemSize = 12, labelSize = 13
+      let boldChemName = true, boldQuantity = true, boldLotNo = true
+      let dotLeaders = true, paperW = 80
       try {
         const raw = localStorage.getItem('print-settings')
         if (raw) {
-          const s = JSON.parse(raw)
-          headerSize = s.headerFontSize || 18
-          lotSize = s.lotFontSize || 14
-          chemSize = s.chemFontSize || 12
-          labelSize = s.labelFontSize || 13
+          const ps = JSON.parse(raw)
+          headerSize = ps.headerFontSize || 18
+          lotSize = ps.lotFontSize || 14
+          chemSize = ps.chemFontSize || 12
+          labelSize = ps.labelFontSize || 13
+          if (ps.boldChemName !== undefined) boldChemName = ps.boldChemName
+          if (ps.boldQuantity !== undefined) boldQuantity = ps.boldQuantity
+          if (ps.boldLotNo !== undefined) boldLotNo = ps.boldLotNo
+          if (ps.dotLeaders !== undefined) dotLeaders = ps.dotLeaders
+          if (ps.paperWidth) paperW = ps.paperWidth
         }
       } catch {}
 
@@ -236,7 +243,8 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       const toEscSize = (px: number): 'normal' | 'double-height' | 'large' =>
         px >= 28 ? 'large' : px >= 20 ? 'double-height' : 'normal'
 
-      const W = 32
+      const W = paperW === 58 ? 32 : 48
+      const dot = dotLeaders ? '.' : ' '
 
       // Header
       await printer.printCentered('================================', false, 'normal')
@@ -266,13 +274,13 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       }
       await printer.printDivider('-', W)
 
-      // Lots — use lot font size
+      // Lots
       await printer.printLine('LOTS:', true, toEscSize(lotSize))
       for (const l of data.lots) {
-        await printer.printLine(`  ${l.lotNo}  ${l.than} than`, true, toEscSize(lotSize))
+        await printer.printLine(`  ${l.lotNo}  ${l.than} than`, boldLotNo, toEscSize(lotSize))
       }
       if (data.lots.length > 1) {
-        await printer.printLine(`  Total: ${data.totalThan} than`, true, toEscSize(lotSize))
+        await printer.printLine(`  Total: ${data.totalThan} than`, boldLotNo, toEscSize(lotSize))
       }
       await printer.printDivider('-', W)
 
@@ -298,11 +306,18 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
             qty = c.quantity.toFixed(1).padStart(5, ' ') + ' kg'
           }
         }
-        // Fixed column: name padded to 20 chars, qty right-aligned
-        const nameStr = c.name.length > 20 ? c.name.slice(0, 20) : c.name
+        const maxName = W - 4 - qty.length
+        const nameStr = c.name.length > maxName ? c.name.slice(0, maxName) : c.name
         const pad = Math.max(1, W - 2 - nameStr.length - qty.length)
-        const line = '  ' + nameStr + '.'.repeat(pad) + qty
-        await printer.printLine(line, false, toEscSize(chemSize))
+        const line = '  ' + nameStr + dot.repeat(pad) + qty
+
+        // Bold: send bold commands for name/qty separately if needed
+        if (boldChemName || boldQuantity) {
+          // For simplicity on thermal: bold entire line if either is on
+          await printer.printLine(line, boldChemName || boldQuantity, toEscSize(chemSize))
+        } else {
+          await printer.printLine(line, false, toEscSize(chemSize))
+        }
       }
 
       // Round 1

@@ -154,14 +154,14 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
 
       {/* Lots */}
       <div data-print="lot" className="text-sm mb-4">
-        <span className="font-bold">Lots: </span>
+        <span data-print-bold="lot" className="font-bold">Lots: </span>
         {lots.map((l: any, i: number) => (
-          <span key={i} className="font-bold">
+          <span key={i} data-print-bold="lot" className="font-bold">
             {l.lotNo} <span className="font-normal">({l.than} than)</span>{i < lots.length - 1 ? ', ' : ''}
           </span>
         ))}
         {lots.length > 1 && (
-          <span className="ml-2 font-bold">Total: {totalThan} than</span>
+          <span data-print-bold="lot" className="ml-2 font-bold">Total: {totalThan} than</span>
         )}
       </div>
 
@@ -206,8 +206,8 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
                       return (
                       <tr key={c.id} className="border-b border-gray-200">
                         <td className="py-1 text-gray-500">{i + 1}</td>
-                        <td className="py-1 font-medium">{c.name}</td>
-                        <td className="py-1 text-right font-bold">{qty}</td>
+                        <td data-print-bold="chem-name" className="py-1 font-medium">{c.name}</td>
+                        <td data-print-bold="quantity" className="py-1 text-right font-bold">{qty}</td>
                         <td className="py-1 pl-2 text-gray-600">{unit}</td>
                       </tr>
                     )})}
