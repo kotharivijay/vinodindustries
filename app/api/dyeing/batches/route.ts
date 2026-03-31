@@ -54,11 +54,17 @@ export async function GET() {
       }
     }
 
-    // Fetch grey entries for weight data
+    // Fetch grey entries for weight + quality data
     const greyEntries = await prisma.greyEntry.findMany({
       where: { lotNo: { in: Array.from(allLotNos) } },
-      select: { lotNo: true, weight: true, grayMtr: true, than: true },
+      select: { lotNo: true, weight: true, grayMtr: true, than: true, quality: { select: { name: true } } },
     })
+
+    // Build quality map: lotNo → quality name
+    const qualityMap = new Map<string, string>()
+    for (const g of greyEntries) {
+      if (g.quality?.name && !qualityMap.has(g.lotNo)) qualityMap.set(g.lotNo, g.quality.name)
+    }
 
     // Build a map: lotNo → aggregated weight data (sum across all grey entries for same lot)
     const greyMap = new Map<string, { weight: string | null; grayMtr: number; than: number }[]>()
@@ -92,6 +98,7 @@ export async function GET() {
             lotNo: lot.lotNo,
             than: lot.than,
             weightPerThan: Math.round(wpt * 100) / 100,
+            quality: qualityMap.get(lot.lotNo) ?? '',
           }
         })
 
@@ -115,6 +122,7 @@ export async function GET() {
 
         result.push({
           foldNo: prog.foldNo,
+          foldDate: prog.date,
           foldProgramId: prog.id,
           batchNo: batch.batchNo,
           batchId: batch.id,
