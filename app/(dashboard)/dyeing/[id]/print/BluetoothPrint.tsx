@@ -290,15 +290,19 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       })
 
       const printChem = async (c: { name: string; quantity: number | null; unit: string }, isDye: boolean) => {
-        let qty = '---'
+        let qty = '  ---'
         if (c.quantity != null) {
           if (isDye) {
             qty = String(Math.round(c.quantity * 1000)).padStart(4, '0') + ' gm'
           } else {
-            qty = c.quantity.toFixed(1) + ' kg'
+            qty = c.quantity.toFixed(1).padStart(5, ' ') + ' kg'
           }
         }
-        await printer.printLine(`  ${c.name}  ${qty}`, false, toEscSize(chemSize))
+        // Fixed column: name padded to 20 chars, qty right-aligned
+        const nameStr = c.name.length > 20 ? c.name.slice(0, 20) : c.name
+        const pad = Math.max(1, W - 2 - nameStr.length - qty.length)
+        const line = '  ' + nameStr + '.'.repeat(pad) + qty
+        await printer.printLine(line, false, toEscSize(chemSize))
       }
 
       // Round 1
