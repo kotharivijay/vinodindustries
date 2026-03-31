@@ -37,6 +37,11 @@ interface DyeingEntry {
   colorHex?: string | null
   machine?: { id: number; name: string } | null
   operator?: { id: number; name: string } | null
+  foldBatch?: {
+    batchNo: number
+    foldProgram?: { foldNo: string }
+    shade?: { name: string }
+  } | null
 }
 
 interface LotSummaryRow {
@@ -493,8 +498,13 @@ export default function DyeingListPage() {
                             </div>
                           )}
                           {e.partyName && <p className="text-[10px] text-gray-400 mt-1">{e.partyName}</p>}
-                          {(e.machine || e.operator) && (
-                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                          {(e.foldBatch || e.machine || e.operator) && (
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              {e.foldBatch && (
+                                <span className="text-[10px] text-indigo-300 bg-indigo-900/30 px-1.5 py-0.5 rounded font-medium">
+                                  Fold {e.foldBatch.foldProgram?.foldNo ?? '?'} / B{e.foldBatch.batchNo}
+                                </span>
+                              )}
                               {e.machine && <span className="text-[10px] text-gray-400 bg-gray-700 px-1.5 py-0.5 rounded">{e.machine.name}</span>}
                               {e.operator && <span className="text-[10px] text-gray-400 bg-gray-700 px-1.5 py-0.5 rounded">{e.operator.name}</span>}
                             </div>
