@@ -52,7 +52,7 @@ interface LotSummaryRow {
   lastDate: string
 }
 
-type SortField = 'date' | 'slipNo' | 'lotNo' | 'than' | 'party'
+type SortField = 'date' | 'slipNo' | 'lotNo' | 'than' | 'party' | 'fold'
 type SortDir = 'asc' | 'desc'
 type Tab = 'entries' | 'summary'
 
@@ -63,6 +63,7 @@ function getValue(e: DyeingEntry, f: SortField): string | number {
     case 'lotNo': return (e.lots?.length ? e.lots.map(l => l.lotNo).join(' ') : e.lotNo).toLowerCase()
     case 'than': return e.lots?.length ? e.lots.reduce((s, l) => s + l.than, 0) : e.than
     case 'party': return (e.partyName ?? '').toLowerCase()
+    case 'fold': return (e.foldBatch?.foldProgram?.foldNo ?? '').toLowerCase()
   }
 }
 
@@ -251,7 +252,9 @@ export default function DyeingListPage() {
     return entries
       .filter(e => {
         const allLots = (e.lots?.length ? e.lots.map(l => l.lotNo) : [e.lotNo]).join(' ').toLowerCase()
-        const matchSearch = !q || allLots.includes(q) || String(e.slipNo).includes(q) || (e.partyName ?? '').toLowerCase().includes(q)
+        const foldStr = (e.foldBatch ? `fold ${e.foldBatch.foldProgram?.foldNo ?? ''} batch ${e.foldBatch.batchNo}` : '').toLowerCase()
+        const shadeStr = (e.shadeName ?? e.foldBatch?.shade?.name ?? '').toLowerCase()
+        const matchSearch = !q || allLots.includes(q) || String(e.slipNo).includes(q) || (e.partyName ?? '').toLowerCase().includes(q) || foldStr.includes(q) || shadeStr.includes(q)
         const matchLot = !fl || allLots.includes(fl)
         const matchSlip = !fs || String(e.slipNo).includes(fs)
         const matchParty = !fp || (e.partyName ?? '').toLowerCase().includes(fp)
@@ -437,7 +440,7 @@ export default function DyeingListPage() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] text-gray-500">Sort:</span>
-              {([['date', 'Date'], ['slipNo', 'Slip'], ['lotNo', 'Lot'], ['party', 'Party'], ['than', 'Than']] as [SortField, string][]).map(([f, label]) => (
+              {([['date', 'Date'], ['slipNo', 'Slip'], ['lotNo', 'Lot'], ['party', 'Party'], ['fold', 'Fold'], ['than', 'Than']] as [SortField, string][]).map(([f, label]) => (
                 <button key={f} onClick={() => toggleSort(f)}
                   className={`text-xs px-2 py-1 rounded border ${sortField === f ? 'bg-purple-900/40 border-purple-600 text-purple-300 font-medium' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>
                   {label} {sortField === f ? (sortDir === 'asc' ? '\u2191' : '\u2193') : ''}
