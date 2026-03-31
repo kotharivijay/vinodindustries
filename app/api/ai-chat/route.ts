@@ -557,9 +557,8 @@ export async function POST(req: NextRequest) {
     const formattedReply = await callGemini(FORMAT_PROMPT, formatMessage, [])
 
     return NextResponse.json({ reply: formattedReply })
-
   } catch (err: any) {
-    console.error('AI Chat error:', err)
-    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
+    console.error('AI Chat error:', err?.message, err?.stack)
+    return NextResponse.json({ reply: `Error: ${err?.message || 'Something went wrong. Please try again.'}` })
   }
 }

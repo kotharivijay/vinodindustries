@@ -12,8 +12,10 @@ export default function AIChatBubble() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [listening, setListening] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const recognitionRef = useRef<any>(null)
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -29,8 +31,8 @@ export default function AIChatBubble() {
     }
   }, [open])
 
-  const sendMessage = async () => {
-    const trimmed = input.trim()
+  const sendMessage = async (voiceText?: string) => {
+    const trimmed = (voiceText || input).trim()
     if (!trimmed || loading) return
 
     const userMsg: Message = { role: 'user', content: trimmed }
@@ -64,6 +66,45 @@ export default function AIChatBubble() {
       e.preventDefault()
       sendMessage()
     }
+  }
+
+  // Voice input
+  const hasSpeech = typeof window !== 'undefined' && ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)
+
+  function startListening() {
+    if (!hasSpeech) return
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'hi-IN'
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.maxAlternatives = 1
+
+    recognition.onstart = () => setListening(true)
+
+    recognition.onresult = (e: any) => {
+      const transcript = e.results[0][0].transcript
+      setInput(transcript)
+      if (e.results[0].isFinal) {
+        setListening(false)
+        // Auto-send after final result
+        setTimeout(() => sendMessage(transcript), 200)
+      }
+    }
+
+    recognition.onerror = () => setListening(false)
+    recognition.onend = () => setListening(false)
+
+    recognitionRef.current = recognition
+    recognition.start()
+  }
+
+  function stopListening() {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+    }
+    setListening(false)
   }
 
   if (!open) {
@@ -160,12 +201,30 @@ export default function AIChatBubble() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your question..."
+            placeholder={listening ? 'Listening...' : 'Type or speak...'}
             disabled={loading}
-            className="flex-1 bg-gray-700 text-gray-100 text-sm rounded-xl px-4 py-2.5 outline-none placeholder-gray-400 focus:ring-2 focus:ring-purple-500 border border-gray-600 disabled:opacity-50"
+            className={`flex-1 bg-gray-700 text-gray-100 text-sm rounded-xl px-4 py-2.5 outline-none placeholder-gray-400 focus:ring-2 focus:ring-purple-500 border disabled:opacity-50 ${listening ? 'border-red-500 ring-2 ring-red-500/50' : 'border-gray-600'}`}
           />
+          {hasSpeech && (
+            <button
+              onClick={listening ? stopListening : startListening}
+              disabled={loading}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition flex-shrink-0 ${
+                listening
+                  ? 'bg-red-600 hover:bg-red-700 animate-pulse'
+                  : 'bg-gray-600 hover:bg-gray-500'
+              } disabled:opacity-40`}
+              aria-label={listening ? 'Stop listening' : 'Voice input'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 1a4 4 0 00-4 4v7a4 4 0 008 0V5a4 4 0 00-4-4z" />
+                <path d="M19 10v2a7 7 0 01-14 0v-2a1 1 0 112 0v2a5 5 0 0010 0v-2a1 1 0 112 0z" />
+                <path d="M11 19.93V22a1 1 0 102 0v-2.07A7.01 7.01 0 0019 13v-1a1 1 0 10-2 0v1a5 5 0 01-10 0v-1a1 1 0 10-2 0v1a7.01 7.01 0 006 6.93z" />
+              </svg>
+            </button>
+          )}
           <button
-            onClick={sendMessage}
+            onClick={() => sendMessage()}
             disabled={loading || !input.trim()}
             className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition flex-shrink-0"
             aria-label="Send message"
