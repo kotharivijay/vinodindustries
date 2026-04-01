@@ -84,6 +84,40 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// PATCH /api/fold/pc?id=X&action=confirm — confirm a PC fold program
+export async function PATCH(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const id = req.nextUrl.searchParams.get('id')
+  const action = req.nextUrl.searchParams.get('action')
+
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  if (action !== 'confirm') return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+
+  try {
+    const updated = await db.foldProgram.update({
+      where: { id: parseInt(id) },
+      data: {
+        confirmedAt: new Date(),
+        status: 'confirmed',
+      },
+      include: {
+        batches: {
+          include: {
+            shade: true,
+            lots: { include: { party: true, quality: true } },
+          },
+          orderBy: { batchNo: 'asc' },
+        },
+      },
+    })
+    return NextResponse.json(updated)
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
 // DELETE /api/fold/pc?id=X — delete a PC fold program
 export async function DELETE(req: NextRequest) {
   const session = await getServerSession(authOptions)
