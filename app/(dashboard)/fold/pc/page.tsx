@@ -356,6 +356,14 @@ function NewFoldTab() {
     const newLots: LotRow[] = []
 
     if (prevBatch) {
+      // Build prev batch than map for same-than auto-fill
+      const prevThanMap = new Map<string, number>()
+      for (const lot of prevBatch.lots) {
+        if (lot.locked) {
+          prevThanMap.set(lot.lotNo, parseInt(lot.than) || 0)
+        }
+      }
+
       // Auto-fill with same markas from previous batch
       for (const markaName of prevBatch.markas) {
         const mg = markas.find(m => m.marka === markaName)
@@ -369,9 +377,11 @@ function NewFoldTab() {
           .map(l => {
             const used = freshUsedMap.get(l.lotNo) ?? 0
             const remaining = l.availableThan - used
+            const prevThan = prevThanMap.get(l.lotNo) ?? remaining
+            const autoFill = Math.min(prevThan, remaining)
             return {
               lotNo: l.lotNo,
-              than: String(remaining),
+              than: String(autoFill),
               partyId: selectedPartyId,
               qualityId: null,
               locked: false,
