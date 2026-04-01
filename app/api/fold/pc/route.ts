@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
             shadeId: batch.shadeId || undefined,
             shadeName: batch.shadeName?.trim() || undefined,
             shadeDescription: batch.shadeDescription?.trim() || undefined,
-            marka: batch.marka?.trim() || undefined,
+            marka: batch.marka?.trim() || undefined, // comma-separated for multi-marka
             lots: {
               create: (batch.lots ?? []).map((lot: any) => ({
                 lotNo: lot.lotNo.trim(),

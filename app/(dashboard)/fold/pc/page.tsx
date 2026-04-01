@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 
@@ -32,11 +32,12 @@ interface LotRow {
   qualityId: number | null
   locked: boolean
   maxAvailable: number
+  marka: string // which marka this lot belongs to
 }
 
 interface BatchRow {
   batchNo: number
-  marka: string
+  markas: string[] // multiple markas per batch
   shadeId: number | null
   shadeName: string
   lots: LotRow[]
@@ -139,6 +140,9 @@ function NewFoldTab() {
   const [loadingMarkas, setLoadingMarkas] = useState(false)
   const [expandedMarka, setExpandedMarka] = useState<string | null>(null)
 
+  // For "add marka to batch" flow
+  const [addingMarkaToBatch, setAddingMarkaToBatch] = useState<number | null>(null)
+
   // Batches
   const [batches, setBatches] = useState<BatchRow[]>([])
   const [foldNo, setFoldNo] = useState('')
@@ -146,9 +150,6 @@ function NewFoldTab() {
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-
-  // Track remaining than for lots across batches (lots partially used in earlier batches)
-  const [usedThanMap, setUsedThanMap] = useState<Map<string, number>>(new Map())
 
   // Shade search
   const [shadeSearchMap, setShadeSearchMap] = useState<Map<number, string>>(new Map())
@@ -163,6 +164,34 @@ function NewFoldTab() {
     return parties.filter((p: PcParty) => p.tag === 'Pali PC Job')
   }, [parties])
 
+  // ─── Compute usedThanMap from locked lots across all batches ───
+  const usedThanMap = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const batch of batches) {
+      for (const lot of batch.lots) {
+        if (lot.locked) {
+          const current = m.get(lot.lotNo) ?? 0
+          m.set(lot.lotNo, current + (parseInt(lot.than) || 0))
+        }
+      }
+    }
+    return m
+  }, [batches])
+
+  // Compute usedThanMap for batches before a given batch index (for available calculation)
+  const usedThanBeforeBatch = useCallback((batchIdx: number) => {
+    const m = new Map<string, number>()
+    for (let i = 0; i < batchIdx; i++) {
+      for (const lot of batches[i].lots) {
+        if (lot.locked) {
+          const current = m.get(lot.lotNo) ?? 0
+          m.set(lot.lotNo, current + (parseInt(lot.than) || 0))
+        }
+      }
+    }
+    return m
+  }, [batches])
+
   // Auto-generate fold number for PC
   useEffect(() => {
     fetch('/api/fold/pc').then(r => r.json()).then((programs: any[]) => {
@@ -170,7 +199,7 @@ function NewFoldTab() {
       const nums = programs.map((p: any) => {
         const match = p.foldNo.match(/^PC-?(\d+)$/i)
         return match ? parseInt(match[1]) : 0
-      }).filter(n => n > 0)
+      }).filter((n: number) => n > 0)
       const maxNo = nums.length > 0 ? Math.max(...nums) : 0
       setFoldNo(`PC-${maxNo + 1}`)
     }).catch(() => {})
@@ -197,9 +226,69 @@ function NewFoldTab() {
     setExpandedMarka(null)
   }, [fetchMarkas])
 
-  // Select a marka -> add as batch
-  const selectMarka = useCallback((markaGroup: MarkaGroup) => {
+  // Get the original available than for a lot from markas data
+  const getOriginalAvailable = useCallback((lotNo: string) => {
+    for (const mg of markas) {
+      for (const l of mg.lots) {
+        if (l.lotNo === lotNo) return l.availableThan
+      }
+    }
+    return 0
+  }, [markas])
+
+  // Add a marka's lots to a specific batch
+  const addMarkaToBatch = useCallback((batchIdx: number, markaGroup: MarkaGroup) => {
+    const batch = batches[batchIdx]
+    if (!batch) return
+
+    // Check if marka already in this batch
+    if (batch.markas.includes(markaGroup.marka)) {
+      setError(`Marka "${markaGroup.marka}" is already in Batch ${batch.batchNo}`)
+      return
+    }
+
+    // Calculate used than before this batch
+    const usedBefore = usedThanBeforeBatch(batchIdx)
+
+    const newLots: LotRow[] = markaGroup.lots
+      .filter(l => {
+        const used = usedBefore.get(l.lotNo) ?? 0
+        return l.availableThan - used > 0
+      })
+      .map(l => {
+        const used = usedBefore.get(l.lotNo) ?? 0
+        const remaining = l.availableThan - used
+        return {
+          lotNo: l.lotNo,
+          than: String(remaining),
+          partyId: selectedPartyId,
+          qualityId: null,
+          locked: false,
+          maxAvailable: remaining,
+          marka: markaGroup.marka,
+        }
+      })
+
+    if (newLots.length === 0) {
+      setError(`No available lots remaining for marka "${markaGroup.marka}"`)
+      return
+    }
+
+    setBatches(prev => prev.map((b, i) => {
+      if (i !== batchIdx) return b
+      return {
+        ...b,
+        markas: [...b.markas, markaGroup.marka],
+        lots: [...b.lots, ...newLots],
+      }
+    }))
+    setAddingMarkaToBatch(null)
+  }, [batches, usedThanBeforeBatch, selectedPartyId])
+
+  // Select a marka -> create new batch with this marka (from step 1)
+  const selectMarkaAsNewBatch = useCallback((markaGroup: MarkaGroup) => {
     const batchNo = batches.length + 1
+
     const lots: LotRow[] = markaGroup.lots
       .filter(l => {
         const used = usedThanMap.get(l.lotNo) ?? 0
@@ -215,6 +304,7 @@ function NewFoldTab() {
           qualityId: null,
           locked: false,
           maxAvailable: remaining,
+          marka: markaGroup.marka,
         }
       })
 
@@ -225,7 +315,7 @@ function NewFoldTab() {
 
     setBatches(prev => [...prev, {
       batchNo,
-      marka: markaGroup.marka,
+      markas: [markaGroup.marka],
       shadeId: null,
       shadeName: '',
       lots,
@@ -233,56 +323,164 @@ function NewFoldTab() {
     setStep(2)
   }, [batches, usedThanMap, selectedPartyId])
 
+  // Add new batch (auto-fill from previous batch's markas)
+  const addBatch = useCallback(() => {
+    const prevBatch = batches[batches.length - 1]
+    const batchNo = batches.length + 1
+    const newMarkas: string[] = []
+    const newLots: LotRow[] = []
+
+    if (prevBatch) {
+      // Auto-fill with same markas from previous batch
+      for (const markaName of prevBatch.markas) {
+        const mg = markas.find(m => m.marka === markaName)
+        if (!mg) continue
+
+        const lotsForMarka = mg.lots
+          .filter(l => {
+            const used = usedThanMap.get(l.lotNo) ?? 0
+            return l.availableThan - used > 0
+          })
+          .map(l => {
+            const used = usedThanMap.get(l.lotNo) ?? 0
+            const remaining = l.availableThan - used
+            return {
+              lotNo: l.lotNo,
+              than: String(remaining),
+              partyId: selectedPartyId,
+              qualityId: null,
+              locked: false,
+              maxAvailable: remaining,
+              marka: markaName,
+            }
+          })
+
+        if (lotsForMarka.length > 0) {
+          newMarkas.push(markaName)
+          newLots.push(...lotsForMarka)
+        }
+      }
+    }
+
+    if (newLots.length === 0) {
+      // No lots available from previous markas, go to step 1 to select
+      setStep(1)
+      return
+    }
+
+    setBatches(prev => [...prev, {
+      batchNo,
+      markas: newMarkas,
+      shadeId: null,
+      shadeName: '',
+      lots: newLots,
+    }])
+  }, [batches, markas, usedThanMap, selectedPartyId])
+
+  // Remove a marka from a batch (remove marka and its lots)
+  const removeMarkaFromBatch = useCallback((batchIdx: number, markaName: string) => {
+    setBatches(prev => prev.map((b, i) => {
+      if (i !== batchIdx) return b
+      return {
+        ...b,
+        markas: b.markas.filter(m => m !== markaName),
+        lots: b.lots.filter(l => l.marka !== markaName),
+      }
+    }))
+  }, [])
+
   // Lock a lot (OK button)
   const lockLot = useCallback((batchIdx: number, lotIdx: number) => {
     setBatches(prev => {
       const updated = [...prev]
       const batch = { ...updated[batchIdx] }
       const lots = [...batch.lots]
-      const lot = { ...lots[lotIdx], locked: true }
-      lots[lotIdx] = lot
+      lots[lotIdx] = { ...lots[lotIdx], locked: true }
       batch.lots = lots
       updated[batchIdx] = batch
+
+      // Recalculate maxAvailable for the same lot in later batches
+      const lockedLot = lots[lotIdx]
+      for (let bi = batchIdx + 1; bi < updated.length; bi++) {
+        const laterBatch = { ...updated[bi] }
+        const laterLots = [...laterBatch.lots]
+        let changed = false
+        for (let li = 0; li < laterLots.length; li++) {
+          if (laterLots[li].lotNo === lockedLot.lotNo) {
+            // Recalculate available for this lot
+            let totalUsedBefore = 0
+            for (let pi = 0; pi < bi; pi++) {
+              for (const pl of updated[pi].lots) {
+                if (pl.lotNo === lockedLot.lotNo && pl.locked) {
+                  totalUsedBefore += parseInt(pl.than) || 0
+                }
+              }
+            }
+            const origAvail = getOriginalAvailable(lockedLot.lotNo)
+            const newMax = Math.max(0, origAvail - totalUsedBefore)
+            laterLots[li] = {
+              ...laterLots[li],
+              maxAvailable: newMax,
+              than: !laterLots[li].locked ? String(Math.min(parseInt(laterLots[li].than) || 0, newMax)) : laterLots[li].than,
+            }
+            changed = true
+          }
+        }
+        if (changed) {
+          laterBatch.lots = laterLots
+          updated[bi] = laterBatch
+        }
+      }
+
       return updated
     })
-
-    // Update usedThanMap with the locked than
-    setBatches(prev => {
-      const lot = prev[batchIdx]?.lots[lotIdx]
-      if (lot) {
-        setUsedThanMap(old => {
-          const m = new Map(old)
-          const current = m.get(lot.lotNo) ?? 0
-          m.set(lot.lotNo, current + (parseInt(lot.than) || 0))
-          return m
-        })
-      }
-      return prev
-    })
-  }, [])
+  }, [getOriginalAvailable])
 
   // Unlock a lot (Edit button)
   const unlockLot = useCallback((batchIdx: number, lotIdx: number) => {
     setBatches(prev => {
-      const lot = prev[batchIdx]?.lots[lotIdx]
-      if (lot) {
-        // Subtract from usedThanMap
-        setUsedThanMap(old => {
-          const m = new Map(old)
-          const current = m.get(lot.lotNo) ?? 0
-          m.set(lot.lotNo, Math.max(0, current - (parseInt(lot.than) || 0)))
-          return m
-        })
-      }
       const updated = [...prev]
       const batch = { ...updated[batchIdx] }
       const lots = [...batch.lots]
+      const unlockedLot = lots[lotIdx]
       lots[lotIdx] = { ...lots[lotIdx], locked: false }
       batch.lots = lots
       updated[batchIdx] = batch
+
+      // Recalculate maxAvailable for the same lot in later batches
+      for (let bi = batchIdx + 1; bi < updated.length; bi++) {
+        const laterBatch = { ...updated[bi] }
+        const laterLots = [...laterBatch.lots]
+        let changed = false
+        for (let li = 0; li < laterLots.length; li++) {
+          if (laterLots[li].lotNo === unlockedLot.lotNo) {
+            let totalUsedBefore = 0
+            for (let pi = 0; pi < bi; pi++) {
+              for (const pl of updated[pi].lots) {
+                if (pl.lotNo === unlockedLot.lotNo && pl.locked) {
+                  totalUsedBefore += parseInt(pl.than) || 0
+                }
+              }
+            }
+            const origAvail = getOriginalAvailable(unlockedLot.lotNo)
+            const newMax = Math.max(0, origAvail - totalUsedBefore)
+            laterLots[li] = {
+              ...laterLots[li],
+              maxAvailable: newMax,
+              than: !laterLots[li].locked ? String(newMax) : laterLots[li].than,
+            }
+            changed = true
+          }
+        }
+        if (changed) {
+          laterBatch.lots = laterLots
+          updated[bi] = laterBatch
+        }
+      }
+
       return updated
     })
-  }, [])
+  }, [getOriginalAvailable])
 
   // Update lot than
   const updateLotThan = useCallback((batchIdx: number, lotIdx: number, value: string) => {
@@ -302,7 +500,13 @@ function NewFoldTab() {
     setBatches(prev => {
       const updated = [...prev]
       const batch = { ...updated[batchIdx] }
+      const removedLot = batch.lots[lotIdx]
       batch.lots = batch.lots.filter((_, j) => j !== lotIdx)
+      // If no more lots for a marka, remove that marka from the list
+      const lotsForMarka = batch.lots.filter(l => l.marka === removedLot.marka)
+      if (lotsForMarka.length === 0) {
+        batch.markas = batch.markas.filter(m => m !== removedLot.marka)
+      }
       updated[batchIdx] = batch
       return updated
     })
@@ -310,23 +514,9 @@ function NewFoldTab() {
 
   // Remove batch
   const removeBatch = useCallback((batchIdx: number) => {
-    setBatches(prev => {
-      // Un-use the than from usedThanMap for locked lots
-      const batch = prev[batchIdx]
-      if (batch) {
-        setUsedThanMap(old => {
-          const m = new Map(old)
-          for (const lot of batch.lots) {
-            if (lot.locked) {
-              const current = m.get(lot.lotNo) ?? 0
-              m.set(lot.lotNo, Math.max(0, current - (parseInt(lot.than) || 0)))
-            }
-          }
-          return m
-        })
-      }
-      return prev.filter((_, i) => i !== batchIdx).map((b, i) => ({ ...b, batchNo: i + 1 }))
-    })
+    setBatches(prev =>
+      prev.filter((_, i) => i !== batchIdx).map((b, i) => ({ ...b, batchNo: i + 1 }))
+    )
   }, [])
 
   // Update batch shade
@@ -362,7 +552,7 @@ function NewFoldTab() {
     if (!date) { setError('Date is required'); return }
     if (batches.length === 0) { setError('Add at least one batch'); return }
     for (const b of batches) {
-      if (b.lots.length === 0) { setError(`Batch ${b.batchNo} (${b.marka}): No lots`); return }
+      if (b.lots.length === 0) { setError(`Batch ${b.batchNo}: No lots`); return }
       for (const l of b.lots) {
         if (!l.lotNo.trim()) { setError(`Batch ${b.batchNo}: Lot No is required`); return }
         if (!l.than || parseInt(l.than) <= 0) { setError(`Batch ${b.batchNo}, Lot ${l.lotNo}: Than must be > 0`); return }
@@ -370,10 +560,20 @@ function NewFoldTab() {
     }
     setSaving(true)
     try {
+      // Send marka as comma-separated string
+      const payload = {
+        foldNo,
+        date,
+        notes,
+        batches: batches.map(b => ({
+          ...b,
+          marka: b.markas.join(','),
+        })),
+      }
       const res = await fetch('/api/fold/pc', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ foldNo, date, notes, batches }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? 'Failed to save'); setSaving(false); return }
@@ -381,7 +581,6 @@ function NewFoldTab() {
       setBatches([])
       setStep(1)
       setSelectedPartyId(null)
-      setUsedThanMap(new Map())
       setSaving(false)
       window.location.reload()
     } catch (e: any) {
@@ -394,11 +593,26 @@ function NewFoldTab() {
   const summary = useMemo(() => {
     const totalLots = batches.reduce((s, b) => s + b.lots.length, 0)
     const totalThan = batches.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + (parseInt(l.than) || 0), 0), 0)
-    const uniqueMarkas = new Set(batches.map(b => b.marka)).size
-    return { batches: batches.length, markas: uniqueMarkas, lots: totalLots, than: totalThan }
+    const allMarkas = new Set(batches.flatMap(b => b.markas))
+    return { batches: batches.length, markas: allMarkas.size, lots: totalLots, than: totalThan }
   }, [batches])
 
   const selectedPartyName = pcParties.find(p => p.id === selectedPartyId)?.name ?? ''
+
+  // Available markas for adding to a batch (not already in that batch, with remaining lots)
+  const getAvailableMarkasForBatch = useCallback((batchIdx: number) => {
+    const batch = batches[batchIdx]
+    if (!batch) return []
+    const usedBefore = usedThanBeforeBatch(batchIdx)
+    return markas.filter(mg => {
+      if (batch.markas.includes(mg.marka)) return false
+      const totalAvail = mg.lots.reduce((s, l) => {
+        const used = usedBefore.get(l.lotNo) ?? 0
+        return s + Math.max(0, l.availableThan - used)
+      }, 0)
+      return totalAvail > 0
+    })
+  }, [batches, markas, usedThanBeforeBatch])
 
   return (
     <div>
@@ -508,10 +722,10 @@ function NewFoldTab() {
                           {hasAvailable && (
                             <div className="p-3 border-t border-gray-200 dark:border-gray-600">
                               <button
-                                onClick={() => selectMarka(mg)}
+                                onClick={() => selectMarkaAsNewBatch(mg)}
                                 className="w-full py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition"
                               >
-                                Select This Marka
+                                Add as New Batch
                               </button>
                             </div>
                           )}
@@ -580,18 +794,29 @@ function NewFoldTab() {
             const filteredShades = (shades ?? []).filter(s =>
               !shadeSearch || s.name.toLowerCase().includes(shadeSearch.toLowerCase())
             )
+            const availableMarkasForAdd = getAvailableMarkasForBatch(batchIdx)
+
+            // Group lots by marka for display
+            const lotsByMarka = new Map<string, { lot: LotRow; lotIdx: number }[]>()
+            batch.lots.forEach((lot, lotIdx) => {
+              const existing = lotsByMarka.get(lot.marka) ?? []
+              existing.push({ lot, lotIdx })
+              lotsByMarka.set(lot.marka, existing)
+            })
 
             return (
               <div key={batchIdx} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                 {/* Batch header */}
                 <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-3 flex items-center justify-between">
-                  <div>
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">
                       Batch {batch.batchNo}
                     </span>
-                    <span className="text-sm text-indigo-600 dark:text-indigo-300 ml-2">
-                      {batch.marka}
-                    </span>
+                    {batch.markas.map(m => (
+                      <span key={m} className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded">
+                        {m}
+                      </span>
+                    ))}
                   </div>
                   <button
                     onClick={() => removeBatch(batchIdx)}
@@ -676,65 +901,141 @@ function NewFoldTab() {
                     )}
                   </div>
 
-                  {/* Lots */}
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Lots</label>
-                    <div className="space-y-2">
-                      {batch.lots.map((lot, lotIdx) => (
-                        <div key={lotIdx} className={`flex items-center gap-2 p-2 rounded-lg border ${
-                          lot.locked
-                            ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
-                            : 'border-gray-200 dark:border-gray-600'
-                        }`}>
-                          <span className="text-sm font-mono text-gray-700 dark:text-gray-300 min-w-[80px]">
-                            {lot.lotNo}
-                          </span>
-                          <input
-                            type="number"
-                            className="w-20 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800 dark:text-gray-100 disabled:opacity-50"
-                            value={lot.than}
-                            onChange={e => updateLotThan(batchIdx, lotIdx, e.target.value)}
-                            disabled={lot.locked}
-                            max={lot.maxAvailable}
-                          />
-                          <span className="text-xs text-gray-400">/ {lot.maxAvailable}</span>
-                          {lot.locked ? (
+                  {/* Lots grouped by marka */}
+                  {batch.markas.map(markaName => {
+                    const markaLots = lotsByMarka.get(markaName) ?? []
+                    const markaTotalThan = markaLots.reduce((s, { lot }) => s + (parseInt(lot.than) || 0), 0)
+
+                    return (
+                      <div key={markaName} className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+                        {/* Marka header */}
+                        <div className="bg-purple-50 dark:bg-purple-900/20 px-3 py-2 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-purple-700 dark:text-purple-400">{markaName}</span>
+                            <span className="text-xs text-gray-400">{markaLots.length} lots</span>
+                            <span className="text-xs font-semibold text-purple-600 dark:text-purple-300">{markaTotalThan}T</span>
+                          </div>
+                          {batch.markas.length > 1 && (
                             <button
-                              onClick={() => unlockLot(batchIdx, lotIdx)}
-                              className="text-xs bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border border-yellow-300 dark:border-yellow-700 px-2 py-1 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/30 ml-auto"
+                              onClick={() => removeMarkaFromBatch(batchIdx, markaName)}
+                              className="text-[10px] text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium"
                             >
-                              Edit
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => lockLot(batchIdx, lotIdx)}
-                              className="text-xs bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-2 py-1 rounded hover:bg-green-200 dark:hover:bg-green-900/30 ml-auto"
-                            >
-                              OK
+                              Remove Marka
                             </button>
                           )}
-                          <button
-                            onClick={() => removeLot(batchIdx, lotIdx)}
-                            className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-400"
-                          >
-                            x
-                          </button>
                         </div>
-                      ))}
+
+                        <div className="p-2 space-y-2">
+                          {markaLots.map(({ lot, lotIdx }) => (
+                            <div key={lotIdx} className={`flex items-center gap-2 p-2 rounded-lg border ${
+                              lot.locked
+                                ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
+                                : 'border-gray-200 dark:border-gray-600'
+                            }`}>
+                              <span className="text-sm font-mono text-gray-700 dark:text-gray-300 min-w-[80px]">
+                                {lot.lotNo}
+                              </span>
+                              <input
+                                type="number"
+                                className="w-20 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800 dark:text-gray-100 disabled:opacity-50"
+                                value={lot.than}
+                                onChange={e => updateLotThan(batchIdx, lotIdx, e.target.value)}
+                                disabled={lot.locked}
+                                max={lot.maxAvailable}
+                              />
+                              <span className="text-xs text-gray-400">/ {lot.maxAvailable}</span>
+                              {lot.locked ? (
+                                <button
+                                  onClick={() => unlockLot(batchIdx, lotIdx)}
+                                  className="text-xs bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border border-yellow-300 dark:border-yellow-700 px-2 py-1 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/30 ml-auto"
+                                >
+                                  Edit
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => lockLot(batchIdx, lotIdx)}
+                                  className="text-xs bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 px-2 py-1 rounded hover:bg-green-200 dark:hover:bg-green-900/30 ml-auto"
+                                >
+                                  OK
+                                </button>
+                              )}
+                              <button
+                                onClick={() => removeLot(batchIdx, lotIdx)}
+                                className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-400"
+                              >
+                                x
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+
+                  {/* Add Marka to this batch */}
+                  {addingMarkaToBatch === batchIdx ? (
+                    <div className="border border-dashed border-purple-300 dark:border-purple-700 rounded-lg p-3 space-y-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-purple-600 dark:text-purple-400">Select Marka to Add</span>
+                        <button
+                          onClick={() => setAddingMarkaToBatch(null)}
+                          className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {availableMarkasForAdd.length === 0 ? (
+                        <p className="text-xs text-gray-400 text-center py-2">No more markas available</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {availableMarkasForAdd.map(mg => {
+                            const usedBefore = usedThanBeforeBatch(batchIdx)
+                            const totalAvail = mg.lots.reduce((s, l) => {
+                              const used = usedBefore.get(l.lotNo) ?? 0
+                              return s + Math.max(0, l.availableThan - used)
+                            }, 0)
+                            return (
+                              <button
+                                key={mg.marka}
+                                onClick={() => addMarkaToBatch(batchIdx, mg)}
+                                className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border border-gray-200 dark:border-gray-600"
+                              >
+                                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{mg.marka}</span>
+                                <span className="text-xs text-purple-600 dark:text-purple-400 font-semibold">{totalAvail} than</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  ) : (
+                    <button
+                      onClick={() => setAddingMarkaToBatch(batchIdx)}
+                      className="w-full py-2 border border-dashed border-purple-300 dark:border-purple-700 rounded-lg text-xs font-medium text-purple-500 dark:text-purple-400 hover:border-purple-500 hover:text-purple-700 dark:hover:text-purple-300 transition"
+                    >
+                      + Add Marka
+                    </button>
+                  )}
                 </div>
               </div>
             )
           })}
 
-          {/* Add Another Marka */}
-          <button
-            onClick={() => setStep(1)}
-            className="w-full py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-sm font-medium text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
-          >
-            + Add Another Marka
-          </button>
+          {/* Add Batch */}
+          <div className="flex gap-2">
+            <button
+              onClick={addBatch}
+              className="flex-1 py-3 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-sm font-medium text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+            >
+              + Add Batch
+            </button>
+            <button
+              onClick={() => setStep(1)}
+              className="py-3 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-sm font-medium text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+            >
+              Pick Marka
+            </button>
+          </div>
 
           {/* Summary */}
           {batches.length > 0 && (
@@ -902,17 +1203,18 @@ function SavedFoldsTab() {
                 <div className="border-t border-gray-100 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700">
                   {p.batches.map(b => {
                     const hasDyeing = (b.dyeingEntries ?? []).length > 0
+                    const markaList = (b.marka ?? '').split(',').filter(Boolean)
                     return (
                       <div key={b.id} className="px-4 py-2">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">
                             B{b.batchNo}
                           </span>
-                          {b.marka && (
-                            <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded">
-                              {b.marka}
+                          {markaList.map(m => (
+                            <span key={m} className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded">
+                              {m}
                             </span>
-                          )}
+                          ))}
                           {(b.shadeName || b.shade?.name) && (
                             <span className="text-xs text-gray-500 dark:text-gray-400">
                               {b.shade?.name ?? b.shadeName}
