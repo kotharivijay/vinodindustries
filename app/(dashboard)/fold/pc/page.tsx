@@ -132,10 +132,11 @@ function NewFoldTab() {
 
   // Step state
   const [step, setStep] = useState<1 | 2>(1)
-  const [selectedPartyId, setSelectedPartyId] = useState<number | null>(null)
+  const [selectedPartyIds, setSelectedPartyIds] = useState<number[]>([])
+  const [selectedPartyId, setSelectedPartyId] = useState<number | null>(null) // kept for lot partyId
   const [partySearch, setPartySearch] = useState('')
 
-  // Marka data
+  // Marka data (combined from all selected parties)
   const [markas, setMarkas] = useState<MarkaGroup[]>([])
   const [loadingMarkas, setLoadingMarkas] = useState(false)
   const [expandedMarka, setExpandedMarka] = useState<string | null>(null)
@@ -205,26 +206,40 @@ function NewFoldTab() {
     }).catch(() => {})
   }, [])
 
-  // Fetch markas when party selected
-  const fetchMarkas = useCallback(async (partyId: number) => {
+  // Fetch markas for multiple parties
+  const fetchMarkasForParties = useCallback(async (partyIds: number[]) => {
+    if (partyIds.length === 0) { setMarkas([]); return }
     setLoadingMarkas(true)
     try {
-      const res = await fetch(`/api/dyeing/pc/markas?partyId=${partyId}`)
-      const data = await res.json()
-      if (Array.isArray(data)) {
-        setMarkas(data)
-      }
+      const allMarkas: MarkaGroup[] = []
+      await Promise.all(partyIds.map(async (pid) => {
+        const res = await fetch(`/api/dyeing/pc/markas?partyId=${pid}`)
+        const data = await res.json()
+        if (Array.isArray(data)) {
+          const partyName = pcParties.find(p => p.id === pid)?.name ?? ''
+          for (const mg of data) {
+            allMarkas.push({ ...mg, marka: `${mg.marka} (${partyName})` })
+          }
+        }
+      }))
+      setMarkas(allMarkas)
     } catch {
       setMarkas([])
     }
     setLoadingMarkas(false)
-  }, [])
+  }, [pcParties])
 
-  const handlePartySelect = useCallback((partyId: number) => {
-    setSelectedPartyId(partyId)
-    fetchMarkas(partyId)
+  const handlePartyToggle = useCallback((partyId: number) => {
+    setSelectedPartyIds(prev => {
+      const next = prev.includes(partyId)
+        ? prev.filter(id => id !== partyId)
+        : [...prev, partyId]
+      fetchMarkasForParties(next)
+      return next
+    })
+    setSelectedPartyId(partyId) // keep last selected for lot partyId
     setExpandedMarka(null)
-  }, [fetchMarkas])
+  }, [fetchMarkasForParties])
 
   // Get the original available than for a lot from markas data
   const getOriginalAvailable = useCallback((lotNo: string) => {
@@ -341,6 +356,14 @@ function NewFoldTab() {
     const newLots: LotRow[] = []
 
     if (prevBatch) {
+      // Build prev batch than map for same-than auto-fill
+      const prevThanMap = new Map<string, number>()
+      for (const lot of prevBatch.lots) {
+        if (lot.locked) {
+          prevThanMap.set(lot.lotNo, parseInt(lot.than) || 0)
+        }
+      }
+
       // Auto-fill with same markas from previous batch
       for (const markaName of prevBatch.markas) {
         const mg = markas.find(m => m.marka === markaName)
@@ -354,9 +377,11 @@ function NewFoldTab() {
           .map(l => {
             const used = freshUsedMap.get(l.lotNo) ?? 0
             const remaining = l.availableThan - used
+            const prevThan = prevThanMap.get(l.lotNo) ?? remaining
+            const autoFill = Math.min(prevThan, remaining)
             return {
               lotNo: l.lotNo,
-              than: String(remaining),
+              than: String(autoFill),
               partyId: selectedPartyId,
               qualityId: null,
               locked: false,
@@ -607,7 +632,8 @@ function NewFoldTab() {
     return { batches: batches.length, markas: allMarkas.size, lots: totalLots, than: totalThan }
   }, [batches])
 
-  const selectedPartyName = pcParties.find(p => p.id === selectedPartyId)?.name ?? ''
+  const selectedPartyNames = selectedPartyIds.map(id => pcParties.find(p => p.id === id)?.name ?? '').filter(Boolean)
+  const selectedPartyName = selectedPartyNames.join(', ') || ''
 
   // Available markas for adding to a batch (not already in that batch, with remaining lots)
   const getAvailableMarkasForBatch = useCallback((batchIdx: number) => {
@@ -638,7 +664,7 @@ function NewFoldTab() {
           {/* Party Dropdown */}
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-              Select Party (Pali PC Job)
+              Select Parties (Pali PC Job) — multi-select
             </label>
             <input
               type="text"
@@ -647,22 +673,44 @@ function NewFoldTab() {
               value={partySearch}
               onChange={e => setPartySearch(e.target.value)}
             />
+            {/* Selected party chips */}
+            {selectedPartyIds.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {selectedPartyIds.map(id => {
+                  const name = pcParties.find(p => p.id === id)?.name ?? ''
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 bg-indigo-600 text-white text-xs px-2.5 py-1 rounded-full">
+                      {name}
+                      <button onClick={() => handlePartyToggle(id)} className="hover:text-indigo-200">✕</button>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
             <div className="mt-2 max-h-48 overflow-y-auto space-y-1">
               {pcParties
                 .filter(p => !partySearch || p.name.toLowerCase().includes(partySearch.toLowerCase()))
-                .map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => handlePartySelect(p.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition ${
-                      selectedPartyId === p.id
-                        ? 'bg-indigo-600 text-white'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-100'
-                    }`}
-                  >
-                    {p.name}
-                  </button>
-                ))}
+                .map(p => {
+                  const isSelected = selectedPartyIds.includes(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => handlePartyToggle(p.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition flex items-center gap-2 ${
+                        isSelected
+                          ? 'bg-indigo-600/10 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-100'
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center text-xs ${
+                        isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-600'
+                      }`}>
+                        {isSelected ? '✓' : ''}
+                      </span>
+                      {p.name}
+                    </button>
+                  )
+                })}
               {pcParties.length === 0 && (
                 <p className="text-sm text-gray-400 py-4 text-center">No Pali PC Job parties found</p>
               )}
@@ -670,7 +718,7 @@ function NewFoldTab() {
           </div>
 
           {/* Marka Cards */}
-          {selectedPartyId && (
+          {selectedPartyIds.length > 0 && (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
