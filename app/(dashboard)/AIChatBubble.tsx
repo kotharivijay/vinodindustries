@@ -33,9 +33,12 @@ export default function AIChatBubble() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
+  const [recording, setRecording] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<any>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
 
   // Fold creation mode
   const [foldMode, setFoldMode] = useState(false)
@@ -180,6 +183,63 @@ export default function AIChatBubble() {
       recognitionRef.current = null
     }
     setListening(false)
+  }
+
+  // HD Voice — Groq Whisper
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
+      audioChunksRef.current = []
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        if (blob.size < 1000) { setRecording(false); return } // too short
+
+        setRecording(false)
+        setLoading(true)
+        setInput('Transcribing...')
+
+        try {
+          const formData = new FormData()
+          formData.append('audio', blob, 'audio.webm')
+          const res = await fetch('/api/ai-chat/whisper', { method: 'POST', body: formData })
+          const data = await res.json()
+          if (data.text) {
+            setInput(data.text)
+            setTimeout(() => sendMessage(data.text), 200)
+          } else {
+            setInput('')
+            setMessages(prev => [...prev, { role: 'assistant', content: 'Could not transcribe audio. Try again.' }])
+          }
+        } catch {
+          setInput('')
+          setMessages(prev => [...prev, { role: 'assistant', content: 'Whisper error. Try again.' }])
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      mediaRecorderRef.current = mediaRecorder
+      mediaRecorder.start()
+      setRecording(true)
+
+      // Auto-stop after 15 seconds
+      setTimeout(() => { if (mediaRecorderRef.current?.state === 'recording') stopRecording() }, 15000)
+    } catch {
+      alert('Microphone access denied')
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
   }
 
   // ─── Fold helpers ─────────────────────────────────────────────────────
@@ -668,20 +728,21 @@ export default function AIChatBubble() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={listening ? 'Listening...' : 'Type or speak...'}
-              disabled={loading}
-              className={`flex-1 bg-gray-700 text-gray-100 text-sm rounded-xl px-4 py-2.5 outline-none placeholder-gray-400 focus:ring-2 focus:ring-purple-500 border disabled:opacity-50 ${listening ? 'border-red-500 ring-2 ring-red-500/50' : 'border-gray-600'}`}
+              placeholder={listening ? 'Listening...' : recording ? 'Recording HD...' : 'Type or speak...'}
+              disabled={loading || recording}
+              className={`flex-1 bg-gray-700 text-gray-100 text-sm rounded-xl px-4 py-2.5 outline-none placeholder-gray-400 focus:ring-2 focus:ring-purple-500 border disabled:opacity-50 ${listening ? 'border-red-500 ring-2 ring-red-500/50' : recording ? 'border-orange-500 ring-2 ring-orange-500/50' : 'border-gray-600'}`}
             />
+            {/* Quick mic — Browser Speech */}
             {hasSpeech && (
               <button
                 onClick={listening ? stopListening : startListening}
-                disabled={loading}
+                disabled={loading || recording}
                 className={`w-10 h-10 rounded-xl flex items-center justify-center transition flex-shrink-0 ${
                   listening
                     ? 'bg-red-600 hover:bg-red-700 animate-pulse'
                     : 'bg-gray-600 hover:bg-gray-500'
                 } disabled:opacity-40`}
-                aria-label={listening ? 'Stop listening' : 'Voice input'}
+                title="Quick voice (browser)"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 1a4 4 0 00-4 4v7a4 4 0 008 0V5a4 4 0 00-4-4z" />
@@ -690,6 +751,19 @@ export default function AIChatBubble() {
                 </svg>
               </button>
             )}
+            {/* HD mic — Groq Whisper */}
+            <button
+              onClick={recording ? stopRecording : startRecording}
+              disabled={loading || listening}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition flex-shrink-0 ${
+                recording
+                  ? 'bg-orange-600 hover:bg-orange-700 animate-pulse'
+                  : 'bg-orange-800 hover:bg-orange-700'
+              } disabled:opacity-40`}
+              title="HD voice (Whisper AI)"
+            >
+              <span className="text-white text-[10px] font-bold">HD</span>
+            </button>
             <button
               onClick={() => sendMessage()}
               disabled={loading || !input.trim()}
