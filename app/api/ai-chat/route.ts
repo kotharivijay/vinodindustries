@@ -365,6 +365,139 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     return Array.from(byOp.values())
   },
 
+  fold_available_lots: async ({ party, quality }: any) => {
+    // Reuse stock API logic to get lots with foldAvailable > 0
+    const foldBatchLots = await db.foldBatchLot.findMany({ select: { lotNo: true, than: true } })
+    const foldMapLocal = new Map<string, number>()
+    for (const fl of foldBatchLots) {
+      const key = fl.lotNo.toLowerCase()
+      foldMapLocal.set(key, (foldMapLocal.get(key) ?? 0) + fl.than)
+    }
+
+    const dyeingLots = await db.dyeingEntryLot.findMany({
+      select: { lotNo: true, than: true, entry: { select: { foldBatchId: true } } },
+    })
+    const dyeingUsedMap = new Map<string, number>()
+    for (const dl of dyeingLots) {
+      if (dl.entry?.foldBatchId) continue
+      const key = dl.lotNo.toLowerCase()
+      dyeingUsedMap.set(key, (dyeingUsedMap.get(key) ?? 0) + dl.than)
+    }
+
+    const reservations = await db.lotManualReservation.findMany({
+      select: { lotNo: true, usedThan: true },
+    })
+    const reservationMap = new Map<string, number>()
+    for (const r of reservations) {
+      reservationMap.set(r.lotNo.toLowerCase(), r.usedThan)
+    }
+
+    const greyByLot = await prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
+    const despatchByLot = await prisma.despatchEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
+    const despatchMap = new Map(despatchByLot.map(d => [d.lotNo, d._sum.than ?? 0]))
+
+    let obList: any[] = []
+    try { obList = await db.lotOpeningBalance.findMany() } catch {}
+    const obMap = new Map(obList.map((o: any) => [o.lotNo.toLowerCase(), o]))
+
+    const greyDetails = await prisma.greyEntry.findMany({
+      select: { lotNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+      distinct: ['lotNo'],
+    })
+    const lotDetailMap = new Map(greyDetails.map(g => [g.lotNo.toLowerCase(), { party: g.party.name, quality: g.quality.name }]))
+
+    const results: any[] = []
+    const processedLots = new Set<string>()
+
+    for (const g of greyByLot) {
+      const key = g.lotNo.toLowerCase()
+      processedLots.add(key)
+      const ob = obMap.get(key)
+      const stock = (ob?.openingThan ?? 0) + (g._sum.than ?? 0) - (despatchMap.get(g.lotNo) ?? 0)
+      if (stock <= 0) continue
+      const foldProgrammed = foldMapLocal.get(key) ?? 0
+      const dyeingUsed = dyeingUsedMap.get(key) ?? 0
+      const manuallyUsed = reservationMap.get(key) ?? 0
+      const foldAvailable = Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed)
+      if (foldAvailable <= 0) continue
+      const detail = lotDetailMap.get(key)
+      results.push({
+        lotNo: g.lotNo,
+        than: foldAvailable,
+        quality: detail?.quality ?? ob?.quality ?? '-',
+        party: detail?.party ?? ob?.party ?? 'Unknown',
+        foldAvailable,
+      })
+    }
+
+    for (const ob of obList) {
+      const key = ob.lotNo.toLowerCase()
+      if (processedLots.has(key)) continue
+      let despThan = 0
+      for (const [lotNo, than] of despatchMap) {
+        if (lotNo.toLowerCase() === key) { despThan = than; break }
+      }
+      const stock = ob.openingThan - despThan
+      if (stock <= 0) continue
+      const foldProgrammed = foldMapLocal.get(key) ?? 0
+      const dyeingUsed = dyeingUsedMap.get(key) ?? 0
+      const manuallyUsed = reservationMap.get(key) ?? 0
+      const foldAvailable = Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed)
+      if (foldAvailable <= 0) continue
+      results.push({
+        lotNo: ob.lotNo,
+        than: foldAvailable,
+        quality: ob.quality || '-',
+        party: ob.party || 'Unknown',
+        foldAvailable,
+      })
+    }
+
+    // Filter by party
+    let filtered = results
+    if (party) {
+      const p = party.toLowerCase()
+      filtered = filtered.filter((r: any) => r.party.toLowerCase().includes(p))
+    }
+    if (quality) {
+      const q = quality.toLowerCase()
+      filtered = filtered.filter((r: any) => r.quality.toLowerCase().includes(q))
+    }
+
+    return filtered.sort((a: any, b: any) => a.lotNo.localeCompare(b.lotNo))
+  },
+
+  create_fold: async ({ foldNo, date, batches }: any) => {
+    // batches: [{ shadeId, shadeName, lots: [{ lotNo, than }] }]
+    const program = await db.foldProgram.create({
+      data: {
+        foldNo: foldNo.trim(),
+        date: new Date(date),
+        status: 'draft',
+        batches: {
+          create: batches.map((batch: any, idx: number) => ({
+            batchNo: idx + 1,
+            shadeId: batch.shadeId || undefined,
+            shadeName: batch.shadeName?.trim() || undefined,
+            lots: {
+              create: (batch.lots ?? []).map((lot: any) => ({
+                lotNo: lot.lotNo.trim(),
+                than: parseInt(lot.than) || 0,
+              })),
+            },
+          })),
+        },
+      },
+      include: {
+        batches: {
+          include: { shade: true, lots: true },
+          orderBy: { batchNo: 'asc' },
+        },
+      },
+    })
+    return { foldNo: program.foldNo, date: program.date, batchCount: program.batches.length, totalThan: program.batches.reduce((s: number, b: any) => s + b.lots.reduce((s2: number, l: any) => s2 + l.than, 0), 0) }
+  },
+
   fold_programs: async ({ status }: any) => {
     const where: any = {}
     if (status) where.status = status
@@ -481,7 +614,14 @@ Available functions to query data:
 - machine_production(dateFrom?, dateTo?): Production by machine
 - operator_production(dateFrom?, dateTo?): Production by operator
 - fold_programs(status?): List fold programs (status: draft/confirmed)
+- fold_available_lots(party, quality?): Get available lots for fold creation filtered by party and quality
+- create_fold(foldNo, date, batches): Create a new fold program
 - sales_data(party?, dateFrom?, dateTo?): Tally sales data
+
+FOLD CREATION RULES:
+- When user wants to create a fold, call fold_available_lots first with the party name they mention
+- Respond with: { "function": "fold_available_lots", "args": { "party": "...", "quality": "..." } }
+- The UI will handle fold creation after showing lots — do NOT call create_fold directly
 
 IMPORTANT RULES:
 1. Respond ONLY with valid JSON. No markdown, no code fences, no explanation outside JSON.
@@ -548,6 +688,17 @@ export async function POST(req: NextRequest) {
     } catch (queryErr: any) {
       console.error('Query execution error:', queryErr)
       return NextResponse.json({ reply: 'Sorry, there was an error running the database query. Please try again or rephrase your question.' })
+    }
+
+    // Special handling for fold_available_lots — return raw data for UI
+    if (parsed.function === 'fold_available_lots') {
+      return NextResponse.json({
+        reply: data.length > 0
+          ? `Found ${data.length} lots available for fold creation. Select lots below to create a fold program.`
+          : 'No lots with available stock found for this party. Try a different party name.',
+        action: 'fold_create',
+        lots: data,
+      })
     }
 
     // Step 4: Send data back to Gemini for formatting
