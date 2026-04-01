@@ -80,6 +80,25 @@ export async function POST(req: NextRequest, { params }: { params: { type: strin
   }
 }
 
+export async function PATCH(req: NextRequest, { params }: { params: { type: string } }) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  if (params.type !== 'parties')
+    return NextResponse.json({ error: 'Tag update only supported for parties' }, { status: 400 })
+
+  const { ids, tag } = await req.json()
+  if (!Array.isArray(ids) || ids.length === 0)
+    return NextResponse.json({ error: 'ids array required' }, { status: 400 })
+
+  await prisma.party.updateMany({
+    where: { id: { in: ids } },
+    data: { tag: tag || null },
+  })
+
+  return NextResponse.json({ ok: true, updated: ids.length })
+}
+
 export async function DELETE(req: NextRequest, { params }: { params: { type: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

@@ -66,27 +66,33 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     return { totalStock, totalLots, parties }
   },
 
-  stock_by_party: async ({ party }: { party: string }) => {
+  stock_by_party: async ({ party, tag }: { party: string; tag?: string }) => {
+    // Build party where clause
+    const partyWhere: any = {}
+    if (party) partyWhere.name = { contains: party, mode: 'insensitive' }
+    if (tag) partyWhere.tag = { equals: tag, mode: 'insensitive' }
+
     // Try exact contains first
     let greyEntries = await prisma.greyEntry.findMany({
-      where: { party: { name: { contains: party, mode: 'insensitive' } } },
-      select: { lotNo: true, than: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+      where: { party: partyWhere },
+      select: { lotNo: true, than: true, party: { select: { name: true, tag: true } }, quality: { select: { name: true } } },
     })
 
-    // If no results, try matching first word only (handles misspellings like "Praksh" → "Prakash")
-    if (greyEntries.length === 0) {
+    // If no results and searching by party name, try matching first word only
+    if (greyEntries.length === 0 && party) {
       const firstWord = party.split(/\s+/)[0]
       if (firstWord && firstWord.length >= 3) {
-        // Try first 3+ chars for fuzzy match
         const prefix = firstWord.slice(0, Math.min(firstWord.length, 5))
+        const fuzzyWhere: any = { name: { contains: prefix, mode: 'insensitive' } }
+        if (tag) fuzzyWhere.tag = { equals: tag, mode: 'insensitive' }
         greyEntries = await prisma.greyEntry.findMany({
-          where: { party: { name: { contains: prefix, mode: 'insensitive' } } },
-          select: { lotNo: true, than: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+          where: { party: fuzzyWhere },
+          select: { lotNo: true, than: true, party: { select: { name: true, tag: true } }, quality: { select: { name: true } } },
         })
       }
     }
 
-    if (greyEntries.length === 0) return { party, lots: [], message: `No entries found for "${party}". Check spelling.` }
+    if (greyEntries.length === 0) return { party: party || tag, lots: [], message: `No entries found for "${party || tag}". Check spelling.` }
 
     const lotMap = new Map<string, { lotNo: string; greyThan: number; party: string; quality: string }>()
     for (const g of greyEntries) {
@@ -318,9 +324,11 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     }))
   },
 
-  party_list: async () => {
-    const parties = await prisma.party.findMany({ orderBy: { name: 'asc' } })
-    return parties.map(p => p.name)
+  party_list: async ({ tag }: any = {}) => {
+    const where: any = {}
+    if (tag) where.tag = { equals: tag, mode: 'insensitive' }
+    const parties = await prisma.party.findMany({ where, orderBy: { name: 'asc' } })
+    return parties.map(p => ({ name: p.name, tag: p.tag }))
   },
 
   machine_production: async ({ dateFrom, dateTo }: any) => {
@@ -379,7 +387,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     return Array.from(byOp.values())
   },
 
-  fold_available_lots: async ({ party, quality }: any) => {
+  fold_available_lots: async ({ party, quality, tag }: any) => {
     // Reuse stock API logic to get lots with foldAvailable > 0
     const foldBatchLots = await db.foldBatchLot.findMany({ select: { lotNo: true, than: true } })
     const foldMapLocal = new Map<string, number>()
@@ -467,8 +475,19 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
       })
     }
 
-    // Filter by party
+    // Fetch party tags for filtering
+    const allParties = await prisma.party.findMany({ select: { name: true, tag: true } })
+    const partyTagMap = new Map(allParties.map(p => [p.name.toLowerCase(), p.tag]))
+
+    // Filter by party and/or tag
     let filtered = results
+    if (tag) {
+      const t = tag.toLowerCase()
+      filtered = filtered.filter((r: any) => {
+        const pTag = partyTagMap.get(r.party.toLowerCase())
+        return pTag && pTag.toLowerCase().includes(t)
+      })
+    }
     if (party) {
       const p = party.toLowerCase()
       filtered = filtered.filter((r: any) => r.party.toLowerCase().includes(p))
@@ -616,7 +635,7 @@ const SYSTEM_PROMPT = `You are an AI assistant for Kothari Synthetic Industries 
 Available functions to query data:
 - stock_summary(): Get total stock across all parties with party-wise breakdown
 - stock_by_lot(lotNo): Get stock for a specific lot number (e.g. "PS-885", "RD-120")
-- stock_by_party(party): Get all lots and stock for a party name (partial match works)
+- stock_by_party(party, tag?): Get all lots and stock for a party name (partial match works). Can filter by tag (e.g. "Pali PC Job", "Local", "Direct", "Commission")
 - lot_detail(lotNo): Full detail of a lot — grey entries, despatch, dyeing history
 - dyeing_slips(dateFrom?, dateTo?, machine?, operator?, shade?): Get dyeing entries (max 50)
 - dyeing_summary(dateFrom?, dateTo?): Get dyeing stats — total slips, than, patchy rate
@@ -628,7 +647,7 @@ Available functions to query data:
 - machine_production(dateFrom?, dateTo?): Production by machine
 - operator_production(dateFrom?, dateTo?): Production by operator
 - fold_programs(status?): List fold programs (status: draft/confirmed)
-- fold_available_lots(party, quality?): Get available lots for fold creation filtered by party and quality
+- fold_available_lots(party, quality?, tag?): Get available lots for fold creation filtered by party, quality, and/or tag (e.g. "Pali PC Job", "Local")
 - create_fold(foldNo, date, batches): Create a new fold program
 - sales_data(party?, dateFrom?, dateTo?): Tally sales data
 
@@ -645,6 +664,7 @@ IMPORTANT RULES:
    { "function": null, "text": "your response always in English" }
 4. Dates must be YYYY-MM-DD format. Today is ${new Date().toISOString().slice(0, 10)}.
 5. Use partial name matching for party names — user may say "Patel" meaning party whose name contains "Patel".
+5a. Parties have optional tags like "Pali PC Job", "Local", "Direct", "Commission". When user says "Pali PC job parties ka stock" or "local parties", use the tag parameter to filter. Example: stock_by_party with tag="Pali PC Job".
 6. Lot numbers are typically like PS-885, RD-120, SS-50 etc.
 7. "Than" is a unit of fabric measurement used in this business.
 8. User may type in ANY language (Hindi, Hinglish, English). ALWAYS understand the intent and extract names/numbers correctly.

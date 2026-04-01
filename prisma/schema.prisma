@@ -12,6 +12,7 @@ datasource db {
 model Party {
   id              Int             @id @default(autoincrement())
   name            String          @unique
+  tag             String?         // "Pali PC Job", "Local", "Direct", etc.
   createdAt       DateTime        @default(now())
   greyEntries     GreyEntry[]
   despatchEntries DespatchEntry[]
