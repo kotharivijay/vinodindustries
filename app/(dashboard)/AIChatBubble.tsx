@@ -19,6 +19,7 @@ interface FoldBatch {
   shadeId: number | null
   shadeName: string
   lots: string[] // selected lotNos
+  lotThans: Record<string, number> // lotNo → custom than
 }
 
 interface ShadeOption {
@@ -43,7 +44,7 @@ export default function AIChatBubble() {
   // Fold creation mode
   const [foldMode, setFoldMode] = useState(false)
   const [foldLots, setFoldLots] = useState<FoldLot[]>([])
-  const [foldBatches, setFoldBatches] = useState<FoldBatch[]>([{ shadeId: null, shadeName: '', lots: [] }])
+  const [foldBatches, setFoldBatches] = useState<FoldBatch[]>([{ shadeId: null, shadeName: '', lots: [], lotThans: {} }])
   const [foldNo, setFoldNo] = useState('')
   const [foldShades, setFoldShades] = useState<ShadeOption[]>([])
   const [creatingFold, setCreatingFold] = useState(false)
@@ -108,7 +109,7 @@ export default function AIChatBubble() {
       // Handle fold creation action
       if (data.action === 'fold_create' && data.lots?.length > 0) {
         setFoldLots(data.lots)
-        setFoldBatches([{ shadeId: null, shadeName: '', lots: [] }])
+        setFoldBatches([{ shadeId: null, shadeName: '', lots: [], lotThans: {} }])
         setShadeSearch({})
         setShadeDropdownOpen(null)
         setNewShadeOpen(null)
@@ -256,10 +257,26 @@ export default function AIChatBubble() {
   const toggleLot = (batchIdx: number, lotNo: string) => {
     setFoldBatches(prev => {
       const updated = [...prev]
-      const batch = { ...updated[batchIdx] }
-      batch.lots = batch.lots.includes(lotNo)
-        ? batch.lots.filter(l => l !== lotNo)
-        : [...batch.lots, lotNo]
+      const batch = { ...updated[batchIdx], lotThans: { ...updated[batchIdx].lotThans } }
+      if (batch.lots.includes(lotNo)) {
+        batch.lots = batch.lots.filter(l => l !== lotNo)
+        delete batch.lotThans[lotNo]
+      } else {
+        batch.lots = [...batch.lots, lotNo]
+        const lot = foldLots.find(l => l.lotNo === lotNo)
+        batch.lotThans[lotNo] = lot?.foldAvailable ?? 0
+      }
+      updated[batchIdx] = batch
+      return updated
+    })
+  }
+
+  const updateLotThan = (batchIdx: number, lotNo: string, value: number) => {
+    setFoldBatches(prev => {
+      const updated = [...prev]
+      const batch = { ...updated[batchIdx], lotThans: { ...updated[batchIdx].lotThans } }
+      const lot = foldLots.find(l => l.lotNo === lotNo)
+      batch.lotThans[lotNo] = Math.min(value, lot?.foldAvailable ?? value)
       updated[batchIdx] = batch
       return updated
     })
@@ -267,9 +284,11 @@ export default function AIChatBubble() {
 
   const selectAllForBatch = (batchIdx: number) => {
     const available = getAvailableLotsForBatch(batchIdx)
+    const thans: Record<string, number> = {}
+    available.forEach(l => { thans[l.lotNo] = l.foldAvailable })
     setFoldBatches(prev => {
       const updated = [...prev]
-      updated[batchIdx] = { ...updated[batchIdx], lots: available.map(l => l.lotNo) }
+      updated[batchIdx] = { ...updated[batchIdx], lots: available.map(l => l.lotNo), lotThans: thans }
       return updated
     })
   }
@@ -277,13 +296,13 @@ export default function AIChatBubble() {
   const clearBatchLots = (batchIdx: number) => {
     setFoldBatches(prev => {
       const updated = [...prev]
-      updated[batchIdx] = { ...updated[batchIdx], lots: [] }
+      updated[batchIdx] = { ...updated[batchIdx], lots: [], lotThans: {} }
       return updated
     })
   }
 
   const addBatch = () => {
-    setFoldBatches(prev => [...prev, { shadeId: null, shadeName: '', lots: [] }])
+    setFoldBatches(prev => [...prev, { shadeId: null, shadeName: '', lots: [], lotThans: {} }])
   }
 
   const removeBatch = (batchIdx: number) => {
@@ -351,7 +370,7 @@ export default function AIChatBubble() {
   const cancelFold = () => {
     setFoldMode(false)
     setFoldLots([])
-    setFoldBatches([{ shadeId: null, shadeName: '', lots: [] }])
+    setFoldBatches([{ shadeId: null, shadeName: '', lots: [], lotThans: {} }])
     setFoldNo('')
     setMessages(prev => [...prev, { role: 'assistant', content: 'Fold creation cancelled.' }])
   }
@@ -378,7 +397,7 @@ export default function AIChatBubble() {
           shadeName: b.shadeName,
           lots: b.lots.map(lotNo => {
             const lot = foldLots.find(l => l.lotNo === lotNo)
-            return { lotNo, than: lot?.foldAvailable ?? 0 }
+            return { lotNo, than: b.lotThans[lotNo] ?? lot?.foldAvailable ?? 0 }
           }),
         })),
       }
@@ -405,7 +424,7 @@ export default function AIChatBubble() {
 
       setFoldMode(false)
       setFoldLots([])
-      setFoldBatches([{ shadeId: null, shadeName: '', lots: [] }])
+      setFoldBatches([{ shadeId: null, shadeName: '', lots: [], lotThans: {} }])
       setFoldNo('')
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Network error creating fold. Please try again.' }])
@@ -417,9 +436,8 @@ export default function AIChatBubble() {
   // ─── Summary stats ────────────────────────────────────────────────────
 
   const totalSelectedLots = allSelectedLots.length
-  const totalSelectedThan = allSelectedLots.reduce((s, lotNo) => {
-    const lot = foldLots.find(l => l.lotNo === lotNo)
-    return s + (lot?.foldAvailable ?? 0)
+  const totalSelectedThan = foldBatches.reduce((s, b) => {
+    return s + b.lots.reduce((s2, lotNo) => s2 + (b.lotThans[lotNo] ?? foldLots.find(l => l.lotNo === lotNo)?.foldAvailable ?? 0), 0)
   }, 0)
   const validBatchCount = foldBatches.filter(b => (b.shadeId || b.shadeName) && b.lots.length > 0).length
 
@@ -473,8 +491,7 @@ export default function AIChatBubble() {
           {foldBatches.map((batch, batchIdx) => {
             const availableLots = getAvailableLotsForBatch(batchIdx)
             const batchThan = batch.lots.reduce((s, lotNo) => {
-              const lot = foldLots.find(l => l.lotNo === lotNo)
-              return s + (lot?.foldAvailable ?? 0)
+              return s + (batch.lotThans[lotNo] ?? foldLots.find(l => l.lotNo === lotNo)?.foldAvailable ?? 0)
             }, 0)
             const filtered = getFilteredShades(batchIdx)
 
@@ -589,25 +606,40 @@ export default function AIChatBubble() {
                 <div className="space-y-1.5">
                   {availableLots.map(lot => {
                     const selected = batch.lots.includes(lot.lotNo)
+                    const currentThan = batch.lotThans[lot.lotNo] ?? lot.foldAvailable
                     return (
-                      <button
+                      <div
                         key={lot.lotNo}
-                        onClick={() => toggleLot(batchIdx, lot.lotNo)}
-                        className={`w-full text-left p-3 rounded-xl border transition ${
+                        className={`w-full p-3 rounded-xl border transition ${
                           selected ? 'border-purple-500 bg-purple-900/20' : 'border-gray-600 bg-gray-800 hover:border-gray-500'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleLot(batchIdx, lot.lotNo)}>
                           <div>
                             <span className="font-bold text-gray-100">{lot.lotNo}</span>
                             <span className="text-xs text-gray-400 ml-2">{lot.quality}</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-gray-200">{lot.foldAvailable} than</span>
+                            {!selected && <span className="text-sm font-bold text-gray-200">{lot.foldAvailable} than</span>}
                             {selected && <span className="text-purple-400">&#10003;</span>}
                           </div>
                         </div>
-                      </button>
+                        {selected && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-xs text-gray-400">Than:</span>
+                            <input
+                              type="number"
+                              value={currentThan}
+                              onChange={e => updateLotThan(batchIdx, lot.lotNo, parseInt(e.target.value) || 0)}
+                              onClick={e => e.stopPropagation()}
+                              min={1}
+                              max={lot.foldAvailable}
+                              className="w-20 bg-gray-700 text-gray-100 text-sm text-center rounded-lg px-2 py-1 border border-gray-600 focus:border-purple-500 outline-none"
+                            />
+                            <span className="text-[10px] text-gray-500">/ {lot.foldAvailable} available</span>
+                          </div>
+                        )}
+                      </div>
                     )
                   })}
                   {availableLots.length === 0 && (
