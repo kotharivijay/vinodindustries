@@ -20,6 +20,7 @@ interface FoldBatch {
   shadeName: string
   lots: string[] // selected lotNos
   lotThans: Record<string, number> // lotNo → custom than
+  lockedLots: Set<string> // lots with than confirmed via OK
 }
 
 interface ShadeOption {
@@ -45,7 +46,7 @@ export default function AIChatBubble() {
   // Fold creation mode
   const [foldMode, setFoldMode] = useState(false)
   const [foldLots, setFoldLots] = useState<FoldLot[]>([])
-  const [foldBatches, setFoldBatches] = useState<FoldBatch[]>([{ shadeId: null, shadeName: '', lots: [], lotThans: {} }])
+  const [foldBatches, setFoldBatches] = useState<FoldBatch[]>([{ shadeId: null, shadeName: '', lots: [], lotThans: {}, lockedLots: new Set() }])
   const [foldNo, setFoldNo] = useState('')
   const [foldShades, setFoldShades] = useState<ShadeOption[]>([])
   const [creatingFold, setCreatingFold] = useState(false)
@@ -110,7 +111,7 @@ export default function AIChatBubble() {
       // Handle fold creation action
       if (data.action === 'fold_create' && data.lots?.length > 0) {
         setFoldLots(data.lots)
-        setFoldBatches([{ shadeId: null, shadeName: '', lots: [], lotThans: {} }])
+        setFoldBatches([{ shadeId: null, shadeName: '', lots: [], lotThans: {}, lockedLots: new Set() }])
         setShadeSearch({})
         setShadeDropdownOpen(null)
         setNewShadeOpen(null)
@@ -248,24 +249,51 @@ export default function AIChatBubble() {
 
   const allSelectedLots = foldBatches.flatMap(b => b.lots)
 
-  const getAvailableLotsForBatch = (batchIdx: number): FoldLot[] => {
-    const otherSelected = foldBatches
-      .filter((_, i) => i !== batchIdx)
-      .flatMap(b => b.lots)
-    return foldLots.filter(l => !otherSelected.includes(l.lotNo))
+  const getAvailableLotsForBatch = (batchIdx: number): (FoldLot & { adjustedAvailable: number })[] => {
+    // Calculate how much than is locked in OTHER batches for each lot
+    const lockedInOtherBatches = new Map<string, number>()
+    foldBatches.forEach((b, i) => {
+      if (i === batchIdx) return
+      b.lots.forEach(lotNo => {
+        if (b.lockedLots.has(lotNo)) {
+          const used = b.lotThans[lotNo] ?? 0
+          lockedInOtherBatches.set(lotNo, (lockedInOtherBatches.get(lotNo) ?? 0) + used)
+        }
+      })
+    })
+
+    // For non-locked lots in other batches, they fully block the lot
+    const fullyBlockedLots = new Set<string>()
+    foldBatches.forEach((b, i) => {
+      if (i === batchIdx) return
+      b.lots.forEach(lotNo => {
+        if (!b.lockedLots.has(lotNo)) fullyBlockedLots.add(lotNo)
+      })
+    })
+
+    return foldLots
+      .filter(l => !fullyBlockedLots.has(l.lotNo))
+      .map(l => {
+        const usedElsewhere = lockedInOtherBatches.get(l.lotNo) ?? 0
+        const adjustedAvailable = l.foldAvailable - usedElsewhere
+        return { ...l, adjustedAvailable }
+      })
+      .filter(l => l.adjustedAvailable > 0)
   }
 
   const toggleLot = (batchIdx: number, lotNo: string) => {
     setFoldBatches(prev => {
       const updated = [...prev]
-      const batch = { ...updated[batchIdx], lotThans: { ...updated[batchIdx].lotThans } }
+      const batch = { ...updated[batchIdx], lotThans: { ...updated[batchIdx].lotThans }, lockedLots: new Set(updated[batchIdx].lockedLots) }
       if (batch.lots.includes(lotNo)) {
         batch.lots = batch.lots.filter(l => l !== lotNo)
         delete batch.lotThans[lotNo]
+        batch.lockedLots.delete(lotNo)
       } else {
         batch.lots = [...batch.lots, lotNo]
-        const lot = foldLots.find(l => l.lotNo === lotNo)
-        batch.lotThans[lotNo] = lot?.foldAvailable ?? 0
+        const availLots = getAvailableLotsForBatch(batchIdx)
+        const lot = availLots.find(l => l.lotNo === lotNo)
+        batch.lotThans[lotNo] = lot?.adjustedAvailable ?? 0
       }
       updated[batchIdx] = batch
       return updated
@@ -276,8 +304,29 @@ export default function AIChatBubble() {
     setFoldBatches(prev => {
       const updated = [...prev]
       const batch = { ...updated[batchIdx], lotThans: { ...updated[batchIdx].lotThans } }
-      const lot = foldLots.find(l => l.lotNo === lotNo)
-      batch.lotThans[lotNo] = Math.min(value, lot?.foldAvailable ?? value)
+      const availLots = getAvailableLotsForBatch(batchIdx)
+      const lot = availLots.find(l => l.lotNo === lotNo)
+      batch.lotThans[lotNo] = Math.max(1, Math.min(value, lot?.adjustedAvailable ?? value))
+      updated[batchIdx] = batch
+      return updated
+    })
+  }
+
+  const lockLot = (batchIdx: number, lotNo: string) => {
+    setFoldBatches(prev => {
+      const updated = [...prev]
+      const batch = { ...updated[batchIdx], lockedLots: new Set(updated[batchIdx].lockedLots) }
+      batch.lockedLots.add(lotNo)
+      updated[batchIdx] = batch
+      return updated
+    })
+  }
+
+  const unlockLot = (batchIdx: number, lotNo: string) => {
+    setFoldBatches(prev => {
+      const updated = [...prev]
+      const batch = { ...updated[batchIdx], lockedLots: new Set(updated[batchIdx].lockedLots) }
+      batch.lockedLots.delete(lotNo)
       updated[batchIdx] = batch
       return updated
     })
@@ -286,10 +335,10 @@ export default function AIChatBubble() {
   const selectAllForBatch = (batchIdx: number) => {
     const available = getAvailableLotsForBatch(batchIdx)
     const thans: Record<string, number> = {}
-    available.forEach(l => { thans[l.lotNo] = l.foldAvailable })
+    available.forEach(l => { thans[l.lotNo] = l.adjustedAvailable })
     setFoldBatches(prev => {
       const updated = [...prev]
-      updated[batchIdx] = { ...updated[batchIdx], lots: available.map(l => l.lotNo), lotThans: thans }
+      updated[batchIdx] = { ...updated[batchIdx], lots: available.map(l => l.lotNo), lotThans: thans, lockedLots: new Set() }
       return updated
     })
   }
@@ -297,13 +346,13 @@ export default function AIChatBubble() {
   const clearBatchLots = (batchIdx: number) => {
     setFoldBatches(prev => {
       const updated = [...prev]
-      updated[batchIdx] = { ...updated[batchIdx], lots: [], lotThans: {} }
+      updated[batchIdx] = { ...updated[batchIdx], lots: [], lotThans: {}, lockedLots: new Set() }
       return updated
     })
   }
 
   const addBatch = () => {
-    setFoldBatches(prev => [...prev, { shadeId: null, shadeName: '', lots: [], lotThans: {} }])
+    setFoldBatches(prev => [...prev, { shadeId: null, shadeName: '', lots: [], lotThans: {}, lockedLots: new Set() }])
   }
 
   const removeBatch = (batchIdx: number) => {
@@ -371,7 +420,7 @@ export default function AIChatBubble() {
   const cancelFold = () => {
     setFoldMode(false)
     setFoldLots([])
-    setFoldBatches([{ shadeId: null, shadeName: '', lots: [], lotThans: {} }])
+    setFoldBatches([{ shadeId: null, shadeName: '', lots: [], lotThans: {}, lockedLots: new Set() }])
     setFoldNo('')
     setMessages(prev => [...prev, { role: 'assistant', content: 'Fold creation cancelled.' }])
   }
@@ -425,7 +474,7 @@ export default function AIChatBubble() {
 
       setFoldMode(false)
       setFoldLots([])
-      setFoldBatches([{ shadeId: null, shadeName: '', lots: [], lotThans: {} }])
+      setFoldBatches([{ shadeId: null, shadeName: '', lots: [], lotThans: {}, lockedLots: new Set() }])
       setFoldNo('')
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Network error creating fold. Please try again.' }])
@@ -607,38 +656,63 @@ export default function AIChatBubble() {
                 <div className="space-y-1.5">
                   {availableLots.map(lot => {
                     const selected = batch.lots.includes(lot.lotNo)
-                    const currentThan = batch.lotThans[lot.lotNo] ?? lot.foldAvailable
+                    const isLocked = batch.lockedLots.has(lot.lotNo)
+                    const currentThan = batch.lotThans[lot.lotNo] ?? lot.adjustedAvailable
                     return (
                       <div
                         key={lot.lotNo}
-                        className={`w-full p-3 rounded-xl border transition ${
+                        className={`w-full p-2.5 rounded-xl border transition ${
+                          isLocked ? 'border-green-600 bg-green-900/20' :
                           selected ? 'border-purple-500 bg-purple-900/20' : 'border-gray-600 bg-gray-800 hover:border-gray-500'
                         }`}
                       >
-                        <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleLot(batchIdx, lot.lotNo)}>
-                          <div>
-                            <span className="font-bold text-gray-100">{lot.lotNo}</span>
-                            <span className="text-xs text-gray-400 ml-2">{lot.quality}</span>
+                        {isLocked ? (
+                          /* Locked — compact view */
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-green-400">🔒</span>
+                              <span className="font-bold text-gray-100">{lot.lotNo}</span>
+                              <span className="text-xs text-gray-400">{lot.quality}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold text-green-400">{currentThan}T</span>
+                              <button onClick={() => unlockLot(batchIdx, lot.lotNo)} className="text-[10px] text-gray-400 hover:text-gray-200 underline">Edit</button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {!selected && <span className="text-sm font-bold text-gray-200">{lot.foldAvailable} than</span>}
-                            {selected && <span className="text-purple-400">&#10003;</span>}
-                          </div>
-                        </div>
-                        {selected && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="text-xs text-gray-400">Than:</span>
-                            <input
-                              type="number"
-                              value={currentThan}
-                              onChange={e => updateLotThan(batchIdx, lot.lotNo, parseInt(e.target.value) || 0)}
-                              onClick={e => e.stopPropagation()}
-                              min={1}
-                              max={lot.foldAvailable}
-                              className="w-20 bg-gray-700 text-gray-100 text-sm text-center rounded-lg px-2 py-1 border border-gray-600 focus:border-purple-500 outline-none"
-                            />
-                            <span className="text-[10px] text-gray-500">/ {lot.foldAvailable} available</span>
-                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleLot(batchIdx, lot.lotNo)}>
+                              <div>
+                                <span className="font-bold text-gray-100">{lot.lotNo}</span>
+                                <span className="text-xs text-gray-400 ml-2">{lot.quality}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {!selected && <span className="text-sm font-bold text-gray-200">{lot.adjustedAvailable} than</span>}
+                                {selected && <span className="text-purple-400">&#10003;</span>}
+                              </div>
+                            </div>
+                            {selected && (
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-xs text-gray-400">Than:</span>
+                                <input
+                                  type="number"
+                                  value={currentThan}
+                                  onChange={e => updateLotThan(batchIdx, lot.lotNo, parseInt(e.target.value) || 0)}
+                                  onClick={e => e.stopPropagation()}
+                                  min={1}
+                                  max={lot.adjustedAvailable}
+                                  className="w-20 bg-gray-700 text-gray-100 text-sm text-center rounded-lg px-2 py-1 border border-gray-600 focus:border-purple-500 outline-none"
+                                />
+                                <span className="text-[10px] text-gray-500">/ {lot.adjustedAvailable}</span>
+                                <button
+                                  onClick={e => { e.stopPropagation(); lockLot(batchIdx, lot.lotNo) }}
+                                  className="ml-auto text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded-lg font-medium"
+                                >
+                                  OK
+                                </button>
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     )
