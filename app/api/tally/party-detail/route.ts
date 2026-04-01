@@ -120,12 +120,20 @@ export async function GET(req: NextRequest) {
   const osTotal = osBills.reduce((s: number, b: any) => s + Math.abs(b.closingBalance || 0), 0)
   const osOldest = osBills.length ? Math.max(...osBills.map((b: any) => b.overdueDays || 0)) : 0
 
-  // Bank payments
-  const bankPayments = await db.bankPayment.findMany({
-    where: { partyName: { contains: searchName.split(' ').slice(0, 2).join(' '), mode: 'insensitive' } },
+  // Bank payments — try exact match first, then fuzzy
+  let bankPayments = await db.bankPayment.findMany({
+    where: { partyName: { equals: searchName, mode: 'insensitive' } },
     orderBy: { id: 'desc' },
     take: 20,
   })
+  // Fallback: search by first 3 words if no exact match
+  if (bankPayments.length === 0) {
+    bankPayments = await db.bankPayment.findMany({
+      where: { partyName: { contains: searchName.split(' ').slice(0, 3).join(' '), mode: 'insensitive' } },
+      orderBy: { id: 'desc' },
+      take: 20,
+    })
+  }
   const payDays = bankPayments.filter((p: any) => p.paymentDays && p.paymentDays > 0)
   const avgDays = payDays.length ? Math.round(payDays.reduce((s: number, p: any) => s + p.paymentDays, 0) / payDays.length) : 0
   const payerTag = !payDays.length ? 'Never Paid' : avgDays < 15 ? 'Fast Payer' : avgDays < 30 ? 'Normal' : avgDays < 60 ? 'Slow Payer' : 'Very Slow'
