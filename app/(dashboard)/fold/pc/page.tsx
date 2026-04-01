@@ -325,6 +325,16 @@ function NewFoldTab() {
 
   // Add new batch (auto-fill from previous batch's markas)
   const addBatch = useCallback(() => {
+    // Compute used than from ALL existing batches at call time (not stale memo)
+    const freshUsedMap = new Map<string, number>()
+    for (const batch of batches) {
+      for (const lot of batch.lots) {
+        if (lot.locked) {
+          freshUsedMap.set(lot.lotNo, (freshUsedMap.get(lot.lotNo) ?? 0) + (parseInt(lot.than) || 0))
+        }
+      }
+    }
+
     const prevBatch = batches[batches.length - 1]
     const batchNo = batches.length + 1
     const newMarkas: string[] = []
@@ -338,11 +348,11 @@ function NewFoldTab() {
 
         const lotsForMarka = mg.lots
           .filter(l => {
-            const used = usedThanMap.get(l.lotNo) ?? 0
+            const used = freshUsedMap.get(l.lotNo) ?? 0
             return l.availableThan - used > 0
           })
           .map(l => {
-            const used = usedThanMap.get(l.lotNo) ?? 0
+            const used = freshUsedMap.get(l.lotNo) ?? 0
             const remaining = l.availableThan - used
             return {
               lotNo: l.lotNo,
@@ -375,7 +385,7 @@ function NewFoldTab() {
       shadeName: '',
       lots: newLots,
     }])
-  }, [batches, markas, usedThanMap, selectedPartyId])
+  }, [batches, markas, selectedPartyId])
 
   // Remove a marka from a batch (remove marka and its lots)
   const removeMarkaFromBatch = useCallback((batchIdx: number, markaName: string) => {
