@@ -111,8 +111,12 @@ export default function SettingsPage() {
   const router = useRouter()
   const [s, setS] = useState<PrintSettings>(DEFAULTS)
   const [saved, setSaved] = useState(false)
+  const [aiBubbleHidden, setAiBubbleHidden] = useState(false)
 
-  useEffect(() => { setS(loadSettings()) }, [])
+  useEffect(() => {
+    setS(loadSettings())
+    setAiBubbleHidden(localStorage.getItem('ai-bubble-hidden') === 'true')
+  }, [])
 
   function update<K extends keyof PrintSettings>(key: K, value: PrintSettings[K]) {
     setS(prev => ({ ...prev, [key]: value }))
@@ -145,7 +149,7 @@ export default function SettingsPage() {
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg px-4 py-2 text-sm font-medium transition">
           &larr; Back
         </button>
-        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Print Settings</h1>
+        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Settings</h1>
       </div>
 
       {/* Font Size */}
@@ -210,6 +214,18 @@ export default function SettingsPage() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* AI Chat Bot */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 mb-4">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">🤖 AI Chat Bot</h2>
+        <Toggle label="Show AI Bot Bubble" value={!aiBubbleHidden} onChange={v => {
+          setAiBubbleHidden(!v)
+          localStorage.setItem('ai-bubble-hidden', String(!v))
+        }} />
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+          {aiBubbleHidden ? 'AI bot is hidden. Toggle ON to show it again.' : 'AI bot bubble is visible on all pages.'}
+        </p>
       </div>
 
       {/* Save/Reset */}
