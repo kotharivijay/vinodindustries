@@ -67,12 +67,26 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
   },
 
   stock_by_party: async ({ party }: { party: string }) => {
-    const greyEntries = await prisma.greyEntry.findMany({
+    // Try exact contains first
+    let greyEntries = await prisma.greyEntry.findMany({
       where: { party: { name: { contains: party, mode: 'insensitive' } } },
       select: { lotNo: true, than: true, party: { select: { name: true } }, quality: { select: { name: true } } },
     })
 
-    if (greyEntries.length === 0) return { party, lots: [], message: 'No entries found for this party' }
+    // If no results, try matching first word only (handles misspellings like "Praksh" → "Prakash")
+    if (greyEntries.length === 0) {
+      const firstWord = party.split(/\s+/)[0]
+      if (firstWord && firstWord.length >= 3) {
+        // Try first 3+ chars for fuzzy match
+        const prefix = firstWord.slice(0, Math.min(firstWord.length, 5))
+        greyEntries = await prisma.greyEntry.findMany({
+          where: { party: { name: { contains: prefix, mode: 'insensitive' } } },
+          select: { lotNo: true, than: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+        })
+      }
+    }
+
+    if (greyEntries.length === 0) return { party, lots: [], message: `No entries found for "${party}". Check spelling.` }
 
     const lotMap = new Map<string, { lotNo: string; greyThan: number; party: string; quality: string }>()
     for (const g of greyEntries) {
@@ -669,13 +683,15 @@ function formatResult(fn: string, args: any, data: any): string {
     }
 
     case 'stock_by_party': {
-      if (!Array.isArray(data) || data.length === 0) return `No stock found for "${args.party}".`
-      const total = data.reduce((s: number, l: any) => s + l.stock, 0)
-      let r = `${data[0]?.party || args.party}\n${data.length} lots, ${fmt(total)} than total\n`
-      for (const l of data.slice(0, 20)) {
+      if (data.message) return data.message
+      const lots = data.lots || (Array.isArray(data) ? data : [])
+      if (lots.length === 0) return `No stock found for "${args.party}".`
+      const total = data.totalStock ?? lots.reduce((s: number, l: any) => s + l.stock, 0)
+      let r = `${data.party || lots[0]?.party || args.party}\n${lots.length} lots, ${fmt(total)} than total\n`
+      for (const l of lots.slice(0, 20)) {
         r += `\n  ${l.lotNo}: ${fmt(l.stock)} than (${l.quality})`
       }
-      if (data.length > 20) r += `\n  ...and ${data.length - 20} more lots`
+      if (lots.length > 20) r += `\n  ...and ${lots.length - 20} more lots`
       return r
     }
 
