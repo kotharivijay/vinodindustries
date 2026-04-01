@@ -35,6 +35,7 @@ export default function AIChatBubble() {
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<any>(null)
@@ -723,13 +724,25 @@ export default function AIChatBubble() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words ${
+                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm whitespace-pre-wrap break-words relative group ${
                   msg.role === 'user'
                     ? 'bg-purple-600 text-white rounded-br-md'
                     : 'bg-gray-700 text-gray-100 rounded-bl-md'
                 }`}
               >
                 {msg.content}
+                {msg.role === 'assistant' && msg.content && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(msg.content)
+                      setCopiedIdx(i)
+                      setTimeout(() => setCopiedIdx(null), 1500)
+                    }}
+                    className="absolute -bottom-5 right-0 text-[9px] text-gray-500 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition"
+                  >
+                    {copiedIdx === i ? '✅ Copied' : '📋 Copy'}
+                  </button>
+                )}
               </div>
             </div>
           ))}
