@@ -278,7 +278,7 @@ export default function AIChatBubble() {
     }
   }
 
-  const useExistingShade = (batchIdx: number) => {
+  const applyExistingShade = (batchIdx: number) => {
     if (shadeExists) {
       selectShade(batchIdx, shadeExists)
       setNewShadeOpen(null)
@@ -464,7 +464,7 @@ export default function AIChatBubble() {
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-yellow-400 flex-1">Shade already exists</span>
                           <button
-                            onClick={() => useExistingShade(batchIdx)}
+                            onClick={() => applyExistingShade(batchIdx)}
                             className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded"
                           >Use Existing</button>
                         </div>
