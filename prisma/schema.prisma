@@ -68,6 +68,7 @@ model GreyEntry {
   viverNameBill String?
   lrNo          String?
   lotNo         String
+  marka         String?
   // stock & tDesp are calculated live — not stored
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -120,6 +121,9 @@ model DyeingEntry {
   colorY          Float?
   colorK          Float?
   colorHex        String?
+  isPcJob         Boolean              @default(false)
+  marka           String?
+  partyInstructions String?
   status          String               @default("pending")   // pending|patchy|re-dyeing|done
   totalRounds     Int                  @default(1)
   createdAt       DateTime             @default(now())

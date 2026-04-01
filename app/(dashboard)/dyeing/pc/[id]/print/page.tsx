@@ -1,0 +1,308 @@
+import { prisma } from '@/lib/prisma'
+import { notFound } from 'next/navigation'
+import PrintTrigger, { PrintButton } from './PrintTrigger'
+
+export default async function PcDyeingPrintPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ round?: string }> }) {
+  const { id } = await params
+  const { round: roundParam } = await searchParams
+  const db = prisma as any
+
+  const entry = await db.dyeingEntry.findUnique({
+    where: { id: parseInt(id) },
+    include: {
+      chemicals: { include: { chemical: true } },
+      lots: true,
+      machine: true,
+      operator: true,
+      additions: {
+        include: {
+          chemicals: { include: { chemical: true } },
+          machine: true,
+          operator: true,
+        },
+        orderBy: { roundNo: 'asc' },
+      },
+    },
+  })
+
+  if (!entry || !entry.isPcJob) notFound()
+
+  // Enrich with party name
+  const lotNos = entry.lots?.length ? entry.lots.map((l: any) => l.lotNo) : [entry.lotNo]
+  const greyWithParty = await prisma.greyEntry.findMany({
+    where: { lotNo: { in: lotNos } },
+    select: { lotNo: true, party: { select: { name: true } } },
+    distinct: ['lotNo'],
+  })
+  const partyNames = [...new Set(greyWithParty.map(g => g.party.name))]
+  const partyName = partyNames.join(', ') || null
+
+  const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo, than: entry.than }]
+  const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
+
+  const isReDyed = (entry.additions?.length ?? 0) > 0
+  const totalRounds = entry.totalRounds ?? 1
+  const showRound = roundParam ? (roundParam === 'all' ? 'all' : parseInt(roundParam)) : 1
+  const showingSpecificRound = typeof showRound === 'number' && showRound > 1
+
+  // Group chemicals by processTag for Round 1
+  const chemicals = entry.chemicals || []
+  const grouped: Record<string, typeof chemicals> = {}
+  for (const c of chemicals) {
+    const tag = c.processTag || '_other'
+    if (!grouped[tag]) grouped[tag] = []
+    grouped[tag].push(c)
+  }
+  const tagOrder = Object.keys(grouped).sort((a, b) => {
+    if (a === 'shade') return -1
+    if (b === 'shade') return 1
+    if (a === '_other') return 1
+    if (b === '_other') return -1
+    return a.localeCompare(b)
+  })
+
+  const specificAddition = showingSpecificRound
+    ? (entry.additions || []).find((a: any) => a.roundNo === showRound)
+    : null
+
+  return (
+    <div className="print-page bg-white text-black min-h-screen">
+      <PrintTrigger />
+
+      <style>{`
+        @media print {
+          body { margin: 0; padding: 0; }
+          .print-page { padding: 10mm; }
+          .no-print { display: none !important; }
+          table { page-break-inside: auto; }
+          tr { page-break-inside: avoid; }
+        }
+        @media screen {
+          .print-page { max-width: 800px; margin: 0 auto; padding: 24px; }
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="text-center border-b-2 border-black pb-3 mb-4">
+        <h1 className="text-xl font-bold tracking-wide">KOTHARI SYNTHETIC INDUSTRIES</h1>
+        <p className="text-sm text-gray-600">
+          {showingSpecificRound ? `PC Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'PC Dyeing Report (All Rounds)' : 'PC DYEING SLIP'}
+        </p>
+        {isReDyed && !showingSpecificRound && showRound !== 'all' && (
+          <p className="text-xs text-red-600 font-medium mt-1">RE-DYED ({totalRounds} rounds)</p>
+        )}
+      </div>
+
+      {/* Slip Info Grid */}
+      <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm mb-4 border border-gray-300 rounded p-3">
+        <div className="flex gap-2">
+          <span className="font-semibold w-24">Slip No:</span>
+          <span>{entry.slipNo}</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="font-semibold w-24">Date:</span>
+          <span>{new Date(entry.date).toLocaleDateString('en-IN')}</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="font-semibold w-24">Party:</span>
+          <span>{partyName || '\u2014'}</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="font-semibold w-24">Marka:</span>
+          <span className="font-bold">{entry.marka || '\u2014'}</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="font-semibold w-24">Machine:</span>
+          <span>{showingSpecificRound && specificAddition?.machine ? specificAddition.machine.name : (entry.machine?.name || '\u2014')}</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="font-semibold w-24">Operator:</span>
+          <span>{showingSpecificRound && specificAddition?.operator ? specificAddition.operator.name : (entry.operator?.name || '\u2014')}</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="font-semibold w-24">Shade:</span>
+          <span>{entry.shadeName || '\u2014'}</span>
+        </div>
+        {showingSpecificRound && specificAddition?.defectType && (
+          <div className="flex gap-2 col-span-2">
+            <span className="font-semibold w-24">Defect:</span>
+            <span className="capitalize text-red-600">{specificAddition.defectType}</span>
+            {specificAddition.reason && <span className="text-gray-500 ml-2">({specificAddition.reason})</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Lots */}
+      <div className="text-sm mb-4">
+        <span className="font-bold">Lots: </span>
+        {lots.map((l: any, i: number) => (
+          <span key={i} className="font-bold">
+            {l.lotNo} <span className="font-normal">({l.than} than)</span>{i < lots.length - 1 ? ', ' : ''}
+          </span>
+        ))}
+        {lots.length > 1 && (
+          <span className="ml-2 font-bold">Total: {totalThan} than</span>
+        )}
+      </div>
+
+      {/* Party Instructions */}
+      {entry.partyInstructions && (
+        <div className="text-sm mb-4 bg-yellow-50 border border-yellow-300 rounded p-2">
+          <span className="font-semibold">Party Instructions: </span>{entry.partyInstructions}
+        </div>
+      )}
+
+      {/* Round 1 / Default chemicals */}
+      {(showRound === 1 || showRound === 'all') && (
+        <>
+          {showRound === 'all' && <h3 className="text-sm font-bold border-b border-gray-400 pb-1 mb-3">ROUND 1 (Original)</h3>}
+          {tagOrder.map(tag => {
+            const tagChems = grouped[tag]
+            const isDye = tag === 'shade'
+            const label = isDye ? 'Dyes (grams)' : tag === '_other' ? 'Other (kg)' : tag + ' (kg)'
+            return (
+              <div key={tag} className="mb-4">
+                <h3 className="text-sm font-bold uppercase tracking-wide border-b border-gray-400 pb-1 mb-2">{label}</h3>
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-300">
+                      <th className="text-left py-1 font-semibold w-8">#</th>
+                      <th className="text-left py-1 font-semibold">Chemical</th>
+                      <th className="text-right py-1 font-semibold w-24">Quantity</th>
+                      <th className="text-left py-1 font-semibold w-16 pl-2">Unit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tagChems.map((c: any, i: number) => {
+                      let qty: string = '\u2014'
+                      let unit = c.unit
+                      if (c.quantity != null) {
+                        if (isDye) {
+                          const grams = Math.round(c.quantity * 1000)
+                          qty = String(grams).padStart(4, '0')
+                          unit = 'gm'
+                        } else {
+                          qty = Number(c.quantity).toFixed(1)
+                          unit = 'kg'
+                        }
+                      }
+                      return (
+                        <tr key={c.id} className="border-b border-gray-200">
+                          <td className="py-1 text-gray-500">{i + 1}</td>
+                          <td className="py-1 font-medium">{c.name}</td>
+                          <td className="py-1 text-right font-bold">{qty}</td>
+                          <td className="py-1 pl-2 text-gray-600">{unit}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })}
+          {chemicals.length === 0 && <p className="text-sm text-gray-500 italic my-4">No chemicals recorded.</p>}
+        </>
+      )}
+
+      {/* Specific round > 1 */}
+      {showingSpecificRound && specificAddition && (
+        <div className="mb-4">
+          <h3 className="text-sm font-bold uppercase tracking-wide border-b border-gray-400 pb-1 mb-2">Re-Dye Chemicals (Round {showRound})</h3>
+          {specificAddition.chemicals?.length > 0 ? (
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-300">
+                  <th className="text-left py-1 font-semibold w-8">#</th>
+                  <th className="text-left py-1 font-semibold">Chemical</th>
+                  <th className="text-right py-1 font-semibold w-24">Quantity</th>
+                  <th className="text-left py-1 font-semibold w-16 pl-2">Unit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {specificAddition.chemicals.map((c: any, i: number) => (
+                  <tr key={c.id} className="border-b border-gray-200">
+                    <td className="py-1 text-gray-500">{i + 1}</td>
+                    <td className="py-1">{c.name}</td>
+                    <td className="py-1 text-right">{c.quantity != null ? c.quantity : '\u2014'}</td>
+                    <td className="py-1 pl-2 text-gray-600">{c.unit}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-sm text-gray-500 italic">No chemicals for this round.</p>
+          )}
+        </div>
+      )}
+
+      {/* All rounds */}
+      {showRound === 'all' && (entry.additions || []).map((a: any) => (
+        <div key={a.id} className="mb-4">
+          <h3 className="text-sm font-bold border-b border-gray-400 pb-1 mb-2">
+            ROUND {a.roundNo} ({a.type === 're-dye' ? 'Re-Dye' : 'Addition'})
+            {a.defectType ? ` - ${a.defectType}` : ''}
+          </h3>
+          {a.reason && <p className="text-xs text-gray-500 mb-2">Reason: {a.reason}</p>}
+          {(a.machine || a.operator) && (
+            <p className="text-xs text-gray-500 mb-2">
+              {a.machine ? `Machine: ${a.machine.name}` : ''} {a.operator ? `| Operator: ${a.operator.name}` : ''}
+            </p>
+          )}
+          {(a.chemicals?.length ?? 0) > 0 ? (
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-gray-300">
+                  <th className="text-left py-1 font-semibold w-8">#</th>
+                  <th className="text-left py-1 font-semibold">Chemical</th>
+                  <th className="text-right py-1 font-semibold w-24">Quantity</th>
+                  <th className="text-left py-1 font-semibold w-16 pl-2">Unit</th>
+                </tr>
+              </thead>
+              <tbody>
+                {a.chemicals.map((c: any, i: number) => (
+                  <tr key={c.id} className="border-b border-gray-200">
+                    <td className="py-1 text-gray-500">{i + 1}</td>
+                    <td className="py-1">{c.name}</td>
+                    <td className="py-1 text-right">{c.quantity != null ? c.quantity : '\u2014'}</td>
+                    <td className="py-1 pl-2 text-gray-600">{c.unit}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="text-sm text-gray-500 italic">No chemicals.</p>
+          )}
+        </div>
+      ))}
+
+      {/* Signature */}
+      <div className="mt-12 flex justify-between text-sm">
+        <div className="text-center">
+          <div className="border-t border-black w-40 pt-1">Prepared By</div>
+        </div>
+        <div className="text-center">
+          <div className="border-t border-black w-40 pt-1">Approved By</div>
+        </div>
+      </div>
+
+      {/* Screen-only buttons */}
+      <div className="no-print mt-8 flex flex-wrap justify-center gap-3">
+        <PrintButton />
+        <a href="/dyeing/pc" className="bg-gray-200 text-gray-800 px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-300">
+          Back
+        </a>
+      </div>
+
+      {/* Round navigation */}
+      {isReDyed && (
+        <div className="no-print mt-4 text-center space-x-2">
+          <a href={`/dyeing/pc/${id}/print`} className="text-sm text-teal-600 hover:underline">Round 1</a>
+          {(entry.additions || []).map((a: any) => (
+            <a key={a.id} href={`/dyeing/pc/${id}/print?round=${a.roundNo}`} className="text-sm text-teal-600 hover:underline">Round {a.roundNo}</a>
+          ))}
+          <a href={`/dyeing/pc/${id}/print?round=all`} className="text-sm text-teal-600 hover:underline font-medium">All Rounds</a>
+        </div>
+      )}
+    </div>
+  )
+}

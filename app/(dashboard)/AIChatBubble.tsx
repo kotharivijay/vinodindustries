@@ -31,6 +31,7 @@ interface ShadeOption {
 
 export default function AIChatBubble() {
   const [open, setOpen] = useState(false)
+  const [hidden, setHidden] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -42,6 +43,43 @@ export default function AIChatBubble() {
   const recognitionRef = useRef<any>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+
+  // Draggable bubble state
+  const [bubblePos, setBubblePos] = useState<{ x: number; y: number } | null>(null)
+  const dragRef = useRef<{ startX: number; startY: number; startPosX: number; startPosY: number; dragging: boolean }>({ startX: 0, startY: 0, startPosX: 0, startPosY: 0, dragging: false })
+  const bubbleRef = useRef<HTMLButtonElement>(null)
+
+  // Touch drag handlers for bubble
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    dragRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      startPosX: rect.left,
+      startPosY: rect.top,
+      dragging: false,
+    }
+  }, [])
+
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    const dx = touch.clientX - dragRef.current.startX
+    const dy = touch.clientY - dragRef.current.startY
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) dragRef.current.dragging = true
+    if (!dragRef.current.dragging) return
+    e.preventDefault()
+    const newX = Math.max(0, Math.min(window.innerWidth - 56, dragRef.current.startPosX + dx))
+    const newY = Math.max(0, Math.min(window.innerHeight - 56, dragRef.current.startPosY + dy))
+    setBubblePos({ x: newX, y: newY })
+  }, [])
+
+  const onTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!dragRef.current.dragging) {
+      setOpen(true)
+    }
+    dragRef.current.dragging = false
+  }, [])
 
   // Fold creation mode
   const [foldMode, setFoldMode] = useState(false)
@@ -493,17 +531,51 @@ export default function AIChatBubble() {
 
   // ─── Render ───────────────────────────────────────────────────────────
 
-  if (!open) {
+  // Hidden state — show small "show bot" pill at bottom center
+  if (hidden) {
     return (
       <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-purple-600 rounded-full shadow-lg flex items-center justify-center text-2xl hover:bg-purple-700 hover:scale-105 transition-all duration-200"
-        aria-label="Open AI Chat"
+        onClick={() => setHidden(false)}
+        className="fixed bottom-2 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 bg-purple-600/80 rounded-full shadow-lg text-xs text-white flex items-center gap-1.5 hover:bg-purple-700 transition"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
         </svg>
+        Show AI
       </button>
+    )
+  }
+
+  if (!open) {
+    const bubbleStyle = bubblePos
+      ? { left: `${bubblePos.x}px`, top: `${bubblePos.y}px`, right: 'auto', bottom: 'auto' }
+      : { right: '1.5rem', bottom: '1.5rem' }
+    return (
+      <div className="fixed z-50" style={bubbleStyle as any}>
+        <button
+          ref={bubbleRef}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onClick={() => setOpen(true)}
+          className="w-14 h-14 bg-purple-600 rounded-full shadow-lg flex items-center justify-center text-2xl hover:bg-purple-700 hover:scale-105 transition-all duration-200"
+          aria-label="Open AI Chat"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+        </button>
+        {/* Long press or swipe down to hide */}
+        <button
+          onClick={(e) => { e.stopPropagation(); setHidden(true) }}
+          className="absolute -top-1 -left-1 w-5 h-5 bg-gray-700 border border-gray-600 rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:bg-red-600 transition"
+          aria-label="Hide AI bubble"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
     )
   }
 
@@ -524,15 +596,31 @@ export default function AIChatBubble() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => { if (foldMode) cancelFold(); else setOpen(false) }}
-          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition"
-          aria-label={foldMode ? 'Cancel fold' : 'Close chat'}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Hide button */}
+          {!foldMode && (
+            <button
+              onClick={() => { setOpen(false); setHidden(true) }}
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition"
+              aria-label="Hide AI bubble"
+              title="Hide"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M3 3l18 18" />
+              </svg>
+            </button>
+          )}
+          {/* Close/Minimize button */}
+          <button
+            onClick={() => { if (foldMode) cancelFold(); else setOpen(false) }}
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition"
+            aria-label={foldMode ? 'Cancel fold' : 'Close chat'}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d={foldMode ? "M6 18L18 6M6 6l12 12" : "M19 9l-7 7-7-7"} />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Fold creation UI */}

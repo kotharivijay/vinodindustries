@@ -21,6 +21,7 @@ const ksiNavGroups = [
       { href: '/despatch', label: 'Despatch', icon: '🚚' },
       { href: '/dyeing', label: 'Dyeing Slip', icon: '🎨' },
       { href: '/dyeing/batch', label: 'Dyeing (Batch)', icon: '🧫' },
+      { href: '/dyeing/pc', label: 'PC Dyeing', icon: '🏭' },
       { href: '/dyeing/color-lab', label: 'Color Lab', icon: '🎨' },
       { href: '/finish', label: 'Finish/Center', icon: '✨' },
       { href: '/stock', label: 'Stock Summary', icon: '📊' },
