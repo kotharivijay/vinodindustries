@@ -642,6 +642,189 @@ If data is empty or shows no results, say so politely and suggest checking the s
 Do NOT use markdown formatting like ** or ## — just plain text with line breaks.
 Respond in Hindi if the user asked in Hindi, otherwise English.`
 
+// ─── App-side Result Formatter (no second Gemini call) ─────────────────────
+
+function fmt(n: number): string { return n.toLocaleString('en-IN') }
+function fmtINR(n: number): string { return '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) }
+function fmtDate(d: any): string { if (!d) return '-'; return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) }
+
+function formatResult(fn: string, args: any, data: any): string {
+  if (!data) return 'No data found.'
+
+  switch (fn) {
+    case 'stock_summary': {
+      const d = data as { totalStock: number; totalLots: number; topParties: { party: string; stock: number }[] }
+      let r = `Stock Summary\n\nTotal: ${fmt(d.totalStock)} than (${d.totalLots} lots)\n\nTop Parties:`
+      for (const p of (d.topParties || []).slice(0, 10)) {
+        r += `\n  ${p.party}: ${fmt(p.stock)} than`
+      }
+      return r
+    }
+
+    case 'stock_by_lot': {
+      if (data.message) return data.message
+      return `Lot: ${data.lotNo}\nParty: ${data.party}\nQuality: ${data.quality}\nGrey: ${fmt(data.greyThan)} than\nDespatched: ${fmt(data.despatchThan)} than\nBalance: ${fmt(data.stock)} than\nFold Available: ${fmt(data.foldAvailable)} than`
+    }
+
+    case 'stock_by_party': {
+      if (!Array.isArray(data) || data.length === 0) return `No stock found for "${args.party}".`
+      const total = data.reduce((s: number, l: any) => s + l.stock, 0)
+      let r = `${data[0]?.party || args.party}\n${data.length} lots, ${fmt(total)} than total\n`
+      for (const l of data.slice(0, 20)) {
+        r += `\n  ${l.lotNo}: ${fmt(l.stock)} than (${l.quality})`
+      }
+      if (data.length > 20) r += `\n  ...and ${data.length - 20} more lots`
+      return r
+    }
+
+    case 'lot_detail': {
+      if (data.message) return data.message
+      let r = `Lot ${data.lotNo}\nParty: ${data.party}\nQuality: ${data.quality}\nGrey: ${fmt(data.greyThan)} than\nDespatched: ${fmt(data.despatchThan)} than\nBalance: ${fmt(data.stock)} than`
+      if (data.greyEntries?.length) {
+        r += `\n\nGrey Entries:`
+        for (const g of data.greyEntries.slice(0, 5)) {
+          r += `\n  ${fmtDate(g.date)} - Challan ${g.challanNo}, ${g.than} than`
+        }
+      }
+      if (data.despatchEntries?.length) {
+        r += `\n\nDespatch:`
+        for (const d of data.despatchEntries.slice(0, 5)) {
+          r += `\n  ${fmtDate(d.date)} - Challan ${d.challanNo}, ${d.than} than`
+        }
+      }
+      return r
+    }
+
+    case 'dyeing_summary': {
+      const d = data as { totalSlips: number; totalThan: number; done: number; patchy: number; pending: number; totalCost: number }
+      let r = `Dyeing Summary`
+      if (args.dateFrom || args.dateTo) r += ` (${args.dateFrom || ''} to ${args.dateTo || 'today'})`
+      r += `\n\nTotal Slips: ${d.totalSlips}\nTotal Than: ${fmt(d.totalThan)}`
+      r += `\nDone: ${d.done} | Patchy: ${d.patchy} | Pending: ${d.pending}`
+      if (d.totalSlips > 0) r += `\nPatchy Rate: ${((d.patchy / d.totalSlips) * 100).toFixed(1)}%`
+      if (d.totalCost > 0) r += `\nTotal Cost: ${fmtINR(d.totalCost)}`
+      return r
+    }
+
+    case 'dyeing_slips': {
+      if (!Array.isArray(data) || data.length === 0) return 'No dyeing slips found for this filter.'
+      let r = `Dyeing Slips: ${data.length} found\n`
+      for (const e of data.slice(0, 15)) {
+        r += `\n  Slip ${e.slipNo} | ${fmtDate(e.date)} | ${e.lotNo} | ${e.than}T`
+        if (e.shade) r += ` | ${e.shade}`
+        if (e.status && e.status !== 'pending') r += ` | ${e.status}`
+      }
+      if (data.length > 15) r += `\n  ...and ${data.length - 15} more`
+      return r
+    }
+
+    case 'grey_entries': {
+      if (!Array.isArray(data) || data.length === 0) return 'No grey entries found.'
+      const total = data.reduce((s: number, e: any) => s + e.than, 0)
+      let r = `Grey Entries: ${data.length} found, ${fmt(total)} than total\n`
+      for (const e of data.slice(0, 15)) {
+        r += `\n  ${fmtDate(e.date)} | Ch.${e.challanNo} | ${e.party} | ${e.lotNo} | ${e.than}T | ${e.quality}`
+      }
+      if (data.length > 15) r += `\n  ...and ${data.length - 15} more`
+      return r
+    }
+
+    case 'despatch_entries': {
+      if (!Array.isArray(data) || data.length === 0) return 'No despatch entries found.'
+      const total = data.reduce((s: number, e: any) => s + e.than, 0)
+      let r = `Despatch: ${data.length} entries, ${fmt(total)} than total\n`
+      for (const e of data.slice(0, 15)) {
+        r += `\n  ${fmtDate(e.date)} | Ch.${e.challanNo} | ${e.party} | ${e.lotNo} | ${e.than}T`
+        if (e.billNo) r += ` | Bill: ${e.billNo}`
+      }
+      if (data.length > 15) r += `\n  ...and ${data.length - 15} more`
+      return r
+    }
+
+    case 'shade_recipe': {
+      if (data.message) return data.message
+      let r = `Shade: ${data.name}`
+      if (data.description) r += ` (${data.description})`
+      if (data.chemicals?.length) {
+        r += `\n\nRecipe (${data.chemicals.length} chemicals):`
+        for (const c of data.chemicals) {
+          r += `\n  ${c.chemical}: ${c.quantity}${c.isPercent ? '%' : ' ' + c.unit}`
+        }
+      } else {
+        r += '\nNo recipe chemicals saved.'
+      }
+      return r
+    }
+
+    case 'outstanding': {
+      if (!Array.isArray(data) || data.length === 0) return `No outstanding found${args.party ? ` for "${args.party}"` : ''}.`
+      let r = 'Outstanding:\n'
+      for (const p of data.slice(0, 10)) {
+        r += `\n${p.party}`
+        if (p.receivable > 0) r += `\n  Receivable: ${fmtINR(p.receivable)}`
+        if (p.payable > 0) r += `\n  Payable: ${fmtINR(p.payable)}`
+        r += `\n  ${p.bills.length} bill(s)`
+      }
+      if (data.length > 10) r += `\n\n...and ${data.length - 10} more parties`
+      return r
+    }
+
+    case 'party_list': {
+      if (!Array.isArray(data) || data.length === 0) return 'No parties found.'
+      let r = `Parties: ${data.length} total\n`
+      for (const p of data) {
+        r += `\n  ${p.name}`
+      }
+      return r
+    }
+
+    case 'machine_production': {
+      if (!Array.isArray(data) || data.length === 0) return 'No machine production data found.'
+      let r = 'Machine Production:\n'
+      for (const m of data) {
+        r += `\n${m.name}: ${m.slips} slips, ${fmt(m.than)} than`
+        r += ` | Done: ${m.done} | Patchy: ${m.patchy}`
+        if (m.slips > 0) r += ` (${((m.patchy / m.slips) * 100).toFixed(0)}% patchy)`
+      }
+      return r
+    }
+
+    case 'operator_production': {
+      if (!Array.isArray(data) || data.length === 0) return 'No operator production data found.'
+      let r = 'Operator Production:\n'
+      for (const o of data) {
+        r += `\n${o.name}: ${o.slips} slips, ${fmt(o.than)} than`
+        r += ` | Done: ${o.done} | Patchy: ${o.patchy}`
+        if (o.slips > 0) r += ` (${((o.patchy / o.slips) * 100).toFixed(0)}% patchy)`
+      }
+      return r
+    }
+
+    case 'fold_programs': {
+      if (!Array.isArray(data) || data.length === 0) return 'No fold programs found.'
+      let r = `Fold Programs: ${data.length} found\n`
+      for (const f of data.slice(0, 10)) {
+        r += `\nFold ${f.foldNo} | ${fmtDate(f.date)} | ${f.status} | ${f.batchCount} batch(es), ${fmt(f.totalThan)} than`
+      }
+      return r
+    }
+
+    case 'sales_data': {
+      if (!Array.isArray(data) || data.length === 0) return 'No sales data found.'
+      const total = data.reduce((s: number, e: any) => s + (e.amount || 0), 0)
+      let r = `Sales: ${data.length} entries, Total: ${fmtINR(total)}\n`
+      for (const s of data.slice(0, 10)) {
+        r += `\n  ${fmtDate(s.date)} | ${s.party} | ${s.item || '-'} | ${fmtINR(s.amount || 0)}`
+      }
+      if (data.length > 10) r += `\n  ...and ${data.length - 10} more`
+      return r
+    }
+
+    default:
+      return JSON.stringify(data, null, 2).slice(0, 2000)
+  }
+}
+
 // ─── POST Handler ──────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -701,13 +884,9 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Step 4: Send data back to Gemini for formatting
-    const dataStr = JSON.stringify(data, null, 2)
-    const formatMessage = `User's question: "${message}"\n\nFunction called: ${parsed.function}\nArguments: ${JSON.stringify(parsed.args)}\n\nData returned:\n${dataStr.slice(0, 8000)}\n\nFormat a clear, concise response for the user.`
-
-    const formattedReply = await callGemini(FORMAT_PROMPT, formatMessage, [])
-
-    return NextResponse.json({ reply: formattedReply })
+    // Step 4: Format result in app (no second Gemini call!)
+    const reply = formatResult(parsed.function, parsed.args, data)
+    return NextResponse.json({ reply })
   } catch (err: any) {
     console.error('AI Chat error:', err?.message, err?.stack)
     return NextResponse.json({ reply: `Error: ${err?.message || 'Something went wrong. Please try again.'}` })
