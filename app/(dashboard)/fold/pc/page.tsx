@@ -72,6 +72,7 @@ interface FoldProgram {
   date: string
   status: string
   notes?: string
+  confirmedAt?: string | null
   batches: FoldBatch[]
 }
 
@@ -1179,6 +1180,25 @@ function SavedFoldsTab() {
     return list
   }, [programs, search, sortBy])
 
+  const [confirming, setConfirming] = useState<number | null>(null)
+
+  const confirmProgram = useCallback(async (id: number, foldNo: string) => {
+    if (!confirm(`Confirm this fold? It will be locked and sent to PC Dyeing.`)) return
+    setConfirming(id)
+    try {
+      const res = await fetch(`/api/fold/pc?id=${id}&action=confirm`, { method: 'PATCH' })
+      if (!res.ok) {
+        const err = await res.json()
+        alert(err.error || 'Failed to confirm')
+      }
+      mutate()
+    } catch {
+      alert('Network error')
+    } finally {
+      setConfirming(null)
+    }
+  }, [mutate])
+
   const deleteProgram = useCallback(async (id: number, foldNo: string) => {
     if (!confirm(`Delete PC Fold ${foldNo}? This cannot be undone.`)) return
     await fetch(`/api/fold/pc?id=${id}`, { method: 'DELETE' })
@@ -1249,12 +1269,34 @@ function SavedFoldsTab() {
                     <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{totalThan(p)}</p>
                     <p className="text-[10px] text-gray-400">than</p>
                   </div>
-                  <button
-                    onClick={() => deleteProgram(p.id, p.foldNo)}
-                    className="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {p.confirmedAt ? (
+                      <div className="text-center">
+                        <span className="inline-flex items-center gap-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2.5 py-1 rounded-full font-medium">
+                          Confirmed
+                        </span>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          {new Date(p.confirmedAt).toLocaleDateString('en-IN')}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => confirmProgram(p.id, p.foldNo)}
+                          disabled={confirming === p.id}
+                          className="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2 py-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 disabled:opacity-50"
+                        >
+                          {confirming === p.id ? '...' : 'Confirm'}
+                        </button>
+                        <button
+                          onClick={() => deleteProgram(p.id, p.foldNo)}
+                          className="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {/* Batches */}

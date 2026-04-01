@@ -34,6 +34,17 @@ interface LotSelection {
   than: string
 }
 
+interface ConfirmedFoldBatch {
+  id: number
+  batchNo: number
+  marka: string | null
+  shadeName: string | null
+  shade: { name: string } | null
+  lots: { lotNo: string; than: number; party?: { name: string } | null }[]
+  foldNo: string
+  foldProgramId: number
+}
+
 interface SavedEntry {
   id: number
   date: string
@@ -98,6 +109,10 @@ export default function PcDyeingPage() {
   const [masterChemicals, setMasterChemicals] = useState<ChemicalMaster[]>([])
   const [processes, setProcesses] = useState<DyeingProcess[]>([])
   const [savedEntries, setSavedEntries] = useState<SavedEntry[]>([])
+
+  // Confirmed fold batches
+  const [confirmedFoldBatches, setConfirmedFoldBatches] = useState<ConfirmedFoldBatch[]>([])
+  const [selectedFoldBatchId, setSelectedFoldBatchId] = useState<number | null>(null)
 
   // Step 1 fields
   const [selectedPartyId, setSelectedPartyId] = useState<number | null>(null)
@@ -170,7 +185,8 @@ export default function PcDyeingPage() {
       fetch('/api/dyeing/operators?active=true').then(r => r.json()).catch(() => []),
       fetch('/api/shades').then(r => r.json()).catch(() => []),
       fetch('/api/dyeing/processes').then(r => r.json()).catch(() => []),
-    ]).then(([partyData, entryData, chemData, machineData, operatorData, shadeData, processData]) => {
+      fetch('/api/fold/pc').then(r => r.json()).catch(() => []),
+    ]).then(([partyData, entryData, chemData, machineData, operatorData, shadeData, processData, foldData]) => {
       const pcParties = (Array.isArray(partyData) ? partyData : []).filter((p: PartyOption) => p.tag === 'Pali PC Job')
       setParties(pcParties)
       setSavedEntries(Array.isArray(entryData) ? entryData : [])
@@ -179,6 +195,24 @@ export default function PcDyeingPage() {
       setOperators(Array.isArray(operatorData) ? operatorData : [])
       setShades(Array.isArray(shadeData) ? shadeData : [])
       setProcesses(Array.isArray(processData) ? processData : [])
+      // Extract confirmed fold batches
+      const confirmedFolds = (Array.isArray(foldData) ? foldData : []).filter((f: any) => f.isPcJob && f.confirmedAt)
+      const cfBatches: ConfirmedFoldBatch[] = []
+      for (const fold of confirmedFolds) {
+        for (const batch of fold.batches ?? []) {
+          cfBatches.push({
+            id: batch.id,
+            batchNo: batch.batchNo,
+            marka: batch.marka ?? null,
+            shadeName: batch.shadeName ?? null,
+            shade: batch.shade ?? null,
+            lots: batch.lots ?? [],
+            foldNo: fold.foldNo,
+            foldProgramId: fold.id,
+          })
+        }
+      }
+      setConfirmedFoldBatches(cfBatches)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
@@ -222,6 +256,55 @@ export default function PcDyeingPage() {
       })))
     }
   }, [selectedMarka, markas])
+
+  // ─── Matching confirmed fold batches ─────────────────────────────────────────
+
+  const matchingFoldBatches = useMemo(() => {
+    if (!selectedPartyId) return []
+    const partyName = parties.find(p => p.id === selectedPartyId)?.name ?? ''
+    return confirmedFoldBatches.filter(fb => {
+      // Match by marka if selected, otherwise show all for this party
+      const markaMatch = !selectedMarka || (fb.marka ?? '').split(',').some(m => m.trim() === selectedMarka)
+      // Match by party - check if any lot belongs to this party
+      const partyMatch = fb.lots.some(l => (l.party?.name ?? '').toLowerCase() === partyName.toLowerCase())
+      return markaMatch && partyMatch
+    })
+  }, [selectedPartyId, selectedMarka, confirmedFoldBatches, parties])
+
+  const selectFoldBatch = (fb: ConfirmedFoldBatch) => {
+    setSelectedFoldBatchId(fb.id)
+    // Auto-fill marka from fold batch
+    if (fb.marka) {
+      const firstMarka = fb.marka.split(',')[0].trim()
+      if (markas.some(m => m.marka === firstMarka)) {
+        setSelectedMarka(firstMarka)
+      }
+    }
+    // Auto-fill shade from fold batch
+    const shade = fb.shade?.name ?? fb.shadeName ?? ''
+    if (shade) setShadeName(shade)
+    // Auto-select lots from fold batch
+    setLotSelections(prev => {
+      if (prev.length === 0) {
+        // Lots not loaded yet from marka - build from fold batch lots
+        return fb.lots.map(l => ({
+          lotNo: l.lotNo,
+          greyThan: l.than,
+          availableThan: l.than,
+          selected: true,
+          than: String(l.than),
+        }))
+      }
+      // Lots already loaded from marka selection - match and select
+      return prev.map(ls => {
+        const foldLot = fb.lots.find(fl => fl.lotNo === ls.lotNo)
+        if (foldLot) {
+          return { ...ls, selected: true, than: String(Math.min(foldLot.than, ls.availableThan)) }
+        }
+        return ls
+      })
+    })
+  }
 
   // ─── Chemical handlers ──────────────────────────────────────────────────────
 
@@ -339,6 +422,7 @@ export default function PcDyeingPage() {
         setStep(1)
         setSelectedPartyId(null)
         setSelectedMarka('')
+        setSelectedFoldBatchId(null)
         setLotSelections([])
         setChemicals([])
         setShadeName('')
@@ -582,7 +666,7 @@ export default function PcDyeingPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Party (Pali PC Job only)</label>
-                <select className={inp} value={selectedPartyId ?? ''} onChange={e => { setSelectedPartyId(e.target.value ? parseInt(e.target.value) : null); setSelectedMarka('') }}>
+                <select className={inp} value={selectedPartyId ?? ''} onChange={e => { setSelectedPartyId(e.target.value ? parseInt(e.target.value) : null); setSelectedMarka(''); setSelectedFoldBatchId(null) }}>
                   <option value="">Select party...</option>
                   {parties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
@@ -599,6 +683,54 @@ export default function PcDyeingPage() {
                     </select>
                   )}
                   {!loadingMarkas && markas.length === 0 && <p className="text-xs text-yellow-500 mt-1">No markas found. Add marka in Grey Inward form for this party.</p>}
+                </div>
+              )}
+
+              {/* Confirmed PC Fold Batches */}
+              {selectedPartyId && matchingFoldBatches.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-2">Available PC Fold Batches (Confirmed)</label>
+                  <div className="space-y-2">
+                    {matchingFoldBatches.map(fb => {
+                      const totalThan = fb.lots.reduce((s, l) => s + l.than, 0)
+                      const isSelected = selectedFoldBatchId === fb.id
+                      return (
+                        <button
+                          key={fb.id}
+                          onClick={() => selectFoldBatch(fb)}
+                          className={`w-full text-left p-3 rounded-lg border transition ${
+                            isSelected
+                              ? 'bg-teal-900/30 border-teal-600 ring-1 ring-teal-500'
+                              : 'bg-gray-800 border-gray-700 hover:border-gray-500'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-teal-400">{fb.foldNo}</span>
+                              <span className="text-xs text-gray-500">B{fb.batchNo}</span>
+                              {fb.marka && (
+                                <span className="text-xs bg-purple-900/30 text-purple-400 px-1.5 py-0.5 rounded">
+                                  {fb.marka}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-sm font-bold text-teal-400">{totalThan} <span className="text-[10px] text-gray-500 font-normal">than</span></span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {(fb.shade?.name ?? fb.shadeName) && (
+                              <span className="text-xs text-gray-400">Shade: {fb.shade?.name ?? fb.shadeName}</span>
+                            )}
+                            <span className="text-xs text-gray-500">
+                              {fb.lots.map(l => l.lotNo).join(', ')}
+                            </span>
+                          </div>
+                          {isSelected && (
+                            <p className="text-[10px] text-teal-500 mt-1">Selected - lots auto-filled below</p>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
 
