@@ -15,8 +15,9 @@ const PREDEFINED_TAGS = ['Pali PC Job', 'Local', 'Direct', 'Commission']
 interface Item { id: number; name: string; tag?: string | null; createdAt: string }
 interface Suggestion { id: number; name: string; score: number }
 
-export default function MasterPage({ params }: { params: Promise<{ type: string }> }) {
-  const { type } = use(params)
+export default function MasterPage({ params }: { params: any }) {
+  const resolvedParams = use(params instanceof Promise ? params : Promise.resolve(params))
+  const type = (resolvedParams as { type: string }).type
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState('')
