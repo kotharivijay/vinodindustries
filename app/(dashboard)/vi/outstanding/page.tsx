@@ -351,27 +351,37 @@ export default function OutstandingPage() {
                   </svg>
                 </button>
                 {expanded && (
-                  <div className="px-4 pb-3 border-t border-gray-700 pt-2 space-y-2">
-                    {partyBills.map(b => {
-                      const fc = FIRM_COLORS[b.firmCode] || { bg: 'bg-gray-700', text: 'text-gray-300' }
-                      return (
-                        <div key={b.id} className={`rounded-lg p-3 border text-xs ${b.type === 'receivable' ? 'bg-green-900/20 border-green-800' : 'bg-rose-900/20 border-rose-800'}`}>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className={`px-1 py-0.5 rounded text-[10px] font-bold ${fc.bg} ${fc.text}`}>{b.firmCode}</span>
-                              <span className="font-semibold text-gray-200">{b.billRef}</span>
+                  <div className="border-t border-gray-700">
+                    {/* Share bar */}
+                    <div className="flex items-center justify-between px-4 py-2 bg-gray-900/50 border-b border-gray-700">
+                      <span className="text-[10px] text-gray-500">{partyBills.length} bills — all selected</span>
+                      <div className="flex gap-1.5">
+                        <button onClick={() => sharePartyImage(g.partyName, partyBills)} className="bg-green-700 text-white px-2.5 py-1 rounded-full text-[10px] font-bold hover:bg-green-600">📸 Image</button>
+                        <button onClick={() => sharePartyText(g.partyName, partyBills)} className="bg-gray-700 text-gray-300 px-2.5 py-1 rounded-full text-[10px] font-bold hover:bg-gray-600">💬 Text</button>
+                      </div>
+                    </div>
+                    <div className="px-4 pb-3 pt-2 space-y-2">
+                      {partyBills.map(b => {
+                        const fc = FIRM_COLORS[b.firmCode] || { bg: 'bg-gray-700', text: 'text-gray-300' }
+                        return (
+                          <div key={b.id} className={`rounded-lg p-3 border text-xs ${b.type === 'receivable' ? 'bg-green-900/20 border-green-800' : 'bg-rose-900/20 border-rose-800'}`}>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-1 py-0.5 rounded text-[10px] font-bold ${fc.bg} ${fc.text}`}>{b.firmCode}</span>
+                                <span className="font-semibold text-gray-200">{b.billRef}</span>
+                              </div>
+                              <span className={`font-bold ${b.type === 'receivable' ? 'text-green-400' : 'text-rose-400'}`}>{formatINR(b.closingBalance)}</span>
                             </div>
-                            <span className={`font-bold ${b.type === 'receivable' ? 'text-green-400' : 'text-rose-400'}`}>{formatINR(b.closingBalance)}</span>
+                            <div className="flex flex-wrap gap-x-4 mt-1 text-gray-500">
+                              <span>Date: {fmtDate(b.billDate)}</span>
+                              <span>Due: {fmtDate(b.dueDate)}</span>
+                              {b.overdueDays > 0 && <span className={`font-medium ${b.overdueDays > 90 ? 'text-red-400' : b.overdueDays > 30 ? 'text-amber-400' : 'text-gray-500'}`}>{b.overdueDays}d overdue</span>}
+                              {b.vchType && <span>{b.vchType}</span>}
+                            </div>
                           </div>
-                          <div className="flex flex-wrap gap-x-4 mt-1 text-gray-500">
-                            <span>Date: {fmtDate(b.billDate)}</span>
-                            <span>Due: {fmtDate(b.dueDate)}</span>
-                            {b.overdueDays > 0 && <span className={`font-medium ${b.overdueDays > 90 ? 'text-red-400' : b.overdueDays > 30 ? 'text-amber-400' : 'text-gray-500'}`}>{b.overdueDays}d overdue</span>}
-                            {b.vchType && <span>{b.vchType}</span>}
-                          </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -383,4 +393,79 @@ export default function OutstandingPage() {
       )}
     </div>
   )
+
+  // Share party OS as JPG image
+  function sharePartyImage(partyName: string, partyBills: Bill[]) {
+    const today = new Date().toLocaleDateString('en-IN')
+    const totalAmt = partyBills.reduce((s, b) => s + Math.abs(b.closingBalance), 0)
+    const W = 360, rowH = 26, headerH = 70, footerH = 45, padY = 10
+    const H = headerH + (partyBills.length * rowH) + footerH + padY * 2
+
+    const canvas = document.createElement('canvas')
+    canvas.width = W * 2; canvas.height = H * 2
+    const ctx = canvas.getContext('2d')!
+    ctx.scale(2, 2)
+
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, W, H)
+    ctx.fillStyle = '#16213e'; ctx.fillRect(0, 0, W, headerH)
+    ctx.fillStyle = '#e65100'; ctx.fillRect(0, headerH - 3, W, 3)
+
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial'
+    ctx.fillText('📋 Outstanding Bills', 12, 20)
+    ctx.fillStyle = '#a0a0c0'; ctx.font = '11px Arial'
+    ctx.fillText(partyName.slice(0, 40), 12, 38)
+    ctx.fillText('As on: ' + today, 12, 53)
+    ctx.fillStyle = '#e65100'; ctx.font = 'bold 13px Arial'
+    ctx.textAlign = 'right'
+    ctx.fillText('₹' + totalAmt.toLocaleString('en-IN'), W - 12, 20)
+    ctx.fillStyle = '#a0a0c0'; ctx.font = '10px Arial'
+    ctx.fillText(partyBills.length + ' bills', W - 12, 38)
+    ctx.textAlign = 'left'
+
+    const y0 = headerH + padY
+    ctx.fillStyle = '#a0a0c0'; ctx.font = 'bold 9px Arial'
+    ctx.fillText('BILL NO', 12, y0)
+    ctx.fillText('DATE', 130, y0)
+    ctx.textAlign = 'right'; ctx.fillText('AMOUNT', W - 55, y0); ctx.fillText('AGE', W - 12, y0); ctx.textAlign = 'left'
+
+    partyBills.forEach((b, i) => {
+      const y = y0 + 14 + i * rowH
+      if (i % 2 === 0) { ctx.fillStyle = '#1a1a3e'; ctx.fillRect(0, y - 10, W, rowH) }
+      ctx.fillStyle = '#ffffff'; ctx.font = '10px Arial'
+      ctx.fillText((b.billRef || '-').slice(0, 20), 12, y + 4)
+      ctx.fillStyle = '#c0c0d0'; ctx.fillText(b.billDate ? fmtDate(b.billDate) : '-', 130, y + 4)
+      ctx.fillStyle = '#e65100'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'right'
+      ctx.fillText('₹' + Math.abs(Math.round(b.closingBalance)).toLocaleString('en-IN'), W - 55, y + 4)
+      const d = b.overdueDays || 0
+      ctx.fillStyle = d >= 90 ? '#ef4444' : d >= 45 ? '#f97316' : d >= 15 ? '#eab308' : '#22c55e'
+      ctx.font = 'bold 9px Arial'; ctx.fillText(d + 'd', W - 12, y + 4); ctx.textAlign = 'left'
+    })
+
+    const fy = y0 + 14 + partyBills.length * rowH + 4
+    ctx.fillStyle = '#16213e'; ctx.fillRect(0, fy - 6, W, footerH)
+    ctx.fillStyle = '#e65100'; ctx.fillRect(0, fy - 6, W, 2)
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px Arial'
+    ctx.fillText('TOTAL', 12, fy + 14)
+    ctx.textAlign = 'right'; ctx.fillText('₹' + totalAmt.toLocaleString('en-IN'), W - 12, fy + 14); ctx.textAlign = 'left'
+    ctx.fillStyle = '#a0a0c0'; ctx.font = '9px Arial'
+    ctx.fillText('Please arrange payment at earliest.', 12, fy + 30)
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) return
+      const file = new File([blob], `os_${partyName.replace(/[^a-zA-Z0-9]/g, '_')}.jpg`, { type: 'image/jpeg' })
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: 'Outstanding - ' + partyName }); return } catch {}
+      }
+      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); URL.revokeObjectURL(url)
+    }, 'image/jpeg', 0.92)
+  }
+
+  // Share party OS as text
+  function sharePartyText(partyName: string, partyBills: Bill[]) {
+    const today = new Date().toLocaleDateString('en-IN')
+    const totalAmt = partyBills.reduce((s, b) => s + Math.abs(b.closingBalance), 0)
+    const lines = partyBills.map(b => `  • ${b.billRef || '-'} | ${b.billDate ? fmtDate(b.billDate) : '-'} | ₹${Math.abs(Math.round(b.closingBalance)).toLocaleString('en-IN')} | ${b.overdueDays}d`)
+    const msg = `📋 *Outstanding Bills*\n*${partyName}*\nAs on: ${today}\n${'─'.repeat(20)}\n${lines.join('\n')}\n${'─'.repeat(20)}\n*Total: ₹${totalAmt.toLocaleString('en-IN')}*\n\n_Please arrange payment at earliest._`
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank')
+  }
 }

@@ -786,6 +786,7 @@ export default function OrdersPage() {
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm font-bold text-white">{fmtNum(o.orderQty)} mtr</div>
+                      {o.rate > 0 && <div className="text-xs text-green-400">₹{o.rate}</div>}
                       <div className="text-xs text-gray-500">Bal: {fmtNum(o.balance)}</div>
                     </div>
                   </div>
