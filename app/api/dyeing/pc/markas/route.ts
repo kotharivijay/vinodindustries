@@ -12,21 +12,29 @@ export async function GET(req: NextRequest) {
 
   const db = prisma as any
 
-  // Get all grey entries for this party that have a marka
+  // Get all grey entries for this party that have a marka (from marka field OR viverNameBill)
   const greyEntries = await db.greyEntry.findMany({
     where: {
       partyId: parseInt(partyId),
-      marka: { not: null },
+      OR: [
+        { marka: { not: null, not: '' } },
+        { viverNameBill: { not: null, not: '' } },
+      ],
     },
     select: {
       id: true,
       lotNo: true,
       than: true,
       marka: true,
+      viverNameBill: true,
       date: true,
     },
     orderBy: { date: 'desc' },
   })
+  // Use marka field first, fallback to viverNameBill
+  for (const g of greyEntries) {
+    if (!g.marka && g.viverNameBill) g.marka = g.viverNameBill
+  }
 
   // Get despatch totals per lot
   const lotNoSet = new Set<string>()
