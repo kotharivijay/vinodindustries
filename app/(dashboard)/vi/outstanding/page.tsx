@@ -352,12 +352,19 @@ export default function OutstandingPage() {
                 </button>
                 {expanded && (
                   <div className="border-t border-gray-700">
-                    {/* Share bar */}
-                    <div className="flex items-center justify-between px-4 py-2 bg-gray-900/50 border-b border-gray-700">
-                      <span className="text-[10px] text-gray-500">{partyBills.length} bills — all selected</span>
-                      <div className="flex gap-1.5">
-                        <button onClick={() => sharePartyImage(g.partyName, partyBills)} className="bg-green-700 text-white px-2.5 py-1 rounded-full text-[10px] font-bold hover:bg-green-600">📸 Image</button>
-                        <button onClick={() => sharePartyText(g.partyName, partyBills)} className="bg-gray-700 text-gray-300 px-2.5 py-1 rounded-full text-[10px] font-bold hover:bg-gray-600">💬 Text</button>
+                    {/* Share bar with sort */}
+                    <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-gray-900/50 border-b border-gray-700">
+                      <span className="text-[10px] text-gray-500">{partyBills.length} bills</span>
+                      <select id={`sort-${g.partyName}`} defaultValue="due-old"
+                        className="bg-gray-800 border border-gray-700 text-gray-300 rounded px-1.5 py-0.5 text-[10px]">
+                        <option value="due-old">Due Old→New</option>
+                        <option value="due-new">Due New→Old</option>
+                        <option value="invoice">Invoice A→Z</option>
+                        <option value="amount">Amount High→Low</option>
+                      </select>
+                      <div className="flex gap-1.5 ml-auto">
+                        <button onClick={() => { const s = (document.getElementById(`sort-${g.partyName}`) as HTMLSelectElement)?.value || 'due-old'; sharePartyImage(g.partyName, partyBills, s) }} className="bg-green-700 text-white px-2.5 py-1 rounded-full text-[10px] font-bold hover:bg-green-600">📸 Image</button>
+                        <button onClick={() => { const s = (document.getElementById(`sort-${g.partyName}`) as HTMLSelectElement)?.value || 'due-old'; sharePartyText(g.partyName, sortBills(partyBills, s)) }} className="bg-gray-700 text-gray-300 px-2.5 py-1 rounded-full text-[10px] font-bold hover:bg-gray-600">💬 Text</button>
                       </div>
                     </div>
                     <div className="px-4 pb-3 pt-2 space-y-2">
@@ -394,46 +401,63 @@ export default function OutstandingPage() {
     </div>
   )
 
-  // Share party OS as JPG image
-  function sharePartyImage(partyName: string, partyBills: Bill[]) {
+  // Sort bills
+  function sortBills(b: Bill[], sortKey: string): Bill[] {
+    const arr = [...b]
+    if (sortKey === 'due-new') arr.sort((a, b) => (a.overdueDays || 0) - (b.overdueDays || 0))
+    else if (sortKey === 'due-old') arr.sort((a, b) => (b.overdueDays || 0) - (a.overdueDays || 0))
+    else if (sortKey === 'invoice') arr.sort((a, b) => (a.billRef || '').localeCompare(b.billRef || ''))
+    else if (sortKey === 'amount') arr.sort((a, b) => Math.abs(b.closingBalance) - Math.abs(a.closingBalance))
+    return arr
+  }
+
+  const BILLS_PER_PAGE = 15
+
+  // Render one page of bills to canvas → return blob
+  function renderBillPage(partyName: string, bills: Bill[], pageNum: number, totalPages: number, grandTotal: number): Promise<Blob | null> {
     const today = new Date().toLocaleDateString('en-IN')
-    const totalAmt = partyBills.reduce((s, b) => s + Math.abs(b.closingBalance), 0)
-    const W = 360, rowH = 26, headerH = 70, footerH = 45, padY = 10
-    const H = headerH + (partyBills.length * rowH) + footerH + padY * 2
+    const pageTotal = bills.reduce((s, b) => s + Math.abs(b.closingBalance), 0)
+    const W = 360, rowH = 26, headerH = 75, footerH = 55, padY = 10
+    const H = headerH + (bills.length * rowH) + footerH + padY * 2
 
     const canvas = document.createElement('canvas')
     canvas.width = W * 2; canvas.height = H * 2
     const ctx = canvas.getContext('2d')!
     ctx.scale(2, 2)
 
+    // Background
     ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, W, H)
+
+    // Header
     ctx.fillStyle = '#16213e'; ctx.fillRect(0, 0, W, headerH)
     ctx.fillStyle = '#e65100'; ctx.fillRect(0, headerH - 3, W, 3)
-
     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px Arial'
     ctx.fillText('📋 Outstanding Bills', 12, 20)
     ctx.fillStyle = '#a0a0c0'; ctx.font = '11px Arial'
-    ctx.fillText(partyName.slice(0, 40), 12, 38)
+    ctx.fillText(partyName.slice(0, 35), 12, 38)
     ctx.fillText('As on: ' + today, 12, 53)
-    ctx.fillStyle = '#e65100'; ctx.font = 'bold 13px Arial'
-    ctx.textAlign = 'right'
-    ctx.fillText('₹' + totalAmt.toLocaleString('en-IN'), W - 12, 20)
+    if (totalPages > 1) { ctx.fillStyle = '#7c7caa'; ctx.font = 'bold 10px Arial'; ctx.fillText(`Page ${pageNum} of ${totalPages}`, 12, 66) }
+    ctx.fillStyle = '#e65100'; ctx.font = 'bold 13px Arial'; ctx.textAlign = 'right'
+    ctx.fillText('₹' + grandTotal.toLocaleString('en-IN'), W - 12, 20)
     ctx.fillStyle = '#a0a0c0'; ctx.font = '10px Arial'
-    ctx.fillText(partyBills.length + ' bills', W - 12, 38)
+    ctx.fillText(bills.length + ' bills (this page)', W - 12, 38)
     ctx.textAlign = 'left'
 
+    // Column headers
     const y0 = headerH + padY
     ctx.fillStyle = '#a0a0c0'; ctx.font = 'bold 9px Arial'
-    ctx.fillText('BILL NO', 12, y0)
-    ctx.fillText('DATE', 130, y0)
+    ctx.fillText('#', 12, y0); ctx.fillText('BILL NO', 28, y0); ctx.fillText('DATE', 145, y0)
     ctx.textAlign = 'right'; ctx.fillText('AMOUNT', W - 55, y0); ctx.fillText('AGE', W - 12, y0); ctx.textAlign = 'left'
 
-    partyBills.forEach((b, i) => {
+    // Rows
+    bills.forEach((b, i) => {
       const y = y0 + 14 + i * rowH
       if (i % 2 === 0) { ctx.fillStyle = '#1a1a3e'; ctx.fillRect(0, y - 10, W, rowH) }
+      ctx.fillStyle = '#808090'; ctx.font = '9px Arial'
+      ctx.fillText(String((pageNum - 1) * BILLS_PER_PAGE + i + 1), 12, y + 4)
       ctx.fillStyle = '#ffffff'; ctx.font = '10px Arial'
-      ctx.fillText((b.billRef || '-').slice(0, 20), 12, y + 4)
-      ctx.fillStyle = '#c0c0d0'; ctx.fillText(b.billDate ? fmtDate(b.billDate) : '-', 130, y + 4)
+      ctx.fillText((b.billRef || '-').slice(0, 18), 28, y + 4)
+      ctx.fillStyle = '#c0c0d0'; ctx.fillText(b.billDate ? fmtDate(b.billDate) : '-', 145, y + 4)
       ctx.fillStyle = '#e65100'; ctx.font = 'bold 10px Arial'; ctx.textAlign = 'right'
       ctx.fillText('₹' + Math.abs(Math.round(b.closingBalance)).toLocaleString('en-IN'), W - 55, y + 4)
       const d = b.overdueDays || 0
@@ -441,30 +465,60 @@ export default function OutstandingPage() {
       ctx.font = 'bold 9px Arial'; ctx.fillText(d + 'd', W - 12, y + 4); ctx.textAlign = 'left'
     })
 
-    const fy = y0 + 14 + partyBills.length * rowH + 4
+    // Footer
+    const fy = y0 + 14 + bills.length * rowH + 4
     ctx.fillStyle = '#16213e'; ctx.fillRect(0, fy - 6, W, footerH)
     ctx.fillStyle = '#e65100'; ctx.fillRect(0, fy - 6, W, 2)
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px Arial'
-    ctx.fillText('TOTAL', 12, fy + 14)
-    ctx.textAlign = 'right'; ctx.fillText('₹' + totalAmt.toLocaleString('en-IN'), W - 12, fy + 14); ctx.textAlign = 'left'
-    ctx.fillStyle = '#a0a0c0'; ctx.font = '9px Arial'
-    ctx.fillText('Please arrange payment at earliest.', 12, fy + 30)
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px Arial'
+    ctx.fillText('Page Total', 12, fy + 12)
+    ctx.textAlign = 'right'; ctx.fillText('₹' + pageTotal.toLocaleString('en-IN'), W - 12, fy + 12); ctx.textAlign = 'left'
+    if (totalPages > 1) {
+      ctx.fillStyle = '#e65100'; ctx.font = 'bold 12px Arial'
+      ctx.fillText('Grand Total', 12, fy + 30)
+      ctx.textAlign = 'right'; ctx.fillText('₹' + grandTotal.toLocaleString('en-IN'), W - 12, fy + 30); ctx.textAlign = 'left'
+    }
+    ctx.fillStyle = '#a0a0c0'; ctx.font = '8px Arial'
+    ctx.fillText('Please arrange payment at earliest.', 12, fy + 44)
 
-    canvas.toBlob(async (blob) => {
-      if (!blob) return
-      const file = new File([blob], `os_${partyName.replace(/[^a-zA-Z0-9]/g, '_')}.jpg`, { type: 'image/jpeg' })
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        try { await navigator.share({ files: [file], title: 'Outstanding - ' + partyName }); return } catch {}
+    return new Promise(resolve => canvas.toBlob(b => resolve(b), 'image/jpeg', 0.92))
+  }
+
+  // Share party OS as multi-page JPG images
+  async function sharePartyImage(partyName: string, partyBills: Bill[], sortKey: string = 'due-old') {
+    const sorted = sortBills(partyBills, sortKey)
+    const grandTotal = sorted.reduce((s, b) => s + Math.abs(b.closingBalance), 0)
+    const totalPages = Math.ceil(sorted.length / BILLS_PER_PAGE)
+    const files: File[] = []
+
+    for (let p = 0; p < totalPages; p++) {
+      const pageBills = sorted.slice(p * BILLS_PER_PAGE, (p + 1) * BILLS_PER_PAGE)
+      const blob = await renderBillPage(partyName, pageBills, p + 1, totalPages, grandTotal)
+      if (blob) {
+        const suffix = totalPages > 1 ? `_p${p + 1}` : ''
+        files.push(new File([blob], `os_${partyName.replace(/[^a-zA-Z0-9]/g, '_')}${suffix}.jpg`, { type: 'image/jpeg' }))
       }
-      const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = file.name; a.click(); URL.revokeObjectURL(url)
-    }, 'image/jpeg', 0.92)
+    }
+
+    if (files.length === 0) return
+
+    // Try Web Share API with multiple files
+    if (navigator.share && navigator.canShare?.({ files })) {
+      try { await navigator.share({ files, title: 'Outstanding - ' + partyName }); return } catch {}
+    }
+
+    // Fallback: download each file
+    for (const file of files) {
+      const url = URL.createObjectURL(file)
+      const a = document.createElement('a'); a.href = url; a.download = file.name; a.click()
+      URL.revokeObjectURL(url)
+    }
   }
 
   // Share party OS as text
   function sharePartyText(partyName: string, partyBills: Bill[]) {
     const today = new Date().toLocaleDateString('en-IN')
     const totalAmt = partyBills.reduce((s, b) => s + Math.abs(b.closingBalance), 0)
-    const lines = partyBills.map(b => `  • ${b.billRef || '-'} | ${b.billDate ? fmtDate(b.billDate) : '-'} | ₹${Math.abs(Math.round(b.closingBalance)).toLocaleString('en-IN')} | ${b.overdueDays}d`)
+    const lines = partyBills.map((b, i) => `${i + 1}. ${b.billRef || '-'} | ${b.billDate ? fmtDate(b.billDate) : '-'} | ₹${Math.abs(Math.round(b.closingBalance)).toLocaleString('en-IN')} | ${b.overdueDays}d`)
     const msg = `📋 *Outstanding Bills*\n*${partyName}*\nAs on: ${today}\n${'─'.repeat(20)}\n${lines.join('\n')}\n${'─'.repeat(20)}\n*Total: ₹${totalAmt.toLocaleString('en-IN')}*\n\n_Please arrange payment at earliest._`
     window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank')
   }
