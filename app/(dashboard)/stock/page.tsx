@@ -24,6 +24,7 @@ interface LotStock {
 
 interface PartyStock {
   party: string
+  partyTag?: string | null
   totalStock: number
   lotCount: number
   lots: LotStock[]
@@ -51,6 +52,7 @@ export default function StockPage() {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortMode>('party-asc')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [tagFilter, setTagFilter] = useState<string | null>(null)
 
   // Single-lot reservation
   const [editingReservation, setEditingReservation] = useState<string | null>(null)
@@ -164,9 +166,29 @@ export default function StockPage() {
     })
   }
 
+  // Unique tags from stock data
+  const uniqueStockTags = useMemo(() => {
+    if (!data?.parties) return []
+    const tags = new Set<string>()
+    for (const p of data.parties) {
+      if (p.partyTag) tags.add(p.partyTag)
+    }
+    return Array.from(tags).sort()
+  }, [data])
+
   const filtered = useMemo(() => {
     if (!data?.parties) return []
     let list = data.parties
+
+    // Tag filter
+    if (tagFilter !== null) {
+      if (tagFilter === '__untagged__') {
+        list = list.filter(p => !p.partyTag)
+      } else {
+        list = list.filter(p => p.partyTag === tagFilter)
+      }
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase()
       // Filter lots within each party, then keep parties that have matching lots or matching party name
@@ -195,7 +217,7 @@ export default function StockPage() {
       case 'lot-desc': list.sort((a, b) => { const la = a.lots[0]?.lotNo ?? ''; const lb = b.lots[0]?.lotNo ?? ''; return compareLotNo(lb, la) }); break
     }
     return list
-  }, [data, search, sort])
+  }, [data, search, sort, tagFilter])
 
   function getFlatRows() {
     return filtered.flatMap(p =>
@@ -304,7 +326,7 @@ export default function StockPage() {
         </div>
       )}
 
-      {/* Search + Sort */}
+      {/* Search + Sort + Tag Filter */}
       <div className="mb-4 space-y-3">
         <input
           type="text"
@@ -313,6 +335,47 @@ export default function StockPage() {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+
+        {/* Tag filter chips */}
+        {uniqueStockTags.length > 0 && (
+          <div className="flex gap-2 flex-wrap items-center">
+            <span className="text-xs text-gray-400 dark:text-gray-500">Tag:</span>
+            <button
+              onClick={() => setTagFilter(null)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                tagFilter === null
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+              }`}
+            >
+              All
+            </button>
+            {uniqueStockTags.map(tag => (
+              <button
+                key={tag}
+                onClick={() => setTagFilter(tagFilter === tag ? null : tag)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                  tagFilter === tag
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
+            <button
+              onClick={() => setTagFilter(tagFilter === '__untagged__' ? null : '__untagged__')}
+              className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                tagFilter === '__untagged__'
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              Untagged
+            </button>
+          </div>
+        )}
+
         <div className="flex gap-2 flex-wrap">
           <span className="text-xs text-gray-400">Sort:</span>
           {([
@@ -390,7 +453,14 @@ export default function StockPage() {
                 >
                   <span className="text-lg">📦</span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{p.party}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{p.party}</p>
+                      {p.partyTag && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 font-medium">
+                          {p.partyTag}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
                       {p.lotCount} lot{p.lotCount !== 1 ? 's' : ''}
                       {bulkMode && partySomeSelected && (

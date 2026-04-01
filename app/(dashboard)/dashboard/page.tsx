@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
-interface Stats { greyEntries: number; despatchEntries: number; totalDespatched: number; currentStock: number; parties: number }
+interface Stats { greyEntries: number; greyThan: number; openingThan: number; despatchEntries: number; despatchThan: number; totalDespatched: number; currentStock: number; parties: number; dyeingEntries: number; foldPrograms: number }
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null)
@@ -13,9 +13,11 @@ export default function DashboardPage() {
   }, [])
 
   const cards = [
-    { label: 'Total Grey Entries', value: stats?.greyEntries, color: 'bg-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-700 dark:text-blue-400', href: '' },
-    { label: 'Despatch Entries', value: stats?.despatchEntries, color: 'bg-green-500', bg: 'bg-green-50 dark:bg-green-900/20', text: 'text-green-700 dark:text-green-400', href: '' },
+    { label: 'Grey Inward (Than)', value: stats ? (stats.greyThan + stats.openingThan) : undefined, color: 'bg-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20', text: 'text-blue-700 dark:text-blue-400', href: '/grey' },
+    { label: 'Despatched (Than)', value: stats?.despatchThan, color: 'bg-green-500', bg: 'bg-green-50 dark:bg-green-900/20', text: 'text-green-700 dark:text-green-400', href: '/despatch' },
     { label: 'Balance Stock (Than)', value: stats?.currentStock, color: 'bg-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20', text: 'text-amber-700 dark:text-amber-400', href: '/stock' },
+    { label: 'Dyeing Slips', value: stats?.dyeingEntries, color: 'bg-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20', text: 'text-indigo-700 dark:text-indigo-400', href: '/dyeing' },
+    { label: 'Fold Programs', value: stats?.foldPrograms, color: 'bg-pink-500', bg: 'bg-pink-50 dark:bg-pink-900/20', text: 'text-pink-700 dark:text-pink-400', href: '/fold' },
     { label: 'Active Parties', value: stats?.parties, color: 'bg-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20', text: 'text-purple-700 dark:text-purple-400', href: '' },
   ]
 

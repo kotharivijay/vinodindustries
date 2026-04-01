@@ -17,24 +17,26 @@ function getModel(type: MasterType) {
   return map[type]
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { type: string } }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ type: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!ALLOWED.includes(params.type as MasterType))
+  const { type } = await params
+  if (!ALLOWED.includes(type as MasterType))
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
 
-  const items = await (getModel(params.type as MasterType) as any).findMany({
+  const items = await (getModel(type as MasterType) as any).findMany({
     orderBy: { name: 'asc' },
   })
   return NextResponse.json(items)
 }
 
-export async function POST(req: NextRequest, { params }: { params: { type: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ type: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!ALLOWED.includes(params.type as MasterType))
+  const { type } = await params
+  if (!ALLOWED.includes(type as MasterType))
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
 
   const { name, force } = await req.json()
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: { type: strin
   const savedName = name.replace(/\s+/g, ' ').replace(/["""''`″′]/g, '').trim()
 
   // Load all existing to check for duplicates / similarities
-  const existing = await (getModel(params.type as MasterType) as any).findMany({
+  const existing = await (getModel(type as MasterType) as any).findMany({
     select: { id: true, name: true },
   })
 
@@ -69,7 +71,7 @@ export async function POST(req: NextRequest, { params }: { params: { type: strin
   }
 
   try {
-    const item = await (getModel(params.type as MasterType) as any).create({
+    const item = await (getModel(type as MasterType) as any).create({
       data: { name: savedName },
     })
     return NextResponse.json(item, { status: 201 })
@@ -80,16 +82,37 @@ export async function POST(req: NextRequest, { params }: { params: { type: strin
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { type: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ type: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!ALLOWED.includes(params.type as MasterType))
+  const { type } = await params
+  if (type !== 'parties')
+    return NextResponse.json({ error: 'Tag update only supported for parties' }, { status: 400 })
+
+  const { ids, tag } = await req.json()
+  if (!Array.isArray(ids) || ids.length === 0)
+    return NextResponse.json({ error: 'ids array required' }, { status: 400 })
+
+  await prisma.party.updateMany({
+    where: { id: { in: ids } },
+    data: { tag: tag || null },
+  })
+
+  return NextResponse.json({ ok: true, updated: ids.length })
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ type: string }> }) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { type } = await params
+  if (!ALLOWED.includes(type as MasterType))
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
 
   const { id } = await req.json()
   try {
-    await (getModel(params.type as MasterType) as any).delete({ where: { id } })
+    await (getModel(type as MasterType) as any).delete({ where: { id } })
     return NextResponse.json({ ok: true })
   } catch (e: any) {
     if (e.code === 'P2003')

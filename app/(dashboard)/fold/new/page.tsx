@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import * as XLSX from 'xlsx'
@@ -25,6 +25,7 @@ interface LotStockItem {
 
 interface PartyStock {
   party: string
+  partyTag?: string | null
   totalStock: number
   lots: LotStockItem[]
 }
@@ -32,6 +33,7 @@ interface PartyStock {
 interface Shade {
   id: number
   name: string
+  description?: string | null
 }
 
 interface LotRow {
@@ -218,8 +220,10 @@ export default function NewFoldPage() {
   const { data: qualities } = useSWR<{ id: number; name: string }[]>('/api/masters/qualities', fetcher)
 
   const [foldNo, setFoldNo] = useState('')
+  const [existingFoldNos, setExistingFoldNos] = useState<Set<string>>(new Set())
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
   const [notes, setNotes] = useState('')
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
   const [selectedParties, setSelectedParties] = useState<Set<string>>(new Set())
   const [partyDropOpen, setPartyDropOpen] = useState(false)
   const [partySearch, setPartySearch] = useState('')
@@ -250,6 +254,19 @@ export default function NewFoldPage() {
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Auto-generate fold number
+  useEffect(() => {
+    fetch('/api/fold').then(r => r.json()).then((programs: any[]) => {
+      if (!Array.isArray(programs)) return
+      const nos = new Set(programs.map((p: any) => String(p.foldNo)))
+      setExistingFoldNos(nos)
+      // Find max numeric fold number and set next
+      const nums = programs.map((p: any) => parseInt(p.foldNo)).filter(n => !isNaN(n))
+      const maxNo = nums.length > 0 ? Math.max(...nums) : 0
+      setFoldNo(String(maxNo + 1))
+    }).catch(() => {})
   }, [])
 
   // Detect mobile viewport
@@ -420,6 +437,7 @@ export default function NewFoldPage() {
   async function save() {
     setError('')
     if (!foldNo.trim()) { setError('Fold No is required'); return }
+    if (existingFoldNos.has(foldNo.trim())) { setError(`Fold No ${foldNo} already exists. Use a different number.`); return }
     if (!date) { setError('Date is required'); return }
     for (const b of batches) {
       for (const l of b.lots) {
@@ -454,9 +472,19 @@ export default function NewFoldPage() {
   const allLots = partyFilteredLots
     .filter(l => selectedQualities.size === 0 || selectedQualities.has(l.quality))
 
-  // Get unique party names from stock data for selection
+  // Unique tags from stock data
+  const uniqueFoldTags = useMemo(() => {
+    const tags = new Set<string>()
+    for (const p of stockData?.parties ?? []) {
+      if (p.partyTag && p.lots.some(l => l.foldAvailable > 0)) tags.add(p.partyTag)
+    }
+    return Array.from(tags).sort()
+  }, [stockData])
+
+  // Get unique party names from stock data for selection (filtered by tag)
   const availableParties = (stockData?.parties ?? [])
     .filter(p => p.lots.some(l => l.foldAvailable > 0))
+    .filter(p => !selectedTag || p.partyTag === selectedTag)
     .map(p => p.party)
     .sort()
 
@@ -528,8 +556,42 @@ export default function NewFoldPage() {
         </div>
       </div>
 
-      {/* Party Filter — multi-select dropdown */}
+      {/* Party Filter — tag quick filter + multi-select dropdown */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 mb-4">
+        {/* Tag quick filter */}
+        {uniqueFoldTags.length > 0 && (
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Quick Filter by Tag</label>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={() => { setSelectedTag(null); setSelectedParties(new Set()) }}
+                className={`text-xs px-2.5 py-1.5 rounded-full border transition ${
+                  selectedTag === null
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+                }`}
+              >
+                All
+              </button>
+              {uniqueFoldTags.map(tag => (
+                <button
+                  key={tag}
+                  onClick={() => {
+                    setSelectedTag(selectedTag === tag ? null : tag)
+                    setSelectedParties(new Set())
+                  }}
+                  className={`text-xs px-2.5 py-1.5 rounded-full border transition ${
+                    selectedTag === tag
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Filter by Party</label>
         <div className="relative" ref={partyDropRef}>
           <div
@@ -683,6 +745,8 @@ export default function NewFoldPage() {
                     onChange={(id, name) => {
                       updateBatch(batchIdx, 'shadeId', id)
                       updateBatch(batchIdx, 'shadeName', name)
+                      const shade = (shades ?? []).find(s => s.id === id)
+                      if (shade?.description) updateBatch(batchIdx, 'shadeDescription', shade.description)
                     }}
                     onShadeAdded={shade => mutateShades(prev => [...(prev ?? []), shade].sort((a, b) => a.name.localeCompare(b.name)))}
                   />
@@ -1051,6 +1115,7 @@ function ShadeCombobox({ shadeId, shadeName, shades, onChange, onShadeAdded }: {
               className={`w-full text-left px-3 py-2 text-sm transition ${s.id === shadeId ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 font-medium' : 'text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
             >
               {s.name}
+              {s.description && <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">— {s.description}</span>}
             </button>
           ))}
           {showAdd && (

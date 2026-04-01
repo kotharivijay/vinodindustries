@@ -3,11 +3,12 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const id = parseInt(params.id)
+  const { id: idStr } = await params
+  const id = parseInt(idStr)
   const { name, description, items } = await req.json() as {
     name: string
     description?: string
@@ -46,11 +47,16 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  return PUT(req, { params })
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const id = parseInt(params.id)
+  const { id: idStr } = await params
+  const id = parseInt(idStr)
   await (prisma as any).dyeingProcess.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

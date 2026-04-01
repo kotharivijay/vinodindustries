@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import BackButton from '../../BackButton'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -10,6 +11,7 @@ interface LotInfo {
   lotNo: string
   than: number
   weightPerThan: number
+  quality?: string
 }
 
 interface RecipeItem {
@@ -23,6 +25,7 @@ interface RecipeItem {
 
 interface BatchInfo {
   foldNo: string
+  foldDate?: string
   foldProgramId: number
   batchNo: number
   batchId: number
@@ -32,6 +35,15 @@ interface BatchInfo {
   totalThan: number
   totalWeight: number
   recipe: RecipeItem[]
+}
+
+interface FoldGroup {
+  foldNo: string
+  foldDate: string
+  batches: BatchInfo[]
+  allLots: string[]
+  totalThan: number
+  qualities: string[]
 }
 
 interface ChemicalRow {
@@ -64,11 +76,14 @@ interface SavedEntry {
   lotNo: string
   than: number
   notes: string | null
+  shadeName?: string | null
   foldBatch?: {
     batchNo: number
     foldProgram?: { foldNo: string }
     shade?: { name: string }
   }
+  machine?: { name: string } | null
+  operator?: { name: string } | null
   chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
   lots: { lotNo: string; than: number }[]
 }
@@ -90,8 +105,7 @@ export default function BatchDyeingPage() {
   // Selection
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
   const [batchSearch, setBatchSearch] = useState('')
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [expandedFold, setExpandedFold] = useState<string | null>(null)
 
   // Chemical rows (editable)
   const [chemicals, setChemicals] = useState<ChemicalRow[]>([])
@@ -105,6 +119,10 @@ export default function BatchDyeingPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  // Saved tab search/sort
+  const [savedSearch, setSavedSearch] = useState('')
+  const [savedSort, setSavedSort] = useState<'slip-desc' | 'slip-asc' | 'date-desc' | 'date-asc' | 'party' | 'lot'>('slip-desc')
 
   // Chemical dropdown state
   const [chemDropIdx, setChemDropIdx] = useState<number | null>(null)
@@ -152,16 +170,29 @@ export default function BatchDyeingPage() {
     }
   }, [savedEntries]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false)
+  // Group batches by fold number
+  const foldGroups = useMemo(() => {
+    const q = batchSearch.toLowerCase()
+    const filtered = batches.filter(b => {
+      if (!q) return true
+      const str = `${b.foldNo} ${b.shadeName} ${b.lots.map(l => `${l.lotNo} ${l.quality ?? ''}`).join(' ')}`.toLowerCase()
+      return str.includes(q)
+    })
+    const map = new Map<string, FoldGroup>()
+    for (const b of filtered) {
+      if (!map.has(b.foldNo)) {
+        map.set(b.foldNo, { foldNo: b.foldNo, foldDate: b.foldDate ?? '', batches: [], allLots: [], totalThan: 0, qualities: [] })
+      }
+      const g = map.get(b.foldNo)!
+      g.batches.push(b)
+      for (const l of b.lots) {
+        g.allLots.push(l.lotNo)
+        g.totalThan += l.than
+        if (l.quality && !g.qualities.includes(l.quality)) g.qualities.push(l.quality)
       }
     }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
+    return Array.from(map.values()).sort((a, b) => parseInt(b.foldNo) - parseInt(a.foldNo) || b.foldNo.localeCompare(a.foldNo))
+  }, [batches, batchSearch])
 
   // ─── Selected batch ─────────────────────────────────────────────────────────
 
@@ -173,7 +204,6 @@ export default function BatchDyeingPage() {
   // When batch selected, populate chemicals from recipe
   function selectBatch(batchId: number) {
     setSelectedBatchId(batchId)
-    setDropdownOpen(false)
     setBatchSearch('')
     setError('')
     setSuccess('')
@@ -195,15 +225,6 @@ export default function BatchDyeingPage() {
   }
 
   // ─── Filtered batches for dropdown ──────────────────────────────────────────
-
-  const filteredBatches = useMemo(() => {
-    if (!batchSearch.trim()) return batches
-    const q = batchSearch.toLowerCase()
-    return batches.filter(b => {
-      const label = `${b.foldNo} batch ${b.batchNo} ${b.shadeName} ${b.lots.map(l => l.lotNo).join(' ')}`.toLowerCase()
-      return label.includes(q)
-    })
-  }, [batches, batchSearch])
 
   // ─── Chemical handlers ──────────────────────────────────────────────────────
 
@@ -337,6 +358,12 @@ export default function BatchDyeingPage() {
     if (!slipNo.trim()) { setError('Slip No is required'); return }
     if (!date) { setError('Date is required'); return }
 
+    // Duplicate slip number check
+    const slipNum = parseInt(slipNo)
+    if (savedEntries.some(e => e.slipNo === slipNum)) {
+      setError(`Slip No ${slipNum} already exists. Use a different number.`); return
+    }
+
     setSaving(true)
     setError('')
     setSuccess('')
@@ -375,13 +402,17 @@ export default function BatchDyeingPage() {
       setSuccess(`Dyeing Batch Slip #${saved.slipNo} saved successfully!`)
       setSavedEntries(prev => [saved, ...prev])
 
+      // Remove used batch from dropdown list
+      const usedBatchId = selectedBatch.batchId
+      setBatches(prev => prev.filter(b => b.batchId !== usedBatchId))
+
       // Reset form
       setSelectedBatchId(null)
       setChemicals([])
       setNotes('')
       setSelectedMachineId(null)
       setSelectedOperatorId(null)
-      setSlipNo(String(parseInt(slipNo) + 1))
+      setSlipNo(String(saved.slipNo + 1))
     } catch (err: any) {
       setError(err.message || 'Failed to save')
     } finally {
@@ -407,9 +438,12 @@ export default function BatchDyeingPage() {
     <div className="p-4 max-w-2xl mx-auto pb-24">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Dyeing Slip (Batch)</h1>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Create dyeing slips from fold program batches</p>
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div>
+            <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Dyeing Slip (Batch)</h1>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Create dyeing slips from fold program batches</p>
+          </div>
         </div>
         <Link
           href="/dyeing"
@@ -454,81 +488,115 @@ export default function BatchDyeingPage() {
             </div>
           )}
 
-          {/* Step 1: Select Batch */}
+          {/* Step 1: Select Fold Batch */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
               Step 1 — Select Fold Batch
             </h2>
 
-            {batches.length === 0 ? (
-              <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
-                No fold batches found. Create a fold program first.
-              </p>
-            ) : (
-              <div className="relative" ref={dropdownRef}>
-                <div
-                  className={`flex items-center gap-2 border rounded-lg px-3 py-2.5 bg-white dark:bg-gray-700 cursor-pointer ${
-                    dropdownOpen ? 'ring-2 ring-purple-400 border-purple-400' : 'border-gray-300 dark:border-gray-600'
-                  }`}
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
-                >
-                  <span className={`flex-1 text-sm ${selectedBatch ? 'font-medium text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>
-                    {selectedBatch
-                      ? `Fold ${selectedBatch.foldNo} / Batch ${selectedBatch.batchNo} — ${selectedBatch.shadeName} (${selectedBatch.lots.map(l => l.lotNo).join(', ')}: ${selectedBatch.totalThan} than)`
-                      : 'Select a batch...'}
-                  </span>
-                  {selectedBatch && (
-                    <span className="text-purple-600 text-[10px] font-semibold bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded shrink-0">
-                      {selectedBatch.totalWeight.toFixed(1)} kg
+            {/* Selected batch compact card */}
+            {selectedBatch && (
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-3 mb-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-bold text-green-700 dark:text-green-400">
+                      ✅ Fold {selectedBatch.foldNo} / B{selectedBatch.batchNo}
                     </span>
-                  )}
-                  <span className="text-gray-400 dark:text-gray-500 text-xs shrink-0">&#9660;</span>
+                    <span className="ml-2 text-xs text-green-600 dark:text-green-500">{selectedBatch.shadeName}</span>
+                  </div>
+                  <button onClick={() => { setSelectedBatchId(null); setChemicals([]); setExpandedFold(null) }}
+                    className="text-xs text-green-600 dark:text-green-400 hover:text-green-800 border border-green-300 dark:border-green-700 rounded-lg px-2 py-1">
+                    Change ✏️
+                  </button>
                 </div>
+                <p className="text-xs text-green-600 dark:text-green-500 mt-1">
+                  {selectedBatch.lots.map(l => `${l.lotNo} (${l.than}T)`).join(', ')} · {selectedBatch.totalWeight.toFixed(1)} kg
+                </p>
+              </div>
+            )}
 
-                {dropdownOpen && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg z-20 max-h-72 flex flex-col">
-                    <input
-                      type="text"
-                      autoFocus
-                      className="w-full border-b border-gray-200 dark:border-gray-600 px-3 py-2.5 text-sm focus:outline-none rounded-t-lg dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400"
-                      placeholder="Search by fold no, shade, lot..."
-                      value={batchSearch}
-                      onChange={e => setBatchSearch(e.target.value)}
-                      onClick={e => e.stopPropagation()}
-                    />
-                    <div className="overflow-y-auto max-h-56">
-                      {filteredBatches.map(b => (
-                        <button
-                          key={b.batchId}
-                          type="button"
-                          className={`w-full text-left px-3 py-2.5 text-sm hover:bg-purple-50 dark:hover:bg-purple-900/20 border-b border-gray-50 dark:border-gray-700 ${
-                            selectedBatchId === b.batchId ? 'bg-purple-50 dark:bg-purple-900/20 font-medium' : ''
-                          }`}
-                          onClick={() => selectBatch(b.batchId)}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-gray-800 dark:text-gray-100">
-                              {b.foldNo} / Batch {b.batchNo}
-                            </span>
-                            <span className="text-xs text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded">
-                              {b.totalWeight.toFixed(1)} kg
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs text-gray-500 dark:text-gray-400">{b.shadeName}</span>
-                            <span className="text-xs text-gray-400 dark:text-gray-500">
-                              ({b.lots.map(l => `${l.lotNo}: ${l.than}T`).join(', ')})
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                      {filteredBatches.length === 0 && (
-                        <p className="px-3 py-4 text-xs text-gray-400 dark:text-gray-500 text-center">No matching batches</p>
-                      )}
-                    </div>
+            {/* Fold cards (hidden when batch selected) */}
+            {!selectedBatch && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Search fold no, shade, lot, quality..."
+                  className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={batchSearch}
+                  onChange={e => setBatchSearch(e.target.value)}
+                />
+
+                {foldGroups.length === 0 ? (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
+                    {batches.length === 0 ? 'No fold batches found. Create a fold program first.' : 'No matching batches.'}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {foldGroups.map(fg => {
+                      const isExpanded = expandedFold === fg.foldNo
+                      return (
+                        <div key={fg.foldNo} className="border border-gray-200 dark:border-gray-600 rounded-xl overflow-hidden">
+                          {/* Fold header — clickable */}
+                          <button
+                            type="button"
+                            onClick={() => setExpandedFold(isExpanded ? null : fg.foldNo)}
+                            className="w-full text-left px-4 py-3 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Fold {fg.foldNo}</span>
+                                <span className="text-[10px] text-gray-400">
+                                  {fg.foldDate ? new Date(fg.foldDate).toLocaleDateString('en-IN') : ''}
+                                </span>
+                                <span className="text-[10px] font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded-full">
+                                  {fg.batches.length} pending
+                                </span>
+                              </div>
+                              <span className="text-gray-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
+                            </div>
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 truncate">
+                              {fg.allLots.join(', ')} · {fg.totalThan} than
+                              {fg.qualities.length > 0 && ` · ${fg.qualities.join(', ')}`}
+                            </p>
+                          </button>
+
+                          {/* Expanded — batch cards */}
+                          {isExpanded && (
+                            <div className="p-2 space-y-2 bg-white dark:bg-gray-800">
+                              {fg.batches.map(b => (
+                                <div key={b.batchId}
+                                  className="border border-gray-200 dark:border-gray-600 rounded-xl p-3 hover:border-purple-300 dark:hover:border-purple-600 transition">
+                                  <div className="flex items-center justify-between mb-1.5">
+                                    <div>
+                                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">B{b.batchNo}</span>
+                                      <span className="ml-2 text-xs text-purple-600 dark:text-purple-400 font-medium">{b.shadeName}</span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => selectBatch(b.batchId)}
+                                      className="bg-purple-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-purple-700 transition"
+                                    >
+                                      Select →
+                                    </button>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {b.lots.map((l, li) => (
+                                      <span key={li} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-full font-medium">
+                                        {l.lotNo} ({l.than}T)
+                                      </span>
+                                    ))}
+                                    <span className="text-[10px] text-gray-400 ml-auto">{b.totalWeight.toFixed(1)} kg</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
-              </div>
+              </>
             )}
           </div>
 
@@ -881,73 +949,134 @@ export default function BatchDyeingPage() {
       )}
 
       {/* ─── LIST TAB ─── */}
-      {tab === 'list' && (
-        <div className="space-y-3">
-          {savedEntries.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 text-center">
-              <p className="text-gray-400 dark:text-gray-500 text-sm">No batch dyeing slips saved yet.</p>
+      {tab === 'list' && (() => {
+        const sq = savedSearch.toLowerCase()
+        const filteredSaved = savedEntries.filter(e => {
+          if (!sq) return true
+          const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo ?? '', than: e.than }]
+          const shade = e.foldBatch?.shade?.name ?? e.shadeName ?? ''
+          const party = lots.map((l: any) => l.lotNo).join(' ')
+          const foldNo = e.foldBatch?.foldProgram?.foldNo ?? ''
+          const machName = e.machine?.name ?? ''
+          const opName = e.operator?.name ?? ''
+          const searchStr = `${e.slipNo} ${shade} ${party} ${foldNo} ${machName} ${opName}`.toLowerCase()
+          return searchStr.includes(sq)
+        }).sort((a, b) => {
+          switch (savedSort) {
+            case 'slip-desc': return b.slipNo - a.slipNo
+            case 'slip-asc': return a.slipNo - b.slipNo
+            case 'date-desc': return new Date(b.date).getTime() - new Date(a.date).getTime()
+            case 'date-asc': return new Date(a.date).getTime() - new Date(b.date).getTime()
+            case 'party': {
+              const pa = (a.lots?.[0]?.lotNo ?? a.lotNo ?? '').toLowerCase()
+              const pb = (b.lots?.[0]?.lotNo ?? b.lotNo ?? '').toLowerCase()
+              return pa.localeCompare(pb)
+            }
+            case 'lot': {
+              const la = a.lots?.[0]?.lotNo ?? a.lotNo ?? ''
+              const lb = b.lots?.[0]?.lotNo ?? b.lotNo ?? ''
+              const ma = la.match(/(\d+)$/), mb = lb.match(/(\d+)$/)
+              return (ma ? parseInt(ma[1]) : 0) - (mb ? parseInt(mb[1]) : 0)
+            }
+            default: return 0
+          }
+        })
+
+        return (
+          <div className="space-y-3">
+            {/* Search */}
+            <input
+              type="text"
+              placeholder="Search slip no, lot, shade, fold..."
+              className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              value={savedSearch}
+              onChange={e => setSavedSearch(e.target.value)}
+            />
+            {/* Sort */}
+            <div className="flex gap-1.5 flex-wrap items-center">
+              <span className="text-[10px] text-gray-500">Sort:</span>
+              {([
+                ['slip-desc', 'Slip ↓'], ['slip-asc', 'Slip ↑'], ['date-desc', 'Date ↓'], ['date-asc', 'Date ↑'], ['lot', 'Lot'], ['party', 'Party'],
+              ] as [typeof savedSort, string][]).map(([key, label]) => (
+                <button key={key} onClick={() => setSavedSort(key)}
+                  className={`text-[10px] px-2 py-0.5 rounded border ${savedSort === key ? 'bg-purple-600 border-purple-600 text-white' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                  {label}
+                </button>
+              ))}
+              <span className="text-[10px] text-gray-400 ml-auto">{filteredSaved.length} of {savedEntries.length}</span>
             </div>
-          ) : (
-            savedEntries.map(entry => {
-              const entryTotalCost = entry.chemicals.reduce((s, c) => s + (c.cost ?? 0), 0)
-              const foldNo = entry.foldBatch?.foldProgram?.foldNo ?? '?'
-              const batchNo = entry.foldBatch?.batchNo ?? '?'
-              const shade = entry.foldBatch?.shade?.name ?? ''
-              const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo ?? '', than: entry.than }] as any[]
 
-              return (
-                <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Slip #{entry.slipNo}</span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
-                        {new Date(entry.date).toLocaleDateString('en-IN')}
-                      </span>
+            {filteredSaved.length === 0 ? (
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 text-center">
+                <p className="text-gray-400 dark:text-gray-500 text-sm">{savedEntries.length === 0 ? 'No batch dyeing slips saved yet.' : 'No matching slips found.'}</p>
+              </div>
+            ) : (
+              filteredSaved.map(entry => {
+                const foldNo = entry.foldBatch?.foldProgram?.foldNo ?? '?'
+                const batchNo = entry.foldBatch?.batchNo ?? '?'
+                const shade = entry.foldBatch?.shade?.name ?? entry.shadeName ?? ''
+                const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo ?? '', than: entry.than }] as any[]
+
+                return (
+                  <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <Link href={`/dyeing/${entry.id}`} className="text-sm font-bold text-purple-600 dark:text-purple-400 hover:underline">
+                          Slip {entry.slipNo}
+                        </Link>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          {new Date(entry.date).toLocaleDateString('en-IN')}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {shade && (
+                          <span className="text-[10px] font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full">
+                            {shade}
+                          </span>
+                        )}
+                        <Link href={`/dyeing/${entry.id}/print`} target="_blank" className="text-gray-400 hover:text-purple-400 text-sm">🖨️</Link>
+                      </div>
                     </div>
-                    {shade && (
-                      <span className="text-[10px] font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                        {shade}
-                      </span>
-                    )}
-                  </div>
 
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                    Fold {foldNo} / Batch {batchNo}
-                    {' \u2022 '}
-                    {lots.map((l: any) => `${l.lotNo} (${l.than}T)`).join(', ')}
-                  </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                      Fold {foldNo} / Batch {batchNo}
+                      {entry.machine && ` · ${entry.machine.name}`}
+                      {entry.operator && ` · ${entry.operator.name}`}
+                    </div>
 
-                  {entry.chemicals.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {entry.chemicals.slice(0, 4).map((ch, ci) => (
-                        <span key={ci} className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
-                          {ch.name} {ch.quantity != null ? `${ch.quantity}${ch.unit}` : ''}
+                    <div className="flex flex-wrap gap-1.5 mb-1.5">
+                      {lots.map((l: any, li: number) => (
+                        <span key={li} className="text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+                          {l.lotNo} ({l.than}T)
                         </span>
                       ))}
-                      {entry.chemicals.length > 4 && (
-                        <span className="text-[10px] text-gray-400 dark:text-gray-500">+{entry.chemicals.length - 4} more</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] text-gray-400">{entry.chemicals.length} chemicals</span>
+                      {entry.chemicals.reduce((s, c) => s + (c.cost ?? 0), 0) > 0 && (
+                        <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium">
+                          ₹{entry.chemicals.reduce((s, c) => s + (c.cost ?? 0), 0).toFixed(0)}
+                        </span>
+                      )}
+                      {entry.notes && <span className="text-[10px] text-gray-400 italic truncate max-w-[150px]">{entry.notes}</span>}
+                      {(entry as any).status === 'patchy' && (
+                        <span className="text-[10px] text-red-400 bg-red-900/20 border border-red-800 px-1.5 py-0.5 rounded-full font-medium">Patchy</span>
+                      )}
+                      {(entry as any).status === 're-dyeing' && (
+                        <span className="text-[10px] text-amber-400 bg-amber-900/20 border border-amber-800 px-1.5 py-0.5 rounded-full font-medium">Re-dyeing</span>
+                      )}
+                      {(entry as any).status === 'done' && (
+                        <span className="text-[10px] text-green-400 bg-green-900/20 border border-green-800 px-1.5 py-0.5 rounded-full font-medium">Done</span>
                       )}
                     </div>
-                  )}
-
-                  {entryTotalCost > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-400 dark:text-gray-500">Total Cost</span>
-                      <span className="text-sm font-semibold text-purple-700">
-                        &#8377;{entryTotalCost.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  {entry.notes && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">{entry.notes}</p>
-                  )}
-                </div>
-              )
-            })
-          )}
-        </div>
-      )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )
+      })()}
       {/* Process Popup Modal */}
       {processPopup && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setProcessPopup(null)}>

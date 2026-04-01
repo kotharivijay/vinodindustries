@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
+import BackButton from '../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => { if (!r.ok) throw new Error('Failed'); return r.json() })
 
@@ -139,11 +140,14 @@ export default function KSITallyDashboard() {
     <div className="p-4 md:p-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-start justify-between mb-5 gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
-            🏭 Kothari Synthetic Industries
-          </h1>
-          <p className="text-xs text-gray-400 mt-0.5">Tally Prime — Financial Dashboard</p>
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div>
+            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+              🏭 Kothari Synthetic Industries
+            </h1>
+            <p className="text-xs text-gray-400 mt-0.5">Tally Prime — Financial Dashboard</p>
+          </div>
         </div>
         <div className="flex gap-2 flex-wrap">
           <button

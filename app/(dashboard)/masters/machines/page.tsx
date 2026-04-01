@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import BackButton from '../../BackButton'
 
 interface Machine {
   id: number
@@ -37,8 +38,13 @@ export default function MachinesPage() {
 
   return (
     <div className="p-4 md:p-8">
-      <h1 className="text-2xl font-bold text-white mb-1">Machine Master</h1>
-      <p className="text-sm text-gray-400 mb-6">Manage jet dyeing machines</p>
+      <div className="flex items-center gap-3 mb-6">
+        <BackButton />
+        <div>
+          <h1 className="text-2xl font-bold text-white mb-1">Machine Master</h1>
+          <p className="text-sm text-gray-400">Manage jet dyeing machines</p>
+        </div>
+      </div>
 
       <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
         {loading ? (

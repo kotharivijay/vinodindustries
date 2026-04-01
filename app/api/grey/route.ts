@@ -107,6 +107,7 @@ export async function POST(req: NextRequest) {
       viverNameBill: data.viverNameBill || undefined,
       lrNo: data.lrNo || undefined,
       lotNo: data.lotNo,
+      marka: data.marka?.trim() || undefined,
     },
     include: { party: true, quality: true, transport: true, weaver: true },
   })

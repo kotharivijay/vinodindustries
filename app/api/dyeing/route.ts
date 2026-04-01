@@ -16,6 +16,16 @@ export async function GET() {
         lots: true,
         machine: true,
         operator: true,
+        foldBatch: {
+          include: {
+            foldProgram: { select: { foldNo: true } },
+            shade: { select: { name: true } },
+          },
+        },
+        additions: {
+          include: { chemicals: true, machine: true, operator: true },
+          orderBy: { roundNo: 'asc' },
+        },
       },
       orderBy: { date: 'desc' },
     })

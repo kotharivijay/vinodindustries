@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import BackButton from '../BackButton'
 
 type Status = 'loading' | 'setup' | 'locked' | 'unlocked'
 interface Entity {
@@ -441,7 +442,10 @@ export default function VaultPage() {
       {/* Header */}
       <div className="bg-white border-b border-amber-200 px-4 py-4 md:px-6 sticky top-0 z-10">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl md:text-2xl font-bold text-amber-800">{'\u{1F512}'} Document Vault</h1>
+          <div className="flex items-center gap-3">
+            <BackButton />
+            <h1 className="text-xl md:text-2xl font-bold text-amber-800">{'\u{1F512}'} Document Vault</h1>
+          </div>
           <div className="flex items-center gap-2">
             <span className="hidden sm:inline text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full font-medium">
               {'\u{1F512}'} Auto-locks in {timeLeft || '15:00'}

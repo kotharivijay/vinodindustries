@@ -54,15 +54,16 @@ export async function GET() {
 
   // Fetch party + quality per lot from grey entries
   const greyDetails = await prisma.greyEntry.findMany({
-    select: { lotNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+    select: { lotNo: true, party: { select: { name: true, tag: true } }, quality: { select: { name: true } } },
     distinct: ['lotNo'],
   })
-  const lotDetailMap = new Map(greyDetails.map(g => [g.lotNo.toLowerCase(), { party: g.party.name, quality: g.quality.name }]))
+  const lotDetailMap = new Map(greyDetails.map(g => [g.lotNo.toLowerCase(), { party: g.party.name, quality: g.quality.name, partyTag: g.party.tag }]))
 
   // Build per-lot stock data
   interface LotStock {
     lotNo: string
     party: string
+    partyTag: string | null
     quality: string
     stock: number
     openingBalance: number
@@ -96,6 +97,7 @@ export async function GET() {
     lotStocks.push({
       lotNo: g.lotNo,
       party: detail?.party ?? ob?.party ?? 'Unknown',
+      partyTag: detail?.partyTag ?? null,
       quality: detail?.quality ?? ob?.quality ?? '-',
       stock,
       openingBalance: obThan,
@@ -127,6 +129,7 @@ export async function GET() {
     lotStocks.push({
       lotNo: ob.lotNo,
       party: ob.party || 'Unknown',
+      partyTag: null,
       quality: ob.quality || '-',
       stock,
       openingBalance: ob.openingThan,
@@ -140,15 +143,16 @@ export async function GET() {
   }
 
   // Group by party
-  const partyMap = new Map<string, { party: string; totalStock: number; lotCount: number; lots: LotStock[] }>()
+  const partyMap = new Map<string, { party: string; partyTag: string | null; totalStock: number; lotCount: number; lots: LotStock[] }>()
   for (const lot of lotStocks) {
     const existing = partyMap.get(lot.party)
     if (existing) {
       existing.totalStock += lot.stock
       existing.lotCount++
       existing.lots.push(lot)
+      if (!existing.partyTag && lot.partyTag) existing.partyTag = lot.partyTag
     } else {
-      partyMap.set(lot.party, { party: lot.party, totalStock: lot.stock, lotCount: 1, lots: [lot] })
+      partyMap.set(lot.party, { party: lot.party, partyTag: lot.partyTag, totalStock: lot.stock, lotCount: 1, lots: [lot] })
     }
   }
 

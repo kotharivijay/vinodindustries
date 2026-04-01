@@ -25,7 +25,7 @@ interface ChemicalRow {
 
 interface MachineOption { id: number; number: number; name: string; isActive: boolean }
 interface OperatorOption { id: number; name: string; mobileNo: string | null; isActive: boolean }
-interface ShadeWithRecipe { id: number; name: string; recipeItems: { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }[] }
+interface ShadeWithRecipe { id: number; name: string; description?: string | null; recipeItems: { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }[] }
 
 // ─── Image Zoom Modal ─────────────────────────────────────────────────────────
 
@@ -1833,6 +1833,7 @@ export default function DyeingForm() {
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-900/30 text-gray-200 ${selectedShadeId === s.id ? 'bg-purple-900/30 font-medium' : ''}`}
                             onClick={e => { e.stopPropagation(); applyShadeRecipe(s) }}>
                             <span className="font-medium">{s.name}</span>
+                            {s.description && <span className="text-xs text-gray-400 ml-1">— {s.description}</span>}
                             <span className="text-xs text-gray-500 ml-2">({s.recipeItems.length} chemicals)</span>
                           </button>
                         ))}

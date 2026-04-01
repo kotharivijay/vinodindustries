@@ -42,7 +42,7 @@ function ShadePicker({
 }: {
   batch: FoldBatch
   shades: ShadeOption[]
-  onSave: (batchId: number, shadeId: number | null, shadeName: string | null) => Promise<void>
+  onSave: (batchId: number, shadeId: number | null, shadeName: string | null, shadeDescription: string | null) => Promise<void>
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -63,7 +63,7 @@ function ShadePicker({
 
   async function select(shade: ShadeOption | null) {
     setSaving(true)
-    await onSave(batch.id, shade?.id ?? null, shade ? null : null)
+    await onSave(batch.id, shade?.id ?? null, shade ? null : null, shade?.description ?? null)
     setSaving(false)
     setOpen(false)
     setSearch('')
@@ -72,7 +72,7 @@ function ShadePicker({
   async function useCustom() {
     if (!search.trim()) return
     setSaving(true)
-    await onSave(batch.id, null, search.trim())
+    await onSave(batch.id, null, search.trim(), null)
     setSaving(false)
     setOpen(false)
     setSearch('')
@@ -159,11 +159,11 @@ export default function FoldDetailPage() {
   const { data: shades = [] } = useSWR<ShadeOption[]>('/api/shades', fetcher)
   const [confirming, setConfirming] = useState(false)
 
-  async function updateBatchShade(batchId: number, shadeId: number | null, shadeName: string | null) {
+  async function updateBatchShade(batchId: number, shadeId: number | null, shadeName: string | null, shadeDescription: string | null) {
     await fetch('/api/fold/batch', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ batchId, shadeId, shadeName }),
+      body: JSON.stringify({ batchId, shadeId, shadeName, shadeDescription }),
     })
     mutate()
   }

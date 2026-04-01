@@ -4,6 +4,7 @@ import { useState, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import BackButton from '../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -156,9 +157,12 @@ export default function FinishListPage() {
     <div className="p-4 md:p-8">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Finish / Center</h1>
-          <p className="text-sm text-gray-500 mt-1">{entries.length} entries &middot; {lotSummary.length} lots &middot; {totalThan.toLocaleString()} than</p>
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800">Finish / Center</h1>
+            <p className="text-sm text-gray-500 mt-1">{entries.length} entries &middot; {lotSummary.length} lots &middot; {totalThan.toLocaleString()} than</p>
+          </div>
         </div>
         <Link href="/finish/new" className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 w-fit">
           + New Entry

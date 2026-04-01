@@ -16,6 +16,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         lots: true,
         machine: true,
         operator: true,
+        additions: {
+          include: { chemicals: { include: { chemical: true } }, machine: true, operator: true },
+          orderBy: { roundNo: 'asc' },
+        },
       },
     })
     if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 })

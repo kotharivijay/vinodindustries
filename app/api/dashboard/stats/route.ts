@@ -7,18 +7,22 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const [greyCount, despatchCount, partyCount, greyByLot, despatchByLot] = await Promise.all([
+  const db = prisma as any
+  const [greyCount, despatchCount, partyCount, greyByLot, despatchByLot, greyThanAgg, despatchThanAgg, dyeingCount, foldCount] = await Promise.all([
     prisma.greyEntry.count(),
     prisma.despatchEntry.count(),
     prisma.party.count(),
     prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } }),
     prisma.despatchEntry.groupBy({ by: ['lotNo'], _sum: { than: true } }),
+    prisma.greyEntry.aggregate({ _sum: { than: true } }),
+    prisma.despatchEntry.aggregate({ _sum: { than: true } }),
+    db.dyeingEntry.count().catch(() => 0),
+    db.foldProgram.count().catch(() => 0),
   ])
 
   // Fetch opening balances (carry-forward from last year)
   let obMap = new Map<string, number>()
   try {
-    const db = prisma as any
     const obs = await db.lotOpeningBalance.findMany({ select: { lotNo: true, openingThan: true } })
     obMap = new Map(obs.map((o: any) => [o.lotNo.toLowerCase(), o.openingThan]))
   } catch {}
@@ -55,10 +59,15 @@ export async function GET() {
 
   return NextResponse.json({
     greyEntries: greyCount,
+    greyThan: greyThanAgg._sum.than ?? 0,
     despatchEntries: despatchCount,
+    despatchThan: despatchThanAgg._sum.than ?? 0,
     totalDespatched,
     currentStock,
     parties: partyCount,
+    dyeingEntries: dyeingCount,
+    foldPrograms: foldCount,
     openingBalanceLots: obMap.size,
+    openingThan: Array.from(obMap.values()).reduce((s, v) => s + v, 0),
   })
 }

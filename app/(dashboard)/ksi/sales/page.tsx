@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import * as XLSX from 'xlsx'
 
@@ -54,6 +55,7 @@ function currentFY() {
 }
 
 export default function KSISalesPage() {
+  const router = useRouter()
   const fy = currentFY()
   const [sales, setSales] = useState<Sale[]>([])
   const [total, setTotal] = useState(0)
@@ -161,9 +163,9 @@ export default function KSISalesPage() {
     <div className="p-4 md:p-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-center gap-3 mb-4">
-        <Link href="/ksi/tally" className="text-gray-400 hover:text-gray-200 transition">
+        <button onClick={() => router.back()} className="text-gray-400 hover:text-gray-200 transition">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-        </Link>
+        </button>
         <div className="flex-1">
           <h1 className="text-xl font-bold text-white">Sales Register</h1>
           <p className="text-xs text-gray-400">Kothari Synthetic Industries — All vouchers</p>

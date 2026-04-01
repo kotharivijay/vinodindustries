@@ -43,3 +43,15 @@ Upload the contents of the `out` directory to your hosting provider.
 
 - Placeholder images and contact details need to be replaced with actual content.
 - Products can be added by modifying the `products` array in `app/products/page.tsx`.
+
+
+- in new fold program , select lot--> in search area
+- Go to Balance Stock → tap "☑ Bulk Mark Used" (amber button, top right)
+An amber banner appears explaining bulk mode
+Expand any party → each lot card now has a checkbox on the left
+Check the lots you want to mark → a Than input + optional Note field appears inline
+Enter quantities for each checked lot
+A sticky footer at the bottom shows X lots selected + "Save X lots" button
+Tap Save → all reservations saved in one transaction → page refreshes
+Lots now show amber "Used: X" badge and reduced Avail count
+These lots disappear (or show reduced quantity) in New Fold Program's lot picker

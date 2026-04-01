@@ -21,10 +21,12 @@ const ksiNavGroups = [
       { href: '/despatch', label: 'Despatch', icon: '🚚' },
       { href: '/dyeing', label: 'Dyeing Slip', icon: '🎨' },
       { href: '/dyeing/batch', label: 'Dyeing (Batch)', icon: '🧫' },
+      { href: '/dyeing/pc', label: 'PC Dyeing', icon: '🏭' },
       { href: '/dyeing/color-lab', label: 'Color Lab', icon: '🎨' },
       { href: '/finish', label: 'Finish/Center', icon: '✨' },
       { href: '/stock', label: 'Stock Summary', icon: '📊' },
       { href: '/fold', label: 'Fold Program', icon: '🪡' },
+      { href: '/fold/pc', label: 'PC Fold', icon: '📋' },
     ],
   },
   {
@@ -39,6 +41,7 @@ const ksiNavGroups = [
       { href: '/masters/shades/import', label: 'Shade Import', icon: '📥' },
       { href: '/masters/machines', label: 'Machine Master', icon: '⚙️' },
       { href: '/masters/operators', label: 'Operator Master', icon: '👷' },
+      { href: '/masters/processes', label: 'Process Master', icon: '🔬' },
     ],
   },
   {
@@ -54,6 +57,12 @@ const ksiNavGroups = [
     label: 'Vault',
     links: [
       { href: '/vault', label: 'Document Vault', icon: '🔒' },
+    ],
+  },
+  {
+    label: 'Settings',
+    links: [
+      { href: '/settings', label: 'Print Settings', icon: '🖨️' },
     ],
   },
 ]

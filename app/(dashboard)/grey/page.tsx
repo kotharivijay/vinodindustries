@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import GreyImportModal from './GreyImportModal'
+import BackButton from '../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -193,9 +194,12 @@ export default function GreyListPage() {
     <div className="p-4 md:p-8">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
-        <div>
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div>
           <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Grey Inward</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{entries.length} entries · {stockSummary.length} lots · {lotsInStock} in stock</p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
