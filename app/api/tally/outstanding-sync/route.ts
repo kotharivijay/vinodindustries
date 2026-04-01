@@ -24,6 +24,11 @@ function buildBillXML(tallyCompany: string, report: string): string {
 </REQUESTDESC></EXPORTDATA></BODY></ENVELOPE>`
 }
 
+function decodeHtml(s: string): string {
+  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+}
+
 function parseBills(text: string, type: string): any[] {
   const bills: any[] = []
 
@@ -33,8 +38,8 @@ function parseBills(text: string, type: string): any[] {
     const parts = text.split(/<BILLFIXED>/).slice(1)
     for (const part of parts) {
       const billDate = part.match(/<BILLDATE>([^<]*)<\/BILLDATE>/)?.[1] || ''
-      const billRef = part.match(/<BILLREF>([^<]*)<\/BILLREF>/)?.[1] || ''
-      const partyName = part.match(/<BILLPARTY>([^<]*)<\/BILLPARTY>/)?.[1]?.trim() || ''
+      const billRef = decodeHtml(part.match(/<BILLREF>([^<]*)<\/BILLREF>/)?.[1] || '')
+      const partyName = decodeHtml(part.match(/<BILLPARTY>([^<]*)<\/BILLPARTY>/)?.[1]?.trim() || '')
       const closingBalance = parseFloat((part.match(/<BILLCL>([^<]*)<\/BILLCL>/)?.[1] || '0').replace(/,/g, '')) || 0
       const dueDate = part.match(/<BILLDUE>([^<]*)<\/BILLDUE>/)?.[1] || ''
       const overdueDays = parseInt(part.match(/<BILLOVERDUE>([^<]*)<\/BILLOVERDUE>/)?.[1] || '0') || 0

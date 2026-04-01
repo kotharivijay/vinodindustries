@@ -22,6 +22,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Decode HTML entities from Tally XML
+  function decodeHtml(s: string | null): string | null {
+    if (!s) return null
+    return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+      .replace(/&#x27;/g, "'").replace(/&#x22;/g, '"')
+  }
+
   // Deduplicate within batch (Tally may have duplicate ledger names)
   const now = new Date()
   function parseMobiles(raw: string | null): { m1: string | null; m2: string | null; m3: string | null } {
@@ -33,15 +41,16 @@ export async function POST(req: NextRequest) {
   const seen = new Set<string>()
   const data: any[] = []
   for (const l of ledgers) {
-    const key = `${firmCode}|${(l.name || '').trim()}`
-    if (seen.has(key) || !l.name?.trim()) continue
+    const decoded = decodeHtml(l.name?.trim()) || ''
+    const key = `${firmCode}|${decoded}`
+    if (seen.has(key) || !decoded) continue
     seen.add(key)
     const { m1, m2, m3 } = parseMobiles(l.mobileNos)
     data.push({
       firmCode,
-      name: l.name.trim(),
-      parent: l.parent || null,
-      address: l.address || null,
+      name: decoded,
+      parent: decodeHtml(l.parent) || null,
+      address: decodeHtml(l.address) || null,
       gstNo: l.gstNo || null,
       panNo: l.panNo || null,
       mobileNos: l.mobileNos || null,

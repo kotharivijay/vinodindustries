@@ -80,7 +80,7 @@ export default function VITallyDashboard() {
   const [syncLog, setSyncLog] = useState<string[]>([])
   const [showSyncLog, setShowSyncLog] = useState(false)
 
-  async function handleSync(type: 'ledgers' | 'outstanding' | 'sales' | 'all') {
+  async function handleSync(type: 'ledgers' | 'outstanding' | 'sales' | 'bank' | 'all') {
     setSyncPhase('syncing')
     setSyncLog([])
     setShowSyncLog(true)
@@ -89,10 +89,11 @@ export default function VITallyDashboard() {
       ledgers: '/api/tally/sync-stream?firm=',
       outstanding: '/api/tally/outstanding-sync?firm=',
       sales: '/api/tally/sales-sync?firm=',
+      bank: '/api/tally/bank-sync',
       all: '',
     }
 
-    const toSync = type === 'all' ? ['ledgers', 'outstanding', 'sales'] : [type]
+    const toSync = type === 'all' ? ['ledgers', 'outstanding', 'sales', 'bank'] : [type]
 
     try {
       for (const t of toSync) {
@@ -153,7 +154,7 @@ export default function VITallyDashboard() {
 
       {/* Individual sync buttons */}
       <div className="flex gap-2 mb-4 flex-wrap">
-        {['ledgers', 'outstanding', 'sales'].map(t => (
+        {['ledgers', 'outstanding', 'sales', 'bank'].map(t => (
           <button
             key={t}
             onClick={() => handleSync(t as any)}
