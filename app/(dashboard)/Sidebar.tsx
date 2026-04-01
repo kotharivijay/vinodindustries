@@ -26,6 +26,7 @@ const ksiNavGroups = [
       { href: '/finish', label: 'Finish/Center', icon: '✨' },
       { href: '/stock', label: 'Stock Summary', icon: '📊' },
       { href: '/fold', label: 'Fold Program', icon: '🪡' },
+      { href: '/fold/pc', label: 'PC Fold', icon: '📋' },
     ],
   },
   {
