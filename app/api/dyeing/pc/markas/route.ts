@@ -17,8 +17,11 @@ export async function GET(req: NextRequest) {
     where: {
       partyId: parseInt(partyId),
       OR: [
-        { marka: { not: null, not: '' } },
-        { viverNameBill: { not: null, not: '' } },
+        { marka: { not: '' } },
+        { viverNameBill: { not: '' } },
+      ],
+      NOT: [
+        { marka: null, viverNameBill: null },
       ],
     },
     select: {
