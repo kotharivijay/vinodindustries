@@ -435,6 +435,36 @@ export default function OrdersPage() {
     return <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${cls}`}>{days}d</span>
   }
 
+  // ── Party/Agent Detail Popup ──
+  const [popupData, setPopupData] = useState<any>(null)
+  const [popupLoading, setPopupLoading] = useState(false)
+  const [popupTab, setPopupTab] = useState<'os' | 'bank' | 'perf' | 'sales'>('os')
+  const [popupExpandedParty, setPopupExpandedParty] = useState<number | null>(null)
+
+  async function openPartyPopup(partyName: string) {
+    setPopupLoading(true); setPopupData(null); setPopupTab('os')
+    const res = await fetch(`/api/tally/party-detail?name=${encodeURIComponent(partyName)}`)
+    const d = await res.json()
+    setPopupData(d); setPopupLoading(false)
+  }
+
+  async function openAgentPopup(agentName: string) {
+    setPopupLoading(true); setPopupData(null); setPopupTab('os')
+    const res = await fetch(`/api/tally/party-detail?agent=${encodeURIComponent(agentName)}`)
+    const d = await res.json()
+    setPopupData(d); setPopupLoading(false)
+  }
+
+  async function updateName(oldName: string, newName: string, field: 'party' | 'agent') {
+    await fetch('/api/tally/party-detail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldName, newName, field }),
+    })
+    mutate()
+    if (field === 'party') openPartyPopup(newName)
+  }
+
   // Sort agent bills
   const sortedAgentBills = (bills: any[]) => {
     const sorted = [...bills]
@@ -744,7 +774,7 @@ export default function OrdersPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-white text-sm">{o.partyName}</span>
+                        <span className="font-semibold text-indigo-300 text-sm underline decoration-dotted cursor-pointer hover:text-indigo-200" onClick={e => { e.stopPropagation(); openPartyPopup(o.partyName) }}>{o.partyName}</span>
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${o.status === 'Pending' ? 'bg-orange-900/50 text-orange-400' : 'bg-green-900/50 text-green-400'}`}>{o.status}</span>
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-900/50 text-indigo-400">{o.firmCode}</span>
                       </div>
@@ -759,7 +789,7 @@ export default function OrdersPage() {
                       <div className="text-xs text-gray-500">Bal: {fmtNum(o.balance)}</div>
                     </div>
                   </div>
-                  {o.agentName && <div className="text-[10px] text-gray-500 mt-1">{o.agentName}</div>}
+                  {o.agentName && <div className="text-[10px] text-blue-400 mt-1 underline decoration-dotted cursor-pointer hover:text-blue-300" onClick={e => { e.stopPropagation(); openAgentPopup(o.agentName) }}>{o.agentName}</div>}
                 </div>
 
                 {/* Expanded Detail */}
@@ -787,6 +817,273 @@ export default function OrdersPage() {
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 bg-gray-800 text-gray-400 rounded text-sm disabled:opacity-30">‹</button>
           <span className="text-xs text-gray-500">Page {page} / {totalPages}</span>
           <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 bg-gray-800 text-gray-400 rounded text-sm disabled:opacity-30">›</button>
+        </div>
+      )}
+
+      {/* ── Party/Agent Detail Popup ── */}
+      {(popupData || popupLoading) && (
+        <div className="fixed inset-0 z-50 bg-black/70 overflow-y-auto">
+          <div className="min-h-screen p-3 md:p-6 flex items-start justify-center">
+            <div className="bg-gray-900 rounded-2xl w-full max-w-lg shadow-2xl border border-gray-700 overflow-hidden">
+              {popupLoading ? (
+                <div className="py-16 text-center text-gray-500">Loading...</div>
+              ) : popupData?.mode === 'party' ? (
+                <>
+                  {/* Party Header */}
+                  <div className="p-4 bg-gray-800 border-b border-gray-700">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h2 className="text-base font-bold text-white truncate">{popupData.ledger?.name || popupData.nameMatch?.tallyName || 'Unknown'}</h2>
+                        {popupData.ledger?.parent && <p className="text-xs text-blue-400 mt-0.5">Agent: {popupData.ledger.parent}</p>}
+                        <div className="flex flex-wrap gap-x-3 mt-1 text-xs text-gray-400">
+                          {popupData.ledger?.firmCode && <span className="px-1.5 py-0.5 rounded bg-indigo-900/50 text-indigo-400 text-[10px] font-bold">{popupData.ledger.firmCode}</span>}
+                          {popupData.ledger?.state && <span>📍 {popupData.ledger.state}</span>}
+                          {popupData.ledger?.gstNo && <span>GST: {popupData.ledger.gstNo}</span>}
+                        </div>
+                        {/* Contact */}
+                        <div className="flex flex-wrap gap-2 mt-1.5">
+                          {(popupData.ledger?.mobileNo1 || popupData.contact?.mobile1) && (
+                            <>
+                              <a href={`tel:${popupData.ledger?.mobileNo1 || popupData.contact?.mobile1}`} className="px-2 py-0.5 bg-green-900/40 text-green-400 rounded text-[10px] font-medium">📞 {popupData.ledger?.mobileNo1 || popupData.contact?.mobile1}</a>
+                              <a href={`https://wa.me/91${popupData.ledger?.mobileNo1 || popupData.contact?.mobile1}`} target="_blank" className="px-2 py-0.5 bg-green-900/40 text-green-400 rounded text-[10px] font-medium">💬 WA</a>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <button onClick={() => setPopupData(null)} className="text-gray-400 text-xl hover:text-white ml-2">✕</button>
+                    </div>
+
+                    {/* Name mismatch warning */}
+                    {popupData.nameMatch && !popupData.nameMatch.exact && popupData.nameMatch.tallyName && (
+                      <div className="mt-2 bg-yellow-900/30 border border-yellow-700 rounded-lg p-2">
+                        <div className="text-xs text-yellow-400 font-bold">⚠ Name mismatch with Tally</div>
+                        <div className="text-[10px] text-gray-400 mt-0.5">Tally: &quot;{popupData.nameMatch.tallyName}&quot; ({popupData.nameMatch.score}% match)</div>
+                        <button onClick={() => updateName(popupData.ledger?.name || '', popupData.nameMatch.tallyName, 'party')}
+                          className="mt-1 px-3 py-1 bg-yellow-700 text-white rounded text-[10px] font-medium hover:bg-yellow-600">Update to Tally Name</button>
+                      </div>
+                    )}
+                    {popupData.nameMatch && !popupData.nameMatch.tallyName && (
+                      <div className="mt-2 bg-red-900/30 border border-red-700 rounded-lg p-2">
+                        <div className="text-xs text-red-400 font-bold">⚠ Not found in Tally Ledger</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tabs */}
+                  <div className="flex border-b border-gray-700">
+                    {([['os', '₹ OS'], ['bank', '🏦 Bank'], ['perf', '📊 Perf'], ['sales', '📈 Sales']] as const).map(([key, label]) => (
+                      <button key={key} onClick={() => setPopupTab(key)}
+                        className={`flex-1 py-2 text-xs font-semibold text-center ${popupTab === key ? 'text-indigo-400 border-b-2 border-indigo-400 bg-gray-800' : 'text-gray-500 hover:text-gray-300'}`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="max-h-[60vh] overflow-y-auto">
+                    {/* OS Tab */}
+                    {popupTab === 'os' && (
+                      <div className="p-3">
+                        {popupData.outstanding?.count > 0 ? (
+                          <>
+                            <div className="grid grid-cols-3 gap-2 mb-3">
+                              <div className="bg-gray-800 rounded-lg p-2 text-center"><div className="text-sm font-bold text-red-400">₹{fmtNum(popupData.outstanding.total)}</div><div className="text-[9px] text-gray-500 uppercase">Outstanding</div></div>
+                              <div className="bg-gray-800 rounded-lg p-2 text-center"><div className="text-sm font-bold text-orange-400">{popupData.outstanding.count}</div><div className="text-[9px] text-gray-500 uppercase">Bills</div></div>
+                              <div className="bg-gray-800 rounded-lg p-2 text-center"><div className="text-sm font-bold text-indigo-400">{popupData.outstanding.oldest}d</div><div className="text-[9px] text-gray-500 uppercase">Oldest</div></div>
+                            </div>
+                            {/* Aging */}
+                            {popupData.aging && (
+                              <div className="flex gap-1 mb-3">
+                                {[['0-30d', popupData.aging.d30, 'bg-green-900/50 text-green-400'], ['31-60d', popupData.aging.d60, 'bg-yellow-900/50 text-yellow-400'], ['61-90d', popupData.aging.d90, 'bg-orange-900/50 text-orange-400'], ['90d+', popupData.aging.d90plus, 'bg-red-900/50 text-red-400']].map(([label, amt, cls]) => (
+                                  <div key={label as string} className={`flex-1 rounded p-1.5 text-center ${cls as string}`}>
+                                    <div className="text-[10px] font-bold">₹{fmtNum(Math.round(amt as number))}</div>
+                                    <div className="text-[8px]">{label}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div className="space-y-1">
+                              {popupData.outstanding.bills.map((b: any, i: number) => (
+                                <div key={i} className="flex items-center gap-2 text-xs py-1.5 border-b border-gray-800">
+                                  <span className="text-gray-500 w-16">{b.billDate ? fmtDate(b.billDate) : '-'}</span>
+                                  <span className="text-gray-300 font-mono flex-1 truncate">{b.billRef || '-'}</span>
+                                  <span className="text-white font-bold">₹{fmtNum(b.amount)}</span>
+                                  {ageBadge(b.overdueDays)}
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        ) : <div className="py-8 text-center text-gray-500 text-sm">✓ No outstanding</div>}
+                      </div>
+                    )}
+
+                    {/* Bank Tab */}
+                    {popupTab === 'bank' && (
+                      <div className="p-3">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="bg-gray-800 rounded-lg px-3 py-2"><span className="text-sm font-bold text-indigo-400">{popupData.bankPayments?.avgDays || 0}d</span><span className="text-[9px] text-gray-500 ml-1">avg</span></div>
+                          <span className={`px-2 py-1 rounded text-xs font-bold ${popupData.bankPayments?.payerTag === 'Fast Payer' ? 'bg-green-900/50 text-green-400' : popupData.bankPayments?.payerTag === 'Normal' ? 'bg-green-900/50 text-green-400' : popupData.bankPayments?.payerTag === 'Slow Payer' ? 'bg-orange-900/50 text-orange-400' : 'bg-red-900/50 text-red-400'}`}>
+                            {popupData.bankPayments?.payerTag}
+                          </span>
+                        </div>
+                        {popupData.bankPayments?.payments?.length > 0 ? (
+                          <div className="space-y-1.5">
+                            {popupData.bankPayments.payments.map((p: any, i: number) => (
+                              <div key={i} className="bg-gray-800 rounded-lg p-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-gray-400">{p.date}</span>
+                                  {p.deposit > 0 && <span className="text-xs font-bold text-green-400">₹{fmtNum(Math.round(p.deposit))}</span>}
+                                  {p.paymentDays && <span className="text-[10px] text-indigo-400">{p.paymentDays}d</span>}
+                                </div>
+                                {p.narration && <div className="text-[10px] text-yellow-400 mt-0.5">{p.narration}</div>}
+                                {p.description && <div className="text-[10px] text-gray-500 mt-0.5 truncate">{p.description}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        ) : <div className="py-8 text-center text-gray-500 text-sm">No bank payments found. Sync bank data first.</div>}
+                      </div>
+                    )}
+
+                    {/* Performance Tab */}
+                    {popupTab === 'perf' && (
+                      <div className="p-3">
+                        <div className="grid grid-cols-4 gap-2 mb-3">
+                          <div className="bg-gray-800 rounded-lg p-2 text-center"><div className={`text-lg font-bold ${(popupData.performance?.score || 0) >= 70 ? 'text-green-400' : (popupData.performance?.score || 0) >= 40 ? 'text-yellow-400' : 'text-red-400'}`}>{popupData.performance?.score || 0}</div><div className="text-[8px] text-gray-500 uppercase">Score</div></div>
+                          <div className="bg-gray-800 rounded-lg p-2 text-center"><div className="text-sm font-bold text-indigo-400">₹{fmtNum(Math.round(popupData.performance?.totalSales || 0))}</div><div className="text-[8px] text-gray-500 uppercase">Sales</div></div>
+                          <div className="bg-gray-800 rounded-lg p-2 text-center"><div className="text-sm font-bold text-white">{popupData.performance?.salesCount || 0}</div><div className="text-[8px] text-gray-500 uppercase">Bills</div></div>
+                          <div className="bg-gray-800 rounded-lg p-2 text-center"><div className="text-sm font-bold text-white">₹{fmtNum(popupData.performance?.avgBill || 0)}</div><div className="text-[8px] text-gray-500 uppercase">Avg Bill</div></div>
+                        </div>
+                        {/* Monthly bar chart */}
+                        {popupData.performance?.monthlySales && Object.keys(popupData.performance.monthlySales).length > 0 && (
+                          <div className="mb-3">
+                            <div className="text-[10px] text-gray-500 uppercase font-semibold mb-1">Monthly Sales</div>
+                            {Object.entries(popupData.performance.monthlySales).map(([month, amt]: [string, any]) => {
+                              const maxAmt = Math.max(...Object.values(popupData.performance.monthlySales).map(Number))
+                              const pct = maxAmt > 0 ? (Number(amt) / maxAmt) * 100 : 0
+                              return (
+                                <div key={month} className="flex items-center gap-2 py-0.5">
+                                  <span className="text-[10px] text-gray-500 w-8">{month}</span>
+                                  <div className="flex-1 bg-gray-800 rounded-full h-3"><div className="bg-indigo-500 h-3 rounded-full" style={{ width: `${pct}%` }} /></div>
+                                  <span className="text-[10px] text-gray-400 w-16 text-right">₹{fmtNum(Math.round(Number(amt)))}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                        {/* Top items */}
+                        {popupData.performance?.topItems?.length > 0 && (
+                          <div>
+                            <div className="text-[10px] text-gray-500 uppercase font-semibold mb-1">Top Items</div>
+                            {popupData.performance.topItems.map((t: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between py-1 text-xs border-b border-gray-800">
+                                <span className="text-gray-300 truncate flex-1">{t.item}</span>
+                                <span className="text-white font-bold ml-2">₹{fmtNum(Math.round(t.amount))}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Sales Tab */}
+                    {popupTab === 'sales' && (
+                      <div className="p-3">
+                        {popupData.recentSales?.length > 0 ? (
+                          <div className="space-y-1">
+                            {popupData.recentSales.map((s: any, i: number) => (
+                              <div key={i} className="bg-gray-800 rounded-lg p-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-gray-400">{s.date ? fmtDate(s.date) : '-'}</span>
+                                  <span className="text-xs font-mono text-gray-300">{s.vchNumber}</span>
+                                  <span className="text-xs font-bold text-white">₹{fmtNum(Math.round(s.amount || 0))}</span>
+                                </div>
+                                {s.itemName && <div className="text-[10px] text-gray-500 mt-0.5">{s.itemName}{s.quantity ? ` — ${s.quantity} ${s.unit || ''}` : ''}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        ) : <div className="py-8 text-center text-gray-500 text-sm">No sales found</div>}
+
+                        {/* Orders */}
+                        {popupData.orders?.length > 0 && (
+                          <div className="mt-3 border-t border-gray-700 pt-2">
+                            <div className="text-[10px] text-gray-500 uppercase font-semibold mb-1">Pending Orders</div>
+                            {popupData.orders.filter((o: any) => o.status === 'Pending').map((o: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between py-1 text-xs border-b border-gray-800">
+                                <span className="text-gray-300">#{o.orderNo} — {o.itemName}</span>
+                                <span className="text-orange-400 font-bold">Bal: {fmtNum(o.balance)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : popupData?.mode === 'agent' ? (
+                <>
+                  {/* Agent Header */}
+                  <div className="p-4 bg-gray-800 border-b border-gray-700">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h2 className="text-base font-bold text-white">{popupData.ledger?.name || 'Agent'}</h2>
+                        <div className="flex gap-2 mt-1 text-xs text-gray-400">
+                          <span>Total Parties: {popupData.totalParties}</span>
+                          <span>With OS: {popupData.parties?.length || 0}</span>
+                        </div>
+                        {popupData.ledger?.mobileNo1 && (
+                          <div className="flex gap-2 mt-1">
+                            <a href={`tel:${popupData.ledger.mobileNo1}`} className="px-2 py-0.5 bg-green-900/40 text-green-400 rounded text-[10px] font-medium">📞 {popupData.ledger.mobileNo1}</a>
+                            <a href={`https://wa.me/91${popupData.ledger.mobileNo1}`} target="_blank" className="px-2 py-0.5 bg-green-900/40 text-green-400 rounded text-[10px] font-medium">💬 WA</a>
+                          </div>
+                        )}
+                      </div>
+                      <button onClick={() => setPopupData(null)} className="text-gray-400 text-xl hover:text-white">✕</button>
+                    </div>
+                  </div>
+
+                  {/* Agent KPI */}
+                  <div className="grid grid-cols-3 gap-0 border-b border-gray-700">
+                    <div className="p-3 text-center"><div className="text-lg font-bold text-red-400">₹{fmtNum(popupData.grandTotal)}</div><div className="text-[9px] text-gray-500 uppercase">Grand Total</div></div>
+                    <div className="p-3 text-center"><div className="text-lg font-bold text-orange-400">{popupData.parties?.length || 0}</div><div className="text-[9px] text-gray-500 uppercase">Parties</div></div>
+                    <div className="p-3 text-center"><div className="text-lg font-bold text-indigo-400">{popupData.totalBills}</div><div className="text-[9px] text-gray-500 uppercase">Bills</div></div>
+                  </div>
+
+                  {/* Agent summary */}
+                  <div className="flex gap-2 p-3 border-b border-gray-700 text-xs text-gray-400">
+                    <span>Sales: ₹{fmtNum(Math.round(popupData.totalSales || 0))}</span>
+                    <span>•</span>
+                    <span>{popupData.salesCount || 0} vouchers</span>
+                    {popupData.pendingOrders?.count > 0 && <><span>•</span><span className="text-orange-400">{popupData.pendingOrders.count} pending orders</span></>}
+                  </div>
+
+                  {/* Party accordion */}
+                  <div className="max-h-[50vh] overflow-y-auto">
+                    {popupData.parties?.length > 0 ? popupData.parties.map((p: any, pi: number) => (
+                      <div key={pi} className="border-b border-gray-700">
+                        <div className="flex items-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-gray-800" onClick={() => setPopupExpandedParty(popupExpandedParty === pi ? null : pi)}>
+                          <span className="text-sm text-white flex-1 truncate">{p.name}</span>
+                          <span className="text-sm font-bold text-red-400">₹{fmtNum(Math.round(p.total))}</span>
+                          <span className="text-xs text-gray-500">{p.bills.length}</span>
+                          <span className={`text-gray-500 text-xs transition-transform ${popupExpandedParty === pi ? 'rotate-180' : ''}`}>▼</span>
+                        </div>
+                        {popupExpandedParty === pi && (
+                          <div className="bg-gray-900/50 px-4 pb-2">
+                            {p.bills.map((b: any, bi: number) => (
+                              <div key={bi} className="flex items-center gap-2 py-1 text-xs border-b border-gray-800 last:border-0">
+                                <span className="text-gray-500 w-16">{b.billDate ? fmtDate(b.billDate) : '-'}</span>
+                                <span className="text-gray-300 font-mono flex-1 truncate">{b.billRef || '-'}</span>
+                                <span className="text-white font-bold">₹{fmtNum(b.amount)}</span>
+                                {ageBadge(b.overdueDays)}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )) : <div className="py-8 text-center text-gray-500 text-sm">No outstanding for this agent</div>}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
         </div>
       )}
     </div>
