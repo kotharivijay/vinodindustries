@@ -1489,6 +1489,7 @@ function WeightPopup({ foldId, foldNo, onClose }: { foldId: number; foldNo: stri
 // ─── Saved Folds Tab ─────────────────────────────────────────────────────────
 
 function SavedFoldsTab() {
+  const router = useRouter()
   const { data: programs, isLoading, mutate } = useSWR<FoldProgram[]>('/api/fold/pc', fetcher)
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<'date' | 'foldNo' | 'party' | 'marka'>('date')
@@ -1628,7 +1629,7 @@ function SavedFoldsTab() {
                     >
                       ⚖️ Edit Weights
                     </button>
-                    {p.confirmedAt ? (
+                    {p.confirmedAt && (
                       <div className="text-center">
                         <span className="inline-flex items-center gap-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2.5 py-1 rounded-full font-medium">
                           Confirmed
@@ -1637,23 +1638,28 @@ function SavedFoldsTab() {
                           {new Date(p.confirmedAt).toLocaleDateString('en-IN')}
                         </p>
                       </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => confirmProgram(p.id, p.foldNo)}
-                          disabled={confirming === p.id}
-                          className="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2 py-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 disabled:opacity-50"
-                        >
-                          {confirming === p.id ? '...' : 'Confirm'}
-                        </button>
-                        <button
-                          onClick={() => deleteProgram(p.id, p.foldNo)}
-                          className="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30"
-                        >
-                          Delete
-                        </button>
-                      </>
                     )}
+                    {!p.confirmedAt && (
+                      <button
+                        onClick={() => confirmProgram(p.id, p.foldNo)}
+                        disabled={confirming === p.id}
+                        className="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2 py-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 disabled:opacity-50"
+                      >
+                        {confirming === p.id ? '...' : 'Confirm'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => router.push(`/fold/pc/${p.id}/edit`)}
+                      className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-2 py-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => deleteProgram(p.id, p.foldNo)}
+                      className="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
 

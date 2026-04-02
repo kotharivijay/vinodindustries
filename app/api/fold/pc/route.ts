@@ -5,10 +5,32 @@ import { authOptions } from '@/lib/auth'
 
 const db = prisma as any
 
-// GET /api/fold/pc — list all PC fold programs
-export async function GET() {
+// GET /api/fold/pc — list all PC fold programs, or single fold if ?id=X
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const id = req.nextUrl.searchParams.get('id')
+
+  if (id) {
+    const program = await db.foldProgram.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        batches: {
+          include: {
+            shade: true,
+            lots: {
+              include: { party: true, quality: true },
+            },
+            dyeingEntries: { select: { id: true } },
+          },
+          orderBy: { batchNo: 'asc' },
+        },
+      },
+    })
+    if (!program) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return NextResponse.json(program)
+  }
 
   const programs = await db.foldProgram.findMany({
     where: { isPcJob: true },
@@ -114,6 +136,65 @@ export async function PATCH(req: NextRequest) {
     })
     return NextResponse.json(updated)
   } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
+// PUT /api/fold/pc — update a PC fold program
+export async function PUT(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  const { id, foldNo, date, notes, batches } = body
+
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+  if (!foldNo?.trim()) return NextResponse.json({ error: 'Fold No required' }, { status: 400 })
+  if (!date) return NextResponse.json({ error: 'Date required' }, { status: 400 })
+  if (!batches?.length) return NextResponse.json({ error: 'At least one batch required' }, { status: 400 })
+
+  try {
+    // Delete existing batches (cascade deletes lots)
+    await db.foldBatch.deleteMany({ where: { foldProgramId: parseInt(id) } })
+
+    // Update fold program and recreate batches
+    const updated = await db.foldProgram.update({
+      where: { id: parseInt(id) },
+      data: {
+        foldNo: foldNo.trim(),
+        date: new Date(date),
+        notes: notes?.trim() || null,
+        batches: {
+          create: batches.map((batch: any, idx: number) => ({
+            batchNo: batch.batchNo ?? idx + 1,
+            shadeId: batch.shadeId || undefined,
+            shadeName: batch.shadeName?.trim() || undefined,
+            shadeDescription: batch.shadeDescription?.trim() || undefined,
+            marka: batch.marka?.trim() || undefined,
+            lots: {
+              create: (batch.lots ?? []).map((lot: any) => ({
+                lotNo: lot.lotNo.trim(),
+                partyId: lot.partyId || undefined,
+                qualityId: lot.qualityId || undefined,
+                than: parseInt(lot.than) || 0,
+              })),
+            },
+          })),
+        },
+      },
+      include: {
+        batches: {
+          include: {
+            shade: true,
+            lots: { include: { party: true, quality: true } },
+          },
+          orderBy: { batchNo: 'asc' },
+        },
+      },
+    })
+    return NextResponse.json(updated)
+  } catch (e: any) {
+    if (e.code === 'P2002') return NextResponse.json({ error: 'Fold No already exists' }, { status: 409 })
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
