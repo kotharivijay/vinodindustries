@@ -480,7 +480,13 @@ export default function OutstandingPage() {
     ctx.fillStyle = '#a0a0c0'; ctx.font = '8px Arial'
     ctx.fillText('Please arrange payment at earliest.', 12, fy + 44)
 
-    return new Promise(resolve => canvas.toBlob(b => resolve(b), 'image/jpeg', 0.92))
+    // Use toDataURL for synchronous conversion (preserves user gesture chain)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+    const byteStr = atob(dataUrl.split(',')[1])
+    const ab = new ArrayBuffer(byteStr.length)
+    const ia = new Uint8Array(ab)
+    for (let i = 0; i < byteStr.length; i++) ia[i] = byteStr.charCodeAt(i)
+    return new Blob([ab], { type: 'image/jpeg' })
   }
 
   // Share party OS as multi-page JPG images
@@ -501,13 +507,15 @@ export default function OutstandingPage() {
 
     if (files.length === 0) return
 
-    // Try Web Share API with multiple files
-    if (navigator.share && navigator.canShare?.({ files })) {
-      try { await navigator.share({ files, title: 'Outstanding - ' + partyName }); return } catch {}
-    }
-
-    // Fallback: download each file
+    // Try sharing files one by one (some browsers don't support multiple)
     for (const file of files) {
+      try {
+        if (navigator.share && navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'Outstanding - ' + partyName })
+          continue
+        }
+      } catch {}
+      // Fallback: download
       const url = URL.createObjectURL(file)
       const a = document.createElement('a'); a.href = url; a.download = file.name; a.click()
       URL.revokeObjectURL(url)
