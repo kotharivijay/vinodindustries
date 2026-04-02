@@ -62,7 +62,7 @@ const ksiNavGroups = [
   {
     label: 'Settings',
     links: [
-      { href: '/settings', label: 'Print Settings', icon: '🖨️' },
+      { href: '/settings', label: 'Settings', icon: '⚙️' },
     ],
   },
 ]

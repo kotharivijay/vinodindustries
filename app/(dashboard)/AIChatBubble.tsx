@@ -31,7 +31,17 @@ interface ShadeOption {
 
 export default function AIChatBubble() {
   const [open, setOpen] = useState(false)
-  const [hidden, setHidden] = useState(false)
+  const [hidden, setHidden] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('ai-bubble-hidden') === 'true'
+    }
+    return false
+  })
+
+  // Persist hidden state
+  useEffect(() => {
+    localStorage.setItem('ai-bubble-hidden', String(hidden))
+  }, [hidden])
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -531,19 +541,9 @@ export default function AIChatBubble() {
 
   // ─── Render ───────────────────────────────────────────────────────────
 
-  // Hidden state — show small "show bot" pill at bottom center
+  // Fully hidden — only visible again from Settings page
   if (hidden) {
-    return (
-      <button
-        onClick={() => setHidden(false)}
-        className="fixed bottom-2 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 bg-purple-600/80 rounded-full shadow-lg text-xs text-white flex items-center gap-1.5 hover:bg-purple-700 transition"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-        </svg>
-        Show AI
-      </button>
-    )
+    return null
   }
 
   if (!open) {
