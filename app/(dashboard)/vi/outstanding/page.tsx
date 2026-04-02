@@ -414,7 +414,7 @@ export default function OutstandingPage() {
   const BILLS_PER_PAGE = 15
 
   // Render one page of bills to canvas → return blob
-  function renderBillPage(partyName: string, bills: Bill[], pageNum: number, totalPages: number, grandTotal: number): Promise<Blob | null> {
+  function renderBillPage(partyName: string, bills: Bill[], pageNum: number, totalPages: number, grandTotal: number): Blob {
     const today = new Date().toLocaleDateString('en-IN')
     const pageTotal = bills.reduce((s, b) => s + Math.abs(b.closingBalance), 0)
     const W = 360, rowH = 26, headerH = 75, footerH = 55, padY = 10
@@ -498,11 +498,9 @@ export default function OutstandingPage() {
 
     for (let p = 0; p < totalPages; p++) {
       const pageBills = sorted.slice(p * BILLS_PER_PAGE, (p + 1) * BILLS_PER_PAGE)
-      const blob = await renderBillPage(partyName, pageBills, p + 1, totalPages, grandTotal)
-      if (blob) {
-        const suffix = totalPages > 1 ? `_p${p + 1}` : ''
-        files.push(new File([blob], `os_${partyName.replace(/[^a-zA-Z0-9]/g, '_')}${suffix}.jpg`, { type: 'image/jpeg' }))
-      }
+      const blob = renderBillPage(partyName, pageBills, p + 1, totalPages, grandTotal)
+      const suffix = totalPages > 1 ? `_p${p + 1}` : ''
+      files.push(new File([blob], `os_${partyName.replace(/[^a-zA-Z0-9]/g, '_')}${suffix}.jpg`, { type: 'image/jpeg' }))
     }
 
     if (files.length === 0) return
