@@ -212,6 +212,9 @@ export default function GreyListPage() {
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
             Import from Sheet
           </button>
+          <Link href="/grey/weights" className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700">
+            &#x2696;&#xFE0F; Update Weights
+          </Link>
           <button
             onClick={async () => {
               const typed = prompt('Type RESET to delete all Grey + Despatch data. This cannot be undone.')

@@ -18,6 +18,7 @@ const ksiNavGroups = [
     label: 'Modules',
     links: [
       { href: '/grey', label: 'Grey Inward', icon: '📦' },
+      { href: '/grey/weights', label: 'Update Weights', icon: '⚖️' },
       { href: '/despatch', label: 'Despatch', icon: '🚚' },
       { href: '/dyeing', label: 'Dyeing Slip', icon: '🎨' },
       { href: '/dyeing/batch', label: 'Dyeing (Batch)', icon: '🧫' },
