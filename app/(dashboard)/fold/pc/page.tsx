@@ -1127,7 +1127,7 @@ function NewFoldTab() {
             disabled={saving || batches.length === 0}
             className="w-full py-3 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saving ? 'Creating...' : 'Create Fold'}
+            {saving ? 'Saving...' : 'Save Fold'}
           </button>
         </div>
       )}
