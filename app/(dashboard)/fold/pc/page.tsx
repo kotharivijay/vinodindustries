@@ -81,6 +81,25 @@ interface FoldProgram {
 export default function PcFoldPage() {
   const router = useRouter()
   const [tab, setTab] = useState<'new' | 'saved'>('new')
+  const [weightPopupGlobal, setWeightPopupGlobal] = useState<{ foldId: number; foldNo: string } | null>(null)
+
+  const handleFoldSaved = useCallback((foldId: number, foldNo: string) => {
+    setTab('saved')
+    // Check if lots are missing weight/grayMtr — auto-open popup
+    fetch(`/api/fold/pc/lot-weights?foldId=${foldId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.batches) {
+          const hasMissing = data.batches.some((b: any) =>
+            (b.lots ?? []).some((l: any) => !l.weight || l.grayMtr == null)
+          )
+          if (hasMissing) {
+            setWeightPopupGlobal({ foldId, foldNo })
+          }
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   return (
     <div className="p-4 md:p-8 max-w-3xl">
@@ -119,14 +138,23 @@ export default function PcFoldPage() {
         </button>
       </div>
 
-      {tab === 'new' ? <NewFoldTab /> : <SavedFoldsTab />}
+      {tab === 'new' ? <NewFoldTab onFoldSaved={handleFoldSaved} /> : <SavedFoldsTab />}
+
+      {/* Global Weight Popup (from new fold save) */}
+      {weightPopupGlobal && (
+        <WeightPopup
+          foldId={weightPopupGlobal.foldId}
+          foldNo={weightPopupGlobal.foldNo}
+          onClose={() => setWeightPopupGlobal(null)}
+        />
+      )}
     </div>
   )
 }
 
 // ─── New Fold Tab ────────────────────────────────────────────────────────────
 
-function NewFoldTab() {
+function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: string) => void }) {
   const router = useRouter()
   const { data: parties } = useSWR<PcParty[]>('/api/masters/parties', fetcher)
   const { data: shades, mutate: mutateShades } = useSWR<Shade[]>('/api/shades', fetcher)
@@ -618,12 +646,12 @@ function NewFoldTab() {
       setStep(1)
       setSelectedPartyId(null)
       setSaving(false)
-      window.location.reload()
+      onFoldSaved(data.id, data.foldNo)
     } catch (e: any) {
       setError(e.message)
       setSaving(false)
     }
-  }, [foldNo, date, notes, batches])
+  }, [foldNo, date, notes, batches, onFoldSaved])
 
   // Summary
   const summary = useMemo(() => {
@@ -1135,12 +1163,336 @@ function NewFoldTab() {
   )
 }
 
+// ─── Weight Popup Types ─────────────────────────────────────────────────────
+
+interface WeightBatch {
+  batchNo: number
+  marka: string
+  shade: string
+  lots: WeightLot[]
+}
+
+interface WeightLot {
+  lotNo: string
+  than: number
+  weight: string
+  avgCut: string
+  grayMtr: number | null
+}
+
+// ─── Weight Popup ───────────────────────────────────────────────────────────
+
+function WeightPopup({ foldId, foldNo, onClose }: { foldId: number; foldNo: string; onClose: () => void }) {
+  const [batches, setBatches] = useState<WeightBatch[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  // Fetch lot weights
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/fold/pc/lot-weights?foldId=${foldId}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) { setError(data.error); setLoading(false); return }
+        const mapped: WeightBatch[] = (data.batches ?? []).map((b: any) => ({
+          batchNo: b.batchNo,
+          marka: b.marka,
+          shade: b.shade,
+          lots: (b.lots ?? []).map((l: any) => {
+            const avgCut = l.grayMtr && l.than ? (l.grayMtr / l.than).toFixed(2) : ''
+            return {
+              lotNo: l.lotNo,
+              than: l.than,
+              weight: l.weight ?? '',
+              avgCut,
+              grayMtr: l.grayMtr,
+            }
+          }),
+        }))
+        setBatches(mapped)
+        setLoading(false)
+      })
+      .catch(() => { setError('Failed to load'); setLoading(false) })
+  }, [foldId])
+
+  const updateLot = useCallback((batchIdx: number, lotIdx: number, field: 'weight' | 'avgCut', value: string) => {
+    setBatches(prev => prev.map((b, bi) => {
+      if (bi !== batchIdx) return b
+      return {
+        ...b,
+        lots: b.lots.map((l, li) => {
+          if (li !== lotIdx) return l
+          const updated = { ...l, [field]: value }
+          if (field === 'avgCut') {
+            const cut = parseFloat(value)
+            updated.grayMtr = !isNaN(cut) && cut > 0 ? l.than * cut : null
+          }
+          return updated
+        }),
+      }
+    }))
+  }, [])
+
+  // Quick fill: set value on all EMPTY fields
+  const quickFill = useCallback((field: 'weight' | 'avgCut', value: string) => {
+    setBatches(prev => prev.map(b => ({
+      ...b,
+      lots: b.lots.map(l => {
+        if (l[field] !== '' && l[field] !== null) return l
+        const updated = { ...l, [field]: value }
+        if (field === 'avgCut') {
+          const cut = parseFloat(value)
+          updated.grayMtr = !isNaN(cut) && cut > 0 ? l.than * cut : null
+        }
+        return updated
+      }),
+    })))
+  }, [])
+
+  const handleSave = useCallback(async () => {
+    setError('')
+    setSuccess('')
+    setSaving(true)
+    const allLots = batches.flatMap(b =>
+      b.lots.map(l => ({
+        lotNo: l.lotNo,
+        weight: l.weight || undefined,
+        avgCut: l.avgCut ? parseFloat(l.avgCut) : undefined,
+      }))
+    )
+    try {
+      const res = await fetch('/api/fold/pc/lot-weights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lots: allLots }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? 'Failed to save'); setSaving(false); return }
+      setSuccess(`Saved! ${data.updated} lot(s) updated.`)
+      setSaving(false)
+      setTimeout(() => onClose(), 1200)
+    } catch {
+      setError('Network error')
+      setSaving(false)
+    }
+  }, [batches, onClose])
+
+  // Compute totals
+  const allLots = batches.flatMap(b => b.lots)
+  const totalLots = allLots.length
+  const totalThan = allLots.reduce((s, l) => s + l.than, 0)
+  const totalKg = allLots.reduce((s, l) => {
+    const w = parseFloat(l.weight)
+    const mtr = l.grayMtr
+    if (!isNaN(w) && mtr && mtr > 0) return s + (mtr * w / 1000)
+    return s
+  }, 0)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div
+        className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">
+                ⚖️ Edit Lot Weights — Fold {foldNo}
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Enter weight (gm/mtr) and avg cut for each lot.
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {loading && <p className="text-sm text-gray-400 py-8 text-center">Loading lot data...</p>}
+          {error && (
+            <div className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2 text-sm">
+              {error}
+            </div>
+          )}
+          {success && (
+            <div className="text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-3 py-2 text-sm">
+              {success}
+            </div>
+          )}
+
+          {!loading && !error && (
+            <>
+              {/* Quick fill buttons */}
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Quick fill Weight:</span>
+                {['80', '90', '100'].map(v => (
+                  <button
+                    key={v}
+                    onClick={() => quickFill('weight', v)}
+                    className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-700 px-2.5 py-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                  >
+                    {v}
+                  </button>
+                ))}
+                <span className="text-xs text-gray-300 dark:text-gray-600 mx-1">|</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Avg Cut:</span>
+                {['5.0', '5.5', '6.0'].map(v => (
+                  <button
+                    key={v}
+                    onClick={() => quickFill('avgCut', v)}
+                    className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-700 px-2.5 py-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30"
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+
+              {/* Batch tables */}
+              {batches.map((batch, batchIdx) => {
+                const batchKg = batch.lots.reduce((s, l) => {
+                  const w = parseFloat(l.weight)
+                  const mtr = l.grayMtr
+                  if (!isNaN(w) && mtr && mtr > 0) return s + (mtr * w / 1000)
+                  return s
+                }, 0)
+
+                return (
+                  <div key={batchIdx} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                    {/* Batch header */}
+                    <div className="bg-indigo-50 dark:bg-indigo-900/30 px-3 py-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400">
+                          Batch {batch.batchNo}
+                        </span>
+                        {batch.marka && (
+                          <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded">
+                            {batch.marka}
+                          </span>
+                        )}
+                        {batch.shade && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{batch.shade}</span>
+                        )}
+                      </div>
+                      {batchKg > 0 && (
+                        <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                          {batchKg.toFixed(1)} kg
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                            <th className="text-left px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">Lot</th>
+                            <th className="text-center px-2 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">Than</th>
+                            <th className="text-center px-2 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">Avg Cut</th>
+                            <th className="text-center px-2 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">Mtr</th>
+                            <th className="text-center px-2 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400">gm/mtr</th>
+                            <th className="w-6"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                          {batch.lots.map((lot, lotIdx) => {
+                            const hasBoth = lot.weight !== '' && lot.avgCut !== ''
+                            const mtr = lot.grayMtr
+                            return (
+                              <tr key={lotIdx} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                <td className="px-3 py-1.5 font-mono text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                  {lot.lotNo}
+                                </td>
+                                <td className="text-center px-2 py-1.5 text-gray-600 dark:text-gray-400">
+                                  {lot.than}
+                                </td>
+                                <td className="text-center px-2 py-1.5">
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    className="w-16 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded px-1.5 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800 dark:text-gray-100"
+                                    value={lot.avgCut}
+                                    onChange={e => updateLot(batchIdx, lotIdx, 'avgCut', e.target.value)}
+                                    placeholder="—"
+                                  />
+                                </td>
+                                <td className="text-center px-2 py-1.5 text-gray-500 dark:text-gray-400 font-mono text-xs">
+                                  {mtr != null ? mtr.toFixed(0) : '—'}
+                                </td>
+                                <td className="text-center px-2 py-1.5">
+                                  <input
+                                    type="number"
+                                    className="w-16 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded px-1.5 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800 dark:text-gray-100"
+                                    value={lot.weight}
+                                    onChange={e => updateLot(batchIdx, lotIdx, 'weight', e.target.value)}
+                                    placeholder="—"
+                                  />
+                                </td>
+                                <td className="px-1 text-center">
+                                  {hasBoth ? (
+                                    <span className="text-green-500 text-xs">✅</span>
+                                  ) : (
+                                    <span className="text-yellow-500 text-xs">⚠️</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {totalLots} lots · {totalThan} than · {totalKg.toFixed(1)} kg total
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving || loading}
+              className="flex-1 py-2.5 bg-green-600 text-white text-sm font-semibold rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving...' : 'Save Weights ✅'}
+            </button>
+            <button
+              onClick={onClose}
+              className="px-6 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Saved Folds Tab ─────────────────────────────────────────────────────────
 
 function SavedFoldsTab() {
   const { data: programs, isLoading, mutate } = useSWR<FoldProgram[]>('/api/fold/pc', fetcher)
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<'date' | 'foldNo' | 'party' | 'marka'>('date')
+  const [weightPopup, setWeightPopup] = useState<{ foldId: number; foldNo: string } | null>(null)
 
   const filtered = useMemo(() => {
     if (!programs) return []
@@ -1269,7 +1621,13 @@ function SavedFoldsTab() {
                     <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{totalThan(p)}</p>
                     <p className="text-[10px] text-gray-400">than</p>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                    <button
+                      onClick={() => setWeightPopup({ foldId: p.id, foldNo: p.foldNo })}
+                      className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 px-2 py-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                    >
+                      ⚖️ Edit Weights
+                    </button>
                     {p.confirmedAt ? (
                       <div className="text-center">
                         <span className="inline-flex items-center gap-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2.5 py-1 rounded-full font-medium">
@@ -1344,6 +1702,15 @@ function SavedFoldsTab() {
             )
           })}
         </div>
+      )}
+
+      {/* Weight Popup */}
+      {weightPopup && (
+        <WeightPopup
+          foldId={weightPopup.foldId}
+          foldNo={weightPopup.foldNo}
+          onClose={() => { setWeightPopup(null); mutate() }}
+        />
       )}
     </div>
   )
