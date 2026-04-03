@@ -520,12 +520,24 @@ export default function OutstandingPage() {
     }
   }
 
-  // Share party OS as text
-  function sharePartyText(partyName: string, partyBills: Bill[]) {
+  // Share party OS as text — fetches mobile from API then opens WhatsApp
+  async function sharePartyText(partyName: string, partyBills: Bill[]) {
     const today = new Date().toLocaleDateString('en-IN')
     const totalAmt = partyBills.reduce((s, b) => s + Math.abs(b.closingBalance), 0)
     const lines = partyBills.map((b, i) => `${i + 1}. ${b.billRef || '-'} | ${b.billDate ? fmtDate(b.billDate) : '-'} | ₹${Math.abs(Math.round(b.closingBalance)).toLocaleString('en-IN')} | ${b.overdueDays}d`)
     const msg = `📋 *Outstanding Bills*\n*${partyName}*\nAs on: ${today}\n${'─'.repeat(20)}\n${lines.join('\n')}\n${'─'.repeat(20)}\n*Total: ₹${totalAmt.toLocaleString('en-IN')}*\n\n_Please arrange payment at earliest._`
-    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank')
+
+    // Fetch mobile number
+    let mobile = ''
+    try {
+      const res = await fetch(`/api/tally/party-detail?name=${encodeURIComponent(partyName)}`)
+      const data = await res.json()
+      mobile = data.ledger?.mobileNo1 || data.contact?.mobile1 || ''
+    } catch {}
+
+    const waUrl = mobile
+      ? `https://wa.me/91${mobile.replace(/\D/g, '').slice(-10)}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(waUrl, '_blank')
   }
 }
