@@ -411,7 +411,7 @@ export default function EditPcFoldPage() {
                             }}
                             className="w-full text-left px-3 py-1.5 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-800 dark:text-gray-100"
                           >
-                            {s.name}
+                            {s.name}{s.description && <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">— {s.description}</span>}
                           </button>
                         ))}
                         {creatingShadeForBatch === batchIdx ? (

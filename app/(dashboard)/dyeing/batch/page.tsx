@@ -30,6 +30,7 @@ interface BatchInfo {
   batchNo: number
   batchId: number
   shadeName: string
+  shadeDescription?: string | null
   shadeId: number | null
   lots: LotInfo[]
   totalThan: number
@@ -80,7 +81,7 @@ interface SavedEntry {
   foldBatch?: {
     batchNo: number
     foldProgram?: { foldNo: string }
-    shade?: { name: string }
+    shade?: { name: string; description?: string | null }
   }
   machine?: { name: string } | null
   operator?: { name: string } | null
@@ -502,7 +503,7 @@ export default function BatchDyeingPage() {
                     <span className="text-sm font-bold text-green-700 dark:text-green-400">
                       ✅ Fold {selectedBatch.foldNo} / B{selectedBatch.batchNo}
                     </span>
-                    <span className="ml-2 text-xs text-green-600 dark:text-green-500">{selectedBatch.shadeName}</span>
+                    <span className="ml-2 text-xs text-green-600 dark:text-green-500">{selectedBatch.shadeName}{selectedBatch.shadeDescription && ` — ${selectedBatch.shadeDescription}`}</span>
                   </div>
                   <button onClick={() => { setSelectedBatchId(null); setChemicals([]); setExpandedFold(null) }}
                     className="text-xs text-green-600 dark:text-green-400 hover:text-green-800 border border-green-300 dark:border-green-700 rounded-lg px-2 py-1">
@@ -569,7 +570,7 @@ export default function BatchDyeingPage() {
                                   <div className="flex items-center justify-between mb-1.5">
                                     <div>
                                       <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">B{b.batchNo}</span>
-                                      <span className="ml-2 text-xs text-purple-600 dark:text-purple-400 font-medium">{b.shadeName}</span>
+                                      <span className="ml-2 text-xs text-purple-600 dark:text-purple-400 font-medium">{b.shadeName}{b.shadeDescription && ` — ${b.shadeDescription}`}</span>
                                     </div>
                                     <button
                                       type="button"
@@ -606,7 +607,7 @@ export default function BatchDyeingPage() {
               <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
                 Step 2 — Batch Details
                 <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                  {selectedBatch.shadeName}
+                  {selectedBatch.shadeName}{selectedBatch.shadeDescription && ` — ${selectedBatch.shadeDescription}`}
                 </span>
               </h2>
 
@@ -1015,6 +1016,7 @@ export default function BatchDyeingPage() {
                 const foldNo = entry.foldBatch?.foldProgram?.foldNo ?? '?'
                 const batchNo = entry.foldBatch?.batchNo ?? '?'
                 const shade = entry.foldBatch?.shade?.name ?? entry.shadeName ?? ''
+                const shadeDesc = entry.foldBatch?.shade?.description ?? null
                 const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo ?? '', than: entry.than }] as any[]
 
                 return (
@@ -1031,7 +1033,7 @@ export default function BatchDyeingPage() {
                       <div className="flex items-center gap-2">
                         {shade && (
                           <span className="text-[10px] font-medium bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full">
-                            {shade}
+                            {shade}{shadeDesc && ` — ${shadeDesc}`}
                           </span>
                         )}
                         <Link href={`/dyeing/${entry.id}/print`} target="_blank" className="text-gray-400 hover:text-purple-400 text-sm">🖨️</Link>
