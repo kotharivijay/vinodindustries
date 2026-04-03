@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     const key = `${firmCode}|${decoded}`
     if (seen.has(key) || !decoded) continue
     seen.add(key)
-    const { m1, m2, m3 } = parseMobiles(l.mobileNos)
+    const { m1, m2, m3 } = parseMobiles(decodeHtml(l.mobileNos))
     data.push({
       firmCode,
       name: decoded,
