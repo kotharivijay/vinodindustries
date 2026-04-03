@@ -127,6 +127,7 @@ export async function GET() {
           batchNo: batch.batchNo,
           batchId: batch.id,
           shadeName,
+          shadeDescription: batch.shade?.description ?? null,
           shadeId: batch.shadeId,
           lots,
           totalThan,

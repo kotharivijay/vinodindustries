@@ -11,7 +11,7 @@ interface PartyOption { id: number; name: string; tag?: string | null }
 interface MarkaGroup { marka: string; lots: { lotNo: string; greyThan: number; availableThan: number }[] }
 interface MachineOption { id: number; number?: number; name: string; isActive: boolean }
 interface OperatorOption { id: number; name: string; mobileNo?: string | null; isActive: boolean }
-interface ShadeOption { id: number; name: string }
+interface ShadeOption { id: number; name: string; description?: string | null }
 interface ChemicalMaster { id: number; name: string; unit: string; currentPrice: number | null }
 interface DyeingProcessItem { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }
 interface DyeingProcess { id: number; name: string; description?: string; items: DyeingProcessItem[] }
@@ -39,7 +39,7 @@ interface ConfirmedFoldBatch {
   batchNo: number
   marka: string | null
   shadeName: string | null
-  shade: { name: string } | null
+  shade: { name: string; description?: string | null } | null
   lots: { lotNo: string; than: number; party?: { name: string } | null }[]
   foldNo: string
   foldProgramId: number
@@ -718,7 +718,7 @@ export default function PcDyeingPage() {
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             {(fb.shade?.name ?? fb.shadeName) && (
-                              <span className="text-xs text-gray-400">Shade: {fb.shade?.name ?? fb.shadeName}</span>
+                              <span className="text-xs text-gray-400">Shade: {fb.shade?.name ?? fb.shadeName}{fb.shade?.description && ` — ${fb.shade.description}`}</span>
                             )}
                             <span className="text-xs text-gray-500">
                               {fb.lots.map(l => l.lotNo).join(', ')}
@@ -808,7 +808,7 @@ export default function PcDyeingPage() {
                   <div className="flex gap-2">
                     <select className={`${inp} flex-1`} value={shadeName} onChange={e => setShadeName(e.target.value)}>
                       <option value="">Select shade...</option>
-                      {shades.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                      {shades.map(s => <option key={s.id} value={s.name}>{s.name}{s.description ? ` — ${s.description}` : ''}</option>)}
                     </select>
                     <button onClick={() => setShowNewShade(true)} className={btnSecondary}>+ New</button>
                   </div>

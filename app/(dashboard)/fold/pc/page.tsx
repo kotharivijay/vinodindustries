@@ -61,7 +61,7 @@ interface FoldBatch {
   batchNo: number
   marka?: string
   shadeName?: string
-  shade?: { name: string }
+  shade?: { name: string; description?: string | null }
   lots: FoldBatchLot[]
   dyeingEntries?: { id: number }[]
 }
@@ -948,7 +948,7 @@ function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: str
                               }}
                               className="w-full text-left px-3 py-1.5 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-gray-800 dark:text-gray-100"
                             >
-                              {s.name}
+                              {s.name}{s.description && <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">— {s.description}</span>}
                             </button>
                           ))}
                           {creatingShadeForBatch === batchIdx ? (
@@ -1681,7 +1681,7 @@ function SavedFoldsTab() {
                           ))}
                           {(b.shadeName || b.shade?.name) && (
                             <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {b.shade?.name ?? b.shadeName}
+                              {b.shade?.name ?? b.shadeName}{b.shade?.description && ` — ${b.shade.description}`}
                             </span>
                           )}
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-auto ${

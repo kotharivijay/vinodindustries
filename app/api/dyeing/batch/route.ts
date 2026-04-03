@@ -18,7 +18,7 @@ export async function GET() {
         foldBatch: {
           include: {
             foldProgram: { select: { foldNo: true } },
-            shade: { select: { name: true } },
+            shade: { select: { name: true, description: true } },
           },
         },
         machine: true,
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
         foldBatch: {
           include: {
             foldProgram: { select: { foldNo: true } },
-            shade: { select: { name: true } },
+            shade: { select: { name: true, description: true } },
           },
         },
         machine: true,
