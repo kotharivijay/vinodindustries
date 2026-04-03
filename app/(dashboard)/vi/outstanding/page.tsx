@@ -489,7 +489,16 @@ export default function OutstandingPage() {
     return new Blob([ab], { type: 'image/jpeg' })
   }
 
-  // Share party OS as multi-page JPG images
+  // Fetch party mobile number
+  async function getPartyMobile(partyName: string): Promise<string> {
+    try {
+      const res = await fetch(`/api/tally/party-detail?name=${encodeURIComponent(partyName)}`)
+      const data = await res.json()
+      return data.ledger?.mobileNo1 || data.contact?.mobile1 || ''
+    } catch { return '' }
+  }
+
+  // Share party OS as multi-page JPG images (Option C: text first → then images)
   async function sharePartyImage(partyName: string, partyBills: Bill[], sortKey: string = 'due-old') {
     const sorted = sortBills(partyBills, sortKey)
     const grandTotal = sorted.reduce((s, b) => s + Math.abs(b.closingBalance), 0)
@@ -505,7 +514,20 @@ export default function OutstandingPage() {
 
     if (files.length === 0) return
 
-    // Try sharing files one by one (some browsers don't support multiple)
+    // Fetch mobile number
+    const mobile = await getPartyMobile(partyName)
+    const cleanMobile = mobile.replace(/\D/g, '').slice(-10)
+
+    // Step 1: Open WhatsApp chat with text message (pre-selects contact)
+    if (cleanMobile.length === 10) {
+      const today = new Date().toLocaleDateString('en-IN')
+      const msg = `📋 Outstanding Bills - *${partyName}*\nAs on: ${today}\n*Total: ₹${grandTotal.toLocaleString('en-IN')}* (${sorted.length} bills)\n\n_See attached bill images below._`
+      window.open(`https://wa.me/91${cleanMobile}?text=${encodeURIComponent(msg)}`, '_blank')
+    }
+
+    // Step 2: After short delay, share images (user is already in the chat)
+    await new Promise(r => setTimeout(r, 1500))
+
     for (const file of files) {
       try {
         if (navigator.share && navigator.canShare?.({ files: [file] })) {
