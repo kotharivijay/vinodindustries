@@ -172,6 +172,11 @@ function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: str
 
   // For "add marka to batch" flow
   const [addingMarkaToBatch, setAddingMarkaToBatch] = useState<number | null>(null)
+  const [pickAnotherParty, setPickAnotherParty] = useState(false)
+  const [otherPartySearch, setOtherPartySearch] = useState('')
+  const [otherPartyMarkas, setOtherPartyMarkas] = useState<MarkaGroup[]>([])
+  const [loadingOtherMarkas, setLoadingOtherMarkas] = useState(false)
+  const [otherPartyId, setOtherPartyId] = useState<number | null>(null)
 
   // Batches
   const [batches, setBatches] = useState<BatchRow[]>([])
@@ -270,6 +275,23 @@ function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: str
     setExpandedMarka(null)
   }, [fetchMarkasForParties])
 
+  // Fetch markas for another party (for cross-party marka add)
+  const fetchOtherPartyMarkas = useCallback(async (partyId: number) => {
+    setLoadingOtherMarkas(true)
+    setOtherPartyId(partyId)
+    try {
+      const res = await fetch(`/api/dyeing/pc/markas?partyId=${partyId}`)
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        const partyName = pcParties.find(p => p.id === partyId)?.name ?? ''
+        setOtherPartyMarkas(data.map(mg => ({ ...mg, marka: `${mg.marka} (${partyName})` })))
+      }
+    } catch {
+      setOtherPartyMarkas([])
+    }
+    setLoadingOtherMarkas(false)
+  }, [pcParties])
+
   // Get the original available than for a lot from markas data
   const getOriginalAvailable = useCallback((lotNo: string) => {
     for (const mg of markas) {
@@ -327,6 +349,10 @@ function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: str
       }
     }))
     setAddingMarkaToBatch(null)
+    setPickAnotherParty(false)
+    setOtherPartyMarkas([])
+    setOtherPartySearch('')
+    setOtherPartyId(null)
   }, [batches, usedThanBeforeBatch, selectedPartyId])
 
   // Select a marka -> create new batch with this marka (from step 1)
@@ -1069,41 +1095,124 @@ function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: str
                   {addingMarkaToBatch === batchIdx ? (
                     <div className="border border-dashed border-purple-300 dark:border-purple-700 rounded-lg p-3 space-y-2">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-purple-600 dark:text-purple-400">Select Marka to Add</span>
+                        <span className="text-xs font-medium text-purple-600 dark:text-purple-400">
+                          {pickAnotherParty ? 'Pick from Another Party' : 'Select Marka to Add'}
+                        </span>
                         <button
-                          onClick={() => setAddingMarkaToBatch(null)}
+                          onClick={() => { setAddingMarkaToBatch(null); setPickAnotherParty(false); setOtherPartyMarkas([]); setOtherPartySearch(''); setOtherPartyId(null) }}
                           className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                         >
                           Cancel
                         </button>
                       </div>
-                      {availableMarkasForAdd.length === 0 ? (
-                        <p className="text-xs text-gray-400 text-center py-2">No more markas available</p>
-                      ) : (
-                        <div className="space-y-1">
-                          {availableMarkasForAdd.map(mg => {
-                            const usedBefore = usedThanBeforeBatch(batchIdx)
-                            const totalAvail = mg.lots.reduce((s, l) => {
-                              const used = usedBefore.get(l.lotNo) ?? 0
-                              return s + Math.max(0, l.availableThan - used)
-                            }, 0)
-                            return (
-                              <button
-                                key={mg.marka}
-                                onClick={() => addMarkaToBatch(batchIdx, mg)}
-                                className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border border-gray-200 dark:border-gray-600"
-                              >
-                                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{mg.marka}</span>
-                                <span className="text-xs text-purple-600 dark:text-purple-400 font-semibold">{totalAvail} than</span>
-                              </button>
-                            )
-                          })}
+
+                      {/* Current party markas */}
+                      {!pickAnotherParty && (
+                        <>
+                          {availableMarkasForAdd.length === 0 ? (
+                            <p className="text-xs text-gray-400 text-center py-2">No more markas from selected parties</p>
+                          ) : (
+                            <div className="space-y-1">
+                              {availableMarkasForAdd.map(mg => {
+                                const usedBefore = usedThanBeforeBatch(batchIdx)
+                                const totalAvail = mg.lots.reduce((s, l) => {
+                                  const used = usedBefore.get(l.lotNo) ?? 0
+                                  return s + Math.max(0, l.availableThan - used)
+                                }, 0)
+                                return (
+                                  <button
+                                    key={mg.marka}
+                                    onClick={() => addMarkaToBatch(batchIdx, mg)}
+                                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border border-gray-200 dark:border-gray-600"
+                                  >
+                                    <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{mg.marka}</span>
+                                    <span className="text-xs text-purple-600 dark:text-purple-400 font-semibold">{totalAvail} than</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                          <button
+                            onClick={() => setPickAnotherParty(true)}
+                            className="w-full py-2 border border-dashed border-indigo-300 dark:border-indigo-700 rounded-lg text-xs font-medium text-indigo-500 dark:text-indigo-400 hover:border-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 transition mt-1"
+                          >
+                            Pick from Another Party
+                          </button>
+                        </>
+                      )}
+
+                      {/* Pick from another party */}
+                      {pickAnotherParty && (
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => { setPickAnotherParty(false); setOtherPartyMarkas([]); setOtherPartySearch(''); setOtherPartyId(null) }}
+                            className="text-xs text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300"
+                          >
+                            ← Back to current party markas
+                          </button>
+                          <input
+                            type="text"
+                            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-gray-800 dark:text-gray-100 placeholder-gray-400"
+                            placeholder="Search party..."
+                            value={otherPartySearch}
+                            onChange={e => setOtherPartySearch(e.target.value)}
+                          />
+                          {!otherPartyId && (
+                            <div className="max-h-32 overflow-y-auto space-y-1">
+                              {pcParties
+                                .filter(p => !otherPartySearch || p.name.toLowerCase().includes(otherPartySearch.toLowerCase()))
+                                .filter(p => p.tag === 'Pali PC Job')
+                                .map(p => (
+                                  <button
+                                    key={p.id}
+                                    onClick={() => fetchOtherPartyMarkas(p.id)}
+                                    className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-800 dark:text-gray-100 transition"
+                                  >
+                                    {p.name}
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                          {loadingOtherMarkas && <p className="text-xs text-gray-400 text-center">Loading markas...</p>}
+                          {otherPartyId && !loadingOtherMarkas && (
+                            <div className="space-y-1">
+                              {otherPartyMarkas.filter(mg => {
+                                const batch = batches[batchIdx]
+                                if (batch?.markas.includes(mg.marka)) return false
+                                const usedBefore = usedThanBeforeBatch(batchIdx)
+                                const totalAvail = mg.lots.reduce((s, l) => {
+                                  const used = usedBefore.get(l.lotNo) ?? 0
+                                  return s + Math.max(0, l.availableThan - used)
+                                }, 0)
+                                return totalAvail > 0
+                              }).map(mg => {
+                                const usedBefore = usedThanBeforeBatch(batchIdx)
+                                const totalAvail = mg.lots.reduce((s, l) => {
+                                  const used = usedBefore.get(l.lotNo) ?? 0
+                                  return s + Math.max(0, l.availableThan - used)
+                                }, 0)
+                                return (
+                                  <button
+                                    key={mg.marka}
+                                    onClick={() => addMarkaToBatch(batchIdx, mg)}
+                                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 transition border border-gray-200 dark:border-gray-600"
+                                  >
+                                    <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{mg.marka}</span>
+                                    <span className="text-xs text-purple-600 dark:text-purple-400 font-semibold">{totalAvail} than</span>
+                                  </button>
+                                )
+                              })}
+                              {otherPartyMarkas.length === 0 && (
+                                <p className="text-xs text-gray-400 text-center py-2">No markas found</p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
                   ) : (
                     <button
-                      onClick={() => setAddingMarkaToBatch(batchIdx)}
+                      onClick={() => { setAddingMarkaToBatch(batchIdx); setPickAnotherParty(false) }}
                       className="w-full py-2 border border-dashed border-purple-300 dark:border-purple-700 rounded-lg text-xs font-medium text-purple-500 dark:text-purple-400 hover:border-purple-500 hover:text-purple-700 dark:hover:text-purple-300 transition"
                     >
                       + Add Marka
