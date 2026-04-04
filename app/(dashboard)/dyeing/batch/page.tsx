@@ -36,6 +36,8 @@ interface BatchInfo {
   totalThan: number
   totalWeight: number
   recipe: RecipeItem[]
+  isPcJob?: boolean
+  marka?: string | null
 }
 
 interface FoldGroup {
@@ -78,11 +80,14 @@ interface SavedEntry {
   than: number
   notes: string | null
   shadeName?: string | null
+  isPcJob?: boolean
+  marka?: string | null
   foldBatch?: {
     batchNo: number
-    foldProgram?: { foldNo: string }
+    marka?: string | null
+    foldProgram?: { foldNo: string; isPcJob?: boolean }
     shade?: { name: string; description?: string | null }
-  }
+  } | null
   machine?: { name: string } | null
   operator?: { name: string } | null
   chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
@@ -382,6 +387,8 @@ export default function BatchDyeingPage() {
           lots: selectedBatch.lots.map(l => ({ lotNo: l.lotNo, than: l.than })),
           notes: notes.trim() || null,
           shadeName: selectedBatch.shadeName || null,
+          isPcJob: selectedBatch.isPcJob || false,
+          marka: selectedBatch.marka || null,
           chemicals: chemicals.map(c => ({
             chemicalId: c.chemicalId,
             name: c.name,
@@ -1040,10 +1047,18 @@ export default function BatchDyeingPage() {
                       </div>
                     </div>
 
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">
-                      Fold {foldNo} / Batch {batchNo}
-                      {entry.machine && ` · ${entry.machine.name}`}
-                      {entry.operator && ` · ${entry.operator.name}`}
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5 flex-wrap">
+                      {(entry.isPcJob || entry.foldBatch?.foldProgram?.isPcJob) && (
+                        <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">PC</span>
+                      )}
+                      <span>Fold {foldNo} / Batch {batchNo}</span>
+                      {(entry.marka || entry.foldBatch?.marka) && (
+                        <span className="text-[10px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
+                          {entry.marka || entry.foldBatch?.marka}
+                        </span>
+                      )}
+                      {entry.machine && <span>· {entry.machine.name}</span>}
+                      {entry.operator && <span>· {entry.operator.name}</span>}
                     </div>
 
                     <div className="flex flex-wrap gap-1.5 mb-1.5">

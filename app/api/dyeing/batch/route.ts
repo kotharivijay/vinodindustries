@@ -16,8 +16,10 @@ export async function GET() {
         chemicals: { include: { chemical: true } },
         lots: true,
         foldBatch: {
-          include: {
-            foldProgram: { select: { foldNo: true } },
+          select: {
+            batchNo: true,
+            marka: true,
+            foldProgram: { select: { foldNo: true, isPcJob: true } },
             shade: { select: { name: true, description: true } },
           },
         },
@@ -78,6 +80,8 @@ export async function POST(req: NextRequest) {
         than: totalThan,
         notes: data.notes || null,
         shadeName: data.shadeName || null,
+        isPcJob: data.isPcJob || false,
+        marka: data.marka || null,
         foldBatchId: parseInt(data.foldBatchId),
         machineId: data.machineId ? parseInt(data.machineId) : null,
         operatorId: data.operatorId ? parseInt(data.operatorId) : null,
@@ -89,7 +93,7 @@ export async function POST(req: NextRequest) {
         lots: true,
         foldBatch: {
           include: {
-            foldProgram: { select: { foldNo: true } },
+            foldProgram: { select: { foldNo: true, isPcJob: true } },
             shade: { select: { name: true, description: true } },
           },
         },

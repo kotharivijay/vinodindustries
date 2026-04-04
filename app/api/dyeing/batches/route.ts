@@ -133,6 +133,8 @@ export async function GET() {
           totalThan,
           totalWeight: Math.round(totalWeight * 100) / 100,
           recipe,
+          isPcJob: prog.isPcJob ?? false,
+          marka: batch.marka ?? null,
         })
       }
     }
