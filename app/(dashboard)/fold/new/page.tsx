@@ -813,44 +813,61 @@ export default function NewFoldPage() {
                         </p>
                       )}
 
-                      {/* Desktop inline dropdown */}
+                      {/* Lot search dropdown — fixed on mobile to stay above keyboard */}
                       {isOpen && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg z-20 max-h-60 flex flex-col">
-                          <input
-                            type="text"
-                            autoFocus
-                            className="w-full border-b border-gray-100 dark:border-gray-700 px-3 py-2 text-sm focus:outline-none rounded-t-lg bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400"
-                            placeholder="Search lot, party or quality..."
-                            value={lotSearch}
-                            onChange={e => setLotSearch(e.target.value)}
-                            onClick={e => e.stopPropagation()}
-                          />
-                          <div className="overflow-y-auto max-h-48">
-                            {filteredLots.map(l => (
-                              <button
-                                key={l.lotNo}
-                                type="button"
-                                className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between ${lot.lotNo === l.lotNo ? 'bg-indigo-50 dark:bg-indigo-900/30 font-medium' : ''}`}
-                                onClick={e => { e.stopPropagation(); selectLot(batchIdx, lotIdx, l.lotNo) }}
-                              >
-                                <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
-                                <span className="text-xs text-gray-400">{l.party} · Avail: {l.foldAvailable}</span>
-                              </button>
-                            ))}
-                            {filteredLots.length === 0 && !lotSearch && (
-                              <p className="px-3 py-3 text-xs text-gray-400 text-center">No available lots</p>
-                            )}
-                            {filteredLots.length === 0 && lotSearch && (
+                        <>
+                          {/* Mobile: fixed bottom sheet */}
+                          <div className="sm:hidden fixed inset-0 bg-black/40 z-40" onClick={() => { setLotDropKey(null); setLotSearch('') }} />
+                          <div className={`
+                            sm:absolute sm:left-0 sm:right-0 sm:top-full sm:mt-1 sm:max-h-60 sm:z-20
+                            fixed bottom-0 left-0 right-0 z-50 sm:relative sm:bottom-auto
+                            bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-t-2xl sm:rounded-lg shadow-lg flex flex-col
+                          `}>
+                            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+                              <input
+                                type="text"
+                                autoFocus
+                                className="flex-1 text-sm focus:outline-none bg-transparent text-gray-800 dark:text-gray-100 placeholder-gray-400"
+                                placeholder="Search lot, party or quality..."
+                                value={lotSearch}
+                                onChange={e => setLotSearch(e.target.value)}
+                                onClick={e => e.stopPropagation()}
+                              />
                               <button
                                 type="button"
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-400 flex items-center gap-1"
-                                onClick={e => { e.stopPropagation(); selectLot(batchIdx, lotIdx, lotSearch.trim()) }}
+                                onClick={e => { e.stopPropagation(); setLotDropKey(null); setLotSearch('') }}
+                                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 sm:hidden"
                               >
-                                + Use &quot;{lotSearch.trim()}&quot; manually
+                                Close
                               </button>
-                            )}
+                            </div>
+                            <div className="overflow-y-auto max-h-[40vh] sm:max-h-48">
+                              {filteredLots.map(l => (
+                                <button
+                                  key={l.lotNo}
+                                  type="button"
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between ${lot.lotNo === l.lotNo ? 'bg-indigo-50 dark:bg-indigo-900/30 font-medium' : ''}`}
+                                  onClick={e => { e.stopPropagation(); selectLot(batchIdx, lotIdx, l.lotNo) }}
+                                >
+                                  <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
+                                  <span className="text-xs text-gray-400">{l.party} · Avail: {l.foldAvailable}</span>
+                                </button>
+                              ))}
+                              {filteredLots.length === 0 && !lotSearch && (
+                                <p className="px-3 py-3 text-xs text-gray-400 text-center">No available lots</p>
+                              )}
+                              {filteredLots.length === 0 && lotSearch && (
+                                <button
+                                  type="button"
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-400 flex items-center gap-1"
+                                  onClick={e => { e.stopPropagation(); selectLot(batchIdx, lotIdx, lotSearch.trim()) }}
+                                >
+                                  + Use &quot;{lotSearch.trim()}&quot; manually
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
+                        </>
                       )}
                     </div>
                     <input
