@@ -110,7 +110,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
       <div className="text-center border-b-2 border-black pb-3 mb-4">
         <h1 data-print="header" className="text-xl font-bold tracking-wide">KOTHARI SYNTHETIC INDUSTRIES</h1>
         <p data-print="label" className="text-sm text-gray-600">
-          {showingSpecificRound ? `Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'Dyeing Report (All Rounds)' : 'Dyeing Slip'}
+          {showingSpecificRound ? `Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'Dyeing Report (All Rounds)' : entry.isPcJob ? 'PC Dyeing Slip' : 'Dyeing Slip'}
         </p>
         {isReDyed && !showingSpecificRound && showRound !== 'all' && (
           <p className="text-xs text-red-600 font-medium mt-1">RE-DYED ({totalRounds} rounds)</p>
@@ -135,6 +135,12 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           <span className="font-semibold w-24">Shade:</span>
           <span>{entry.shadeName || '\u2014'}</span>
         </div>
+        {entry.marka && (
+          <div className="flex gap-2">
+            <span className="font-semibold w-24">Marka:</span>
+            <span>{entry.marka}</span>
+          </div>
+        )}
         <div className="flex gap-2">
           <span className="font-semibold w-24">Machine:</span>
           <span>{showingSpecificRound && specificAddition?.machine ? specificAddition.machine.name : (entry.machine?.name || '\u2014')}</span>
