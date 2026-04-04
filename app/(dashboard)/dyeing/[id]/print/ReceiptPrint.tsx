@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 interface SlipData {
   slipNo: number; date: string; partyName: string | null; shadeName: string | null
-  machineName: string | null; operatorName: string | null
+  machineName: string | null; operatorName: string | null; marka?: string | null; isPcJob?: boolean
   lots: { lotNo: string; than: number }[]; totalThan: number
   chemicals: { name: string; quantity: number | null; unit: string; processTag: string | null }[]
   isReDyed: boolean; totalRounds: number
@@ -72,7 +72,7 @@ export default function ReceiptPrint({ data }: { data: SlipData }) {
 
     html += `<div class="center bold big">KOTHARI SYNTHETIC</div>`
     html += `<div class="center bold big">INDUSTRIES</div>`
-    const subtitle = showingSpecific ? `Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'All Rounds Report' : 'DYEING SLIP'
+    const subtitle = showingSpecific ? `Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'All Rounds Report' : data.isPcJob ? 'PC DYEING SLIP' : 'DYEING SLIP'
     html += `<div class="center" style="margin:2px 0">${subtitle}</div>`
     if (data.isReDyed && !showingSpecific && showRound !== 'all') {
       html += `<div class="center bold" style="color:red">RE-DYED (${data.totalRounds} rounds)</div>`
@@ -82,6 +82,7 @@ export default function ReceiptPrint({ data }: { data: SlipData }) {
     // Info grid
     html += `<div class="row"><span>Slip: <b>${data.slipNo}</b></span><span>Date: <b>${data.date}</b></span></div>`
     if (data.partyName) html += `<div>Party: <b>${data.partyName}</b></div>`
+    if (data.marka) html += `<div>Marka: <b>${data.marka}</b></div>`
     if (data.shadeName) html += `<div>Shade: <b>${data.shadeName}</b></div>`
     if (machine || operator) {
       html += `<div class="row">`

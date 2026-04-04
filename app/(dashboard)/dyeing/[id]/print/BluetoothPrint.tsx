@@ -11,7 +11,8 @@ interface SlipAddition {
 }
 interface SlipData {
   slipNo: number; date: string; partyName: string | null; shadeName: string | null
-  machineName: string | null; operatorName: string | null
+  machineName: string | null; operatorName: string | null; marka?: string | null
+  isPcJob?: boolean
   lots: SlipLot[]; totalThan: number; chemicals: SlipChemical[]
   isReDyed: boolean; totalRounds: number; additions: SlipAddition[]
   roundParam: string | number
@@ -37,13 +38,14 @@ function buildReceipt(data: SlipData, width = 32): string {
   lines.push(div('='))
   lines.push(center('KOTHARI SYNTHETIC'))
   lines.push(center('INDUSTRIES'))
-  const subtitle = showingSpecific ? `Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'Dyeing Report (All Rounds)' : 'Dyeing Slip'
+  const subtitle = showingSpecific ? `Re-Dye Slip (Round ${showRound})` : showRound === 'all' ? 'Dyeing Report (All Rounds)' : data.isPcJob ? 'PC Dyeing Slip' : 'Dyeing Slip'
   lines.push(center(subtitle))
   if (data.isReDyed && !showingSpecific && showRound !== 'all') lines.push(center(`RE-DYED (${data.totalRounds} rounds)`))
   lines.push(div('='))
 
   lines.push(kv(`Slip: ${data.slipNo}`, `Date: ${data.date}`))
   if (data.partyName) lines.push(`Party: ${data.partyName}`)
+  if (data.marka) lines.push(`Marka: ${data.marka}`)
   if (data.shadeName) lines.push(`Shade: ${data.shadeName}`)
 
   const machine = showingSpecific && specificAdd?.machineName ? specificAdd.machineName : data.machineName
