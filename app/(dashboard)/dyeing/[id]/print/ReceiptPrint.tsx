@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 interface SlipData {
   slipNo: number; date: string; partyName: string | null; shadeName: string | null
+  shadeDescription?: string | null; qualityName?: string | null
   machineName: string | null; operatorName: string | null; marka?: string | null; isPcJob?: boolean
   lots: { lotNo: string; than: number }[]; totalThan: number
   chemicals: { name: string; quantity: number | null; unit: string; processTag: string | null }[]
@@ -82,8 +83,9 @@ export default function ReceiptPrint({ data }: { data: SlipData }) {
     // Info grid
     html += `<div class="row"><span>Slip: <b>${data.slipNo}</b></span><span>Date: <b>${data.date}</b></span></div>`
     if (data.partyName) html += `<div>Party: <b>${data.partyName}</b></div>`
+    if (data.qualityName) html += `<div>Quality: <b>${data.qualityName}</b></div>`
     if (data.marka) html += `<div>Marka: <b>${data.marka}</b></div>`
-    if (data.shadeName) html += `<div>Shade: <b>${data.shadeName}</b></div>`
+    if (data.shadeName) html += `<div>Shade: <b>${data.shadeName}</b>${data.shadeDescription ? ` &mdash; ${data.shadeDescription}` : ''}</div>`
     if (machine || operator) {
       html += `<div class="row">`
       if (machine) html += `<span>M: ${machine}</span>`

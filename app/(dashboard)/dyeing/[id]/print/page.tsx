@@ -30,15 +30,24 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
 
   if (!entry) notFound()
 
-  // Enrich with party name
+  // Enrich with party name + quality
   const lotNos = entry.lots?.length ? entry.lots.map((l: any) => l.lotNo) : [entry.lotNo]
   const greyWithParty = await prisma.greyEntry.findMany({
     where: { lotNo: { in: lotNos } },
-    select: { lotNo: true, party: { select: { name: true } } },
+    select: { lotNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
     distinct: ['lotNo'],
   })
   const partyNames = [...new Set(greyWithParty.map(g => g.party.name))]
   const partyName = partyNames.join(', ') || null
+  const qualityNames = [...new Set(greyWithParty.map(g => g.quality?.name).filter(Boolean))]
+  const qualityName = qualityNames.join(', ') || null
+
+  // Get shade description
+  let shadeDescription: string | null = null
+  if (entry.shadeName) {
+    const shade = await db.shade.findFirst({ where: { name: entry.shadeName }, select: { description: true } })
+    shadeDescription = shade?.description || null
+  }
 
   const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo, than: entry.than }]
   const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
@@ -133,8 +142,14 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
         </div>
         <div className="flex gap-2">
           <span className="font-semibold w-24">Shade:</span>
-          <span>{entry.shadeName || '\u2014'}</span>
+          <span>{entry.shadeName || '\u2014'}{shadeDescription ? ` \u2014 ${shadeDescription}` : ''}</span>
         </div>
+        {qualityName && (
+          <div className="flex gap-2">
+            <span className="font-semibold w-24">Quality:</span>
+            <span>{qualityName}</span>
+          </div>
+        )}
         {entry.marka && (
           <div className="flex gap-2">
             <span className="font-semibold w-24">Marka:</span>
@@ -349,6 +364,8 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           date: new Date(entry.date).toLocaleDateString('en-IN'),
           partyName,
           shadeName: entry.shadeName || null,
+          shadeDescription: shadeDescription || null,
+          qualityName: qualityName || null,
           marka: entry.marka || null,
           isPcJob: entry.isPcJob || false,
           machineName: entry.machine?.name || null,
@@ -370,6 +387,8 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           date: new Date(entry.date).toLocaleDateString('en-IN'),
           partyName,
           shadeName: entry.shadeName || null,
+          shadeDescription: shadeDescription || null,
+          qualityName: qualityName || null,
           marka: entry.marka || null,
           isPcJob: entry.isPcJob || false,
           machineName: entry.machine?.name || null,

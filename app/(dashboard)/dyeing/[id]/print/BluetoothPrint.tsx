@@ -11,6 +11,7 @@ interface SlipAddition {
 }
 interface SlipData {
   slipNo: number; date: string; partyName: string | null; shadeName: string | null
+  shadeDescription?: string | null; qualityName?: string | null
   machineName: string | null; operatorName: string | null; marka?: string | null
   isPcJob?: boolean
   lots: SlipLot[]; totalThan: number; chemicals: SlipChemical[]
@@ -45,8 +46,9 @@ function buildReceipt(data: SlipData, width = 32): string {
 
   lines.push(kv(`Slip: ${data.slipNo}`, `Date: ${data.date}`))
   if (data.partyName) lines.push(`Party: ${data.partyName}`)
+  if (data.qualityName) lines.push(`Quality: ${data.qualityName}`)
   if (data.marka) lines.push(`Marka: ${data.marka}`)
-  if (data.shadeName) lines.push(`Shade: ${data.shadeName}`)
+  if (data.shadeName) lines.push(`Shade: ${data.shadeName}${data.shadeDescription ? ` - ${data.shadeDescription}` : ''}`)
 
   const machine = showingSpecific && specificAdd?.machineName ? specificAdd.machineName : data.machineName
   const operator = showingSpecific && specificAdd?.operatorName ? specificAdd.operatorName : data.operatorName
@@ -157,7 +159,9 @@ function buildHydroReceipt(data: SlipData, width = 32): string {
 
   lines.push(kv(`Slip: ${data.slipNo}`, `${data.date}`))
   if (data.partyName) lines.push(`Party: ${data.partyName}`)
+  if (data.qualityName) lines.push(`Quality: ${data.qualityName}`)
   if (data.marka) lines.push(`Marka: ${data.marka}`)
+  if (data.shadeName) lines.push(`Shade: ${data.shadeName}${data.shadeDescription ? ` - ${data.shadeDescription}` : ''}`)
   if (data.machineName) lines.push(`Machine: ${data.machineName}`)
   lines.push(div())
 
@@ -305,7 +309,9 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       // Info
       await printer.printKeyValue(`Slip: ${data.slipNo}`, `${data.date}`, W)
       if (data.partyName) await printer.printText(`Party: ${data.partyName}`)
-      if (data.shadeName) await printer.printText(`Shade: ${data.shadeName}`)
+      if (data.qualityName) await printer.printText(`Quality: ${data.qualityName}`)
+      if (data.marka) await printer.printText(`Marka: ${data.marka}`)
+      if (data.shadeName) await printer.printText(`Shade: ${data.shadeName}${data.shadeDescription ? ` - ${data.shadeDescription}` : ''}`)
       const machine = showingSpecific && specificAdd?.machineName ? specificAdd.machineName : data.machineName
       const operator = showingSpecific && specificAdd?.operatorName ? specificAdd.operatorName : data.operatorName
       if (machine || operator) {
@@ -460,7 +466,9 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
 
       await printer.printKeyValue(`Slip: ${data.slipNo}`, `${data.date}`, W)
       if (data.partyName) await printer.printText(`Party: ${data.partyName}`)
+      if (data.qualityName) await printer.printText(`Quality: ${data.qualityName}`)
       if (data.marka) await printer.printText(`Marka: ${data.marka}`)
+      if (data.shadeName) await printer.printText(`Shade: ${data.shadeName}${data.shadeDescription ? ` - ${data.shadeDescription}` : ''}`)
       if (data.machineName) await printer.printText(`Machine: ${data.machineName}`)
       await printer.printDivider('-', W)
 
