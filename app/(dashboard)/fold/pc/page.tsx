@@ -1661,7 +1661,7 @@ function SavedFoldsTab() {
                       Edit
                     </button>
                     <button
-                      onClick={() => router.push('/dyeing/pc')}
+                      onClick={() => router.push('/dyeing/batch')}
                       className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-2 py-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30"
                     >
                       🎨 Dyeing(Batch)
