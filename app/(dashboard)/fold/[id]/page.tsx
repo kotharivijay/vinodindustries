@@ -328,17 +328,7 @@ export default function FoldDetailPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {program.status === 'draft' && (
-            <button
-              onClick={confirmProgram}
-              disabled={confirming}
-              className="bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50"
-            >
-              ✓ Confirm
-            </button>
-          )}
-          <button onClick={exportXLSX} className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-emerald-700">⬇ XLSX</button>
-          <button onClick={exportPDF} className="bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-700">⬇ PDF</button>
+          <button onClick={() => router.push('/dyeing/batch')} className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-purple-700">🎨 Dyeing(Batch)</button>
           <button onClick={printProgram} className="bg-gray-700 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-800">🖨 Print</button>
         </div>
       </div>
