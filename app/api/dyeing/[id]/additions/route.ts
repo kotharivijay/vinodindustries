@@ -143,12 +143,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
   })
 
-  // If re-dye, update entry status and increment totalRounds
+  // Increment totalRounds for both addition and re-dye
   if (type === 're-dye') {
     await db.dyeingEntry.update({
       where: { id: entryId },
       data: {
         status: 'patchy',
+        totalRounds: { increment: 1 },
+      },
+    })
+  } else {
+    await db.dyeingEntry.update({
+      where: { id: entryId },
+      data: {
         totalRounds: { increment: 1 },
       },
     })

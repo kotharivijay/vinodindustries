@@ -320,7 +320,7 @@ export default function DyeingListPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'addition',
-          roundNo: (additionEntry.totalRounds ?? 1),
+          roundNo: (additionEntry.totalRounds ?? 1) + 1,
           reason: addReason || null,
           chemicals,
         }),
@@ -807,8 +807,9 @@ export default function DyeingListPage() {
                               {e.additions.map((a: any) => {
                                 const ac = a.chemicals?.reduce((s: number, x: any) => s + (x.cost ?? 0), 0) ?? 0
                                 return (
-                                  <div key={a.id} className="text-[10px] text-gray-500">
-                                    Round {a.roundNo}: +{a.chemicals?.length ?? 0} chemicals{ac > 0 ? ` \u00b7 +\u20B9${ac.toFixed(0)}` : ''} {a.type === 're-dye' && a.defectType ? `(${a.defectType})` : ''}
+                                  <div key={a.id} className="text-[10px] text-gray-500 flex items-center gap-1">
+                                    <span>Round {a.roundNo}: +{a.chemicals?.length ?? 0} chemicals{ac > 0 ? ` \u00b7 +\u20B9${ac.toFixed(0)}` : ''} {a.type === 're-dye' && a.defectType ? `(${a.defectType})` : ''}</span>
+                                    <Link href={`/dyeing/${e.id}/print?round=${a.roundNo}`} target="_blank" className="text-purple-400 hover:text-purple-300 underline">🖨️</Link>
                                   </div>
                                 )
                               })}
