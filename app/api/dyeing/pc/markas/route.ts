@@ -106,6 +106,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Filter out lots with 0 available, then filter out markas with no lots
   const result = Array.from(markaMap.values())
+    .map(mg => ({ ...mg, lots: mg.lots.filter(l => l.availableThan > 0) }))
+    .filter(mg => mg.lots.length > 0)
   return NextResponse.json(result)
 }

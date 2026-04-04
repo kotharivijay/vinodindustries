@@ -822,7 +822,10 @@ function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: str
                       {isExpanded && (
                         <div className="border-t border-gray-200 dark:border-gray-600">
                           <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {mg.lots.map(l => {
+                            {mg.lots.filter(l => {
+                              const used = usedThanMap.get(l.lotNo) ?? 0
+                              return l.availableThan - used > 0
+                            }).map(l => {
                               const used = usedThanMap.get(l.lotNo) ?? 0
                               const remaining = Math.max(0, l.availableThan - used)
                               return (
@@ -830,7 +833,7 @@ function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: str
                                   <span className="text-gray-700 dark:text-gray-300 font-mono">{l.lotNo}</span>
                                   <div className="flex items-center gap-3">
                                     <span className="text-xs text-gray-400">Grey: {l.greyThan}</span>
-                                    <span className={`font-semibold ${remaining > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
+                                    <span className="font-semibold text-green-600 dark:text-green-400">
                                       {remaining} avail
                                     </span>
                                   </div>
