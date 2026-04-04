@@ -136,17 +136,57 @@ function buildReceipt(data: SlipData, width = 32): string {
   return lines.join('\n')
 }
 
+// Build hydro slip (no chemicals/shade/process — just lots)
+function buildHydroReceipt(data: SlipData, width = 32): string {
+  const lines: string[] = []
+  const div = (ch = '-') => ch.repeat(width)
+  const kv = (k: string, v: string) => {
+    const pad = width - k.length - v.length
+    return k + ' '.repeat(Math.max(1, pad)) + v
+  }
+  const center = (t: string) => {
+    const pad = Math.max(0, Math.floor((width - t.length) / 2))
+    return ' '.repeat(pad) + t
+  }
+
+  lines.push(div('='))
+  lines.push(center('KOTHARI SYNTHETIC'))
+  lines.push(center('INDUSTRIES'))
+  lines.push(center('HYDRO SLIP'))
+  lines.push(div('='))
+
+  lines.push(kv(`Slip: ${data.slipNo}`, `${data.date}`))
+  if (data.partyName) lines.push(`Party: ${data.partyName}`)
+  if (data.marka) lines.push(`Marka: ${data.marka}`)
+  if (data.machineName) lines.push(`Machine: ${data.machineName}`)
+  lines.push(div())
+
+  // Lots
+  lines.push('LOTS:')
+  for (const l of data.lots) lines.push(kv(`  ${l.lotNo}`, `${l.than} than`))
+  if (data.lots.length > 1) lines.push(kv('  Total:', `${data.totalThan} than`))
+
+  lines.push(div('='))
+  lines.push('')
+  lines.push('Operator: ____________')
+  lines.push('')
+  lines.push('')
+
+  return lines.join('\n')
+}
+
 type PrintState = 'idle' | 'printing' | 'done' | 'error'
 
 export default function BluetoothPrint({ data }: { data: SlipData }) {
   const [state, setState] = useState<PrintState>('idle')
   const [error, setError] = useState('')
+  const [hydroMode, setHydroMode] = useState(false)
 
   // Method 1: RawBT intent (most reliable for Android)
-  const printViaRawBT = useCallback(() => {
+  const printViaRawBT = useCallback((hydro = false) => {
     setState('printing')
     try {
-      const receipt = buildReceipt(data)
+      const receipt = hydro ? buildHydroReceipt(data) : buildReceipt(data)
       const encoded = btoa(unescape(encodeURIComponent(receipt)))
       window.location.href = `rawbt:base64,${encoded}`
       setState('done')
@@ -158,10 +198,10 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
   }, [data])
 
   // Method 2: Share API (send to any print app)
-  const printViaShare = useCallback(async () => {
+  const printViaShare = useCallback(async (hydro = false) => {
     setState('printing')
     try {
-      const receipt = buildReceipt(data)
+      const receipt = hydro ? buildHydroReceipt(data) : buildReceipt(data)
       if (navigator.share) {
         await navigator.share({
           title: `Dyeing Slip ${data.slipNo}`,
@@ -361,10 +401,10 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       await printer.printCentered('================================')
       await printer.feedLines(1)
       await printer.cut()
-      // Don't fully disconnect — keep for next print
       await printer.disconnect()
 
       setState('done')
+      setHydroMode(false)
       setTimeout(() => setState('idle'), 3000)
     } catch (err: any) {
       if (err.message?.includes('cancel')) { setState('idle'); return }
@@ -373,6 +413,86 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       printerRef.current = null
       setError(err.message || 'Bluetooth error')
       setState('error')
+    }
+  }, [data])
+
+  // Hydro Bluetooth print — lots only, no chemicals
+  const printHydroViaBluetooth = useCallback(async () => {
+    setState('printing')
+    setHydroMode(true)
+    setError('')
+    try {
+      const { BluetoothPrinter } = await import('@/lib/bluetooth-printer')
+      if (!printerRef.current) printerRef.current = new BluetoothPrinter()
+      const printer = printerRef.current
+
+      const savedId = (() => { try { return localStorage.getItem('bt-printer-id') || undefined } catch { return undefined } })()
+      await printer.smartConnect(savedId)
+      const deviceId = printer.getDeviceId()
+      const deviceName = printer.getDeviceName()
+      if (deviceId) try { localStorage.setItem('bt-printer-id', deviceId) } catch {}
+      if (deviceName) try { localStorage.setItem('bt-printer-name', deviceName) } catch {}
+
+      await printer.init()
+
+      let lotSize = 14
+      let boldLotNo = true
+      let paperW = 80
+      try {
+        const raw = localStorage.getItem('print-settings')
+        if (raw) {
+          const ps = JSON.parse(raw)
+          lotSize = ps.lotFontSize || 14
+          if (ps.boldLotNo !== undefined) boldLotNo = ps.boldLotNo
+          if (ps.paperWidth) paperW = ps.paperWidth
+        }
+      } catch {}
+
+      const toEscSize = (px: number): 'normal' | 'double-height' | 'large' =>
+        px >= 28 ? 'large' : px >= 20 ? 'double-height' : 'normal'
+      const W = paperW === 58 ? 32 : 48
+
+      await printer.printCentered('================================', false, 'normal')
+      await printer.printCentered('KOTHARI SYNTHETIC', true, 'double-height')
+      await printer.printCentered('INDUSTRIES', true, 'double-height')
+      await printer.printCentered('HYDRO SLIP', true, 'normal')
+      await printer.printCentered('================================', false, 'normal')
+
+      await printer.printKeyValue(`Slip: ${data.slipNo}`, `${data.date}`, W)
+      if (data.partyName) await printer.printText(`Party: ${data.partyName}`)
+      if (data.marka) await printer.printText(`Marka: ${data.marka}`)
+      if (data.machineName) await printer.printText(`Machine: ${data.machineName}`)
+      await printer.printDivider('-', W)
+
+      const lotEsc = toEscSize(lotSize)
+      const lotW = lotEsc === 'large' ? Math.floor(W / 2) : W
+      await printer.printLine('LOTS:', true, lotEsc)
+      for (const l of data.lots) {
+        const thanStr = `${l.than} than`
+        const lotPad = Math.max(1, lotW - 2 - l.lotNo.length - thanStr.length)
+        await printer.printLine(`  ${l.lotNo}${' '.repeat(lotPad)}${thanStr}`, boldLotNo, lotEsc)
+      }
+      if (data.lots.length > 1) {
+        const totalStr = `${data.totalThan} than`
+        const totalPad = Math.max(1, lotW - 2 - 6 - totalStr.length)
+        await printer.printLine(`  Total:${' '.repeat(totalPad)}${totalStr}`, boldLotNo, lotEsc)
+      }
+
+      await printer.printCentered('================================')
+      await printer.feedLines(1)
+      await printer.cut()
+      await printer.disconnect()
+
+      setState('done')
+      setHydroMode(false)
+      setTimeout(() => setState('idle'), 3000)
+    } catch (err: any) {
+      if (err.message?.includes('cancel')) { setState('idle'); setHydroMode(false); return }
+      try { localStorage.removeItem('bt-printer-id') } catch {}
+      printerRef.current = null
+      setError(err.message || 'Bluetooth error')
+      setState('error')
+      setHydroMode(false)
     }
   }, [data])
 
@@ -416,13 +536,33 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
         </button>
       )}
 
+      {/* Hydro Print: Bluetooth */}
+      {btAvailable !== false && (
+        <button
+          onClick={printHydroViaBluetooth}
+          className="bg-cyan-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-cyan-700 flex items-center gap-2"
+        >
+          <span>💧</span>
+          <span>Hydro Print</span>
+        </button>
+      )}
+
       {/* Fallback: RawBT */}
       <button
-        onClick={printViaRawBT}
+        onClick={() => printViaRawBT(false)}
         className="bg-green-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-2"
       >
         <span>🖨️</span>
         <span>RawBT Print</span>
+      </button>
+
+      {/* Hydro via RawBT */}
+      <button
+        onClick={() => printViaRawBT(true)}
+        className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 flex items-center gap-2"
+      >
+        <span>💧</span>
+        <span>RawBT Hydro</span>
       </button>
 
       {/* Share/Copy */}
