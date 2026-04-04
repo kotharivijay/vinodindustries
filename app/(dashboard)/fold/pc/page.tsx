@@ -761,7 +761,13 @@ function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: str
               )}
 
               <div className="space-y-2">
-                {markas.map(mg => {
+                {markas.filter(mg => {
+                  const totalAvail = mg.lots.reduce((s, l) => {
+                    const used = usedThanMap.get(l.lotNo) ?? 0
+                    return s + Math.max(0, l.availableThan - used)
+                  }, 0)
+                  return totalAvail > 0
+                }).map(mg => {
                   const isExpanded = expandedMarka === mg.marka
                   const totalAvail = mg.lots.reduce((s, l) => {
                     const used = usedThanMap.get(l.lotNo) ?? 0
@@ -1653,6 +1659,12 @@ function SavedFoldsTab() {
                       className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-2 py-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30"
                     >
                       Edit
+                    </button>
+                    <button
+                      onClick={() => router.push('/dyeing/pc')}
+                      className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-2 py-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30"
+                    >
+                      🎨 Dyeing(Batch)
                     </button>
                     <button
                       onClick={() => deleteProgram(p.id, p.foldNo)}
