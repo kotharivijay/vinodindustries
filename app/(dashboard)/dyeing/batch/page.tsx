@@ -166,13 +166,22 @@ export default function BatchDyeingPage() {
     }).catch(() => setLoading(false))
   }, [])
 
-  // Auto-generate next slip number
+  // Auto-generate next slip number from ALL dyeing entries (shared series)
   useEffect(() => {
-    if (savedEntries.length > 0 && !slipNo) {
-      const maxSlip = Math.max(...savedEntries.map(e => e.slipNo), 0)
-      setSlipNo(String(maxSlip + 1))
-    } else if (!slipNo) {
-      setSlipNo('1')
+    if (!slipNo) {
+      // Fetch max slip no from all dyeing entries
+      fetch('/api/dyeing?maxSlipNo=true')
+        .then(r => r.json())
+        .then(data => {
+          const maxFromAll = data.maxSlipNo ?? 0
+          const maxFromSaved = savedEntries.length > 0 ? Math.max(...savedEntries.map(e => e.slipNo), 0) : 0
+          const nextSlip = Math.max(maxFromAll, maxFromSaved) + 1
+          setSlipNo(String(nextSlip))
+        })
+        .catch(() => {
+          const maxSlip = savedEntries.length > 0 ? Math.max(...savedEntries.map(e => e.slipNo), 0) : 0
+          setSlipNo(String(maxSlip + 1))
+        })
     }
   }, [savedEntries]) // eslint-disable-line react-hooks/exhaustive-deps
 
