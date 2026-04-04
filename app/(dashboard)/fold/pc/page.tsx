@@ -1785,31 +1785,6 @@ function SavedFoldsTab() {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                     <button
-                      onClick={() => setWeightPopup({ foldId: p.id, foldNo: p.foldNo })}
-                      className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 px-2 py-1 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30"
-                    >
-                      ⚖️ Edit Weights
-                    </button>
-                    {p.confirmedAt && (
-                      <div className="text-center">
-                        <span className="inline-flex items-center gap-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2.5 py-1 rounded-full font-medium">
-                          Confirmed
-                        </span>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          {new Date(p.confirmedAt).toLocaleDateString('en-IN')}
-                        </p>
-                      </div>
-                    )}
-                    {!p.confirmedAt && (
-                      <button
-                        onClick={() => confirmProgram(p.id, p.foldNo)}
-                        disabled={confirming === p.id}
-                        className="text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2 py-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 disabled:opacity-50"
-                      >
-                        {confirming === p.id ? '...' : 'Confirm'}
-                      </button>
-                    )}
-                    <button
                       onClick={() => router.push(`/fold/pc/${p.id}/edit`)}
                       className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-2 py-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30"
                     >
