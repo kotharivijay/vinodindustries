@@ -229,10 +229,10 @@ export default function BatchDyeingPage() {
         batch.recipe.map(r => ({
           chemicalId: r.chemicalId,
           name: r.chemicalName,
-          quantity: String(r.calculatedQty),
+          quantity: r.calculatedQty.toFixed(3),
           unit: r.unit,
           rate: r.rate != null ? String(r.rate) : '',
-          cost: r.rate != null ? Math.round(r.calculatedQty * r.rate * 100) / 100 : null,
+          cost: r.rate != null ? Math.round(r.calculatedQty * r.rate * 1000) / 1000 : null,
           processTag: 'shade',
         }))
       )

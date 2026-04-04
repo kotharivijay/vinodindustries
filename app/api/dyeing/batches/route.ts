@@ -113,7 +113,7 @@ export async function GET() {
             chemicalName: ri.chemical.name,
             unit: ri.chemical.unit,
             qtyPer100kg: ri.quantity,
-            calculatedQty: Math.round(calcQty * 100) / 100,
+            calculatedQty: Math.round(calcQty * 1000) / 1000,
             rate: ri.chemical.currentPrice,
           }
         }) ?? []
