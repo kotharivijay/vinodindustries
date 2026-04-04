@@ -515,7 +515,7 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
   if (state === 'error') {
     return (
       <div className="inline-flex flex-col items-center gap-2">
-        <button onClick={printViaRawBT} className="bg-red-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-red-700">
+        <button onClick={() => printViaRawBT(false)} className="bg-red-600 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-red-700">
           Retry
         </button>
         <span className="text-xs text-red-500 max-w-[200px] text-center">{error}</span>
