@@ -421,33 +421,76 @@ function NewFoldTab({ onFoldSaved }: { onFoldSaved: (foldId: number, foldNo: str
 
       // Auto-fill with same markas from previous batch
       for (const markaName of prevBatch.markas) {
+        // Try find marka in loaded markas state (current parties)
         const mg = markas.find(m => m.marka === markaName)
-        if (!mg) continue
 
-        const lotsForMarka = mg.lots
-          .filter(l => {
-            const used = freshUsedMap.get(l.lotNo) ?? 0
-            return l.availableThan - used > 0
-          })
-          .map(l => {
-            const used = freshUsedMap.get(l.lotNo) ?? 0
-            const remaining = l.availableThan - used
-            const prevThan = prevThanMap.get(l.lotNo) ?? remaining
-            const autoFill = Math.min(prevThan, remaining)
-            return {
-              lotNo: l.lotNo,
-              than: String(autoFill),
-              partyId: selectedPartyId,
-              qualityId: null,
-              locked: false,
-              maxAvailable: remaining,
-              marka: markaName,
-            }
-          })
+        if (mg) {
+          // Marka found in current party data — use lot data from API
+          const lotsForMarka = mg.lots
+            .filter(l => {
+              const used = freshUsedMap.get(l.lotNo) ?? 0
+              return l.availableThan - used > 0
+            })
+            .map(l => {
+              const used = freshUsedMap.get(l.lotNo) ?? 0
+              const remaining = l.availableThan - used
+              const prevThan = prevThanMap.get(l.lotNo) ?? remaining
+              const autoFill = Math.min(prevThan, remaining)
+              return {
+                lotNo: l.lotNo,
+                than: String(autoFill),
+                partyId: selectedPartyId,
+                qualityId: null,
+                locked: false,
+                maxAvailable: remaining,
+                marka: markaName,
+              }
+            })
 
-        if (lotsForMarka.length > 0) {
-          newMarkas.push(markaName)
-          newLots.push(...lotsForMarka)
+          if (lotsForMarka.length > 0) {
+            newMarkas.push(markaName)
+            newLots.push(...lotsForMarka)
+          }
+        } else {
+          // Marka from another party (added via "Pick from Another Party")
+          // Use lot data from the previous batch itself
+          const prevLotsForMarka = prevBatch.lots.filter(l => l.marka === markaName)
+          const lotsForMarka = prevLotsForMarka
+            .filter(l => {
+              const origAvail = l.maxAvailable + (freshUsedMap.get(l.lotNo) ?? 0) - (freshUsedMap.get(l.lotNo) ?? 0)
+              // Recalculate: original available was maxAvailable at time of creation
+              // Total used across all batches
+              const totalUsed = freshUsedMap.get(l.lotNo) ?? 0
+              // Original total = maxAvailable when first added + used before that batch
+              // Simplify: just check if there's remaining
+              const remaining = l.maxAvailable + (parseInt(l.than) || 0) - (parseInt(l.than) || 0)
+              // Better approach: get original available from first occurrence
+              return true // include all, filter below
+            })
+            .map(l => {
+              // For cross-party lots, estimate remaining from prev batch info
+              // maxAvailable was the remaining at time of prev batch creation
+              // After locking prevThan, remaining = maxAvailable - prevThan (if locked)
+              const prevThan = prevThanMap.get(l.lotNo) ?? 0
+              const remaining = Math.max(0, l.maxAvailable - prevThan)
+              if (remaining <= 0) return null
+              const autoFill = Math.min(prevThan || remaining, remaining)
+              return {
+                lotNo: l.lotNo,
+                than: String(autoFill),
+                partyId: l.partyId,
+                qualityId: l.qualityId,
+                locked: false,
+                maxAvailable: remaining,
+                marka: markaName,
+              }
+            })
+            .filter((l): l is LotRow => l !== null)
+
+          if (lotsForMarka.length > 0) {
+            newMarkas.push(markaName)
+            newLots.push(...lotsForMarka)
+          }
         }
       }
     }
