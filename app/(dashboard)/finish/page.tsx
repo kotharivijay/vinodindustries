@@ -18,140 +18,211 @@ function useDebounce(delay = 200) {
   return [debounced, set] as const
 }
 
-interface FinishEntry {
-  id: number
-  date: string
-  slipNo: number
+/* ── Types ────────────────────────────────────────────────────────── */
+
+interface StockLot {
   lotNo: string
   than: number
-  meter: number | null
-  mandi: number | null
-  notes: string | null
-  chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
-  lots?: { id: number; lotNo: string; than: number; meter: number | null }[]
-  partyName?: string | null
+  party: string | null
+  quality: string | null
+  weight: string | null
 }
 
-interface LotSummaryRow {
-  lotNo: string
-  entries: number
+interface StockEntry {
+  id: number
+  slipNo: number
+  date: string
+  shadeName: string | null
+  shadeDescription: string | null
+  marka: string | null
+  isPcJob: boolean
+  machineName: string | null
+  operatorName: string | null
+  lots: StockLot[]
   totalThan: number
-  slips: string
-  lastDate: string
 }
 
-type SortField = 'date' | 'slipNo' | 'lotNo' | 'than' | 'party'
+type SortField = 'date' | 'slipNo' | 'lotNo' | 'party' | 'quality' | 'than'
 type SortDir = 'asc' | 'desc'
-type Tab = 'entries' | 'summary' | 'stock'
+type Tab = 'register' | 'report'
 
-function getValue(e: FinishEntry, f: SortField): string | number {
+function getValue(e: StockEntry, f: SortField): string | number {
   switch (f) {
     case 'date': return new Date(e.date).getTime()
     case 'slipNo': return e.slipNo
-    case 'lotNo': return (e.lots?.length ? e.lots.map(l => l.lotNo).join(' ') : e.lotNo).toLowerCase()
-    case 'than': return e.lots?.length ? e.lots.reduce((s, l) => s + l.than, 0) : e.than
-    case 'party': return (e.partyName ?? '').toLowerCase()
+    case 'lotNo': return (e.lots.map(l => l.lotNo).join(' ')).toLowerCase()
+    case 'party': return (e.lots[0]?.party ?? '').toLowerCase()
+    case 'quality': return (e.lots[0]?.quality ?? '').toLowerCase()
+    case 'than': return e.totalThan
   }
 }
 
-export default function FinishListPage() {
+/* ── Shade display helper ─────────────────────────────────────────── */
+
+function shadeDisplay(name: string | null, desc: string | null) {
+  if (!name) return null
+  return desc ? `${name} \u2014 ${desc}` : name
+}
+
+/* ── Stock Report grouping types ──────────────────────────────────── */
+
+interface SlipDetail {
+  id: number
+  slipNo: number
+  date: string
+  shadeName: string | null
+  shadeDescription: string | null
+  lots: StockLot[]
+  totalThan: number
+  machineName: string | null
+  operatorName: string | null
+}
+
+interface QualityGroup {
+  quality: string
+  weight: string | null
+  totalThan: number
+  slips: SlipDetail[]
+}
+
+interface PartyGroup {
+  party: string
+  totalThan: number
+  totalSlips: number
+  totalLots: number
+  qualities: QualityGroup[]
+}
+
+export default function FinishStockPage() {
   const router = useRouter()
-  const { data: entries = [], isLoading: loading, mutate } = useSWR<FinishEntry[]>('/api/finish', fetcher, {
+  void router
+
+  const { data: entries = [], isLoading: loading } = useSWR<StockEntry[]>('/api/finish/stock', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
   })
 
-  const [tab, setTab] = useState<Tab>('entries')
-  const [search, setSearchRaw] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useDebounce()
-  const [lotSearch, setLotSearchRaw] = useState('')
-  const [debouncedLotSearch, setDebouncedLotSearch] = useDebounce()
+  const [tab, setTab] = useState<Tab>('register')
+
+  /* ── Stock Register state ─────────────────────────────────────── */
+  const [filterSlip, setFilterSlipRaw] = useState('')
+  const [debouncedSlip, setDebouncedSlip] = useDebounce()
+  const [filterLot, setFilterLotRaw] = useState('')
+  const [debouncedLot, setDebouncedLot] = useDebounce()
+  const [filterParty, setFilterPartyRaw] = useState('')
+  const [debouncedParty, setDebouncedParty] = useDebounce()
+  const [filterQuality, setFilterQualityRaw] = useState('')
+  const [debouncedQuality, setDebouncedQuality] = useDebounce()
   const [sortField, setSortField] = useState<SortField>('date')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
-  const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [filterLotNo, setFilterLotNo] = useState('')
-  const [debouncedFilterLot, setDebouncedFilterLot] = useDebounce()
-  const [filterSlipNo, setFilterSlipNo] = useState('')
-  const [debouncedFilterSlip, setDebouncedFilterSlip] = useDebounce()
-  const [filterParty, setFilterParty] = useState('')
-  const [debouncedFilterParty, setDebouncedFilterParty] = useDebounce()
 
   // suppress unused warnings
-  void search; void lotSearch
-
-  async function handleDelete(id: number) {
-    if (!confirm('Delete this finish entry? This cannot be undone.')) return
-    setDeletingId(id)
-    await fetch(`/api/finish/${id}`, { method: 'DELETE' })
-    setDeletingId(null)
-    mutate()
-  }
+  void filterSlip; void filterLot; void filterParty; void filterQuality
 
   function toggleSort(f: SortField) {
     if (sortField === f) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortField(f); setSortDir('asc') }
   }
 
-  const lotSummary = useMemo<LotSummaryRow[]>(() => {
-    const map = new Map<string, LotSummaryRow>()
-    for (const e of entries) {
-      const ex = map.get(e.lotNo)
-      if (!ex) {
-        map.set(e.lotNo, { lotNo: e.lotNo, entries: 1, totalThan: e.than, slips: String(e.slipNo), lastDate: e.date })
-      } else {
-        ex.entries++
-        ex.totalThan += e.than
-        ex.slips = ex.slips + ', ' + e.slipNo
-        if (new Date(e.date) > new Date(ex.lastDate)) ex.lastDate = e.date
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => a.lotNo.localeCompare(b.lotNo))
-  }, [entries])
-
-  const filteredLot = useMemo(() => {
-    const q = debouncedLotSearch.toLowerCase()
-    return !q ? lotSummary : lotSummary.filter(r => r.lotNo.toLowerCase().includes(q))
-  }, [lotSummary, debouncedLotSearch])
-
   const filtered = useMemo(() => {
-    const q = debouncedSearch.toLowerCase()
-    const fl = debouncedFilterLot.toLowerCase()
-    const fs = debouncedFilterSlip.toLowerCase()
-    const fp = debouncedFilterParty.toLowerCase()
+    const fs = debouncedSlip.toLowerCase()
+    const fl = debouncedLot.toLowerCase()
+    const fp = debouncedParty.toLowerCase()
+    const fq = debouncedQuality.toLowerCase()
 
     return entries
       .filter(e => {
-        const allLots = (e.lots?.length ? e.lots.map(l => l.lotNo) : [e.lotNo]).join(' ').toLowerCase()
-        const matchSearch = !q || allLots.includes(q) || String(e.slipNo).includes(q) || (e.partyName ?? '').toLowerCase().includes(q)
-        const matchLot = !fl || allLots.includes(fl)
+        const allLots = e.lots.map(l => l.lotNo).join(' ').toLowerCase()
+        const allParties = e.lots.map(l => l.party ?? '').join(' ').toLowerCase()
+        const allQualities = e.lots.map(l => l.quality ?? '').join(' ').toLowerCase()
         const matchSlip = !fs || String(e.slipNo).includes(fs)
-        const matchParty = !fp || (e.partyName ?? '').toLowerCase().includes(fp)
-        return matchSearch && matchLot && matchSlip && matchParty
+        const matchLot = !fl || allLots.includes(fl)
+        const matchParty = !fp || allParties.includes(fp)
+        const matchQuality = !fq || allQualities.includes(fq)
+        return matchSlip && matchLot && matchParty && matchQuality
       })
       .sort((a, b) => {
         const av = getValue(a, sortField), bv = getValue(b, sortField)
         const cmp = av < bv ? -1 : av > bv ? 1 : 0
         return sortDir === 'asc' ? cmp : -cmp
       })
-  }, [entries, debouncedSearch, debouncedFilterLot, debouncedFilterSlip, debouncedFilterParty, sortField, sortDir])
+  }, [entries, debouncedSlip, debouncedLot, debouncedParty, debouncedQuality, sortField, sortDir])
 
-  const totalThan = useMemo(() => entries.reduce((s, e) => s + e.than, 0), [entries])
-  const fi = 'w-full border border-[var(--border)] rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-teal-300 mt-1'
+  /* ── Stock Report grouped data ──────────────────────────────────── */
 
-  function SortTh({ field, label, right }: { field: SortField; label: string; right?: boolean }) {
-    const active = sortField === field
-    return (
-      <th onClick={() => toggleSort(field)}
-        className={`px-3 py-3 text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-teal-600 group ${right ? 'text-right' : 'text-left'}`}>
-        <span className={`flex items-center gap-1 ${right ? 'justify-end' : ''}`}>
-          {label}
-          <span className={active ? 'text-teal-600' : 'text-gray-300 group-hover:text-[var(--text-muted)]'}>
-            {active ? (sortDir === 'asc' ? '\u2191' : '\u2193') : '\u2195'}
-          </span>
-        </span>
-      </th>
-    )
+  const partyGroups = useMemo<PartyGroup[]>(() => {
+    // Flatten: for each entry, for each lot, produce a record
+    const records: { party: string; quality: string; weight: string | null; slip: SlipDetail; lotNo: string; than: number }[] = []
+    for (const e of entries) {
+      for (const l of e.lots) {
+        records.push({
+          party: l.party ?? 'Unknown',
+          quality: l.quality ?? 'Unknown',
+          weight: l.weight,
+          slip: e,
+          lotNo: l.lotNo,
+          than: l.than,
+        })
+      }
+    }
+
+    // Group by party
+    const partyMap = new Map<string, Map<string, { weight: string | null; slipSet: Set<number>; slips: Map<number, SlipDetail>; totalThan: number; lotSet: Set<string> }>>()
+    for (const r of records) {
+      if (!partyMap.has(r.party)) partyMap.set(r.party, new Map())
+      const qMap = partyMap.get(r.party)!
+      if (!qMap.has(r.quality)) qMap.set(r.quality, { weight: r.weight, slipSet: new Set(), slips: new Map(), totalThan: 0, lotSet: new Set() })
+      const qg = qMap.get(r.quality)!
+      qg.totalThan += r.than
+      qg.lotSet.add(r.lotNo)
+      qg.slipSet.add(r.slip.id)
+      if (!qg.slips.has(r.slip.id)) qg.slips.set(r.slip.id, r.slip)
+    }
+
+    const result: PartyGroup[] = []
+    for (const [party, qMap] of partyMap) {
+      const qualities: QualityGroup[] = []
+      let totalThan = 0
+      let totalSlips = 0
+      const lotSet = new Set<string>()
+      for (const [quality, data] of qMap) {
+        qualities.push({
+          quality,
+          weight: data.weight,
+          totalThan: data.totalThan,
+          slips: Array.from(data.slips.values()).sort((a, b) => a.slipNo - b.slipNo),
+        })
+        totalThan += data.totalThan
+        totalSlips += data.slipSet.size
+        data.lotSet.forEach(l => lotSet.add(l))
+      }
+      qualities.sort((a, b) => a.quality.localeCompare(b.quality))
+      result.push({ party, totalThan, totalSlips, totalLots: lotSet.size, qualities })
+    }
+    result.sort((a, b) => a.party.localeCompare(b.party))
+    return result
+  }, [entries])
+
+  /* ── Stock Report expand state ─────────────────────────────────── */
+  const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set())
+  const [expandedQualities, setExpandedQualities] = useState<Set<string>>(new Set())
+
+  const toggleParty = (party: string) => {
+    setExpandedParties(prev => {
+      const next = new Set(prev)
+      if (next.has(party)) next.delete(party); else next.add(party)
+      return next
+    })
   }
+  const toggleQuality = (key: string) => {
+    setExpandedQualities(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+
+  const totalThan = useMemo(() => entries.reduce((s, e) => s + e.totalThan, 0), [entries])
 
   return (
     <div className="p-4 md:p-8">
@@ -160,8 +231,10 @@ export default function FinishListPage() {
         <div className="flex items-center gap-3">
           <BackButton />
           <div>
-            <h1 className="text-2xl font-bold text-[var(--text)]">Finish / Center</h1>
-            <p className="text-sm text-[var(--text-secondary)] mt-1">{entries.length} entries &middot; {lotSummary.length} lots &middot; {totalThan.toLocaleString()} than</p>
+            <h1 className="text-2xl font-bold text-gray-800">Finish / Center</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              {entries.length} slips &middot; {totalThan.toLocaleString()} than (done dyeing)
+            </p>
           </div>
         </div>
         <Link href="/finish/new" className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 w-fit">
@@ -170,172 +243,109 @@ export default function FinishListPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 border-b border-[var(--border)]">
-        {([['entries', 'All Entries', entries.length], ['summary', 'Lot Summary', lotSummary.length], ['stock', '📦 Finish Stock', '...']] as [Tab, string, any][]).map(([key, label, count]) => (
+      <div className="flex gap-1 mb-5 border-b border-gray-200">
+        {([['register', 'Stock Register'], ['report', 'Stock Report']] as [Tab, string][]).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
-            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === key ? 'border-teal-600 text-teal-600' : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text)]'}`}>
+            className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === key ? 'border-teal-600 text-teal-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
             {label}
-            <span className="ml-2 bg-[var(--badge-bg)] text-[var(--badge-text)] text-xs rounded-full px-2 py-0.5">{count}</span>
           </button>
         ))}
       </div>
 
-      {/* LOT SUMMARY TAB */}
-      {tab === 'summary' && (
-        <div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] shadow-sm p-4">
-              <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wide">Total Lots</p>
-              <p className="text-2xl font-bold text-[var(--text)] mt-1">{lotSummary.length}</p>
-            </div>
-            <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] shadow-sm p-4">
-              <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wide">Total Entries</p>
-              <p className="text-2xl font-bold text-teal-600 mt-1">{entries.length}</p>
-            </div>
-            <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] shadow-sm p-4">
-              <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wide">Total Than</p>
-              <p className="text-2xl font-bold text-emerald-600 mt-1">{totalThan.toLocaleString()}</p>
-            </div>
-          </div>
-
-          <div className="mb-4">
-            <input type="text" placeholder="Search lot no..." value={lotSearch}
-              onChange={e => { setLotSearchRaw(e.target.value); setDebouncedLotSearch(e.target.value) }}
-              className="w-full max-w-sm border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
-          </div>
-
-          <div className="bg-[var(--card)] rounded-xl shadow-sm border border-[var(--border)] overflow-hidden">
-            {loading ? <div className="p-12 text-center text-[var(--text-muted)]">Loading...</div> :
-              filteredLot.length === 0 ? <div className="p-12 text-center text-[var(--text-muted)]">No lots found.</div> : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-[var(--bg-secondary)] border-b">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Lot No</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Last Date</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Slip Nos</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Entries</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Total Than</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {filteredLot.map(r => (
-                        <tr key={r.lotNo} className="hover:bg-[var(--card-hover)] transition">
-                          <td className="px-4 py-3 font-semibold text-teal-700 dark:text-teal-300">
-                            <Link href={`/lot/${encodeURIComponent(r.lotNo)}`} className="hover:underline">{r.lotNo}</Link>
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)] text-xs">{new Date(r.lastDate).toLocaleDateString('en-IN')}</td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)] text-xs">{r.slips}</td>
-                          <td className="px-4 py-3 text-right text-[var(--text-secondary)]">{r.entries}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-emerald-600">{r.totalThan}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-[var(--bg-secondary)] border-t-2 border-[var(--border)]">
-                      <tr>
-                        <td colSpan={4} className="px-4 py-3 text-xs font-semibold text-[var(--text-secondary)] uppercase">Total ({filteredLot.length} lots)</td>
-                        <td className="px-4 py-3 text-right font-bold text-emerald-700">{filteredLot.reduce((s, r) => s + r.totalThan, 0)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              )}
-          </div>
-        </div>
-      )}
-
-      {/* ALL ENTRIES TAB */}
-      {tab === 'entries' && (
+      {/* ═══ STOCK REGISTER TAB ═══════════════════════════════════════ */}
+      {tab === 'register' && (
         <>
-          {/* Filter + Sort bar */}
+          {/* Filters + Sort */}
           <div className="mb-4 space-y-3">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div>
-                <label className="block text-[10px] text-[var(--text-muted)] mb-0.5">Slip No</label>
+                <label className="block text-[10px] text-gray-400 mb-0.5">Slip No</label>
                 <input type="text" placeholder="Filter..."
                   className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                  value={filterSlipNo}
-                  onChange={e => { setFilterSlipNo(e.target.value); setDebouncedFilterSlip(e.target.value) }} />
+                  value={filterSlip}
+                  onChange={e => { setFilterSlipRaw(e.target.value); setDebouncedSlip(e.target.value) }} />
               </div>
               <div>
-                <label className="block text-[10px] text-[var(--text-muted)] mb-0.5">Lot No</label>
+                <label className="block text-[10px] text-gray-400 mb-0.5">Lot No</label>
                 <input type="text" placeholder="Filter..."
                   className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                  value={filterLotNo}
-                  onChange={e => { setFilterLotNo(e.target.value); setDebouncedFilterLot(e.target.value) }} />
+                  value={filterLot}
+                  onChange={e => { setFilterLotRaw(e.target.value); setDebouncedLot(e.target.value) }} />
               </div>
               <div>
-                <label className="block text-[10px] text-[var(--text-muted)] mb-0.5">Party</label>
+                <label className="block text-[10px] text-gray-400 mb-0.5">Party</label>
                 <input type="text" placeholder="Filter..."
                   className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
                   value={filterParty}
-                  onChange={e => { setFilterParty(e.target.value); setDebouncedFilterParty(e.target.value) }} />
+                  onChange={e => { setFilterPartyRaw(e.target.value); setDebouncedParty(e.target.value) }} />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-400 mb-0.5">Quality</label>
+                <input type="text" placeholder="Filter..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  value={filterQuality}
+                  onChange={e => { setFilterQualityRaw(e.target.value); setDebouncedQuality(e.target.value) }} />
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] text-[var(--text-muted)]">Sort:</span>
-              {([['date', 'Date'], ['slipNo', 'Slip'], ['lotNo', 'Lot'], ['party', 'Party'], ['than', 'Than']] as [SortField, string][]).map(([f, label]) => (
+              <span className="text-[10px] text-gray-400">Sort:</span>
+              {([['date', 'Date'], ['slipNo', 'Slip'], ['lotNo', 'Lot'], ['party', 'Party'], ['quality', 'Quality'], ['than', 'Than']] as [SortField, string][]).map(([f, label]) => (
                 <button key={f} onClick={() => toggleSort(f)}
-                  className={`text-xs px-2 py-1 rounded border ${sortField === f ? 'bg-teal-100 border-teal-300 text-teal-700 dark:text-teal-300 font-medium' : 'bg-[var(--card)] border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]'}`}>
+                  className={`text-xs px-2 py-1 rounded border ${sortField === f ? 'bg-teal-100 border-teal-300 text-teal-700 font-medium' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
                   {label} {sortField === f ? (sortDir === 'asc' ? '\u2191' : '\u2193') : ''}
                 </button>
               ))}
-              {(filterSlipNo || filterLotNo || filterParty) && (
-                <button onClick={() => { setFilterSlipNo(''); setDebouncedFilterSlip(''); setFilterLotNo(''); setDebouncedFilterLot(''); setFilterParty(''); setDebouncedFilterParty('') }}
-                  className="text-xs text-red-400 hover:text-red-600">Clear</button>
+              {(filterSlip || filterLot || filterParty || filterQuality) && (
+                <button onClick={() => {
+                  setFilterSlipRaw(''); setDebouncedSlip('')
+                  setFilterLotRaw(''); setDebouncedLot('')
+                  setFilterPartyRaw(''); setDebouncedParty('')
+                  setFilterQualityRaw(''); setDebouncedQuality('')
+                }} className="text-xs text-red-400 hover:text-red-600">Clear</button>
               )}
-              <span className="text-xs text-[var(--text-muted)] ml-auto">{filtered.length} of {entries.length}</span>
+              <span className="text-xs text-gray-400 ml-auto">{filtered.length} of {entries.length}</span>
             </div>
           </div>
 
-          <div className="bg-[var(--card)] rounded-xl shadow-sm border border-[var(--border)] overflow-hidden">
-            {loading ? <div className="p-12 text-center text-[var(--text-muted)]">Loading...</div> :
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            {loading ? <div className="p-12 text-center text-gray-400">Loading...</div> :
               filtered.length === 0 ? (
-                <div className="p-12 text-center text-[var(--text-muted)]">
-                  {entries.length === 0 ? 'No entries yet. Click + New Entry to add.' : 'No results found.'}
+                <div className="p-12 text-center text-gray-400">
+                  {entries.length === 0 ? 'No done dyeing slips found.' : 'No results found.'}
                 </div>
               ) : (
                 <>
                   {/* Mobile card view */}
                   <div className="block sm:hidden divide-y divide-gray-100">
                     {filtered.map(e => {
-                      const chemCount = e.chemicals?.length ?? 0
-                      const totalCost = e.chemicals?.reduce((s, c) => s + (c.cost ?? 0), 0) ?? 0
-                      const lotsArr = e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than, meter: e.meter }]
-                      const slipTotalThan = lotsArr.reduce((s, l) => s + l.than, 0)
+                      const shade = shadeDisplay(e.shadeName, e.shadeDescription)
+                      const parties = [...new Set(e.lots.map(l => l.party).filter(Boolean))].join(', ')
+                      const qualities = [...new Set(e.lots.map(l => l.quality).filter(Boolean))].join(', ')
                       return (
                         <div key={e.id} className="p-4">
                           <div className="flex items-start justify-between mb-1.5">
-                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                               <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                               <span className="text-gray-300">&middot;</span>
-                              <Link href={`/finish/${e.id}`} className="text-teal-600 font-medium hover:underline">Slip {e.slipNo}</Link>
+                              <span className="text-teal-600 font-medium">Slip {e.slipNo}</span>
                             </div>
-                            <div className="flex gap-2 shrink-0">
-                              <button onClick={() => router.push(`/finish/${e.id}/edit`)} className="text-teal-500 text-xs font-medium border border-teal-200 rounded px-2 py-0.5">Edit</button>
-                              <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-500 text-xs font-medium border border-red-200 rounded px-2 py-0.5 disabled:opacity-40">
-                                {deletingId === e.id ? '...' : 'Del'}
-                              </button>
-                            </div>
+                            <span className="text-sm font-bold text-emerald-600">{e.totalThan}T</span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2 mb-1">
-                            {lotsArr.map((lot, li) => (
-                              <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="inline-flex items-center gap-1 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/50">
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                            {e.lots.map((lot, li) => (
+                              <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`}
+                                className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-teal-100">
                                 {lot.lotNo} <span className="text-teal-400 font-normal">({lot.than})</span>
                               </Link>
                             ))}
-                            {lotsArr.length > 1 && <span className="text-xs text-[var(--text-secondary)]">Total: <strong>{slipTotalThan}</strong></span>}
                           </div>
-                          {chemCount > 0 && (
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-[10px] text-[var(--text-muted)] bg-[var(--bg-secondary)] px-1.5 py-0.5 rounded">{chemCount} chemicals</span>
-                              {totalCost > 0 && (
-                                <span className="text-[10px] text-teal-600 bg-teal-50 dark:bg-teal-900/30 px-1.5 py-0.5 rounded font-medium">&#8377;{totalCost.toFixed(0)}</span>
-                              )}
-                            </div>
-                          )}
-                          {e.partyName && <p className="text-[10px] text-[var(--text-secondary)] mt-1">{e.partyName}</p>}
-                          {e.notes && <p className="text-[10px] text-[var(--text-muted)] mt-0.5 truncate">{e.notes}</p>}
+                          {shade && <p className="text-xs text-gray-600 mb-0.5">{shade}</p>}
+                          {parties && <p className="text-[10px] text-gray-500">{parties}</p>}
+                          {qualities && <p className="text-[10px] text-gray-400">{qualities}</p>}
+                          <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400">
+                            {e.machineName && <span>{e.machineName}</span>}
+                            {e.operatorName && <span>{e.operatorName}</span>}
+                          </div>
                         </div>
                       )
                     })}
@@ -344,75 +354,55 @@ export default function FinishListPage() {
                   {/* Desktop table */}
                   <div className="hidden sm:block overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-[var(--bg-secondary)] border-b">
+                      <thead className="bg-gray-50 border-b">
                         <tr>
-                          <SortTh field="date" label="Date" />
-                          <th className="px-3 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-teal-600"
-                            onClick={() => toggleSort('slipNo')}>
-                            <span className="flex items-center gap-1">
-                              Slip No <span className={sortField === 'slipNo' ? 'text-teal-600' : 'text-gray-300'}>{sortField === 'slipNo' ? (sortDir === 'asc' ? '\u2191' : '\u2193') : '\u2195'}</span>
-                            </span>
-                            <input className={fi} placeholder="filter..." value={filterSlipNo}
-                              onChange={e => { e.stopPropagation(); setFilterSlipNo(e.target.value); setDebouncedFilterSlip(e.target.value) }}
-                              onClick={e => e.stopPropagation()} />
-                          </th>
-                          <th className="px-3 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-teal-600"
-                            onClick={() => toggleSort('lotNo')}>
-                            <span className="flex items-center gap-1">
-                              Lot No <span className={sortField === 'lotNo' ? 'text-teal-600' : 'text-gray-300'}>{sortField === 'lotNo' ? (sortDir === 'asc' ? '\u2191' : '\u2193') : '\u2195'}</span>
-                            </span>
-                            <input className={fi} placeholder="filter..." value={filterLotNo}
-                              onChange={e => { e.stopPropagation(); setFilterLotNo(e.target.value); setDebouncedFilterLot(e.target.value) }}
-                              onClick={e => e.stopPropagation()} />
-                          </th>
-                          <th className="px-3 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-teal-600"
-                            onClick={() => toggleSort('party')}>
-                            <span className="flex items-center gap-1">
-                              Party <span className={sortField === 'party' ? 'text-teal-600' : 'text-gray-300'}>{sortField === 'party' ? (sortDir === 'asc' ? '\u2191' : '\u2193') : '\u2195'}</span>
-                            </span>
-                            <input className={fi} placeholder="filter..." value={filterParty}
-                              onChange={e => { e.stopPropagation(); setFilterParty(e.target.value); setDebouncedFilterParty(e.target.value) }}
-                              onClick={e => e.stopPropagation()} />
-                          </th>
-                          <SortTh field="than" label="Than" right />
-                          <th className="px-3 py-3 text-right text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">Cost</th>
-                          <th className="px-3 py-3 text-left text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide"></th>
+                          <ThSort field="date" label="Date" active={sortField} dir={sortDir} toggle={toggleSort} />
+                          <ThSort field="slipNo" label="Slip" active={sortField} dir={sortDir} toggle={toggleSort} />
+                          <ThSort field="lotNo" label="Lot No (Than)" active={sortField} dir={sortDir} toggle={toggleSort} />
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Shade</th>
+                          <ThSort field="party" label="Party" active={sortField} dir={sortDir} toggle={toggleSort} />
+                          <ThSort field="quality" label="Quality" active={sortField} dir={sortDir} toggle={toggleSort} />
+                          <ThSort field="than" label="Than" active={sortField} dir={sortDir} toggle={toggleSort} right />
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Machine</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Operator</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {filtered.map(e => {
-                          const dLots = e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than, meter: e.meter }]
-                          const dTotalThan = dLots.reduce((s, l) => s + l.than, 0)
+                          const shade = shadeDisplay(e.shadeName, e.shadeDescription)
+                          const parties = [...new Set(e.lots.map(l => l.party).filter(Boolean))].join(', ')
+                          const qualities = [...new Set(e.lots.map(l => l.quality).filter(Boolean))].join(', ')
                           return (
-                          <tr key={e.id} className="hover:bg-[var(--card-hover)] transition">
-                            <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
-                            <td className="px-3 py-2.5 font-medium">
-                              <Link href={`/finish/${e.id}`} className="text-teal-600 hover:underline">{e.slipNo}</Link>
-                            </td>
-                            <td className="px-3 py-2.5">
-                              <div className="flex flex-wrap gap-1">
-                                {dLots.map((lot, li) => (
-                                  <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="inline-flex items-center gap-1 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs font-semibold px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/50">
-                                    {lot.lotNo} <span className="text-teal-400 font-normal">({lot.than})</span>
-                                  </Link>
-                                ))}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2.5 text-sm text-[var(--text-secondary)]">{e.partyName ?? '\u2014'}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold">{dTotalThan}</td>
-                            <td className="px-3 py-2.5 text-right font-medium text-teal-600">
-                              {(() => { const c = e.chemicals?.reduce((s, x) => s + (x.cost ?? 0), 0) ?? 0; return c > 0 ? `\u20B9${c.toFixed(0)}` : '\u2014' })()}
-                            </td>
-                            <td className="px-3 py-2.5 whitespace-nowrap">
-                              <button onClick={() => router.push(`/finish/${e.id}/edit`)} className="text-teal-500 hover:text-teal-700 dark:text-teal-300 text-xs font-medium mr-3">Edit</button>
-                              <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
-                                {deletingId === e.id ? '...' : 'Delete'}
-                              </button>
-                            </td>
-                          </tr>
+                            <tr key={e.id} className="hover:bg-gray-50 transition">
+                              <td className="px-3 py-2.5 whitespace-nowrap text-xs text-gray-500">{new Date(e.date).toLocaleDateString('en-IN')}</td>
+                              <td className="px-3 py-2.5 font-medium text-teal-600">{e.slipNo}</td>
+                              <td className="px-3 py-2.5">
+                                <div className="flex flex-wrap gap-1">
+                                  {e.lots.map((lot, li) => (
+                                    <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`}
+                                      className="inline-flex items-center gap-1 bg-teal-50 text-teal-700 text-xs font-semibold px-2 py-0.5 rounded-full hover:bg-teal-100">
+                                      {lot.lotNo} <span className="text-teal-400 font-normal">({lot.than})</span>
+                                    </Link>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-xs text-gray-600 max-w-[200px] truncate">{shade ?? '\u2014'}</td>
+                              <td className="px-3 py-2.5 text-sm text-gray-600">{parties || '\u2014'}</td>
+                              <td className="px-3 py-2.5 text-sm text-gray-600">{qualities || '\u2014'}</td>
+                              <td className="px-3 py-2.5 text-right font-semibold">{e.totalThan}</td>
+                              <td className="px-3 py-2.5 text-xs text-gray-500">{e.machineName ?? '\u2014'}</td>
+                              <td className="px-3 py-2.5 text-xs text-gray-500">{e.operatorName ?? '\u2014'}</td>
+                            </tr>
                           )
                         })}
                       </tbody>
+                      <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                        <tr>
+                          <td colSpan={6} className="px-3 py-3 text-xs font-semibold text-gray-500 uppercase">Total ({filtered.length} slips)</td>
+                          <td className="px-3 py-3 text-right font-bold text-emerald-700">{filtered.reduce((s, e) => s + e.totalThan, 0)}</td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </>
@@ -421,255 +411,135 @@ export default function FinishListPage() {
         </>
       )}
 
-      {/* FINISH STOCK TAB */}
-      {tab === 'stock' && <FinishStockTab />}
+      {/* ═══ STOCK REPORT TAB ═════════════════════════════════════════ */}
+      {tab === 'report' && (
+        <div>
+          {loading ? <div className="p-12 text-center text-gray-400">Loading...</div> :
+            partyGroups.length === 0 ? <div className="p-12 text-center text-gray-400">No done dyeing slips found.</div> : (
+              <div className="space-y-3">
+                {/* Summary stats */}
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Parties</p>
+                    <p className="text-2xl font-bold text-gray-800 mt-1">{partyGroups.length}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Slips</p>
+                    <p className="text-2xl font-bold text-teal-600 mt-1">{entries.length}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Total Than</p>
+                    <p className="text-2xl font-bold text-emerald-600 mt-1">{totalThan.toLocaleString()}</p>
+                  </div>
+                </div>
+
+                {/* Party cards */}
+                {partyGroups.map(pg => {
+                  const isOpen = expandedParties.has(pg.party)
+                  return (
+                    <div key={pg.party} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                      {/* Level 1: Party header */}
+                      <button
+                        onClick={() => toggleParty(pg.party)}
+                        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition"
+                      >
+                        <div className="text-left">
+                          <h3 className="text-sm font-bold text-gray-800">{pg.party}</h3>
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            {pg.totalSlips} slip{pg.totalSlips !== 1 ? 's' : ''} &middot; {pg.totalLots} lot{pg.totalLots !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-bold text-emerald-600">{pg.totalThan} than</span>
+                          <span className={`text-gray-400 transition-transform ${isOpen ? 'rotate-90' : ''}`}>&#9654;</span>
+                        </div>
+                      </button>
+
+                      {/* Level 2: Quality cards inside party */}
+                      {isOpen && (
+                        <div className="border-t border-gray-100 px-3 pb-3 space-y-2 pt-2">
+                          {pg.qualities.map(qg => {
+                            const qKey = `${pg.party}::${qg.quality}`
+                            const qOpen = expandedQualities.has(qKey)
+                            return (
+                              <div key={qKey} className="border border-gray-100 rounded-lg overflow-hidden">
+                                <button
+                                  onClick={() => toggleQuality(qKey)}
+                                  className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 transition"
+                                >
+                                  <div className="text-left">
+                                    <h4 className="text-sm font-semibold text-gray-700">{qg.quality}</h4>
+                                    {qg.weight && <p className="text-[10px] text-gray-400">Weight: {qg.weight}</p>}
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-sm font-semibold text-emerald-600">{qg.totalThan} than</span>
+                                    <span className={`text-gray-400 text-xs transition-transform ${qOpen ? 'rotate-90' : ''}`}>&#9654;</span>
+                                  </div>
+                                </button>
+
+                                {/* Level 3: Slip details inside quality */}
+                                {qOpen && (
+                                  <div className="border-t border-gray-50 divide-y divide-gray-50">
+                                    {qg.slips.map(slip => {
+                                      const shade = shadeDisplay(slip.shadeName, slip.shadeDescription)
+                                      // Filter lots that belong to this quality
+                                      const qLots = slip.lots.filter(l => (l.quality ?? 'Unknown') === qg.quality && (l.party ?? 'Unknown') === pg.party)
+                                      const slipQualityThan = qLots.reduce((s, l) => s + l.than, 0)
+                                      return (
+                                        <div key={slip.id} className="px-3 py-2.5">
+                                          <div className="flex items-center justify-between mb-1">
+                                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                                              <span className="font-medium text-teal-600">Slip {slip.slipNo}</span>
+                                              <span className="text-gray-300">&middot;</span>
+                                              <span>{new Date(slip.date).toLocaleDateString('en-IN')}</span>
+                                            </div>
+                                            <span className="text-xs font-semibold text-gray-600">{slipQualityThan}T</span>
+                                          </div>
+                                          {shade && <p className="text-xs text-gray-600 mb-0.5">{shade}</p>}
+                                          <div className="flex flex-wrap gap-1.5">
+                                            {qLots.map((lot, li) => (
+                                              <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`}
+                                                className="inline-flex items-center gap-0.5 text-[11px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full hover:bg-teal-100">
+                                                {lot.lotNo}<span className="text-teal-400">({lot.than})</span>
+                                              </Link>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Finish Stock Tab Component ──
-function FinishStockTab() {
-  const { data, isLoading } = useSWR('/api/finish/stock', fetcher, { revalidateOnFocus: false, dedupingInterval: 30000 })
-  const stock = data?.stock || []
-  const [search, setSearch] = useState('')
-  const [expandedId, setExpandedId] = useState<number | null>(null)
-  const [view, setView] = useState<'slip' | 'party'>('party')
-  const [expandedParty, setExpandedParty] = useState<string | null>(null)
-  const [expandedQuality, setExpandedQuality] = useState<string | null>(null)
+/* ── Reusable sortable table header ───────────────────────────────── */
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return stock
-    const q = search.toLowerCase()
-    return stock.filter((s: any) =>
-      s.lotNo?.toLowerCase().includes(q) ||
-      String(s.slipNo).includes(q) ||
-      s.party?.toLowerCase().includes(q) ||
-      s.quality?.toLowerCase().includes(q)
-    )
-  }, [stock, search])
-
-  // Build party → quality → lots tree (combine same lots)
-  const partyTree = useMemo(() => {
-    const tree: Record<string, { party: string; totalThan: number; qualities: Record<string, { quality: string; totalThan: number; lots: Record<string, { lotNo: string; totalThan: number; slips: { slipNo: number; than: number; dyeingDoneAt: string; shade: string | null; chemicals: any[] }[] }> }> }> = {}
-    for (const s of filtered) {
-      const party = s.party || 'Unknown'
-      const quality = s.quality || 'Unknown'
-      if (!tree[party]) tree[party] = { party, totalThan: 0, qualities: {} }
-      if (!tree[party].qualities[quality]) tree[party].qualities[quality] = { quality, totalThan: 0, lots: {} }
-      for (const l of (s.lots || [])) {
-        const lotKey = l.lotNo.toLowerCase().trim()
-        tree[party].totalThan += l.than || 0
-        tree[party].qualities[quality].totalThan += l.than || 0
-        if (!tree[party].qualities[quality].lots[lotKey]) {
-          tree[party].qualities[quality].lots[lotKey] = { lotNo: l.lotNo, totalThan: 0, slips: [] }
-        }
-        tree[party].qualities[quality].lots[lotKey].totalThan += l.than || 0
-        tree[party].qualities[quality].lots[lotKey].slips.push({
-          slipNo: s.slipNo,
-          than: l.than,
-          dyeingDoneAt: s.dyeingDoneAt,
-          shade: s.shade || s.notes || null,
-          chemicals: s.chemicals || [],
-        })
-      }
-    }
-    return Object.values(tree).sort((a, b) => b.totalThan - a.totalThan)
-  }, [filtered])
-
-  if (isLoading) return <div className="py-12 text-center text-[var(--text-muted)]">Loading finish stock...</div>
-
+function ThSort({ field, label, active, dir, toggle, right }: {
+  field: SortField; label: string; active: SortField; dir: SortDir; toggle: (f: SortField) => void; right?: boolean
+}) {
+  const isActive = active === field
   return (
-    <div>
-      {/* Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-        <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] shadow-sm p-4">
-          <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wide">Ready for Finish</p>
-          <p className="text-2xl font-bold text-teal-600 mt-1">{data?.totalSlips || 0} slips</p>
-        </div>
-        <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] shadow-sm p-4">
-          <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wide">Total Than</p>
-          <p className="text-2xl font-bold text-indigo-600 mt-1">{(data?.totalThan || 0).toLocaleString()}</p>
-        </div>
-        <div className="bg-[var(--card)] rounded-xl border border-[var(--border)] shadow-sm p-4">
-          <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wide">Parties</p>
-          <p className="text-2xl font-bold text-purple-600 mt-1">{partyTree.length}</p>
-        </div>
-      </div>
-
-      {/* View Toggle + Search */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div className="flex gap-1 bg-[var(--bg-secondary)] rounded-lg p-0.5">
-          <button onClick={() => setView('party')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${view === 'party' ? 'bg-teal-600 text-white shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text)]'}`}>
-            Party View
-          </button>
-          <button onClick={() => setView('slip')}
-            className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${view === 'slip' ? 'bg-teal-600 text-white shadow-sm' : 'text-[var(--text-secondary)] hover:text-[var(--text)]'}`}>
-            Slip View
-          </button>
-        </div>
-        <input type="text" placeholder="Search lot, slip, party, quality..."
-          value={search} onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-[180px] border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
-      </div>
-
-      {filtered.length === 0 ? (
-        <div className="py-12 text-center text-[var(--text-muted)]">
-          {stock.length === 0 ? 'No dyeing-done slips waiting for finish.' : 'No results match your search.'}
-        </div>
-      ) : view === 'party' ? (
-        /* ── PARTY VIEW: 3-level expansion ── */
-        <div className="space-y-2">
-          {partyTree.map(p => {
-            const isPartyExpanded = expandedParty === p.party
-            const qualities = Object.values(p.qualities).sort((a, b) => b.totalThan - a.totalThan)
-            return (
-              <div key={p.party} className="bg-[var(--card)] rounded-xl shadow-sm border border-[var(--border)] overflow-hidden">
-                {/* Level 1: Party */}
-                <button onClick={() => setExpandedParty(isPartyExpanded ? null : p.party)}
-                  className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-[var(--card-hover)] transition">
-                  <span className="text-lg">📦</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-[var(--text)] truncate">{p.party}</p>
-                    <p className="text-xs text-[var(--text-secondary)]">{qualities.length} qualit{qualities.length !== 1 ? 'ies' : 'y'}</p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-lg font-bold text-teal-600">{p.totalThan}</p>
-                    <p className="text-[10px] text-[var(--text-muted)]">than</p>
-                  </div>
-                  <svg className={`w-4 h-4 text-[var(--text-muted)] transition-transform ${isPartyExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {isPartyExpanded && (
-                  <div className="border-t border-[var(--border-light)] bg-[var(--bg-secondary)]">
-                    {qualities.map(q => {
-                      const qKey = `${p.party}|${q.quality}`
-                      const isQualityExpanded = expandedQuality === qKey
-                      const lotsList = Object.values(q.lots).sort((a: any, b: any) => b.totalThan - a.totalThan)
-                      return (
-                        <div key={q.quality} className="border-b border-[var(--border-light)] last:border-b-0">
-                          {/* Level 2: Quality */}
-                          <button onClick={() => setExpandedQuality(isQualityExpanded ? null : qKey)}
-                            className="w-full text-left px-6 py-2.5 flex items-center gap-3 hover:bg-[var(--bg-secondary)] transition">
-                            <span className="text-sm">🏷️</span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold text-[var(--text)]">{q.quality}</p>
-                              <p className="text-xs text-[var(--text-muted)]">{lotsList.length} lot{lotsList.length !== 1 ? 's' : ''}</p>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <p className="text-sm font-bold text-indigo-600">{q.totalThan} than</p>
-                            </div>
-                            <svg className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform ${isQualityExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-
-                          {/* Level 3: Lots (combined) */}
-                          {isQualityExpanded && (
-                            <div className="bg-[var(--card)] px-8 py-2 space-y-2">
-                              {lotsList.map((lot: any) => (
-                                <div key={lot.lotNo} className="bg-teal-50 dark:bg-teal-900/30 rounded-lg overflow-hidden">
-                                  <div className="flex items-center gap-3 px-3 py-2">
-                                    <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
-                                      className="text-sm font-semibold text-teal-700 dark:text-teal-300 hover:underline">
-                                      {lot.lotNo}
-                                    </Link>
-                                    <span className="text-sm font-bold text-[var(--text)]">{lot.totalThan} than</span>
-                                    <span className="text-xs text-[var(--text-muted)]">{lot.slips.length} slip{lot.slips.length !== 1 ? 's' : ''}</span>
-                                    <Link href={`/finish/new?fromDyeing=0&slipNo=&lotNo=${lot.lotNo}&than=${lot.totalThan}`}
-                                      className="ml-auto text-xs text-teal-600 font-medium hover:text-teal-800">
-                                      Start Finish →
-                                    </Link>
-                                  </div>
-                                  {/* Show individual slips */}
-                                  <div className="px-3 pb-2 space-y-0.5">
-                                    {lot.slips.map((sl: any, si: number) => (
-                                      <div key={si} className="flex items-center gap-2 text-[10px] text-[var(--text-secondary)] pl-2 flex-wrap">
-                                        <span>Slip #{sl.slipNo}</span>
-                                        <span>{sl.than} than</span>
-                                        {sl.shade && <span className="text-purple-600 font-medium">{sl.shade}</span>}
-                                        {sl.dyeingDoneAt && <span className="text-[var(--text-muted)]">{new Date(sl.dyeingDoneAt).toLocaleDateString('en-IN')}</span>}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      ) : (
-        /* ── SLIP VIEW: flat list ── */
-        <div className="space-y-3">
-          {filtered.map((s: any) => {
-            const expanded = expandedId === s.id
-            return (
-              <div key={s.id} className="bg-[var(--card)] rounded-xl shadow-sm border border-[var(--border)] overflow-hidden">
-                <div className="p-4 cursor-pointer hover:bg-[var(--card-hover)] transition" onClick={() => setExpandedId(expanded ? null : s.id)}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-bold text-[var(--text)]">Slip #{s.slipNo}</span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">Dyeing Done</span>
-                      </div>
-                      <div className="flex flex-wrap gap-x-3 mt-1 text-xs text-[var(--text-secondary)]">
-                        {s.dyeingDoneAt && <span>Done: {new Date(s.dyeingDoneAt).toLocaleDateString('en-IN')}</span>}
-                        {s.party && <span>{s.party}</span>}
-                        {s.quality && <span>{s.quality}</span>}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mt-1.5">
-                        {s.lots.map((l: any, i: number) => (
-                          <Link key={i} href={`/lot/${encodeURIComponent(l.lotNo)}`}
-                            onClick={e => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/50">
-                            {l.lotNo} <span className="text-teal-500 font-normal">({l.than} than)</span>
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-lg font-bold text-teal-600">{s.totalThan}</div>
-                      <div className="text-[10px] text-[var(--text-muted)]">than</div>
-                    </div>
-                  </div>
-                </div>
-                {expanded && (
-                  <div className="border-t border-[var(--border-light)] px-4 pb-4 pt-3">
-                    {s.chemicals?.length > 0 && (
-                      <div className="mb-3">
-                        <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase mb-1.5">Dyeing Chemicals Used</p>
-                        <div className="space-y-1">
-                          {s.chemicals.map((c: any, ci: number) => (
-                            <div key={ci} className="flex items-center justify-between text-xs bg-[var(--bg-secondary)] rounded-lg px-3 py-1.5">
-                              <span className="text-[var(--text)]">{c.name}</span>
-                              <span className="text-[var(--text-secondary)]">{c.quantity} {c.unit}</span>
-                              {c.cost && <span className="text-[var(--text-muted)]">₹{Math.round(c.cost)}</span>}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {s.notes && <p className="text-xs text-[var(--text-secondary)] mb-3">Notes: {s.notes}</p>}
-                    <Link href={`/finish/new?fromDyeing=${s.id}&slipNo=${s.slipNo}&lotNo=${s.lots.map((l: any) => l.lotNo).join(',')}&than=${s.lots.map((l: any) => l.than).join(',')}`}
-                      className="inline-flex items-center gap-1.5 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 transition">
-                      Start Finish Entry →
-                    </Link>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
+    <th onClick={() => toggle(field)}
+      className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-teal-600 ${right ? 'text-right' : 'text-left'}`}>
+      <span className={`flex items-center gap-1 ${right ? 'justify-end' : ''}`}>
+        {label}
+        <span className={isActive ? 'text-teal-600' : 'text-gray-300'}>
+          {isActive ? (dir === 'asc' ? '\u2191' : '\u2193') : '\u2195'}
+        </span>
+      </span>
+    </th>
   )
 }
