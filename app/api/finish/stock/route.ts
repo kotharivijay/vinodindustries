@@ -59,7 +59,10 @@ export async function GET() {
       dyeingDoneAt: d.dyeingDoneAt,
       shadeName,
       shadeDescription: shadeDesc,
-      lots: lots.map((l: any) => ({ lotNo: l.lotNo, than: l.than })),
+      lots: lots.map((l: any) => {
+        const li = lotInfoMap.get(l.lotNo.toLowerCase().trim())
+        return { lotNo: l.lotNo, than: l.than, party: li?.party || lotInfo?.party || null, quality: li?.quality || lotInfo?.quality || null, weight: li?.weight || lotInfo?.weight || null }
+      }),
       totalThan: lots.reduce((s: number, l: any) => s + (l.than || 0), 0),
       party: lotInfo?.party || null,
       quality: lotInfo?.quality || null,

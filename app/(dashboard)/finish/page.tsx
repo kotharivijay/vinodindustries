@@ -97,10 +97,11 @@ export default function FinishStockPage() {
   const router = useRouter()
   void router
 
-  const { data: entries = [], isLoading: loading } = useSWR<StockEntry[]>('/api/finish/stock', fetcher, {
+  const { data: rawData, isLoading: loading } = useSWR<{ stock: StockEntry[]; totalSlips: number; totalThan: number }>('/api/finish/stock', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
   })
+  const entries = rawData?.stock ?? []
 
   const [tab, setTab] = useState<Tab>('register')
 
