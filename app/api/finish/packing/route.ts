@@ -18,29 +18,21 @@ export async function GET() {
     orderBy: { date: 'desc' },
   })
 
-  // Fetch all despatched lot numbers
-  const despatchEntries = await db.despatchEntry.findMany({
-    select: { lotNo: true },
-  })
-  const despatchedLots = new Set<string>(despatchEntries.map((d: any) => d.lotNo.toLowerCase().trim()))
-
-  // Filter finish entries to only those with lots NOT yet despatched
+  // Packing stock = ALL finish entries (despatch filtering will be added later when despatch module is linked)
+  // For now show all finish entries as packing stock
   const packingEntries: any[] = []
   for (const fe of finishEntries) {
     const lots = fe.lots?.length ? fe.lots : [{ lotNo: fe.lotNo, than: fe.than, meter: fe.meter }]
-    const undespatched = lots.filter((l: any) => !despatchedLots.has(l.lotNo.toLowerCase().trim()))
-    if (undespatched.length > 0) {
-      packingEntries.push({
-        id: fe.id,
-        slipNo: fe.slipNo,
-        date: fe.date,
-        meter: fe.meter,
-        mandi: fe.mandi,
-        notes: fe.notes,
-        lots: undespatched,
-        totalThan: undespatched.reduce((s: number, l: any) => s + (l.than || 0), 0),
-      })
-    }
+    packingEntries.push({
+      id: fe.id,
+      slipNo: fe.slipNo,
+      date: fe.date,
+      meter: fe.meter,
+      mandi: fe.mandi,
+      notes: fe.notes,
+      lots,
+      totalThan: lots.reduce((s: number, l: any) => s + (l.than || 0), 0),
+    })
   }
 
   // Enrich with party / quality / shade info
