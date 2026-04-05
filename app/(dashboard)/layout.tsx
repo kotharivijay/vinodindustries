@@ -9,7 +9,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session) redirect('/login')
 
   return (
-    <div className="flex h-screen bg-gray-100 dark:bg-gray-950">
+    <div className="flex h-screen bg-[var(--bg)]">
       <Sidebar userName={session.user?.name} userEmail={session.user?.email} />
 
       {/* Main content — pt-14 on mobile to clear the fixed top bar */}

@@ -12,10 +12,81 @@
   }
 }
 
+/* ── Centralized Theme Variables ─────────────────────────────────── */
+
+:root {
+  --bg: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --card: #ffffff;
+  --card-hover: #f8fafc;
+  --text: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+  --accent: #7c3aed;
+  --accent-light: #ede9fe;
+  --accent-text: #6d28d9;
+  --success: #16a34a;
+  --success-bg: #f0fdf4;
+  --danger: #dc2626;
+  --danger-bg: #fef2f2;
+  --warning: #ea580c;
+  --warning-bg: #fff7ed;
+  --input-bg: #ffffff;
+  --input-border: #d1d5db;
+  --badge-bg: #f3f4f6;
+  --badge-text: #4b5563;
+  --sidebar-bg: #f8fafc;
+  --sidebar-text: #0f172a;
+  --sidebar-text-secondary: #64748b;
+  --sidebar-text-muted: #94a3b8;
+  --sidebar-border: #e2e8f0;
+  --sidebar-hover: #f1f5f9;
+  --sidebar-active: #ede9fe;
+  --sidebar-active-text: #6d28d9;
+  --sidebar-btn: #f1f5f9;
+  --sidebar-btn-hover: #e2e8f0;
+  --topbar-bg: #ffffff;
+}
+
 /* ── Dark mode global styles ─────────────────────────────────────── */
 
 .dark {
   color-scheme: dark;
+  --bg: #0f172a;
+  --bg-secondary: #1e293b;
+  --card: #1e293b;
+  --card-hover: #334155;
+  --text: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border: #334155;
+  --border-light: #1e293b;
+  --accent: #a78bfa;
+  --accent-light: #1e1b4b;
+  --accent-text: #c4b5fd;
+  --success: #4ade80;
+  --success-bg: #052e16;
+  --danger: #f87171;
+  --danger-bg: #450a0a;
+  --warning: #fb923c;
+  --warning-bg: #431407;
+  --input-bg: #374151;
+  --input-border: #4b5563;
+  --badge-bg: #374151;
+  --badge-text: #d1d5db;
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #f1f5f9;
+  --sidebar-text-secondary: #94a3b8;
+  --sidebar-text-muted: #64748b;
+  --sidebar-border: #1e293b;
+  --sidebar-hover: #1e293b;
+  --sidebar-active: #312e81;
+  --sidebar-active-text: #c4b5fd;
+  --sidebar-btn: #1e293b;
+  --sidebar-btn-hover: #334155;
+  --topbar-bg: #0f172a;
 }
 
 /* Form elements */

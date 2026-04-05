@@ -219,23 +219,23 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
   return (
     <div className="flex flex-col h-full">
       {/* Brand + Company */}
-      <div className="p-5 border-b border-gray-700">
+      <div className="p-5 border-b border-[var(--sidebar-border)]">
         <div className="flex items-center gap-3">
           <span className="text-2xl">{companyIcon}</span>
           <div className="flex-1 min-w-0">
             <h1 className="text-sm font-bold tracking-tight truncate">{companyName}</h1>
-            <p className="text-[10px] text-gray-400 mt-0.5">Textile Management</p>
+            <p className="text-[10px] text-[var(--sidebar-text-muted)] mt-0.5">Textile Management</p>
           </div>
           <NotificationBell />
         </div>
         <div className="flex gap-2 mt-2">
-          <Link href="/select-company" className="flex-1 flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-1.5 transition">
+          <Link href="/select-company" className="flex-1 flex items-center justify-center gap-1.5 text-xs text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] bg-[var(--sidebar-btn)] hover:bg-[var(--sidebar-btn-hover)] rounded-lg px-3 py-1.5 transition">
             Switch
           </Link>
           <button
             onClick={() => setEditMode(!editMode)}
             className={`flex items-center justify-center gap-1 text-xs rounded-lg px-3 py-1.5 transition ${
-              editMode ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700'
+              editMode ? 'bg-indigo-600 text-white' : 'text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] bg-[var(--sidebar-btn)] hover:bg-[var(--sidebar-btn-hover)]'
             }`}
           >
             {editMode ? '✓ Done' : '✏️ Edit'}
@@ -286,7 +286,7 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
                         onChange={e => setRenameValue(e.target.value)}
                         onBlur={finishRename}
                         onKeyDown={e => { if (e.key === 'Enter') finishRename() }}
-                        className="flex-1 bg-gray-700 text-white text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                        className="flex-1 bg-[var(--sidebar-hover)] text-white text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                       />
                     ) : (
                       <span className="flex-1 text-xs text-gray-300 truncate">{label}</span>
@@ -314,7 +314,7 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition font-medium ${
                     active
                       ? 'bg-indigo-600 text-white'
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                      : 'text-[var(--sidebar-text-secondary)] hover:bg-[var(--sidebar-hover)] hover:text-[var(--sidebar-text)]'
                   }`}
                 >
                   <span className="text-base leading-none">{link.icon}</span>
@@ -327,20 +327,20 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
       </nav>
 
       {/* User */}
-      <div className="p-4 border-t border-gray-700">
+      <div className="p-4 border-t border-[var(--sidebar-border)]">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-9 h-9 bg-indigo-600 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0">
             {initial}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium truncate">{userName}</p>
-            <p className="text-xs text-gray-400 truncate">{userEmail}</p>
+            <p className="text-xs text-[var(--sidebar-text-muted)] truncate">{userEmail}</p>
           </div>
         </div>
         <div className="flex gap-2 mb-2">
           <button
             onClick={toggle}
-            className="flex-1 flex items-center justify-center gap-2 text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg px-3 py-2 transition"
+            className="flex-1 flex items-center justify-center gap-2 text-xs text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] bg-[var(--sidebar-btn)] hover:bg-[var(--sidebar-btn-hover)] rounded-lg px-3 py-2 transition"
             title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           >
             {theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode'}
@@ -379,10 +379,10 @@ export default function Sidebar({ userName, userEmail }: Props) {
   return (
     <>
       {/* ── MOBILE TOP BAR ── */}
-      <header className="md:hidden fixed top-0 left-0 right-0 z-30 bg-gray-900 text-white flex items-center gap-3 px-4 h-14 shadow-lg">
+      <header className="md:hidden fixed top-0 left-0 right-0 z-30 bg-[var(--topbar-bg)] text-[var(--sidebar-text)] flex items-center gap-3 px-4 h-14 shadow-lg border-b border-[var(--sidebar-border)]">
         <button
           onClick={() => setOpen(true)}
-          className="p-1.5 rounded-lg hover:bg-gray-700 transition"
+          className="p-1.5 rounded-lg hover:bg-[var(--sidebar-btn-hover)] transition"
           aria-label="Open menu"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -394,7 +394,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
         <button onClick={toggle} className="text-lg shrink-0" title="Toggle dark mode">
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
-        <Link href="/select-company" className="text-[10px] text-gray-400 hover:text-white bg-gray-800 rounded px-2 py-1 shrink-0">Switch</Link>
+        <Link href="/select-company" className="text-[10px] text-[var(--sidebar-text-muted)] hover:text-white bg-[var(--sidebar-btn)] rounded px-2 py-1 shrink-0">Switch</Link>
       </header>
 
       {/* ── MOBILE DRAWER OVERLAY ── */}
@@ -406,10 +406,10 @@ export default function Sidebar({ userName, userEmail }: Props) {
             onClick={() => setOpen(false)}
           />
           {/* Drawer */}
-          <aside className="relative z-50 w-72 bg-gray-900 text-white flex flex-col shadow-2xl animate-slide-in">
+          <aside className="relative z-50 w-72 bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] flex flex-col shadow-2xl animate-slide-in border-r border-[var(--sidebar-border)]">
             <button
               onClick={() => setOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition"
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-[var(--sidebar-text-muted)] hover:text-white hover:bg-[var(--sidebar-btn-hover)] transition"
               aria-label="Close menu"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -428,7 +428,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
       )}
 
       {/* ── DESKTOP SIDEBAR ── */}
-      <aside className="hidden md:flex md:w-64 bg-gray-900 text-white flex-col flex-shrink-0">
+      <aside className="hidden md:flex md:w-64 bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] flex-col flex-shrink-0 border-r border-[var(--sidebar-border)]">
         <SidebarContent
           pathname={pathname}
           onNavigate={() => {}}
