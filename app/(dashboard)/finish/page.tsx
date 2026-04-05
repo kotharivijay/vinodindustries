@@ -326,11 +326,14 @@ export default function FinishStockPage() {
     return lots
   }, [entries])
 
+  const lotKey = (lot: SelectedLot) => `${lot.slipNo}|${lot.lotNo}`
+
   const toggleLotSelection = useCallback((lot: SelectedLot) => {
+    const key = `${lot.slipNo}|${lot.lotNo}`
     setSelectedLots(prev => {
       const next = new Map(prev)
-      if (next.has(lot.lotNo)) next.delete(lot.lotNo)
-      else next.set(lot.lotNo, lot)
+      if (next.has(key)) next.delete(key)
+      else next.set(key, lot)
       return next
     })
   }, [])
@@ -339,11 +342,11 @@ export default function FinishStockPage() {
     const partyLots = allReportLots.filter(l => l.party === partyName)
     setSelectedLots(prev => {
       const next = new Map(prev)
-      const allSelected = partyLots.every(l => next.has(l.lotNo))
+      const allSelected = partyLots.every(l => next.has(lotKey(l)))
       if (allSelected) {
-        partyLots.forEach(l => next.delete(l.lotNo))
+        partyLots.forEach(l => next.delete(lotKey(l)))
       } else {
-        partyLots.forEach(l => next.set(l.lotNo, l))
+        partyLots.forEach(l => next.set(lotKey(l), l))
       }
       return next
     })
@@ -355,7 +358,7 @@ export default function FinishStockPage() {
         return new Map()
       }
       const next = new Map<string, SelectedLot>()
-      allReportLots.forEach(l => next.set(l.lotNo, l))
+      allReportLots.forEach(l => next.set(lotKey(l), l))
       return next
     })
   }, [allReportLots])
@@ -457,7 +460,14 @@ export default function FinishStockPage() {
     setFinishSaving(true)
     setFinishError('')
 
-    const lots = Array.from(selectedLots.values())
+    // Group selected lots by lotNo and sum than
+    const lotMap = new Map<string, { lotNo: string; than: number }>()
+    for (const l of selectedLots.values()) {
+      const existing = lotMap.get(l.lotNo)
+      if (existing) existing.than += l.than
+      else lotMap.set(l.lotNo, { lotNo: l.lotNo, than: l.than })
+    }
+    const lots = Array.from(lotMap.values())
     const marka = lots.map(l => ({
       lotNo: l.lotNo.trim(),
       than: l.than,
@@ -818,8 +828,8 @@ export default function FinishStockPage() {
                 {partyGroups.map(pg => {
                   const isOpen = expandedParties.has(pg.party)
                   const partyLots = allReportLots.filter(l => l.party === pg.party)
-                  const partyAllSelected = partyLots.length > 0 && partyLots.every(l => selectedLots.has(l.lotNo))
-                  const partySomeSelected = partyLots.some(l => selectedLots.has(l.lotNo))
+                  const partyAllSelected = partyLots.length > 0 && partyLots.every(l => selectedLots.has(lotKey(l)))
+                  const partySomeSelected = partyLots.some(l => selectedLots.has(lotKey(l)))
                   return (
                     <div key={pg.party} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
                       {/* Level 1: Party header */}
@@ -901,7 +911,7 @@ export default function FinishStockPage() {
                                                 shade: shade ?? '',
                                                 slipNo: slip.slipNo,
                                               }
-                                              const isSelected = selectedLots.has(lot.lotNo)
+                                              const isSelected = selectedLots.has(lotKey(lotData))
                                               return (
                                                 <label key={li} className="inline-flex items-center gap-1 cursor-pointer">
                                                   <input
@@ -979,41 +989,57 @@ export default function FinishStockPage() {
                       </div>
                     </div>
 
-                    {/* Selected lots list */}
+                    {/* Selected lots grouped by lotNo */}
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                        Lots ({selectedLots.size})
+                        Lots ({selectedLots.size} entries · {(() => {
+                          const lotNos = new Set(Array.from(selectedLots.values()).map(l => l.lotNo))
+                          return lotNos.size
+                        })()} unique lots)
                       </label>
-                      <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                        <table className="w-full text-sm">
-                          <thead className="bg-gray-50 dark:bg-gray-700/50">
-                            <tr>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Lot No</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Than</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Shade</th>
-                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400">Meter</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                            {Array.from(selectedLots.values()).map(lot => (
-                              <tr key={lot.lotNo}>
-                                <td className="px-3 py-2 font-medium text-teal-700 dark:text-teal-300">{lot.lotNo}</td>
-                                <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{lot.than}</td>
-                                <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 max-w-[120px] truncate">{lot.shade || '\u2014'}</td>
-                                <td className="px-3 py-2">
-                                  <input
-                                    type="number"
-                                    step="0.1"
-                                    placeholder="Meter"
-                                    value={finishMeters[lot.lotNo] ?? ''}
-                                    onChange={e => setFinishMeters(prev => ({ ...prev, [lot.lotNo]: e.target.value }))}
-                                    className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
-                                  />
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div className="space-y-2">
+                        {(() => {
+                          // Group by lotNo
+                          const grouped = new Map<string, SelectedLot[]>()
+                          for (const lot of selectedLots.values()) {
+                            if (!grouped.has(lot.lotNo)) grouped.set(lot.lotNo, [])
+                            grouped.get(lot.lotNo)!.push(lot)
+                          }
+                          return Array.from(grouped.entries()).map(([lotNo, slips]) => {
+                            const totalThan = slips.reduce((s, l) => s + l.than, 0)
+                            return (
+                              <div key={lotNo} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                {/* Lot header */}
+                                <div className="bg-gray-50 dark:bg-gray-700/50 px-3 py-2 flex items-center justify-between">
+                                  <span className="font-bold text-teal-700 dark:text-teal-300 text-sm">{lotNo}</span>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">Total: <strong className="text-gray-800 dark:text-gray-200">{totalThan} than</strong></span>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      placeholder="Meter"
+                                      value={finishMeters[lotNo] ?? ''}
+                                      onChange={e => setFinishMeters(prev => ({ ...prev, [lotNo]: e.target.value }))}
+                                      className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
+                                    />
+                                  </div>
+                                </div>
+                                {/* Slip details */}
+                                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                                  {slips.map(slip => (
+                                    <div key={`${slip.slipNo}-${slip.lotNo}`} className="px-3 py-1.5 flex items-center justify-between text-xs">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-gray-500 dark:text-gray-400">Slip {slip.slipNo}</span>
+                                        <span className="text-gray-600 dark:text-gray-300 font-medium">{slip.than} than</span>
+                                      </div>
+                                      <span className="text-gray-500 dark:text-gray-400 truncate max-w-[180px]">{slip.shade || '\u2014'}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          })
+                        })()}
                       </div>
                     </div>
 
