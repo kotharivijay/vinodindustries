@@ -55,3 +55,4 @@ A sticky footer at the bottom shows X lots selected + "Save X lots" button
 Tap Save → all reservations saved in one transaction → page refreshes
 Lots now show amber "Used: X" badge and reduced Avail count
 These lots disappear (or show reduced quantity) in New Fold Program's lot picker
+make ai bubble movable can be shifted to anywhere on mobile screen and option to hide/unhide it

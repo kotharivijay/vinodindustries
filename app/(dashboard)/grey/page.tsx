@@ -393,7 +393,7 @@ export default function GreyListPage() {
                     <div key={e.id} className="p-4">
                       <div className="flex items-start justify-between mb-1.5">
                         <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
-                          <span className="text-gray-400 font-medium">SN {e.sn ?? e.id}</span>
+                          <span className="text-gray-400 font-medium">SN {e.sn != null ? (e.sn < 0 ? `O${Math.abs(e.sn)}` : e.sn) : e.id}</span>
                           <span className="text-gray-300">·</span>
                           <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                           <span className="text-gray-300">·</span>
@@ -475,7 +475,7 @@ export default function GreyListPage() {
                     <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                       {filtered.map((e) => (
                         <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
-                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.sn ?? e.id}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.sn != null ? (e.sn < 0 ? `O${Math.abs(e.sn)}` : e.sn) : e.id}</td>
                           <td className="px-3 py-2.5 whitespace-nowrap dark:text-gray-300">{new Date(e.date).toLocaleDateString('en-IN')}</td>
                           <td className="px-3 py-2.5 dark:text-gray-300">{e.challanNo}</td>
                           <td className="px-3 py-2.5 font-medium text-gray-800 dark:text-gray-100 whitespace-nowrap">{e.party.name}</td>

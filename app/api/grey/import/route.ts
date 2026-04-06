@@ -181,7 +181,10 @@ export async function POST(req: NextRequest) {
 
     // ── Process row ──
 
-    const sn = parseInt(row[COL.SN]) || null
+    // SN: for opening stock (old year), store as negative to distinguish; for current year, positive
+    const rawSn = (row[COL.SN] ?? '').trim()
+    const numPart = parseInt(rawSn.replace(/[^0-9]/g, '')) || null
+    const sn = (monthVal === 'old year' && numPart) ? -(numPart) : numPart
     const challanNo = parseInt(row[COL.CHALLAN]) || null
     const qualityName = row[COL.QUALITY]?.trim() ?? ''
     const weaverName = row[COL.WEAVER]?.trim() ?? ''
