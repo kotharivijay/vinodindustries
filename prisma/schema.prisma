@@ -17,7 +17,8 @@ model Party {
   greyEntries     GreyEntry[]
   despatchEntries DespatchEntry[]
   foldBatchLots   FoldBatchLot[]
-  finishRecipes   FinishRecipe[]
+  finishRecipes     FinishRecipe[]
+  finishRecipeTags  FinishRecipeTag[]
 }
 
 model Weaver {
@@ -34,7 +35,8 @@ model Quality {
   greyEntries     GreyEntry[]
   despatchEntries DespatchEntry[]
   foldBatchLots   FoldBatchLot[]
-  finishRecipes   FinishRecipe[]
+  finishRecipes     FinishRecipe[]
+  finishRecipeTags  FinishRecipeTag[]
 }
 
 model Transport {
@@ -756,6 +758,7 @@ model FinishRecipe {
   shortage    String?
   notes       String?
   items       FinishRecipeItem[]
+  tags        FinishRecipeTag[]
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   @@unique([partyId, qualityId])
@@ -770,4 +773,16 @@ model FinishRecipeItem {
   name       String
   quantity   Float
   unit       String        @default("kg")
+}
+
+model FinishRecipeTag {
+  id         Int          @id @default(autoincrement())
+  partyId    Int
+  party      Party        @relation(fields: [partyId], references: [id])
+  qualityId  Int
+  quality    Quality      @relation(fields: [qualityId], references: [id])
+  recipeId   Int
+  recipe     FinishRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+  @@unique([partyId, qualityId])
 }

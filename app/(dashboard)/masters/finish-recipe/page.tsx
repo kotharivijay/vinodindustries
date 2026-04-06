@@ -51,7 +51,7 @@ function SearchDropdown({ value, items, onChange, placeholder, disabled }: {
         <span className={selected ? '' : 'text-gray-400 dark:text-gray-500'}>
           {selected?.name || placeholder}
         </span>
-        <span className="text-gray-400 text-xs">▾</span>
+        <span className="text-gray-400 text-xs">{'\u25BE'}</span>
       </div>
       {open && !disabled && (
         <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl z-30 max-h-60 flex flex-col">
@@ -71,7 +71,7 @@ function SearchDropdown({ value, items, onChange, placeholder, disabled }: {
                 onClick={() => { onChange(null); setOpen(false); setSearch('') }}
                 className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border-b border-gray-100 dark:border-gray-700"
               >
-                ✕ Clear selection
+                {'\u2715'} Clear selection
               </button>
             )}
             {filtered.map(item => (
@@ -140,7 +140,7 @@ function ChemicalRow({ item, index, chemicals, onUpdate, onRemove }: {
           <span className={item.name ? '' : 'text-gray-400 dark:text-gray-500'}>
             {item.name || 'Select chemical...'}
           </span>
-          <span className="text-gray-400 text-[10px]">▾</span>
+          <span className="text-gray-400 text-[10px]">{'\u25BE'}</span>
         </div>
         {open && (
           <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl z-30 max-h-48 flex flex-col">
@@ -208,6 +208,14 @@ interface RecipeItem {
   unit: string
 }
 
+interface RecipeTag {
+  id: number
+  partyId: number
+  qualityId: number
+  quality: { id: number; name: string }
+  party: { id: number; name: string }
+}
+
 interface Recipe {
   id: number
   partyId: number
@@ -219,6 +227,9 @@ interface Recipe {
   shortage: string | null
   notes: string | null
   items: RecipeItem[]
+  tags?: RecipeTag[]
+  isTagged?: boolean
+  taggedFrom?: string
   updatedAt: string
 }
 
@@ -246,12 +257,22 @@ export default function FinishRecipeMasterPage() {
   const [message, setMessage] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
 
+  // Tag state
+  const [showTagUI, setShowTagUI] = useState(false)
+  const [partyRecipes, setPartyRecipes] = useState<Recipe[]>([])
+  const [loadingPartyRecipes, setLoadingPartyRecipes] = useState(false)
+  const [selectedTagRecipeId, setSelectedTagRecipeId] = useState<number | null>(null)
+  const [tagging, setTagging] = useState(false)
+  const [showNewRecipe, setShowNewRecipe] = useState(false)
+
   // Load qualities when party changes
   useEffect(() => {
     if (!selectedPartyId) { setPartyQualities([]); return }
     setLoadingQualities(true)
     setSelectedQualityId(null)
     setRecipe(null)
+    setShowTagUI(false)
+    setShowNewRecipe(false)
     // Fetch qualities that exist in grey entries for this party
     fetch(`/api/finish/recipe?partyId=${selectedPartyId}`)
       .then(r => r.json())
@@ -270,9 +291,16 @@ export default function FinishRecipeMasterPage() {
 
   // Load recipe when both party and quality selected
   useEffect(() => {
-    if (!selectedPartyId || !selectedQualityId) { setRecipe(null); return }
+    if (!selectedPartyId || !selectedQualityId) {
+      setRecipe(null)
+      setShowTagUI(false)
+      setShowNewRecipe(false)
+      return
+    }
     setLoadingRecipe(true)
     setMessage('')
+    setShowTagUI(false)
+    setShowNewRecipe(false)
     fetch(`/api/finish/recipe?partyId=${selectedPartyId}&qualityId=${selectedQualityId}`)
       .then(r => r.json())
       .then((data: Recipe | null) => {
@@ -289,6 +317,7 @@ export default function FinishRecipeMasterPage() {
             unit: i.unit,
           })))
         } else {
+          // No recipe found — show tag/create options
           setRecipe(null)
           setFinishWidth('')
           setFinalWidth('')
@@ -300,6 +329,92 @@ export default function FinishRecipeMasterPage() {
       })
       .catch(() => setLoadingRecipe(false))
   }, [selectedPartyId, selectedQualityId])
+
+  // Fetch party recipes for tagging
+  const fetchPartyRecipesForTag = useCallback(async () => {
+    if (!selectedPartyId) return
+    setLoadingPartyRecipes(true)
+    setSelectedTagRecipeId(null)
+    try {
+      const res = await fetch(`/api/finish/recipe?partyId=${selectedPartyId}`)
+      const data = await res.json()
+      setPartyRecipes(Array.isArray(data) ? data : [])
+    } catch {
+      setPartyRecipes([])
+    }
+    setLoadingPartyRecipes(false)
+  }, [selectedPartyId])
+
+  const handleTagToExisting = useCallback(() => {
+    setShowTagUI(true)
+    setShowNewRecipe(false)
+    fetchPartyRecipesForTag()
+  }, [fetchPartyRecipesForTag])
+
+  const handleCreateNew = useCallback(() => {
+    setShowNewRecipe(true)
+    setShowTagUI(false)
+  }, [])
+
+  const handleSaveTag = useCallback(async () => {
+    if (!selectedPartyId || !selectedQualityId || !selectedTagRecipeId) return
+    setTagging(true)
+    setMessage('')
+    try {
+      const res = await fetch('/api/finish/recipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'tag',
+          partyId: selectedPartyId,
+          qualityId: selectedQualityId,
+          recipeId: selectedTagRecipeId,
+        }),
+      })
+      if (res.ok) {
+        setMessage('Tagged successfully!')
+        setShowTagUI(false)
+        mutateRecipes()
+        // Re-fetch the recipe for this combo (will now resolve via tag)
+        const recipeRes = await fetch(`/api/finish/recipe?partyId=${selectedPartyId}&qualityId=${selectedQualityId}`)
+        const data = await recipeRes.json()
+        if (data && data.id) {
+          setRecipe(data)
+          setFinishWidth(data.finishWidth || '')
+          setFinalWidth(data.finalWidth || '')
+          setShortage(data.shortage || '')
+          setNotes(data.notes || '')
+          setItems(data.items.map((i: RecipeItem) => ({
+            name: i.name,
+            chemicalId: i.chemicalId,
+            quantity: String(i.quantity),
+            unit: i.unit,
+          })))
+        }
+      } else {
+        const err = await res.json()
+        setMessage(err.error || 'Failed to create tag.')
+      }
+    } catch {
+      setMessage('Network error.')
+    }
+    setTagging(false)
+  }, [selectedPartyId, selectedQualityId, selectedTagRecipeId, mutateRecipes])
+
+  const handleRemoveTag = useCallback(async (tagId: number) => {
+    try {
+      const res = await fetch(`/api/finish/recipe?tagId=${tagId}`, { method: 'DELETE' })
+      if (res.ok) {
+        mutateRecipes()
+        // Re-fetch current recipe to refresh tags
+        if (selectedPartyId && selectedQualityId) {
+          const recipeRes = await fetch(`/api/finish/recipe?partyId=${selectedPartyId}&qualityId=${selectedQualityId}`)
+          const data = await recipeRes.json()
+          if (data && data.id) setRecipe(data)
+        }
+      }
+    } catch { /* ignore */ }
+  }, [mutateRecipes, selectedPartyId, selectedQualityId])
 
   const addItem = useCallback(() => {
     setItems(prev => [...prev, { name: '', chemicalId: null, quantity: '', unit: 'kg' }])
@@ -347,6 +462,7 @@ export default function FinishRecipeMasterPage() {
       if (res.ok) {
         const data = await res.json()
         setRecipe(data)
+        setShowNewRecipe(false)
         setMessage('Recipe saved successfully!')
         mutateRecipes()
       } else {
@@ -393,6 +509,9 @@ export default function FinishRecipeMasterPage() {
 
   const inputClass = "w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
 
+  // Should we show the "no recipe" options?
+  const noRecipeFound = selectedPartyId && selectedQualityId && !loadingRecipe && !recipe
+
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
@@ -426,8 +545,107 @@ export default function FinishRecipeMasterPage() {
         </div>
       </div>
 
-      {/* Recipe Editor */}
-      {selectedPartyId && selectedQualityId && (
+      {/* No recipe found — Tag or Create options */}
+      {noRecipeFound && !showTagUI && !showNewRecipe && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-amber-200 dark:border-amber-800 shadow-sm p-5 mb-6">
+          <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
+            No recipe found for this party + quality combination.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={handleTagToExisting}
+              className="flex-1 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 px-4 py-3 rounded-lg text-sm font-bold hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition"
+            >
+              Tag to Existing Recipe
+            </button>
+            <button
+              onClick={handleCreateNew}
+              className="flex-1 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 px-4 py-3 rounded-lg text-sm font-bold hover:bg-teal-100 dark:hover:bg-teal-900/30 transition"
+            >
+              Create New Recipe
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tag to Existing Recipe UI */}
+      {noRecipeFound && showTagUI && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-indigo-200 dark:border-indigo-800 shadow-sm p-5 mb-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Tag to Existing Recipe</h2>
+            <button onClick={() => setShowTagUI(false)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Cancel</button>
+          </div>
+
+          {message && (
+            <div className={`rounded-lg px-4 py-3 text-sm ${message.includes('success') || message.includes('Tagged') ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
+              {message}
+            </div>
+          )}
+
+          {loadingPartyRecipes ? (
+            <div className="p-4 text-center text-gray-400 dark:text-gray-500">Loading recipes...</div>
+          ) : partyRecipes.length === 0 ? (
+            <div className="p-4 text-center text-gray-400 dark:text-gray-500">
+              No existing recipes for this party. Create a new one instead.
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {partyRecipes.map(r => (
+                  <label
+                    key={r.id}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${
+                      selectedTagRecipeId === r.id
+                        ? 'border-indigo-400 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-900/20'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="tagRecipe"
+                      checked={selectedTagRecipeId === r.id}
+                      onChange={() => setSelectedTagRecipeId(r.id)}
+                      className="mt-0.5 accent-indigo-600"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{r.quality.name}</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">{r.items.length} chemical{r.items.length !== 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {r.finishWidth && <span>FW: {r.finishWidth}</span>}
+                        {r.finalWidth && <span>Final: {r.finalWidth}</span>}
+                      </div>
+                      {r.items.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {r.items.slice(0, 5).map((item, i) => (
+                            <span key={i} className="inline-flex items-center gap-0.5 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] px-1.5 py-0.5 rounded-full">
+                              {item.name} ({item.quantity} {item.unit})
+                            </span>
+                          ))}
+                          {r.items.length > 5 && (
+                            <span className="text-[10px] text-gray-400 dark:text-gray-500">+{r.items.length - 5} more</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <button
+                onClick={handleSaveTag}
+                disabled={!selectedTagRecipeId || tagging}
+                className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 transition"
+              >
+                {tagging ? 'Tagging...' : 'Tag to Selected'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Recipe Editor — shown when recipe exists OR when user clicks "Create New" */}
+      {selectedPartyId && selectedQualityId && (recipe || showNewRecipe) && (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5 mb-6 space-y-4">
           {loadingRecipe ? (
             <div className="p-8 text-center text-gray-400 dark:text-gray-500">Loading recipe...</div>
@@ -435,92 +653,171 @@ export default function FinishRecipeMasterPage() {
             <>
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
-                  {recipe ? `Edit Recipe #${recipe.id}` : 'New Recipe'}
+                  {recipe ? (
+                    recipe.isTagged
+                      ? `Recipe (tagged from ${recipe.taggedFrom})`
+                      : `Edit Recipe #${recipe.id}`
+                  ) : 'New Recipe'}
                 </h2>
-                {recipe && (
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                    Updated: {new Date(recipe.updatedAt).toLocaleDateString('en-IN')}
-                  </span>
-                )}
+                <div className="flex items-center gap-3">
+                  {recipe && (
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                      Updated: {new Date(recipe.updatedAt).toLocaleDateString('en-IN')}
+                    </span>
+                  )}
+                  {showNewRecipe && !recipe && (
+                    <button onClick={() => setShowNewRecipe(false)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Cancel</button>
+                  )}
+                </div>
               </div>
 
+              {/* Tagged recipe info banner */}
+              {recipe?.isTagged && (
+                <div className="rounded-lg px-4 py-3 text-sm bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300">
+                  This quality uses the recipe from <span className="font-bold">{recipe.taggedFrom}</span>. The recipe is read-only here.
+                </div>
+              )}
+
+              {/* Also used by (tags) */}
+              {recipe && !recipe.isTagged && recipe.tags && recipe.tags.length > 0 && (
+                <div className="rounded-lg px-4 py-3 bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Also used by:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {recipe.tags.map(tag => (
+                      <span key={tag.id} className="inline-flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 text-xs px-2.5 py-1 rounded-full border border-indigo-200 dark:border-indigo-800">
+                        {tag.quality.name}
+                        <button
+                          onClick={() => handleRemoveTag(tag.id)}
+                          className="text-indigo-400 hover:text-red-500 dark:hover:text-red-400 text-sm leading-none"
+                          title="Remove tag"
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {message && (
-                <div className={`rounded-lg px-4 py-3 text-sm ${message.includes('success') || message.includes('saved') ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
+                <div className={`rounded-lg px-4 py-3 text-sm ${message.includes('success') || message.includes('saved') || message.includes('Tagged') ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'}`}>
                   {message}
                 </div>
               )}
 
-              {/* Width fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Finish Width</label>
-                  <input type="text" value={finishWidth} onChange={e => setFinishWidth(e.target.value)}
-                    placeholder="e.g. 44 inch" className={inputClass} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Final Width</label>
-                  <input type="text" value={finalWidth} onChange={e => setFinalWidth(e.target.value)}
-                    placeholder="e.g. 42 inch" className={inputClass} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Shortage</label>
-                  <input type="text" value={shortage} onChange={e => setShortage(e.target.value)}
-                    placeholder="e.g. 3 mtr" className={inputClass} />
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)}
-                  rows={2} placeholder="Optional notes..."
-                  className={inputClass + ' resize-none'} />
-              </div>
-
-              {/* Chemical items */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Chemicals</label>
-                  <button type="button" onClick={addItem}
-                    className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium">
-                    + Add Chemical
-                  </button>
-                </div>
-                {items.length > 0 ? (
-                  <div className="space-y-2">
-                    {items.map((item, i) => (
-                      <ChemicalRow key={i} item={item} index={i} chemicals={masterChemicals} onUpdate={updateItem} onRemove={removeItem} />
-                    ))}
+              {/* Width fields — editable only if not tagged */}
+              {!recipe?.isTagged && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Finish Width</label>
+                      <input type="text" value={finishWidth} onChange={e => setFinishWidth(e.target.value)}
+                        placeholder="e.g. 44 inch" className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Final Width</label>
+                      <input type="text" value={finalWidth} onChange={e => setFinalWidth(e.target.value)}
+                        placeholder="e.g. 42 inch" className={inputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Shortage</label>
+                      <input type="text" value={shortage} onChange={e => setShortage(e.target.value)}
+                        placeholder="e.g. 3 mtr" className={inputClass} />
+                    </div>
                   </div>
-                ) : (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">No chemicals added yet. Click + Add Chemical.</p>
-                )}
-              </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-3 pt-2 flex-wrap">
-                <button onClick={handleSave} disabled={saving}
-                  className="bg-teal-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-teal-700 disabled:opacity-50 transition">
-                  {saving ? 'Saving...' : recipe ? 'Update Recipe' : 'Save Recipe'}
-                </button>
-                {recipe && !deleteConfirm && (
-                  <button onClick={() => setDeleteConfirm(true)}
-                    className="text-sm text-red-400 hover:text-red-600 dark:hover:text-red-300 font-medium">
-                    Delete Recipe
-                  </button>
-                )}
-                {deleteConfirm && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-red-600 dark:text-red-400">Confirm delete?</span>
-                    <button onClick={handleDelete} disabled={deleting}
-                      className="text-xs text-red-600 dark:text-red-400 font-bold hover:text-red-700 disabled:opacity-50">
-                      {deleting ? 'Deleting...' : 'Yes, Delete'}
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
+                    <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                      rows={2} placeholder="Optional notes..."
+                      className={inputClass + ' resize-none'} />
+                  </div>
+
+                  {/* Chemical items */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Chemicals</label>
+                      <button type="button" onClick={addItem}
+                        className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium">
+                        + Add Chemical
+                      </button>
+                    </div>
+                    {items.length > 0 ? (
+                      <div className="space-y-2">
+                        {items.map((item, i) => (
+                          <ChemicalRow key={i} item={item} index={i} chemicals={masterChemicals} onUpdate={updateItem} onRemove={removeItem} />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 italic">No chemicals added yet. Click + Add Chemical.</p>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-3 pt-2 flex-wrap">
+                    <button onClick={handleSave} disabled={saving}
+                      className="bg-teal-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-teal-700 disabled:opacity-50 transition">
+                      {saving ? 'Saving...' : recipe ? 'Update Recipe' : 'Save Recipe'}
                     </button>
-                    <button onClick={() => setDeleteConfirm(false)}
-                      className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Cancel</button>
+                    {recipe && !deleteConfirm && (
+                      <button onClick={() => setDeleteConfirm(true)}
+                        className="text-sm text-red-400 hover:text-red-600 dark:hover:text-red-300 font-medium">
+                        Delete Recipe
+                      </button>
+                    )}
+                    {deleteConfirm && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-red-600 dark:text-red-400">Confirm delete?</span>
+                        <button onClick={handleDelete} disabled={deleting}
+                          className="text-xs text-red-600 dark:text-red-400 font-bold hover:text-red-700 disabled:opacity-50">
+                          {deleting ? 'Deleting...' : 'Yes, Delete'}
+                        </button>
+                        <button onClick={() => setDeleteConfirm(false)}
+                          className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Cancel</button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              )}
+
+              {/* Read-only view for tagged recipe */}
+              {recipe?.isTagged && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                    {recipe.finishWidth && (
+                      <div>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Finish Width:</span>
+                        <p className="text-gray-800 dark:text-gray-100">{recipe.finishWidth}</p>
+                      </div>
+                    )}
+                    {recipe.finalWidth && (
+                      <div>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Final Width:</span>
+                        <p className="text-gray-800 dark:text-gray-100">{recipe.finalWidth}</p>
+                      </div>
+                    )}
+                    {recipe.shortage && (
+                      <div>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Shortage:</span>
+                        <p className="text-gray-800 dark:text-gray-100">{recipe.shortage}</p>
+                      </div>
+                    )}
+                  </div>
+                  {recipe.items.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Chemicals:</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {recipe.items.map((item, i) => (
+                          <span key={i} className="inline-flex items-center gap-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[11px] px-2 py-0.5 rounded-full">
+                            {item.name} <span className="text-gray-400 dark:text-gray-500">({item.quantity} {item.unit})</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>
@@ -572,6 +869,17 @@ export default function FinishRecipeMasterPage() {
                     {r.items.map((item, i) => (
                       <span key={i} className="inline-flex items-center gap-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[11px] px-2 py-0.5 rounded-full">
                         {item.name} <span className="text-gray-400 dark:text-gray-500">({item.quantity} {item.unit})</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* Show tags below recipe in list */}
+                {r.tags && r.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 mr-0.5">Also:</span>
+                    {r.tags.map(tag => (
+                      <span key={tag.id} className="inline-flex items-center bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300 text-[10px] px-1.5 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                        {tag.quality.name}
                       </span>
                     ))}
                   </div>

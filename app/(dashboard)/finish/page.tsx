@@ -695,7 +695,8 @@ export default function FinishStockPage() {
         }
       })
       setFinishChemicals(newChemicals)
-      setRecipeMsg(`Loaded recipe: ${recipe.items.length} chemical(s) for ${partyName} / ${qualityName}`)
+      const tagNote = recipe.isTagged ? ` (using recipe from ${recipe.taggedFrom})` : ''
+      setRecipeMsg(`Loaded recipe: ${recipe.items.length} chemical(s) for ${partyName} / ${qualityName}${tagNote}`)
     } catch {
       setRecipeMsg('Failed to fetch recipe.')
     }
