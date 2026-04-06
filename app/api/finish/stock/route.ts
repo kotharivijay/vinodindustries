@@ -45,25 +45,56 @@ export async function GET() {
   })
   const lotInfoMap = new Map(greyEntries.map(g => [g.lotNo.toLowerCase().trim(), { party: g.party.name, quality: g.quality.name, weight: g.weight }]))
 
-  // Build stock list
-  const stock = doneSlips.map((d: any) => {
+  // Fetch all finish entry lots to calculate finished than per lotNo
+  const finishLots = await db.finishEntryLot.findMany({
+    select: { lotNo: true, than: true },
+  })
+  const finishedThanMap = new Map<string, number>()
+  for (const fl of finishLots) {
+    const key = fl.lotNo.toLowerCase().trim()
+    finishedThanMap.set(key, (finishedThanMap.get(key) || 0) + fl.than)
+  }
+
+  // Build stock list, deducting finished than
+  const stock: any[] = []
+  for (const d of doneSlips) {
     const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
     const lotInfo = lotInfoMap.get((lots[0]?.lotNo || d.lotNo).toLowerCase().trim())
     const shadeName = d.shadeName || d.foldBatch?.shade?.name || null
     const shadeDesc = d.foldBatch?.shade?.description || null
 
-    return {
+    // Deduct finished than per lot
+    const adjustedLots: any[] = []
+    for (const l of lots) {
+      const key = l.lotNo.toLowerCase().trim()
+      const finishedSoFar = finishedThanMap.get(key) || 0
+      const remaining = l.than - finishedSoFar
+      if (remaining > 0) {
+        const li = lotInfoMap.get(key)
+        adjustedLots.push({
+          lotNo: l.lotNo,
+          than: remaining,
+          originalThan: l.than,
+          finishedThan: finishedSoFar,
+          party: li?.party || lotInfo?.party || null,
+          quality: li?.quality || lotInfo?.quality || null,
+          weight: li?.weight || lotInfo?.weight || null,
+        })
+      }
+    }
+
+    // Skip entire slip if all lots are fully finished
+    if (adjustedLots.length === 0) continue
+
+    stock.push({
       id: d.id,
       slipNo: d.slipNo,
       date: d.date,
       dyeingDoneAt: d.dyeingDoneAt,
       shadeName,
       shadeDescription: shadeDesc,
-      lots: lots.map((l: any) => {
-        const li = lotInfoMap.get(l.lotNo.toLowerCase().trim())
-        return { lotNo: l.lotNo, than: l.than, party: li?.party || lotInfo?.party || null, quality: li?.quality || lotInfo?.quality || null, weight: li?.weight || lotInfo?.weight || null }
-      }),
-      totalThan: lots.reduce((s: number, l: any) => s + (l.than || 0), 0),
+      lots: adjustedLots,
+      totalThan: adjustedLots.reduce((s: number, l: any) => s + l.than, 0),
       party: lotInfo?.party || null,
       quality: lotInfo?.quality || null,
       weight: lotInfo?.weight || null,
@@ -71,8 +102,8 @@ export async function GET() {
       isPcJob: d.isPcJob || false,
       machineName: d.machine?.name || null,
       operatorName: d.operator?.name || null,
-    }
-  })
+    })
+  }
 
   return NextResponse.json({
     stock,

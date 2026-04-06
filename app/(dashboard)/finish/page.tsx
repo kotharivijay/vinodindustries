@@ -44,7 +44,7 @@ interface StockEntry {
 
 type SortField = 'date' | 'slipNo' | 'lotNo' | 'party' | 'quality' | 'than'
 type SortDir = 'asc' | 'desc'
-type Tab = 'register' | 'report' | 'packing'
+type Tab = 'slips' | 'register' | 'report' | 'packing'
 
 function getValue(e: StockEntry, f: SortField): string | number {
   switch (f) {
@@ -54,6 +54,52 @@ function getValue(e: StockEntry, f: SortField): string | number {
     case 'party': return (e.lots[0]?.party ?? '').toLowerCase()
     case 'quality': return (e.lots[0]?.quality ?? '').toLowerCase()
     case 'than': return e.totalThan
+  }
+}
+
+/* ── Finish slip entry types ──────────────────────────────────────── */
+
+interface FinishLot {
+  id: number
+  lotNo: string
+  than: number
+  meter: number | null
+}
+
+interface FinishSlipChemical {
+  id: number
+  chemicalId: number | null
+  chemical: { id: number; name: string } | null
+  name: string
+  quantity: number | null
+  unit: string
+  rate: number | null
+  cost: number | null
+}
+
+interface FinishSlipEntry {
+  id: number
+  date: string
+  slipNo: number
+  lotNo: string
+  than: number
+  meter: number | null
+  mandi: number | null
+  notes: string | null
+  lots: FinishLot[]
+  chemicals: FinishSlipChemical[]
+  partyName: string | null
+}
+
+type SlipSortField = 'date' | 'slipNo' | 'lotNo' | 'party' | 'than'
+
+function getSlipValue(e: FinishSlipEntry, f: SlipSortField): string | number {
+  switch (f) {
+    case 'date': return new Date(e.date).getTime()
+    case 'slipNo': return e.slipNo
+    case 'lotNo': return (e.lots.map(l => l.lotNo).join(' ')).toLowerCase()
+    case 'party': return (e.partyName ?? '').toLowerCase()
+    case 'than': return e.lots.reduce((s, l) => s + l.than, 0)
   }
 }
 
@@ -181,7 +227,14 @@ export default function FinishStockPage() {
   })
   const packingEntries = useMemo(() => packingRaw?.stock ?? [], [packingRaw])
 
-  const [tab, setTab] = useState<Tab>('register')
+  // Finish slip register data
+  const { data: finishSlips, isLoading: slipsLoading, mutate: mutateSlips } = useSWR<FinishSlipEntry[]>('/api/finish', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  })
+  const slipEntries = useMemo(() => finishSlips ?? [], [finishSlips])
+
+  const [tab, setTab] = useState<Tab>('slips')
 
   /* ── Stock Register state ─────────────────────────────────────── */
   const [filterSlip, setFilterSlipRaw] = useState('')
@@ -226,6 +279,182 @@ export default function FinishStockPage() {
         return sortDir === 'asc' ? cmp : -cmp
       })
   }, [entries, debouncedSlip, debouncedLot, debouncedParty, debouncedQuality, sortField, sortDir])
+
+  /* ── Finish Slip Register state ────────────────────────────────── */
+  const [slipFilterSlip, setSlipFilterSlipRaw] = useState('')
+  const [slipDebouncedSlip, setSlipDebouncedSlip] = useDebounce()
+  const [slipFilterLot, setSlipFilterLotRaw] = useState('')
+  const [slipDebouncedLot, setSlipDebouncedLot] = useDebounce()
+  const [slipFilterParty, setSlipFilterPartyRaw] = useState('')
+  const [slipDebouncedParty, setSlipDebouncedParty] = useDebounce()
+  const [slipSortField, setSlipSortField] = useState<SlipSortField>('date')
+  const [slipSortDir, setSlipSortDir] = useState<SortDir>('desc')
+
+  void slipFilterSlip; void slipFilterLot; void slipFilterParty
+
+  const toggleSlipSort = (f: SlipSortField) => {
+    if (slipSortField === f) setSlipSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSlipSortField(f); setSlipSortDir('asc') }
+  }
+
+  const filteredSlips = useMemo(() => {
+    const fs = slipDebouncedSlip.toLowerCase()
+    const fl = slipDebouncedLot.toLowerCase()
+    const fp = slipDebouncedParty.toLowerCase()
+
+    return slipEntries
+      .filter(e => {
+        const allLots = e.lots.map(l => l.lotNo).join(' ').toLowerCase()
+        const matchSlip = !fs || String(e.slipNo).includes(fs)
+        const matchLot = !fl || allLots.includes(fl)
+        const matchParty = !fp || (e.partyName ?? '').toLowerCase().includes(fp)
+        return matchSlip && matchLot && matchParty
+      })
+      .sort((a, b) => {
+        const av = getSlipValue(a, slipSortField), bv = getSlipValue(b, slipSortField)
+        const cmp = av < bv ? -1 : av > bv ? 1 : 0
+        return slipSortDir === 'asc' ? cmp : -cmp
+      })
+  }, [slipEntries, slipDebouncedSlip, slipDebouncedLot, slipDebouncedParty, slipSortField, slipSortDir])
+
+  /* ── Shared chemical master state ──────────────────────────────── */
+  const [masterChemicals, setMasterChemicals] = useState<ChemicalMaster[]>([])
+  const [chemLoaded, setChemLoaded] = useState(false)
+
+  /* ── Finish Slip Edit state ──────────────────────────────────────── */
+  const [editingSlipId, setEditingSlipId] = useState<number | null>(null)
+  const [editDate, setEditDate] = useState('')
+  const [editSlipNo, setEditSlipNo] = useState('')
+  const [editMandi, setEditMandi] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [editLots, setEditLots] = useState<{ lotNo: string; than: string; meter: string }[]>([])
+  const [editChemicals, setEditChemicals] = useState<FinishChemicalRow[]>([])
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const startEdit = useCallback(async (entry: FinishSlipEntry) => {
+    setEditingSlipId(entry.id)
+    setEditDate(new Date(entry.date).toISOString().split('T')[0])
+    setEditSlipNo(String(entry.slipNo))
+    setEditMandi(entry.mandi != null ? String(entry.mandi) : '')
+    setEditNotes(entry.notes ?? '')
+    setEditLots(entry.lots.map(l => ({ lotNo: l.lotNo, than: String(l.than), meter: l.meter != null ? String(l.meter) : '' })))
+    setEditChemicals(entry.chemicals.map(c => ({
+      name: c.name,
+      chemicalId: c.chemicalId,
+      quantity: c.quantity != null ? String(c.quantity) : '',
+      unit: c.unit,
+      rate: c.rate != null ? String(c.rate) : '',
+      cost: c.cost,
+    })))
+    setEditError('')
+    // Load chemicals master if not loaded
+    if (!chemLoaded) {
+      try {
+        const res = await fetch('/api/chemicals')
+        const data = await res.json()
+        setMasterChemicals(Array.isArray(data) ? data : [])
+        setChemLoaded(true)
+      } catch { /* ignore */ }
+    }
+  }, [chemLoaded])
+
+  const cancelEdit = useCallback(() => {
+    setEditingSlipId(null)
+    setEditChemicals([])
+    setEditLots([])
+    setEditError('')
+  }, [])
+
+  const addEditChemical = useCallback(() => {
+    setEditChemicals(prev => [...prev, { name: '', chemicalId: null, quantity: '', unit: 'kg', rate: '', cost: null }])
+  }, [])
+
+  const removeEditChemical = useCallback((i: number) => {
+    setEditChemicals(prev => prev.filter((_, idx) => idx !== i))
+  }, [])
+
+  const updateEditChemical = useCallback((i: number, field: keyof FinishChemicalRow, value: string) => {
+    setEditChemicals(prev => {
+      const updated = [...prev]
+      updated[i] = { ...updated[i], [field]: value }
+      if (field === 'name') {
+        const exact = masterChemicals.find(m => m.name.toLowerCase().trim() === value.toLowerCase().trim())
+        updated[i].chemicalId = exact?.id ?? null
+        if (exact?.currentPrice != null) updated[i].rate = String(exact.currentPrice)
+      }
+      const qty = parseFloat(field === 'quantity' ? value : updated[i].quantity)
+      const rate = parseFloat(field === 'rate' ? value : updated[i].rate)
+      updated[i].cost = !isNaN(qty) && !isNaN(rate) ? parseFloat((qty * rate).toFixed(2)) : null
+      return updated
+    })
+  }, [masterChemicals])
+
+  const handleEditSubmit = useCallback(async () => {
+    if (!editingSlipId) return
+    if (!editSlipNo.trim()) { setEditError('Slip No is required.'); return }
+    setEditSaving(true)
+    setEditError('')
+
+    const totalMeter = editLots.reduce((s, l) => s + (parseFloat(l.meter) || 0), 0)
+
+    const payload = {
+      date: editDate,
+      slipNo: editSlipNo,
+      notes: editNotes || null,
+      mandi: editMandi ? parseFloat(editMandi) : null,
+      totalMeter: totalMeter || null,
+      lots: editLots.map(l => ({
+        lotNo: l.lotNo.trim(),
+        than: parseInt(l.than) || 0,
+        meter: l.meter ? parseFloat(l.meter) : null,
+      })),
+      chemicals: editChemicals
+        .filter(c => c.name.trim())
+        .map(c => ({
+          name: c.name.trim(),
+          chemicalId: c.chemicalId,
+          quantity: c.quantity ? parseFloat(c.quantity) : null,
+          unit: c.unit,
+          rate: c.rate ? parseFloat(c.rate) : null,
+          cost: c.cost,
+        })),
+    }
+
+    try {
+      const res = await fetch(`/api/finish/${editingSlipId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (res.ok) {
+        setEditingSlipId(null)
+        setEditChemicals([])
+        setEditLots([])
+        mutateSlips()
+      } else {
+        const d = await res.json().catch(() => ({}))
+        setEditError(d.error ?? 'Failed to save')
+      }
+    } catch {
+      setEditError('Network error')
+    }
+    setEditSaving(false)
+  }, [editingSlipId, editDate, editSlipNo, editNotes, editMandi, editLots, editChemicals, mutateSlips])
+
+  const handleDelete = useCallback(async (id: number) => {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/finish/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setDeleteConfirmId(null)
+        mutateSlips()
+      }
+    } catch { /* ignore */ }
+    setDeleting(false)
+  }, [mutateSlips])
 
   /* ── Stock Report grouped data ──────────────────────────────────── */
 
@@ -377,8 +606,6 @@ export default function FinishStockPage() {
   const [finishNotes, setFinishNotes] = useState('')
   const [finishMeters, setFinishMeters] = useState<Record<string, string>>({})
   const [finishChemicals, setFinishChemicals] = useState<FinishChemicalRow[]>([])
-  const [masterChemicals, setMasterChemicals] = useState<ChemicalMaster[]>([])
-  const [chemLoaded, setChemLoaded] = useState(false)
   const [finishSaving, setFinishSaving] = useState(false)
   const [finishError, setFinishError] = useState('')
 
@@ -617,13 +844,288 @@ export default function FinishStockPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-gray-200 dark:border-gray-700">
-        {([['register', 'Stock Register'], ['report', 'Stock Report'], ['packing', 'Packing Stock']] as [Tab, string][]).map(([key, label]) => (
+        {([['slips', 'Finish Slip Register'], ['register', 'Stock Register'], ['report', 'Stock Report'], ['packing', 'Packing Stock']] as [Tab, string][]).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === key ? 'border-teal-600 text-teal-600 dark:text-teal-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
             {label}
           </button>
         ))}
       </div>
+
+      {/* ═══ FINISH SLIP REGISTER TAB ═════════════════════════════════ */}
+      {tab === 'slips' && (
+        <>
+          {/* Filters + Sort */}
+          <div className="mb-4 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Slip No</label>
+                <input type="text" placeholder="Filter..."
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  value={slipFilterSlip}
+                  onChange={e => { setSlipFilterSlipRaw(e.target.value); setSlipDebouncedSlip(e.target.value) }} />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Lot No</label>
+                <input type="text" placeholder="Filter..."
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  value={slipFilterLot}
+                  onChange={e => { setSlipFilterLotRaw(e.target.value); setSlipDebouncedLot(e.target.value) }} />
+              </div>
+              <div>
+                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Party</label>
+                <input type="text" placeholder="Filter..."
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  value={slipFilterParty}
+                  onChange={e => { setSlipFilterPartyRaw(e.target.value); setSlipDebouncedParty(e.target.value) }} />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">Sort:</span>
+              {([['date', 'Date'], ['slipNo', 'Slip'], ['lotNo', 'Lot'], ['party', 'Party'], ['than', 'Than']] as [SlipSortField, string][]).map(([f, label]) => (
+                <button key={f} onClick={() => toggleSlipSort(f)}
+                  className={`text-xs px-2 py-1 rounded border ${slipSortField === f ? 'bg-teal-100 dark:bg-teal-900/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300 font-medium' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/40'}`}>
+                  {label} {slipSortField === f ? (slipSortDir === 'asc' ? '\u2191' : '\u2193') : ''}
+                </button>
+              ))}
+              {(slipFilterSlip || slipFilterLot || slipFilterParty) && (
+                <button onClick={() => {
+                  setSlipFilterSlipRaw(''); setSlipDebouncedSlip('')
+                  setSlipFilterLotRaw(''); setSlipDebouncedLot('')
+                  setSlipFilterPartyRaw(''); setSlipDebouncedParty('')
+                }} className="text-xs text-red-400 hover:text-red-600">Clear</button>
+              )}
+              <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">{filteredSlips.length} of {slipEntries.length}</span>
+            </div>
+          </div>
+
+          {slipsLoading ? <div className="p-12 text-center text-gray-400 dark:text-gray-500">Loading...</div> :
+            filteredSlips.length === 0 ? (
+              <div className="p-12 text-center text-gray-400 dark:text-gray-500">
+                {slipEntries.length === 0 ? 'No finish entries found.' : 'No results found.'}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredSlips.map(entry => {
+                  const isEditing = editingSlipId === entry.id
+                  const totalThanEntry = entry.lots.reduce((s, l) => s + l.than, 0)
+                  const totalMeter = entry.lots.reduce((s, l) => s + (l.meter || 0), 0)
+
+                  if (isEditing) {
+                    return (
+                      <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl border-2 border-teal-300 dark:border-teal-700 shadow-lg p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Edit Finish Slip #{entry.slipNo}</h2>
+                          <button onClick={cancelEdit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
+                        </div>
+
+                        {editError && (
+                          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg px-4 py-3 text-sm">{editError}</div>
+                        )}
+
+                        {/* Date + Slip No */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date</label>
+                            <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
+                              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Slip No</label>
+                            <input type="number" value={editSlipNo} onChange={e => setEditSlipNo(e.target.value)}
+                              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                          </div>
+                        </div>
+
+                        {/* Lots */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Lots</label>
+                          <div className="space-y-2">
+                            {editLots.map((lot, li) => (
+                              <div key={li} className="grid grid-cols-3 gap-2 items-center">
+                                <div>
+                                  <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Lot No</label>
+                                  <input type="text" value={lot.lotNo}
+                                    onChange={e => setEditLots(prev => { const u = [...prev]; u[li] = { ...u[li], lotNo: e.target.value }; return u })}
+                                    className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Than</label>
+                                  <input type="number" value={lot.than}
+                                    onChange={e => setEditLots(prev => { const u = [...prev]; u[li] = { ...u[li], than: e.target.value }; return u })}
+                                    className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                                </div>
+                                <div>
+                                  <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Meter</label>
+                                  <input type="number" step="0.1" value={lot.meter}
+                                    onChange={e => setEditLots(prev => { const u = [...prev]; u[li] = { ...u[li], meter: e.target.value }; return u })}
+                                    className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Mandi */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Mandi (liters)</label>
+                          <input type="number" step="0.1" value={editMandi} onChange={e => setEditMandi(e.target.value)}
+                            placeholder="Liters"
+                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                        </div>
+
+                        {/* Chemicals */}
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Chemicals</label>
+                            <button type="button" onClick={addEditChemical}
+                              className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium">
+                              + Add Chemical
+                            </button>
+                          </div>
+                          {editChemicals.length > 0 && (
+                            <div className="space-y-2">
+                              {editChemicals.map((chem, ci) => (
+                                <div key={ci} className="flex items-center gap-2">
+                                  <div className="relative flex-1">
+                                    <input type="text" placeholder="Chemical name" value={chem.name}
+                                      onChange={e => updateEditChemical(ci, 'name', e.target.value)}
+                                      className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
+                                      list={`edit-chem-list-${ci}`} />
+                                    <datalist id={`edit-chem-list-${ci}`}>
+                                      {masterChemicals.map(m => (
+                                        <option key={m.id} value={m.name} />
+                                      ))}
+                                    </datalist>
+                                  </div>
+                                  <input type="number" step="0.01" placeholder="Qty" value={chem.quantity}
+                                    onChange={e => updateEditChemical(ci, 'quantity', e.target.value)}
+                                    className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                                  <select value={chem.unit} onChange={e => updateEditChemical(ci, 'unit', e.target.value)}
+                                    className="w-14 border border-gray-300 dark:border-gray-600 rounded px-1 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400">
+                                    <option value="kg">kg</option>
+                                    <option value="ltr">ltr</option>
+                                    <option value="gm">gm</option>
+                                    <option value="ml">ml</option>
+                                  </select>
+                                  <input type="number" step="0.01" placeholder="Rate" value={chem.rate}
+                                    onChange={e => updateEditChemical(ci, 'rate', e.target.value)}
+                                    className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                                  {chem.cost != null && (
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 w-14 text-right">{chem.cost.toFixed(0)}</span>
+                                  )}
+                                  <button type="button" onClick={() => removeEditChemical(ci)}
+                                    className="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Notes */}
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
+                          <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)}
+                            rows={2} placeholder="Optional notes..."
+                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none" />
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-3 pt-2">
+                          <button onClick={handleEditSubmit} disabled={editSaving}
+                            className="bg-teal-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-teal-700 disabled:opacity-50 transition">
+                            {editSaving ? 'Saving...' : 'Save Changes'}
+                          </button>
+                          <button onClick={cancelEdit} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          <span>{new Date(entry.date).toLocaleDateString('en-IN')}</span>
+                          <span className="text-gray-300 dark:text-gray-600">&middot;</span>
+                          <span className="text-teal-600 dark:text-teal-400 font-medium">Slip {entry.slipNo}</span>
+                          {entry.mandi != null && (
+                            <>
+                              <span className="text-gray-300 dark:text-gray-600">&middot;</span>
+                              <span>Mandi: {entry.mandi}L</span>
+                            </>
+                          )}
+                          {entry.chemicals.length > 0 && (
+                            <>
+                              <span className="text-gray-300 dark:text-gray-600">&middot;</span>
+                              <span>{entry.chemicals.length} chemical{entry.chemicals.length !== 1 ? 's' : ''}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThanEntry}T</span>
+                          {totalMeter > 0 && <span className="text-xs text-gray-400 dark:text-gray-500">{totalMeter}m</span>}
+                        </div>
+                      </div>
+
+                      {/* Lots */}
+                      <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                        {entry.lots.map((lot, li) => (
+                          <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`}
+                            className="inline-flex items-center gap-1 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30">
+                            {lot.lotNo} <span className="text-teal-400 dark:text-teal-500 font-normal">({lot.than}T{lot.meter != null ? ` / ${lot.meter}m` : ''})</span>
+                          </Link>
+                        ))}
+                      </div>
+
+                      {/* Party + notes */}
+                      {entry.partyName && <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">{entry.partyName}</p>}
+                      {entry.notes && <p className="text-xs text-gray-500 dark:text-gray-400 italic mb-1">{entry.notes}</p>}
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                        <button onClick={() => startEdit(entry)}
+                          className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium">
+                          Edit
+                        </button>
+                        {deleteConfirmId === entry.id ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-red-600 dark:text-red-400">Delete this entry?</span>
+                            <button onClick={() => handleDelete(entry.id)} disabled={deleting}
+                              className="text-xs text-red-600 dark:text-red-400 font-bold hover:text-red-700 disabled:opacity-50">
+                              {deleting ? 'Deleting...' : 'Yes'}
+                            </button>
+                            <button onClick={() => setDeleteConfirmId(null)}
+                              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setDeleteConfirmId(entry.id)}
+                            className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-300 font-medium">
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Footer summary */}
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                    Total ({filteredSlips.length} slips)
+                  </span>
+                  <span className="font-bold text-emerald-700 dark:text-emerald-400">
+                    {filteredSlips.reduce((s, e) => s + e.lots.reduce((s2, l) => s2 + l.than, 0), 0)} than
+                  </span>
+                </div>
+              </div>
+            )}
+        </>
+      )}
 
       {/* ═══ STOCK REGISTER TAB ═══════════════════════════════════════ */}
       {tab === 'register' && (

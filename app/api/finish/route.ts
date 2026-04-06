@@ -44,6 +44,22 @@ export async function GET() {
   return NextResponse.json(enriched)
 }
 
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const data = await req.json()
+  if (!data.id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+  const db = prisma as any
+  try {
+    await db.finishEntry.delete({ where: { id: parseInt(data.id) } })
+    return NextResponse.json({ ok: true })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message ?? 'Failed to delete' }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
