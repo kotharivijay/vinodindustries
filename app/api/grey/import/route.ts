@@ -15,15 +15,44 @@ function norm(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, ' ')
 }
 
-function parseSheetDate(val: string): Date | null {
-  if (!val || val.toLowerCase() === 'open') return null
+function parseSheetDate(val: string, monthCol?: string): Date | null {
+  if (!val || val.toLowerCase() === 'open') {
+    // No date — use 31/03/2025 as default if no month available
+    return new Date(2025, 2, 31) // March 31, 2025
+  }
   const parts = val.split('/')
   if (parts.length === 3) {
-    const [m, d, y] = parts
-    const year = parseInt(y) < 100 ? 2000 + parseInt(y) : parseInt(y)
-    return new Date(year, parseInt(m) - 1, parseInt(d))
+    // Sheet uses DD/MM/YYYY or DD/MM/YY format
+    const [d, m, y] = parts
+    let day = parseInt(d)
+    let month = parseInt(m)
+    let year = parseInt(y)
+
+    // Handle 2-digit year
+    if (year < 100) year = 2000 + year
+
+    // Validate — if month > 12, might be M/D/YYYY (US format from some cells)
+    if (month > 12 && day <= 12) {
+      // Swap: was actually MM/DD/YYYY
+      const tmp = day; day = month; month = tmp
+    }
+
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return new Date(year, month - 1, day)
+    }
   }
-  return null
+
+  // Fallback: use month column if available
+  if (monthCol) {
+    const mo = parseInt(monthCol)
+    if (mo >= 1 && mo <= 12) {
+      // Use 15th of that month in 2025 as approximate date
+      return new Date(2025, mo - 1, 15)
+    }
+  }
+
+  // Last fallback
+  return new Date(2025, 2, 31) // March 31, 2025
 }
 
 // Build a unique key for duplicate detection
@@ -117,12 +146,8 @@ export async function POST(req: NextRequest) {
     // Skip completely empty rows (silent — no point showing blank rows)
     if (!date && !partyName && !lotNo) continue
 
-    // Skip rows where Month column (B) is exactly "old year" (case-insensitive)
+    // "old year" rows = opening stock — import with date from sheet or default 31/03/2025
     const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
-    if (monthVal === 'old year') {
-      rows.push(makeSkippedRow(row, 'Old Year entry'))
-      continue
-    }
 
     // Skip rows with 0 or empty than
     if (!than || than <= 0) {
@@ -136,8 +161,9 @@ export async function POST(req: NextRequest) {
       continue
     }
 
-    // Skip rows without date
-    if (!date) {
+    // If no date but has month, we'll use parseSheetDate which handles fallback
+    // Only skip if truly empty (no date AND no month)
+    if (!date && !monthVal) {
       rows.push(makeSkippedRow(row, 'Missing Date'))
       continue
     }
@@ -184,6 +210,7 @@ export async function POST(req: NextRequest) {
     rows.push({
       sn,
       date,
+      month: monthVal,
       challanNo,
       partyName,
       qualityName,
@@ -240,7 +267,7 @@ export async function PUT(req: NextRequest) {
     }
 
     try {
-      const date = parseSheetDate(row.date) ?? new Date()
+      const date = parseSheetDate(row.date, row.month) ?? new Date()
       const transportId = row.transportId ?? (await prisma.transport.findFirst())?.id
       if (!transportId) { errors.push({ sn: row.sn, error: 'No transport found' }); continue }
       const weaverId = row.weaverId ?? (await prisma.weaver.findFirst())?.id
