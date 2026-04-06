@@ -1,10 +1,199 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+// ── Searchable Dropdown Component ─────────────────────────────────────────
+function SearchDropdown({ value, items, onChange, placeholder, disabled }: {
+  value: number | null
+  items: { id: number; name: string }[]
+  onChange: (id: number | null) => void
+  placeholder: string
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+  const selected = items.find(i => i.id === value)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) {
+      document.addEventListener('mousedown', handler)
+      document.addEventListener('touchstart', handler as EventListener)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('touchstart', handler as EventListener)
+    }
+  }, [open])
+
+  const filtered = useMemo(() => {
+    if (!search) return items
+    const q = search.toLowerCase()
+    return items.filter(i => i.name.toLowerCase().includes(q))
+  }, [items, search])
+
+  return (
+    <div ref={ref} className="relative">
+      <div
+        onClick={() => { if (!disabled) { setOpen(!open); setSearch('') } }}
+        className={`flex items-center justify-between border rounded-lg px-3 py-2 text-sm cursor-pointer transition ${
+          disabled ? 'opacity-50 cursor-not-allowed' : ''
+        } ${open ? 'ring-2 ring-teal-400 border-teal-400' : 'border-gray-300 dark:border-gray-600'
+        } bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100`}
+      >
+        <span className={selected ? '' : 'text-gray-400 dark:text-gray-500'}>
+          {selected?.name || placeholder}
+        </span>
+        <span className="text-gray-400 text-xs">▾</span>
+      </div>
+      {open && !disabled && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl z-30 max-h-60 flex flex-col">
+          <input
+            type="text"
+            autoFocus
+            className="w-full border-b border-gray-200 dark:border-gray-700 bg-transparent text-sm px-3 py-2 focus:outline-none dark:text-gray-100 dark:placeholder-gray-500"
+            placeholder="Search..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onClick={e => e.stopPropagation()}
+          />
+          <div className="overflow-y-auto max-h-48">
+            {value && (
+              <button
+                type="button"
+                onClick={() => { onChange(null); setOpen(false); setSearch('') }}
+                className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border-b border-gray-100 dark:border-gray-700"
+              >
+                ✕ Clear selection
+              </button>
+            )}
+            {filtered.map(item => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => { onChange(item.id); setOpen(false); setSearch('') }}
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-teal-50 dark:hover:bg-teal-900/20 transition ${
+                  item.id === value ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-medium' : 'text-gray-800 dark:text-gray-200'
+                }`}
+              >
+                {item.name}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-3 py-3 text-xs text-gray-400 text-center">No results</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Chemical Row with searchable dropdown ──────────────────────────────────
+function ChemicalRow({ item, index, chemicals, onUpdate, onRemove }: {
+  item: { name: string; chemicalId: number | null; quantity: string; unit: string }
+  index: number
+  chemicals: { id: number; name: string; unit: string }[]
+  onUpdate: (i: number, field: string, value: string) => void
+  onRemove: (i: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) {
+      document.addEventListener('mousedown', handler)
+      document.addEventListener('touchstart', handler as EventListener)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('touchstart', handler as EventListener)
+    }
+  }, [open])
+
+  const filtered = useMemo(() => {
+    const q = (open ? search : '').toLowerCase()
+    if (!q) return chemicals.slice(0, 50)
+    return chemicals.filter(c => c.name.toLowerCase().includes(q))
+  }, [chemicals, search, open])
+
+  return (
+    <div className="flex items-center gap-2">
+      <div ref={ref} className="relative flex-1">
+        <div
+          onClick={() => { setOpen(!open); setSearch('') }}
+          className={`flex items-center justify-between border rounded px-2 py-1.5 text-sm cursor-pointer ${
+            open ? 'ring-1 ring-teal-400 border-teal-400' : 'border-gray-300 dark:border-gray-600'
+          } bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100`}
+        >
+          <span className={item.name ? '' : 'text-gray-400 dark:text-gray-500'}>
+            {item.name || 'Select chemical...'}
+          </span>
+          <span className="text-gray-400 text-[10px]">▾</span>
+        </div>
+        {open && (
+          <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl z-30 max-h-48 flex flex-col">
+            <input
+              type="text"
+              autoFocus
+              className="w-full border-b border-gray-200 dark:border-gray-700 bg-transparent text-sm px-2 py-1.5 focus:outline-none dark:text-gray-100 dark:placeholder-gray-500"
+              placeholder="Search chemical..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onClick={e => e.stopPropagation()}
+            />
+            <div className="overflow-y-auto max-h-36">
+              {filtered.map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => { onUpdate(index, 'name', c.name); setOpen(false); setSearch('') }}
+                  className={`w-full text-left px-2 py-1.5 text-sm hover:bg-teal-50 dark:hover:bg-teal-900/20 ${
+                    item.name === c.name ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-medium' : 'text-gray-800 dark:text-gray-200'
+                  }`}
+                >
+                  {c.name} <span className="text-[10px] text-gray-400">{c.unit}</span>
+                </button>
+              ))}
+              {filtered.length === 0 && search && (
+                <button
+                  type="button"
+                  onClick={() => { onUpdate(index, 'name', search.trim()); setOpen(false); setSearch('') }}
+                  className="w-full text-left px-2 py-1.5 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                >
+                  + Use &quot;{search.trim()}&quot;
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      <input type="number" step="0.01" placeholder="Qty" value={item.quantity}
+        onChange={e => onUpdate(index, 'quantity', e.target.value)}
+        className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+      <select value={item.unit} onChange={e => onUpdate(index, 'unit', e.target.value)}
+        className="w-16 border border-gray-300 dark:border-gray-600 rounded px-1 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400">
+        <option value="kg">kg</option>
+        <option value="ltr">ltr</option>
+        <option value="gm">gm</option>
+        <option value="ml">ml</option>
+      </select>
+      <button type="button" onClick={() => onRemove(index)}
+        className="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
+    </div>
+  )
+}
 
 interface Party { id: number; name: string }
 interface Quality { id: number; name: string }
@@ -214,34 +403,26 @@ export default function FinishRecipeMasterPage() {
         </div>
       </div>
 
-      {/* Party + Quality dropdowns */}
+      {/* Party + Quality searchable dropdowns */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div>
           <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Party</label>
-          <select
-            value={selectedPartyId ?? ''}
-            onChange={e => setSelectedPartyId(e.target.value ? parseInt(e.target.value) : null)}
-            className={inputClass}
-          >
-            <option value="">Select party...</option>
-            {(parties ?? []).map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          <SearchDropdown
+            value={selectedPartyId}
+            items={(parties ?? []).map(p => ({ id: p.id, name: p.name }))}
+            onChange={id => setSelectedPartyId(id)}
+            placeholder="Search party..."
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Quality</label>
-          <select
-            value={selectedQualityId ?? ''}
-            onChange={e => setSelectedQualityId(e.target.value ? parseInt(e.target.value) : null)}
+          <SearchDropdown
+            value={selectedQualityId}
+            items={partyQualities.map(q => ({ id: q.id, name: q.name }))}
+            onChange={id => setSelectedQualityId(id)}
+            placeholder={loadingQualities ? 'Loading...' : 'Search quality...'}
             disabled={!selectedPartyId || loadingQualities}
-            className={inputClass + ' disabled:opacity-50'}
-          >
-            <option value="">Select quality...</option>
-            {partyQualities.map(q => (
-              <option key={q.id} value={q.id}>{q.name}</option>
-            ))}
-          </select>
+          />
         </div>
       </div>
 
@@ -308,31 +489,7 @@ export default function FinishRecipeMasterPage() {
                 {items.length > 0 ? (
                   <div className="space-y-2">
                     {items.map((item, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                          <input type="text" placeholder="Chemical name" value={item.name}
-                            onChange={e => updateItem(i, 'name', e.target.value)}
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
-                            list={`recipe-chem-${i}`} />
-                          <datalist id={`recipe-chem-${i}`}>
-                            {masterChemicals.map(m => (
-                              <option key={m.id} value={m.name} />
-                            ))}
-                          </datalist>
-                        </div>
-                        <input type="number" step="0.01" placeholder="Qty" value={item.quantity}
-                          onChange={e => updateItem(i, 'quantity', e.target.value)}
-                          className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
-                        <select value={item.unit} onChange={e => updateItem(i, 'unit', e.target.value)}
-                          className="w-16 border border-gray-300 dark:border-gray-600 rounded px-1 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400">
-                          <option value="kg">kg</option>
-                          <option value="ltr">ltr</option>
-                          <option value="gm">gm</option>
-                          <option value="ml">ml</option>
-                        </select>
-                        <button type="button" onClick={() => removeItem(i)}
-                          className="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
-                      </div>
+                      <ChemicalRow key={i} item={item} index={i} chemicals={masterChemicals} onUpdate={updateItem} onRemove={removeItem} />
                     ))}
                   </div>
                 ) : (
