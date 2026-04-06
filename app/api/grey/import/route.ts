@@ -146,12 +146,11 @@ export async function POST(req: NextRequest) {
     // Skip completely empty rows (silent — no point showing blank rows)
     if (!date && !partyName && !lotNo) continue
 
-    // "old year" rows = opening stock — import with date from sheet or default 31/03/2025
+    // Skip "old year" rows — these are opening stock, handled by carry-forward import
     const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
-
-    // Opening stock lots: concatenate 0 at end of lot number
-    if (monthVal === 'old year' && lotNo) {
-      lotNo = lotNo + '0'
+    if (monthVal === 'old year') {
+      rows.push(makeSkippedRow(row, 'Old Year entry (use Carry Forward)'))
+      continue
     }
 
     // Skip rows with 0 or empty than
