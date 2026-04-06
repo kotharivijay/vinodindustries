@@ -17,6 +17,7 @@ model Party {
   greyEntries     GreyEntry[]
   despatchEntries DespatchEntry[]
   foldBatchLots   FoldBatchLot[]
+  finishRecipes   FinishRecipe[]
 }
 
 model Weaver {
@@ -33,6 +34,7 @@ model Quality {
   greyEntries     GreyEntry[]
   despatchEntries DespatchEntry[]
   foldBatchLots   FoldBatchLot[]
+  finishRecipes   FinishRecipe[]
 }
 
 model Transport {
@@ -207,6 +209,7 @@ model Chemical {
   recipeUsages   ShadeRecipeItem[]
   processItems   DyeingProcessItem[]
   additionUsages DyeingAdditionItem[]
+  finishRecipeItems FinishRecipeItem[]
 }
 
 model ChemicalPriceHistory {
@@ -738,4 +741,33 @@ model ShadeImportQueue {
   sortOrder    Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ─── Finish Recipe Master ───────────────────────────────────────────────────
+
+model FinishRecipe {
+  id          Int                @id @default(autoincrement())
+  partyId     Int
+  party       Party              @relation(fields: [partyId], references: [id])
+  qualityId   Int
+  quality     Quality            @relation(fields: [qualityId], references: [id])
+  finishWidth String?
+  finalWidth  String?
+  shortage    String?
+  notes       String?
+  items       FinishRecipeItem[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  @@unique([partyId, qualityId])
+}
+
+model FinishRecipeItem {
+  id         Int           @id @default(autoincrement())
+  recipeId   Int
+  recipe     FinishRecipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  chemicalId Int?
+  chemical   Chemical?     @relation(fields: [chemicalId], references: [id])
+  name       String
+  quantity   Float
+  unit       String        @default("kg")
 }

@@ -43,6 +43,7 @@ const ksiNavGroups = [
       { href: '/masters/machines', label: 'Machine Master', icon: '⚙️' },
       { href: '/masters/operators', label: 'Operator Master', icon: '👷' },
       { href: '/masters/processes', label: 'Process Master', icon: '🔬' },
+      { href: '/masters/finish-recipe', label: 'Finish Recipe', icon: '📋' },
     ],
   },
   {

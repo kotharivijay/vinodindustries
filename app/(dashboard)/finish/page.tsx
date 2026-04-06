@@ -215,7 +215,7 @@ export default function FinishStockPage() {
   const router = useRouter()
   void router
 
-  const { data: rawData, isLoading: loading } = useSWR<{ stock: StockEntry[]; totalSlips: number; totalThan: number }>('/api/finish/stock', fetcher, {
+  const { data: rawData, isLoading: loading, mutate: mutateStock } = useSWR<{ stock: StockEntry[]; totalSlips: number; totalThan: number }>('/api/finish/stock', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
   })
@@ -434,6 +434,7 @@ export default function FinishStockPage() {
         setEditChemicals([])
         setEditLots([])
         mutateSlips()
+        mutateStock()
       } else {
         const d = await res.json().catch(() => ({}))
         setEditError(d.error ?? 'Failed to save')
@@ -442,7 +443,7 @@ export default function FinishStockPage() {
       setEditError('Network error')
     }
     setEditSaving(false)
-  }, [editingSlipId, editDate, editSlipNo, editNotes, editMandi, editLots, editChemicals, mutateSlips])
+  }, [editingSlipId, editDate, editSlipNo, editNotes, editMandi, editLots, editChemicals, mutateSlips, mutateStock])
 
   const handleDelete = useCallback(async (id: number) => {
     setDeleting(true)
@@ -451,10 +452,11 @@ export default function FinishStockPage() {
       if (res.ok) {
         setDeleteConfirmId(null)
         mutateSlips()
+        mutateStock()
       }
     } catch { /* ignore */ }
     setDeleting(false)
-  }, [mutateSlips])
+  }, [mutateSlips, mutateStock])
 
   /* ── Stock Report grouped data ──────────────────────────────────── */
 
@@ -608,6 +610,9 @@ export default function FinishStockPage() {
   const [finishChemicals, setFinishChemicals] = useState<FinishChemicalRow[]>([])
   const [finishSaving, setFinishSaving] = useState(false)
   const [finishError, setFinishError] = useState('')
+  const [finishTotalMeterOverride, setFinishTotalMeterOverride] = useState('')
+  const [recipeFetching, setRecipeFetching] = useState(false)
+  const [recipeMsg, setRecipeMsg] = useState('')
 
   const startFinish = useCallback(async () => {
     setShowFinishForm(true)
@@ -639,7 +644,63 @@ export default function FinishStockPage() {
     setFinishMandi('')
     setFinishNotes('')
     setFinishError('')
+    setFinishTotalMeterOverride('')
+    setRecipeMsg('')
   }, [])
+
+  const fetchFinishRecipe = useCallback(async () => {
+    // Determine party + quality from selected lots
+    const firstLot = Array.from(selectedLots.values())[0]
+    if (!firstLot) { setRecipeMsg('No lots selected.'); return }
+    const partyName = firstLot.party
+    const qualityName = firstLot.quality
+    if (!partyName || partyName === 'Unknown' || !qualityName || qualityName === 'Unknown') {
+      setRecipeMsg('Could not determine party/quality from selected lots.')
+      return
+    }
+    setRecipeFetching(true)
+    setRecipeMsg('')
+    try {
+      // Look up party and quality IDs
+      const [partiesRes, qualitiesRes] = await Promise.all([
+        fetch('/api/masters/parties').then(r => r.json()),
+        fetch('/api/masters/qualities').then(r => r.json()),
+      ])
+      const party = (partiesRes as any[]).find((p: any) => p.name === partyName)
+      const quality = (qualitiesRes as any[]).find((q: any) => q.name === qualityName)
+      if (!party || !quality) {
+        setRecipeMsg(`No recipe found for ${partyName} / ${qualityName}`)
+        setRecipeFetching(false)
+        return
+      }
+      const recipeRes = await fetch(`/api/finish/recipe?partyId=${party.id}&qualityId=${quality.id}`)
+      const recipe = await recipeRes.json()
+      if (!recipe || !recipe.id) {
+        setRecipeMsg(`No recipe found for ${partyName} / ${qualityName}`)
+        setRecipeFetching(false)
+        return
+      }
+      // Populate chemicals from recipe items
+      const newChemicals: FinishChemicalRow[] = recipe.items.map((item: any) => {
+        const rate = item.chemical?.currentPrice
+        const qty = item.quantity
+        const cost = rate != null && qty != null ? parseFloat((qty * rate).toFixed(2)) : null
+        return {
+          name: item.name,
+          chemicalId: item.chemicalId,
+          quantity: String(item.quantity),
+          unit: item.unit,
+          rate: rate != null ? String(rate) : '',
+          cost,
+        }
+      })
+      setFinishChemicals(newChemicals)
+      setRecipeMsg(`Loaded recipe: ${recipe.items.length} chemical(s) for ${partyName} / ${qualityName}`)
+    } catch {
+      setRecipeMsg('Failed to fetch recipe.')
+    }
+    setRecipeFetching(false)
+  }, [selectedLots])
 
   const addFinishChemical = useCallback(() => {
     setFinishChemicals(prev => [...prev, { name: '', chemicalId: null, quantity: '', unit: 'kg', rate: '', cost: null }])
@@ -701,7 +762,8 @@ export default function FinishStockPage() {
       meter: finishMeters[l.lotNo] ? parseFloat(finishMeters[l.lotNo]) : null,
     }))
 
-    const totalMeter = marka.reduce((s, l) => s + (l.meter || 0), 0)
+    const autoMeter = marka.reduce((s, l) => s + (l.meter || 0), 0)
+    const totalMeter = finishTotalMeterOverride ? parseFloat(finishTotalMeterOverride) : autoMeter
 
     const payload = {
       date: finishDate,
@@ -737,8 +799,11 @@ export default function FinishStockPage() {
         setFinishMeters({})
         setFinishMandi('')
         setFinishNotes('')
-        // Refresh data
-        window.location.reload()
+        setFinishSaving(false)
+        // Live refresh data
+        mutateSlips()
+        mutateStock()
+        return
       } else {
         const d = await res.json().catch(() => ({}))
         setFinishError(d.error ?? 'Failed to save')
@@ -748,7 +813,7 @@ export default function FinishStockPage() {
       setFinishError('Network error')
       setFinishSaving(false)
     }
-  }, [selectedLots, finishDate, finishSlipNo, finishNotes, finishMandi, finishMeters, finishChemicals])
+  }, [selectedLots, finishDate, finishSlipNo, finishNotes, finishMandi, finishMeters, finishChemicals, finishTotalMeterOverride, mutateSlips, mutateStock])
 
   /* ── Packing Stock grouped data ────────────────────────────────── */
 
@@ -1545,6 +1610,33 @@ export default function FinishStockPage() {
                       </div>
                     </div>
 
+                    {/* Total Meter */}
+                    <div className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-3">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Total Meter</label>
+                      {(() => {
+                        const autoMeter = Object.values(finishMeters).reduce((s, v) => s + (parseFloat(v) || 0), 0)
+                        return (
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-gray-600 dark:text-gray-300">
+                              Auto: <strong className="text-emerald-600 dark:text-emerald-400">{autoMeter || 0} mtr</strong>
+                            </span>
+                            <span className="text-gray-300 dark:text-gray-600">|</span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              placeholder="Override total"
+                              value={finishTotalMeterOverride}
+                              onChange={e => setFinishTotalMeterOverride(e.target.value)}
+                              className="w-28 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
+                            />
+                            {finishTotalMeterOverride && (
+                              <span className="text-xs text-amber-600 dark:text-amber-400">(override)</span>
+                            )}
+                          </div>
+                        )
+                      })()}
+                    </div>
+
                     {/* Mandi */}
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Mandi (liters)</label>
@@ -1556,12 +1648,21 @@ export default function FinishStockPage() {
                     {/* Chemicals */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Chemicals</label>
+                        <div className="flex items-center gap-3">
+                          <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Chemicals</label>
+                          <button type="button" onClick={fetchFinishRecipe} disabled={recipeFetching}
+                            className="text-xs bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 px-2.5 py-1 rounded-lg font-medium disabled:opacity-50 transition border border-indigo-200 dark:border-indigo-800">
+                            {recipeFetching ? 'Loading...' : 'Load Finish Recipe'}
+                          </button>
+                        </div>
                         <button type="button" onClick={addFinishChemical}
                           className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium">
                           + Add Chemical
                         </button>
                       </div>
+                      {recipeMsg && (
+                        <p className={`text-xs mb-2 ${recipeMsg.includes('Loaded') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>{recipeMsg}</p>
+                      )}
                       {finishChemicals.length > 0 && (
                         <div className="space-y-2">
                           {finishChemicals.map((chem, ci) => (
@@ -1603,6 +1704,18 @@ export default function FinishStockPage() {
                           ))}
                         </div>
                       )}
+
+                      {/* Total Cost */}
+                      {finishChemicals.length > 0 && (() => {
+                        const totalCost = finishChemicals.reduce((s, c) => s + (c.cost ?? 0), 0)
+                        return totalCost > 0 ? (
+                          <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+                            <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
+                              Total Cost: <span className="text-emerald-600 dark:text-emerald-400">{'\u20B9'}{totalCost.toLocaleString('en-IN')}</span>
+                            </span>
+                          </div>
+                        ) : null
+                      })()}
                     </div>
 
                     {/* Notes */}
