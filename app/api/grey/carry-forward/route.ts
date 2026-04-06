@@ -77,9 +77,16 @@ export async function POST(req: NextRequest) {
 
   for (const row of rows) {
     const rawLotNo = (row[16] || '').trim() // Q
-    // Rename conflicting lots (same lot number exists in current year)
+    // ALL opening stock lots: append 0 to separate from current year lot numbers
+    // Also check specific renames for additional conflicts
     const renameKey = Object.keys(CARRY_FORWARD_RENAMES).find(k => k.toLowerCase() === rawLotNo.toLowerCase())
-    const lotNo = renameKey ? CARRY_FORWARD_RENAMES[renameKey] : rawLotNo
+    let lotNo = renameKey ? CARRY_FORWARD_RENAMES[renameKey] : rawLotNo
+    // If not already renamed (doesn't end with 0 from rename map), append 0
+    if (!renameKey && lotNo) {
+      lotNo = lotNo + '0'
+    }
+    const rawSn = (row[0] || '').trim() // A — SN from sheet
+    const snValue = rawSn.startsWith('O') ? rawSn : 'O' + rawSn // Prefix O if not already
     const stock = parseInt(row[17]) || 0  // R
     const totalDesp = parseInt(row[18]) || 0 // S
     const than = parseInt(row[7]) || 0 // H (grey than)
@@ -110,7 +117,7 @@ export async function POST(req: NextRequest) {
           totalDespatched: totalDesp,
           party,
           quality,
-          notes: 'Imported from 2024-25 sheet',
+          notes: `SN:${snValue} | Imported from 2024-25 sheet`,
           despatchHistory: despSets.length ? { create: despSets } : undefined,
         },
         update: {
