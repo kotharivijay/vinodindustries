@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
   for (const row of dataRows) {
     const partyName = row[COL.PARTY]?.trim() ?? ''
     const date = row[COL.DATE]?.trim() ?? ''
-    const lotNo = row[COL.LOT_NO]?.trim() ?? ''
+    let lotNo = row[COL.LOT_NO]?.trim() ?? ''
     const than = parseInt(row[COL.THAN]) || 0
 
     // ── Skip rules ──
@@ -148,6 +148,11 @@ export async function POST(req: NextRequest) {
 
     // "old year" rows = opening stock — import with date from sheet or default 31/03/2025
     const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
+
+    // Opening stock lots: concatenate 0 at end of lot number
+    if (monthVal === 'old year' && lotNo) {
+      lotNo = lotNo + '0'
+    }
 
     // Skip rows with 0 or empty than
     if (!than || than <= 0) {
