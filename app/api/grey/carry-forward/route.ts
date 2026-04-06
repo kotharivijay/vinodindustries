@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { GoogleAuth } from 'google-auth-library'
 
-const LAST_YEAR_SHEET_ID = '1-SbwlIuhGfnZrkmozh9rOpsdF3K6X1sRIZdPweI0yrk'
+const LAST_YEAR_SHEET_ID = '1AGOnIxF5HYZSJuD3Hs4_e5NDfS7gL_zVd-AkQdvF9UA'
 
 // Lots that conflict with current year — rename by adding "0" at the end
 const CARRY_FORWARD_RENAMES: Record<string, string> = {
