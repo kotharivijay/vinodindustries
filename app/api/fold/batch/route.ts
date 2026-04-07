@@ -3,13 +3,29 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
-// PATCH /api/fold/batch — update shade on a batch
-// body: { batchId: number; shadeId?: number | null; shadeName?: string | null }
+// PATCH /api/fold/batch — update shade or lot on a batch
 export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { batchId, shadeId, shadeName, shadeDescription } = await req.json() as {
+  const body = await req.json()
+
+  // Update lot in a batch
+  if (body.action === 'update-lot' && body.lotId) {
+    const lot = await (prisma as any).foldBatchLot.update({
+      where: { id: body.lotId },
+      data: {
+        lotNo: body.lotNo,
+        than: parseInt(body.than) || 0,
+        partyId: body.partyId ?? undefined,
+        qualityId: body.qualityId ?? undefined,
+      },
+    })
+    return NextResponse.json(lot)
+  }
+
+  // Update shade on a batch (existing)
+  const { batchId, shadeId, shadeName, shadeDescription } = body as {
     batchId: number
     shadeId?: number | null
     shadeName?: string | null

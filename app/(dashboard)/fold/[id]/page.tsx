@@ -1,11 +1,103 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import useSWR from 'swr'
-import * as XLSX from 'xlsx'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+// ── Searchable Lot Picker ────────────────────────────────────────────────
+interface StockLot { lotNo: string; party: string; quality: string; stock: number; foldAvailable: number }
+
+function LotPicker({ currentLotNo, currentThan, lotId, stockLots, onSave }: {
+  currentLotNo: string; currentThan: number; lotId: number
+  stockLots: StockLot[]
+  onSave: (lotId: number, lotNo: string, than: number) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [saving, setSaving] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent | TouchEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    if (open) {
+      document.addEventListener('mousedown', handler)
+      document.addEventListener('touchstart', handler as EventListener)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('touchstart', handler as EventListener)
+    }
+  }, [open])
+
+  const filtered = useMemo(() => {
+    if (!search) return stockLots.filter(l => l.foldAvailable > 0).slice(0, 50)
+    const q = search.toLowerCase()
+    return stockLots.filter(l => l.foldAvailable > 0 && (
+      l.lotNo.toLowerCase().includes(q) ||
+      l.party.toLowerCase().includes(q) ||
+      l.quality.toLowerCase().includes(q)
+    )).slice(0, 50)
+  }, [stockLots, search])
+
+  async function selectLot(lot: StockLot) {
+    setSaving(true)
+    await onSave(lotId, lot.lotNo, lot.foldAvailable)
+    setSaving(false)
+    setOpen(false)
+    setSearch('')
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => { setOpen(!open); setSearch('') }}
+        disabled={saving}
+        className="font-medium text-indigo-700 dark:text-indigo-400 hover:underline cursor-pointer disabled:opacity-50"
+      >
+        {saving ? '...' : currentLotNo} <span className="text-[10px] text-gray-400">✏️</span>
+      </button>
+      {open && (
+        <>
+          <div className="sm:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed bottom-0 left-0 right-0 z-50 sm:absolute sm:bottom-auto sm:top-full sm:mt-1 sm:left-0 sm:right-auto sm:w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-t-2xl sm:rounded-lg shadow-xl flex flex-col max-h-[50vh] sm:max-h-60">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+              <input
+                type="text" autoFocus
+                className="flex-1 text-sm bg-transparent focus:outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400"
+                placeholder="Search lot, party, quality..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+              <button onClick={() => setOpen(false)} className="text-xs text-gray-400 sm:hidden">Close</button>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {filtered.map(l => (
+                <button
+                  key={l.lotNo}
+                  onClick={() => selectLot(l)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between"
+                >
+                  <div>
+                    <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
+                    <span className="text-[10px] text-gray-400 ml-2">{l.party} · {l.quality}</span>
+                  </div>
+                  <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{l.foldAvailable}T</span>
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <p className="px-3 py-4 text-xs text-gray-400 text-center">No lots found</p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 interface ShadeOption { id: number; name: string; description?: string | null }
 
@@ -158,6 +250,22 @@ export default function FoldDetailPage() {
   const { data: program, isLoading, mutate } = useSWR<FoldProgram>(`/api/fold/${id}`, fetcher)
   const { data: shades = [] } = useSWR<ShadeOption[]>('/api/shades', fetcher)
   const [confirming, setConfirming] = useState(false)
+
+  // Fetch stock data for lot picker
+  const { data: stockData } = useSWR<{ parties: { party: string; lots: StockLot[] }[] }>('/api/stock', fetcher)
+  const allStockLots = useMemo<StockLot[]>(() => {
+    if (!stockData?.parties) return []
+    return stockData.parties.flatMap(p => p.lots)
+  }, [stockData])
+
+  async function updateLot(lotId: number, lotNo: string, than: number) {
+    await fetch('/api/fold/batch', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update-lot', lotId, lotNo, than }),
+    })
+    mutate()
+  }
 
   async function updateBatchShade(batchId: number, shadeId: number | null, shadeName: string | null, shadeDescription: string | null) {
     await fetch('/api/fold/batch', {
@@ -364,7 +472,15 @@ export default function FoldDetailPage() {
                 <tbody>
                   {batch.lots.map(lot => (
                     <tr key={lot.id} className="border-b border-gray-50 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="px-4 py-2 font-medium text-indigo-700 dark:text-indigo-400">{lot.lotNo}</td>
+                      <td className="px-4 py-2">
+                        <LotPicker
+                          currentLotNo={lot.lotNo}
+                          currentThan={lot.than}
+                          lotId={lot.id}
+                          stockLots={allStockLots}
+                          onSave={updateLot}
+                        />
+                      </td>
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{lot.party?.name ?? '-'}</td>
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{lot.quality?.name ?? '-'}</td>
                       <td className="px-4 py-2 text-right font-bold text-gray-800 dark:text-gray-100">{lot.than}</td>
