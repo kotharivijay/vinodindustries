@@ -12,13 +12,19 @@ export async function PATCH(req: NextRequest) {
 
   // Update lot in a batch
   if (body.action === 'update-lot' && body.lotId) {
+    // Look up party + quality from grey entry for this lot
+    const greyEntry = await prisma.greyEntry.findFirst({
+      where: { lotNo: body.lotNo },
+      select: { partyId: true, qualityId: true },
+    })
+
     const lot = await (prisma as any).foldBatchLot.update({
       where: { id: body.lotId },
       data: {
         lotNo: body.lotNo,
         than: parseInt(body.than) || 0,
-        partyId: body.partyId ?? undefined,
-        qualityId: body.qualityId ?? undefined,
+        partyId: greyEntry?.partyId ?? null,
+        qualityId: greyEntry?.qualityId ?? null,
       },
     })
     return NextResponse.json(lot)
