@@ -37,7 +37,7 @@ interface ParsedImportLot { lotNo: string; than: number }
 
 interface ParsedImportBatch {
   date: string
-  slipNo: number
+  slipNo: number  // auto-generated batch number (1,2,3...)
   lots: ParsedImportLot[]
 }
 
@@ -71,11 +71,13 @@ function parseImportText(text: string): ParsedImportFold[] {
     const shadeNo = headerParts[3] || ''
     const shadeName = headerParts[4] || ''
 
-    // Lines 2+: [date] | [slip no] | [lot1=than, lot2=than, ...]
+    // Lines 2+: [date] | [lot1=than, lot2=than] OR [date] | [slip no] | [lot1=than, ...]
+    // SN = batch count (auto-numbered 1,2,3...), slip no column is ignored
     const batches: ParsedImportBatch[] = []
+    let batchNo = 0
     for (let i = 1; i < lines.length; i++) {
       const parts = lines[i].split('|').map(s => s.trim())
-      if (parts.length < 3) continue
+      if (parts.length < 2) continue
 
       // Parse date as DD/MM/YYYY -> YYYY-MM-DD
       const dateParts = parts[0].split('/')
@@ -84,10 +86,15 @@ function parseImportText(text: string): ParsedImportFold[] {
         dateStr = `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}`
       }
 
-      const slipNo = parseInt(parts[1]) || 0
+      // Find the lots part — it's the part containing "=" signs
+      // Could be parts[1] (new format: date | lots) or parts[2] (old format: date | slipNo | lots)
+      let lotsStr = ''
+      for (let p = 1; p < parts.length; p++) {
+        if (parts[p].includes('=')) { lotsStr = parts[p]; break }
+      }
+      if (!lotsStr) continue
 
       // Parse lots: "AJ-13400=16, AJ-13060=16" or "AJ-13400=16"
-      const lotsStr = parts[2]
       const lotEntries = lotsStr.split(',').map(s => s.trim()).filter(Boolean)
       const lots: ParsedImportLot[] = []
       for (const entry of lotEntries) {
@@ -98,7 +105,8 @@ function parseImportText(text: string): ParsedImportFold[] {
       }
 
       if (lots.length > 0) {
-        batches.push({ date: dateStr, slipNo, lots })
+        batchNo++
+        batches.push({ date: dateStr, slipNo: batchNo, lots })
       }
     }
 
