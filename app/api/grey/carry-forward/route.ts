@@ -92,6 +92,9 @@ export async function POST(req: NextRequest) {
     const than = parseInt(row[7]) || 0 // H (grey than)
     const party = (row[4] || '').trim() // E
     const quality = (row[5] || '').trim() // F
+    const weight = (row[6] || '').trim() // G — weight e.g. ".98g", "90g"
+    const grayMtrRaw = (row[8] || '').replace(/,/g, '').trim() // I — gray mtr
+    const grayMtr = parseFloat(grayMtrRaw) || null
 
     // Parse grey inward date from column C (DD/MM/YYYY or MM/DD/YYYY)
     let greyDate: Date | null = null
@@ -132,6 +135,8 @@ export async function POST(req: NextRequest) {
           totalDespatched: totalDesp,
           party,
           quality,
+          weight: weight || null,
+          grayMtr,
           greyDate,
           notes: `SN:${snValue} | Imported from 2024-25 sheet`,
           despatchHistory: despSets.length ? { create: despSets } : undefined,
@@ -142,6 +147,8 @@ export async function POST(req: NextRequest) {
           totalDespatched: totalDesp,
           party,
           quality,
+          weight: weight || null,
+          grayMtr,
           greyDate,
         },
       })

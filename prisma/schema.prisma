@@ -551,6 +551,8 @@ model LotOpeningBalance {
   totalDespatched Int?     // total despatched last year
   party           String?  // party name for reference
   quality         String?  // quality for reference
+  weight          String?  // e.g. "90g", ".98g"
+  grayMtr         Float?   // total gray meters
   greyDate        DateTime? // original grey inward date
   notes           String?
   createdAt       DateTime @default(now())

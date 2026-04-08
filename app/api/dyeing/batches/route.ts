@@ -73,15 +73,36 @@ export async function GET() {
       greyMap.get(g.lotNo)!.push({ weight: g.weight, grayMtr: g.grayMtr ?? 0, than: g.than })
     }
 
+    // Fetch opening balance weight data for carry-forward lots
+    const obEntries = await db.lotOpeningBalance.findMany({
+      where: { lotNo: { in: Array.from(allLotNos) } },
+      select: { lotNo: true, weight: true, grayMtr: true, greyThan: true, quality: true },
+    })
+    const obMap = new Map<string, { weight: string | null; grayMtr: number; than: number; quality: string | null }>()
+    for (const o of obEntries) {
+      obMap.set(o.lotNo, { weight: o.weight, grayMtr: o.grayMtr ?? 0, than: o.greyThan ?? 0, quality: o.quality })
+      // Also fill qualityMap from OB if not already set
+      if (o.quality && !qualityMap.has(o.lotNo)) qualityMap.set(o.lotNo, o.quality)
+    }
+
     // Calculate weight per than for a lot
     function calcWeightPerThan(lotNo: string): number {
+      // Try grey entries first
       const entries = greyMap.get(lotNo)
-      if (!entries || entries.length === 0) return 0
-      // Use the first entry with a valid weight
-      for (const e of entries) {
-        const kgPerMtr = parseWeightKgPerMtr(e.weight)
-        if (kgPerMtr > 0 && e.grayMtr > 0 && e.than > 0) {
-          return kgPerMtr * e.grayMtr / e.than
+      if (entries && entries.length > 0) {
+        for (const e of entries) {
+          const kgPerMtr = parseWeightKgPerMtr(e.weight)
+          if (kgPerMtr > 0 && e.grayMtr > 0 && e.than > 0) {
+            return kgPerMtr * e.grayMtr / e.than
+          }
+        }
+      }
+      // Fallback: opening balance
+      const ob = obMap.get(lotNo)
+      if (ob) {
+        const kgPerMtr = parseWeightKgPerMtr(ob.weight)
+        if (kgPerMtr > 0 && ob.grayMtr > 0 && ob.than > 0) {
+          return kgPerMtr * ob.grayMtr / ob.than
         }
       }
       return 0
