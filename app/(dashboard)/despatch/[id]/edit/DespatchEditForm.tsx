@@ -232,10 +232,10 @@ export default function DespatchEditForm({ id }: { id: string }) {
               <tr className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-600">
                 <th className="text-left px-2 py-2">Lot No</th>
                 <th className="text-left px-2 py-2">Quality</th>
-                <th className="text-left px-2 py-2 w-16">Than</th>
-                <th className="text-left px-2 py-2 w-20">Meter</th>
-                <th className="text-left px-2 py-2 w-16">Rate</th>
-                <th className="text-left px-2 py-2 w-20">Amount</th>
+                <th className="text-left px-2 py-2 w-24">Than</th>
+                <th className="text-left px-2 py-2 w-24">Meter</th>
+                <th className="text-left px-2 py-2 w-24">Rate</th>
+                <th className="text-left px-2 py-2 w-24">Amount</th>
                 <th className="text-left px-2 py-2">Description</th>
                 <th className="w-8"></th>
               </tr>
@@ -253,9 +253,9 @@ export default function DespatchEditForm({ id }: { id: string }) {
                     {row.lookupStatus === 'not_found' && <p className="text-[10px] text-amber-500 mt-0.5">⚠️ Lot not found</p>}
                   </td>
                   <td className="px-2 py-2 text-xs text-gray-500 dark:text-gray-400">{row.qualityName || '—'}</td>
-                  <td className="px-2 py-2"><input type="number" className={inp + ' w-16'} value={row.than} onChange={e => updateRow(idx, 'than', e.target.value)} /></td>
-                  <td className="px-2 py-2"><input type="number" step="0.1" className={inp + ' w-20'} value={row.meter} onChange={e => updateRow(idx, 'meter', e.target.value)} /></td>
-                  <td className="px-2 py-2"><input type="number" step="0.01" className={inp + ' w-16'} value={row.rate} onChange={e => updateRow(idx, 'rate', e.target.value)} /></td>
+                  <td className="px-2 py-2"><input type="number" className={inp + ' w-24'} value={row.than} onChange={e => updateRow(idx, 'than', e.target.value)} /></td>
+                  <td className="px-2 py-2"><input type="number" step="0.1" className={inp + ' w-24'} value={row.meter} onChange={e => updateRow(idx, 'meter', e.target.value)} /></td>
+                  <td className="px-2 py-2"><input type="number" step="0.01" className={inp + ' w-24'} value={row.rate} onChange={e => updateRow(idx, 'rate', e.target.value)} /></td>
                   <td className="px-2 py-2 text-xs font-medium text-gray-600 dark:text-gray-300">{row.amount ? `₹${row.amount}` : '—'}</td>
                   <td className="px-2 py-2"><input type="text" className={inp + ' w-28'} value={row.description} onChange={e => updateRow(idx, 'description', e.target.value)} placeholder="e.g. Black" /></td>
                   <td className="px-2 py-2">

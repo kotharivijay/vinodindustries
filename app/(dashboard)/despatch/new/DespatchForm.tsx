@@ -197,9 +197,9 @@ export default function DespatchForm() {
               <tr className="border-b border-gray-200 dark:border-gray-600">
                 <th className="text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2 w-32">Lot No</th>
                 <th className="text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2 w-28">Quality</th>
-                <th className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2 w-20">Than</th>
-                <th className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2 w-20">Mtr</th>
-                <th className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2 w-20">Rate</th>
+                <th className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2 w-24">Than</th>
+                <th className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2 w-24">Mtr</th>
+                <th className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2 w-24">Rate</th>
                 <th className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2 w-24">Amount</th>
                 <th className="text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase py-2 px-2">Description</th>
                 <th className="w-10"></th>
