@@ -62,7 +62,13 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { imageBase64 } = await req.json()
+  let body: any
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body — image may be too large' }, { status: 400 })
+  }
+  const { imageBase64 } = body
   if (!imageBase64) return NextResponse.json({ error: 'No image provided' }, { status: 400 })
 
   // Try Gemini first (free), fallback to OpenAI

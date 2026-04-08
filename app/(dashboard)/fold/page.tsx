@@ -144,20 +144,20 @@ function ImportFoldsModal({ onClose, onImported }: { onClose: () => void; onImpo
     setPreview(null)
     setImportResult(null)
     try {
-      // Compress image
+      // Compress image (smaller for API body limit)
       const base64 = await new Promise<string>((resolve, reject) => {
         const img = new Image()
         const url = URL.createObjectURL(file)
         img.onload = () => {
           URL.revokeObjectURL(url)
-          const MAX = 1500
+          const MAX = 1200
           let w = img.width, h = img.height
           if (w > MAX) { h = Math.round(h * MAX / w); w = MAX }
           if (h > MAX) { w = Math.round(w * MAX / h); h = MAX }
           const canvas = document.createElement('canvas')
           canvas.width = w; canvas.height = h
           canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
-          resolve(canvas.toDataURL('image/jpeg', 0.8).split(',')[1])
+          resolve(canvas.toDataURL('image/jpeg', 0.6).split(',')[1])
         }
         img.onerror = reject
         img.src = url
@@ -169,8 +169,12 @@ function ImportFoldsModal({ onClose, onImported }: { onClose: () => void; onImpo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64 }),
       })
+      if (!res.ok) {
+        const text = await res.text()
+        try { const d = JSON.parse(text); throw new Error(d.error || 'OCR failed') }
+        catch { throw new Error('OCR failed: ' + (res.status === 413 ? 'Image too large, try a smaller image' : `Server error ${res.status}`)) }
+      }
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'OCR failed')
 
       // Set text from OCR result and auto-parse
       if (data.text) {
