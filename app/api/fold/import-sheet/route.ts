@@ -158,8 +158,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Preview mode
+  // Preview mode — check which folds already exist
   if (action === 'preview') {
+    const db = prisma as any
+    const existingFolds = await db.foldProgram.findMany({ select: { foldNo: true } })
+    const existingSet = new Set(existingFolds.map((f: any) => f.foldNo.toLowerCase().trim()))
+
     return NextResponse.json({
       folds: folds.map(f => ({
         foldNo: f.foldNo,
@@ -170,6 +174,7 @@ export async function POST(req: NextRequest) {
         lots: [...new Set(f.batches.flatMap(b => b.lots.map(l => l.lotNo)))],
         totalThan: f.batches.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + l.than, 0), 0),
         shadeName: f.batches[0]?.shadeName || f.batches[0]?.shadeNo || '',
+        exists: existingSet.has(f.foldNo.toLowerCase().trim()),
       })),
       total: folds.length,
     })
