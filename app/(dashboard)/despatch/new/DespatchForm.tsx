@@ -38,7 +38,12 @@ export default function DespatchForm() {
     const res = await fetch(`/api/grey/lookup?lotNo=${encodeURIComponent(form.lotNo.trim())}`)
     const data = await res.json()
     if (data.date) {
-      setForm(prev => ({ ...prev, grayInwDate: new Date(data.date).toISOString().split('T')[0] }))
+      setForm(prev => ({
+        ...prev,
+        grayInwDate: new Date(data.date).toISOString().split('T')[0],
+        partyId: data.partyId ? String(data.partyId) : prev.partyId,
+        qualityId: data.qualityId ? String(data.qualityId) : prev.qualityId,
+      }))
       setLotLookup('found')
     } else {
       setLotLookup('not_found')
@@ -86,15 +91,15 @@ export default function DespatchForm() {
           <Field label="Date *"><input type="date" className={inp} value={form.date} onChange={e => set('date', e.target.value)} required /></Field>
           <Field label="Challan No *"><input type="number" className={inp} value={form.challanNo} onChange={e => set('challanNo', e.target.value)} required /></Field>
           <Field label="A-Job Party *"><ComboSelect options={masters.parties} value={form.partyId} onChange={id => set('partyId', id)} onAddNew={n => addMaster('parties', n)} placeholder="Select party..." /></Field>
-          <Field label="A/Quality *"><ComboSelect options={masters.qualities} value={form.qualityId} onChange={id => set('qualityId', id)} onAddNew={n => addMaster('qualities', n)} placeholder="Select quality..." /></Field>
           <Field label="A-Lot No *">
             <input type="text" className={inp} value={form.lotNo}
               onChange={e => { set('lotNo', e.target.value); setLotLookup('idle') }}
               onBlur={handleLotBlur} required placeholder="e.g. PS-689" />
-            {lotLookup === 'loading' && <p className="text-xs text-gray-400 mt-0.5">Looking up grey date...</p>}
-            {lotLookup === 'found' && <p className="text-xs text-green-600 mt-0.5">✓ Grey date auto-filled</p>}
-            {lotLookup === 'not_found' && <p className="text-xs text-amber-500 mt-0.5">Lot not in grey register</p>}
+            {lotLookup === 'loading' && <p className="text-xs text-gray-400 mt-0.5">Looking up lot...</p>}
+            {lotLookup === 'found' && <p className="text-xs text-green-600 mt-0.5">✓ Party, quality & date auto-filled</p>}
+            {lotLookup === 'not_found' && <p className="text-xs text-amber-500 mt-0.5">Lot not found in grey/opening</p>}
           </Field>
+          <Field label="A/Quality *"><ComboSelect options={masters.qualities} value={form.qualityId} onChange={id => set('qualityId', id)} onAddNew={n => addMaster('qualities', n)} placeholder="Select quality..." /></Field>
           <Field label="Gray Inw Date"><input type="date" className={inp} value={form.grayInwDate} onChange={e => set('grayInwDate', e.target.value)} /></Field>
           <Field label="Job Delivery"><input type="text" className={inp} value={form.jobDelivery} onChange={e => set('jobDelivery', e.target.value)} /></Field>
           <Field label="Than *"><input type="number" className={inp} value={form.than} onChange={e => set('than', e.target.value)} required /></Field>
