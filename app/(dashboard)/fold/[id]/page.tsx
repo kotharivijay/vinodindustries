@@ -362,7 +362,7 @@ export default function FoldDetailPage() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => router.push(`/fold/${id}/edit`)} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-indigo-700">Edit</button>
-          <button onClick={() => router.push('/dyeing/batch')} className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-purple-700">🎨 Dyeing(Batch)</button>
+          <button onClick={() => router.push(`/dyeing/batch?foldId=${id}`)} className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-purple-700">🎨 Dyeing(Batch)</button>
           <button onClick={printProgram} className="bg-gray-700 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-800">🖨 Print</button>
         </div>
       </div>

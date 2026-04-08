@@ -98,6 +98,8 @@ interface SavedEntry {
 
 export default function BatchDyeingPage() {
   const router = useRouter()
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const autoFoldId = searchParams?.get('foldId') || null
 
   // Tab state
   const [tab, setTab] = useState<'new' | 'list'>('new')
@@ -156,13 +158,23 @@ export default function BatchDyeingPage() {
       fetch('/api/dyeing/machines').then(r => r.json()).catch(() => []),
       fetch('/api/dyeing/operators?active=true').then(r => r.json()).catch(() => []),
     ]).then(([batchData, entryData, chemData, processData, machineData, operatorData]) => {
-      setBatches(Array.isArray(batchData) ? batchData : [])
+      const batchList = Array.isArray(batchData) ? batchData : []
+      setBatches(batchList)
       setSavedEntries(Array.isArray(entryData) ? entryData : [])
       setMasterChemicals(Array.isArray(chemData) ? chemData : [])
       setProcesses(Array.isArray(processData) ? processData : [])
       setMachines(Array.isArray(machineData) ? machineData.filter((m: any) => m.isActive) : [])
       setOperators(Array.isArray(operatorData) ? operatorData : [])
       setLoading(false)
+
+      // Auto-select first batch from fold if foldId in URL
+      if (autoFoldId && batchList.length > 0) {
+        const foldBatch = batchList.find((b: any) => String(b.foldProgramId) === autoFoldId)
+        if (foldBatch) {
+          setSelectedBatch(foldBatch)
+          setDropdownOpen(false)
+        }
+      }
     }).catch(() => setLoading(false))
   }, [])
 
