@@ -100,6 +100,7 @@ export default function BatchDyeingPage() {
   const router = useRouter()
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const autoFoldId = searchParams?.get('foldId') || null
+  const autoBatchId = searchParams?.get('batchId') || null
 
   // Tab state
   const [tab, setTab] = useState<'new' | 'list'>('new')
@@ -167,12 +168,13 @@ export default function BatchDyeingPage() {
       setOperators(Array.isArray(operatorData) ? operatorData : [])
       setLoading(false)
 
-      // Auto-select first batch from fold if foldId in URL
-      if (autoFoldId && batchList.length > 0) {
+      // Auto-select batch from URL params
+      if (autoBatchId && batchList.length > 0) {
+        const batch = batchList.find((b: any) => String(b.batchId) === autoBatchId)
+        if (batch) setSelectedBatchId(batch.batchId)
+      } else if (autoFoldId && batchList.length > 0) {
         const foldBatch = batchList.find((b: any) => String(b.foldProgramId) === autoFoldId)
-        if (foldBatch) {
-          setSelectedBatchId(foldBatch.batchId)
-        }
+        if (foldBatch) setSelectedBatchId(foldBatch.batchId)
       }
     }).catch(() => setLoading(false))
   }, [])

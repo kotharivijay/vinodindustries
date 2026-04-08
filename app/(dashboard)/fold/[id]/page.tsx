@@ -384,7 +384,15 @@ export default function FoldDetailPage() {
                   <span className="font-bold text-indigo-700 dark:text-indigo-400 text-sm">Batch {batch.batchNo}</span>
                   <ShadePicker batch={batch} shades={shades} onSave={updateBatchShade} />
                 </div>
-                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{batchTotal} than</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{batchTotal} than</span>
+                  <button
+                    onClick={() => router.push(`/dyeing/batch?batchId=${batch.id}`)}
+                    className="text-[10px] bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700 font-medium"
+                  >
+                    🎨 Dye
+                  </button>
+                </div>
               </div>
               <table className="w-full text-sm">
                 <thead>
