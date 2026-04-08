@@ -267,7 +267,8 @@ export async function POST(req: NextRequest) {
         batchCount: f.batches.length,
         lots: allLots,
         totalThan: f.batches.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + l.than, 0), 0),
-        shadeName: f.batches[0]?.shadeName || f.batches[0]?.shadeNo || '',
+        shadeNo: f.batches[0]?.shadeNo || '',
+        shadeName: f.batches[0]?.shadeName || '',
         lotValidations,
         status: hasError ? 'error' : hasWarning ? 'warning' : 'ok',
       }
@@ -299,9 +300,10 @@ export async function POST(req: NextRequest) {
         quality = await prisma.quality.create({ data: { name: fold.qualityName } })
       }
 
-      // Find shade
-      const shadeName = fold.batches[0]?.shadeName || fold.batches[0]?.shadeNo || null
-      const shade = shadeName ? await db.shade.findFirst({ where: { name: { equals: shadeName, mode: 'insensitive' } } }) : null
+      // Find shade — shadeNo is the shade master name (e.g., "PS/RC/1"), shadeName is the description (e.g., "Super White")
+      const shadeNo = fold.batches[0]?.shadeNo || null  // shade name in master
+      const shadeDesc = fold.batches[0]?.shadeName || null  // shade description
+      const shade = shadeNo ? await db.shade.findFirst({ where: { name: { equals: shadeNo, mode: 'insensitive' } } }) : null
 
       // Check if fold already exists
       const existing = await db.foldProgram.findFirst({ where: { foldNo: fold.foldNo } })
@@ -320,7 +322,8 @@ export async function POST(req: NextRequest) {
             create: fold.batches.map((b, bi) => ({
               batchNo: bi + 1,
               shadeId: shade?.id ?? null,
-              shadeName: shadeName,
+              shadeName: shadeNo || shadeDesc || null,
+              shadeDescription: shadeDesc || null,
               lots: {
                 create: b.lots.map(l => ({
                   lotNo: l.lotNo,

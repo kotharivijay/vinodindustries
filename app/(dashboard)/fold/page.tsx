@@ -545,7 +545,7 @@ export default function FoldListPage() {
                       <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Fold {f.foldNo}</span>
                       <span className="text-sm text-gray-500 dark:text-gray-400">{f.partyName} · {f.qualityName}</span>
                     </div>
-                    <p className="text-xs text-gray-400 ml-6">{f.batchCount} batches · {f.lots.join(', ')} · {f.totalThan} than · {f.shadeName || 'no shade'}</p>
+                    <p className="text-xs text-gray-400 ml-6">{f.batchCount} batches · {f.lots.join(', ')} · {f.totalThan} than · {f.shadeNo ? `${f.shadeNo}${f.shadeName ? ` — ${f.shadeName}` : ''}` : f.shadeName || 'no shade'}</p>
                     {/* Lot validations */}
                     {f.lotValidations?.filter((l: any) => l.status !== 'ok').map((l: any, li: number) => (
                       <p key={li} className={`text-[10px] ml-6 mt-0.5 ${l.status === 'not_found' ? 'text-red-500' : 'text-yellow-600 dark:text-yellow-400'}`}>
