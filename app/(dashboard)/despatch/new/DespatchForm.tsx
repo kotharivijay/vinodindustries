@@ -16,11 +16,12 @@ interface LotRow {
   rate: string
   amount: string
   description: string
-  lookupStatus: 'idle' | 'loading' | 'found' | 'not_found'
+  lookupStatus: 'idle' | 'loading' | 'found' | 'not_found' | 'no_stock'
+  stock: number | null
 }
 
 const emptyRow = (): LotRow => ({
-  lotNo: '', qualityId: null, qualityName: '', than: '', meter: '', rate: '', amount: '', description: '', lookupStatus: 'idle',
+  lotNo: '', qualityId: null, qualityName: '', than: '', meter: '', rate: '', amount: '', description: '', lookupStatus: 'idle', stock: null,
 })
 
 export default function DespatchForm() {
@@ -86,10 +87,15 @@ export default function DespatchForm() {
       const data = await res.json()
       setLotRows(prev => {
         const rows = [...prev]
-        if (data.qualityId) {
-          rows[idx] = { ...rows[idx], qualityId: data.qualityId, qualityName: data.qualityName || '', lookupStatus: 'found' }
+        if (data.date) {
+          const stock = data.stock ?? 0
+          if (stock <= 0) {
+            rows[idx] = { ...rows[idx], qualityId: data.qualityId, qualityName: data.qualityName || '', lookupStatus: 'no_stock', stock: 0 }
+          } else {
+            rows[idx] = { ...rows[idx], qualityId: data.qualityId, qualityName: data.qualityName || '', lookupStatus: 'found', stock }
+          }
         } else {
-          rows[idx] = { ...rows[idx], lookupStatus: 'not_found' }
+          rows[idx] = { ...rows[idx], lookupStatus: 'not_found', stock: null }
         }
         return rows
       })
@@ -212,8 +218,9 @@ export default function DespatchForm() {
                       placeholder="e.g. PS-689"
                     />
                     {row.lookupStatus === 'loading' && <p className="text-[10px] text-gray-400 mt-0.5">Looking up...</p>}
-                    {row.lookupStatus === 'found' && <p className="text-[10px] text-green-600 dark:text-green-400 mt-0.5">Found</p>}
-                    {row.lookupStatus === 'not_found' && <p className="text-[10px] text-amber-500 mt-0.5">Not found</p>}
+                    {row.lookupStatus === 'found' && <p className="text-[10px] text-green-600 dark:text-green-400 mt-0.5">✓ Stock: {row.stock} than</p>}
+                    {row.lookupStatus === 'no_stock' && <p className="text-[10px] text-red-500 mt-0.5">❌ Not available (0 stock)</p>}
+                    {row.lookupStatus === 'not_found' && <p className="text-[10px] text-amber-500 mt-0.5">⚠️ Lot not found</p>}
                   </td>
                   <td className="py-2 px-2">
                     <span className="text-xs text-gray-600 dark:text-gray-400">{row.qualityName || '—'}</span>
