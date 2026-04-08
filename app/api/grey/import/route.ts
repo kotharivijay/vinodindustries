@@ -146,8 +146,9 @@ export async function POST(req: NextRequest) {
     // Skip completely empty rows (silent — no point showing blank rows)
     if (!date && !partyName && !lotNo) continue
 
-    // "old year" rows = opening stock — import as grey entries with all data
+    // Skip "old year" rows — these are carry-forward lots, handled by LotOpeningBalance
     const monthVal = (row[COL.MONTH] ?? '').trim().toLowerCase()
+    if (monthVal === 'old year') continue
 
     // Skip rows with 0 or empty than
     if (!than || than <= 0) {
