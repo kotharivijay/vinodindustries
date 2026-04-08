@@ -41,8 +41,8 @@ export default function DespatchForm() {
       setForm(prev => ({
         ...prev,
         grayInwDate: new Date(data.date).toISOString().split('T')[0],
-        partyId: data.partyId ? String(data.partyId) : prev.partyId,
-        qualityId: data.qualityId ? String(data.qualityId) : prev.qualityId,
+        partyId: data.partyId ?? prev.partyId,
+        qualityId: data.qualityId ?? prev.qualityId,
       }))
       setLotLookup('found')
     } else {
