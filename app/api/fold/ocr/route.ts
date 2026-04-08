@@ -6,42 +6,49 @@ export const maxDuration = 60
 
 const OCR_PROMPT = `You are reading a photo of a dyeing fold register page. Extract ALL fold programs visible.
 
-Each fold block has:
-- "Dyeing Fold" header with Date and "Fold No Party [number]"
-- Party name and Quality on the next line
-- Lot numbers with their total than in the header row (e.g., "13400/48" means lot AJ-13400, 48 than total)
-- Table rows: Sn (serial number = batch count), Date, Slip No (IGNORE this column), Shade No, Shade Name, then than values per lot
+IMPORTANT STRUCTURE:
+- Each fold block starts with "Dyeing Fold" header with Date and "Fold No Party [number]"
+- Next line: Party name and Quality
+- Header row shows lot numbers with total capacity: e.g. "12810/22  12820/40" means lot PS-12810 (22 total), PS-12820 (40 total)
+- The lot prefix comes from the party lot pattern (PS-, AJ-, etc.)
+- Data rows have: Sn, Date, Slip No (IGNORE), Shade No, Shade Name, then INDIVIDUAL than values under each lot column
+- CRITICAL: Read the than value under EACH lot column separately for each batch row. Do NOT use the total.
 
 Return ONLY valid structured text in this EXACT format (one fold per block, separated by blank lines):
 
-Fold [number] | [Party Name] | [Quality] | [Shade No from first row] | [Shade Name from first row]
+Fold [number] | [Party Name] | [Quality] | [Shade No] | [Shade Name]
 [DD/MM/YYYY] | [Lot1]=[than1], [Lot2]=[than2]
 [DD/MM/YYYY] | [Lot1]=[than1], [Lot2]=[than2]
 
 Rules:
 - Fold number: extract from "Fold No Party [X]" → use X
-- SN column = batch count (1,2,3...) — use it to count batches
-- IGNORE the Slip No column completely — do NOT include it
+- SN column = batch count — use to identify each batch row
+- IGNORE the Slip No column — do NOT include it
 - Date format: DD/MM/YYYY
-- Lot numbers: extract from header row (e.g., "AJ-13400" from column header)
-- Than: the value in each row under that lot column. If empty/0, skip that lot for that row
-- Each SN row = one batch
-- Skip total/summary rows (no SN number)
-- Skip empty rows (rows without SN/date)
-- Shade No and Shade Name: from the batch rows. If same across all rows, use it once in header
-- If multiple lots in one fold, each batch row should list all lots with their than values for that batch
+- Lot numbers: read from header row. Format like "12810/22" means lot number includes prefix from party rows (e.g., PS-12810). The "/22" is total than for that lot across all batches.
+- CRITICAL: For each batch row, read the INDIVIDUAL than value under each lot's column. Only include lots that have a non-zero value in that row.
+- Example: if row has 6 under PS-12810 and 10 under PS-12820, output: PS-12810=6, PS-12820=10
+- Skip lots with 0 or empty value in that row
+- Skip total/summary rows (colored rows without SN)
+- Skip rows without SN or date
+- Shade No and Shade Name: from the batch data rows
+- The batch total than = sum of all lot values in that row (do NOT output this, it's auto-calculated)
 - Return ONLY the structured text, no explanation
 
-Example output:
+Example for multi-lot fold:
+Fold 10 | Prakash Shirting | Magic 38" | | super white
+04/04/2026 | PS-12810=16
+04/04/2026 | PS-12810=6, PS-12820=10
+04/05/2026 | PS-12820=16
+06/04/2026 | PS-12820=14, PS-12840=2
+| PS-12840=16
+| PS-12820=0
+
+Example for single-lot fold:
 Fold 8 | Rathi textile mills | PC Butta 48" | AJ/PC/10 | Gold
 04/04/2026 | AJ-13400=16
 04/04/2026 | AJ-13400=16
-04/04/2026 | AJ-13400=16
-
-Fold 9 | Prakash shirting | Raymond44" | | White
-07/04/2026 | PS-12420=15
-03/04/2026 | PS-12420=14
-07/04/2026 | PS-12420=14`
+04/04/2026 | AJ-13400=16`
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
