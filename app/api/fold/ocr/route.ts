@@ -4,51 +4,59 @@ import { authOptions } from '@/lib/auth'
 
 export const maxDuration = 60
 
-const OCR_PROMPT = `You are reading a photo of a dyeing fold register page. Extract ALL fold programs visible.
+const OCR_PROMPT = `You are reading a photo/image of a dyeing fold register. Extract ALL fold programs visible.
 
-IMPORTANT STRUCTURE:
-- Each fold block starts with "Dyeing Fold" header with Date and "Fold No Party [number]"
-- Next line: Party name and Quality
-- Header row shows lot numbers with total capacity: e.g. "12810/22  12820/40" means lot PS-12810 (22 total), PS-12820 (40 total)
-- The lot prefix comes from the party lot pattern (PS-, AJ-, etc.)
-- Data rows have: Sn, Date, Slip No (IGNORE), Shade No, Shade Name, then INDIVIDUAL than values under each lot column
-- CRITICAL: Read the than value under EACH lot column separately for each batch row. Do NOT use the total.
+HOW TO READ THE REGISTER:
+1. Each fold block starts with colored header "Dyeing Fold  Date:-[date]" and "Fold No Party [number]"
+2. Next line: [Party name] and [Quality name]
+3. Below that: lot numbers shown horizontally like "12810/22  12820/40" — these mean lot PS-12810 (total 22 than), PS-12820 (total 40 than)
+4. Next row shows full lot numbers: PS-12810  PS-12820  PS-12840  Total
+5. Column headers: Sn | Date | Slip No | Shade No | Shade Name | [lot1 col] | [lot2 col] | ... | Total
+6. Data rows: each SN (1,2,3,4,5...) = one batch. Read the than value under EACH lot column for that row.
+7. Some batches may have no date or slip no (empty) — still include them if they have lot values.
+8. Colored total row at bottom = SKIP (summary, not a batch)
 
-Return ONLY valid structured text in this EXACT format (one fold per block, separated by blank lines):
+LOT NUMBER RULES:
+- The lot prefix comes from existing lots in that row header. E.g., if header says "PS-12810 PS-12820", prefix is "PS-"
+- If header shows "13050/16  13060/16" and party is "Rathi textile mills" with lots starting "AJ-", then lots are AJ-13050, AJ-13060
+- The number after "/" is the total than for that lot column (NOT per batch)
 
-Fold [number] | [Party Name] | [Quality] | [Shade No] | [Shade Name]
-[DD/MM/YYYY] | [Lot1]=[than1], [Lot2]=[than2]
-[DD/MM/YYYY] | [Lot1]=[than1], [Lot2]=[than2]
+OUTPUT FORMAT (one fold per block, blank line between folds):
 
-Rules:
-- Fold number: extract from "Fold No Party [X]" → use X
-- SN column = batch count — use to identify each batch row
-- IGNORE the Slip No column — do NOT include it
-- Date format: DD/MM/YYYY
-- Lot numbers: read from header row. Format like "12810/22" means lot number includes prefix from party rows (e.g., PS-12810). The "/22" is total than for that lot across all batches.
-- CRITICAL: For each batch row, read the INDIVIDUAL than value under each lot's column. Only include lots that have a non-zero value in that row.
-- Example: if row has 6 under PS-12810 and 10 under PS-12820, output: PS-12810=6, PS-12820=10
-- Skip lots with 0 or empty value in that row
-- Skip total/summary rows (colored rows without SN)
-- Skip rows without SN or date
-- Shade No and Shade Name: from the batch data rows
-- The batch total than = sum of all lot values in that row (do NOT output this, it's auto-calculated)
-- Return ONLY the structured text, no explanation
+Fold [number] | [Party Name] | [Quality] | [Shade No or empty] | [Shade Name]
+[DD/MM/YYYY or empty] | [Lot1]=[than1], [Lot2]=[than2]
+[DD/MM/YYYY or empty] | [Lot1]=[than1]
 
-Example for multi-lot fold:
+CRITICAL RULES:
+- SN = batch number. Include ALL SN rows (even if date/slip is empty)
+- IGNORE "Slip No" column completely — do NOT output it
+- Read INDIVIDUAL than value under each lot column for each batch row
+- Only include lots with non-zero/non-empty value in that row
+- Date: DD/MM/YYYY format. If empty, leave empty before the |
+- Shade Name: read from the "Shade Name" column for each row. If same for all rows, use from first row.
+- Skip colored total/summary rows
+- The "Total" column at the right = IGNORE (it's auto-calculated)
+- Return ONLY the structured text, NO explanation, NO markdown
+
+EXAMPLE OUTPUT:
+Fold 8 | Rathi textile mills | PC Butta 48" | AJ/PC/10 | Gold
+04/04/2026 | AJ-13400=16
+04/04/2026 | AJ-13400=16
+04/04/2026 | AJ-13400=16
+
 Fold 10 | Prakash Shirting | Magic 38" | | super white
 04/04/2026 | PS-12810=16
 04/04/2026 | PS-12810=6, PS-12820=10
 04/05/2026 | PS-12820=16
 06/04/2026 | PS-12820=14, PS-12840=2
-| PS-12840=16
-| PS-12820=0
+ | PS-12840=16
 
-Example for single-lot fold:
-Fold 8 | Rathi textile mills | PC Butta 48" | AJ/PC/10 | Gold
-04/04/2026 | AJ-13400=16
-04/04/2026 | AJ-13400=16
-04/04/2026 | AJ-13400=16`
+Fold 11 | Rathi textile mills | Poly Jacquard 46" | | Gold
+04/04/2026 | AJ-13050=16
+05/04/2026 | AJ-13060=16
+05/04/2026 | AJ-13070=16
+05/04/2026 | AJ-13080=16
+05/04/2026 | AJ-13050=16`
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)

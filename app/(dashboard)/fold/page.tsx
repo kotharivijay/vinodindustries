@@ -79,20 +79,25 @@ function parseImportText(text: string): ParsedImportFold[] {
       const parts = lines[i].split('|').map(s => s.trim())
       if (parts.length < 2) continue
 
-      // Parse date as DD/MM/YYYY -> YYYY-MM-DD
-      const dateParts = parts[0].split('/')
-      let dateStr = parts[0]
-      if (dateParts.length === 3) {
-        dateStr = `${dateParts[2]}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}`
-      }
-
       // Find the lots part — it's the part containing "=" signs
-      // Could be parts[1] (new format: date | lots) or parts[2] (old format: date | slipNo | lots)
       let lotsStr = ''
-      for (let p = 1; p < parts.length; p++) {
+      for (let p = 0; p < parts.length; p++) {
         if (parts[p].includes('=')) { lotsStr = parts[p]; break }
       }
       if (!lotsStr) continue
+
+      // Parse date — first part that looks like a date (DD/MM/YYYY)
+      let dateStr = ''
+      for (const p of parts) {
+        const trimmed = p.trim()
+        if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(trimmed)) {
+          const dateParts = trimmed.split('/')
+          dateStr = `${dateParts[2].padStart(4, '20')}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}`
+          break
+        }
+      }
+      // If no date, use today
+      if (!dateStr) dateStr = new Date().toISOString().split('T')[0]
 
       // Parse lots: "AJ-13400=16, AJ-13060=16" or "AJ-13400=16"
       const lotEntries = lotsStr.split(',').map(s => s.trim()).filter(Boolean)
