@@ -171,8 +171,7 @@ export default function BatchDyeingPage() {
       if (autoFoldId && batchList.length > 0) {
         const foldBatch = batchList.find((b: any) => String(b.foldProgramId) === autoFoldId)
         if (foldBatch) {
-          setSelectedBatch(foldBatch)
-          setDropdownOpen(false)
+          setSelectedBatchId(foldBatch.batchId)
         }
       }
     }).catch(() => setLoading(false))
