@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -113,11 +113,69 @@ function parseImportText(text: string): ParsedImportFold[] {
 // ── Import Modal ──────────────────────────────────────────────────────────────
 
 function ImportFoldsModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+  const [mode, setMode] = useState<'text' | 'photo'>('photo')
   const [text, setText] = useState('')
   const [preview, setPreview] = useState<ParsedImportFold[] | null>(null)
   const [parseError, setParseError] = useState('')
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState<{ foldNo: string; status: string; error?: string }[] | null>(null)
+
+  // Photo OCR state
+  const [photoProcessing, setPhotoProcessing] = useState(false)
+  const photoRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
+
+  async function handlePhoto(file: File) {
+    setPhotoProcessing(true)
+    setParseError('')
+    setPreview(null)
+    setImportResult(null)
+    try {
+      // Compress image
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const img = new Image()
+        const url = URL.createObjectURL(file)
+        img.onload = () => {
+          URL.revokeObjectURL(url)
+          const MAX = 1500
+          let w = img.width, h = img.height
+          if (w > MAX) { h = Math.round(h * MAX / w); w = MAX }
+          if (h > MAX) { w = Math.round(w * MAX / h); h = MAX }
+          const canvas = document.createElement('canvas')
+          canvas.width = w; canvas.height = h
+          canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+          resolve(canvas.toDataURL('image/jpeg', 0.8).split(',')[1])
+        }
+        img.onerror = reject
+        img.src = url
+      })
+
+      // Send to OCR API
+      const res = await fetch('/api/fold/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64 }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'OCR failed')
+
+      // Set text from OCR result and auto-parse
+      if (data.text) {
+        setText(data.text)
+        try {
+          const folds = parseImportText(data.text)
+          if (folds.length > 0) setPreview(folds)
+          else setParseError('OCR extracted text but no valid fold blocks found. Edit the text and try Parse again.')
+        } catch {
+          setParseError('OCR extracted text but parsing failed. Edit the text below and try Parse again.')
+        }
+      }
+    } catch (e: any) {
+      setParseError(e.message || 'Photo processing failed')
+    } finally {
+      setPhotoProcessing(false)
+    }
+  }
 
   function handleParse() {
     setParseError('')
@@ -170,9 +228,51 @@ function ImportFoldsModal({ onClose, onImported }: { onClose: () => void; onImpo
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {/* Textarea */}
+          {/* Mode tabs */}
+          <div className="flex gap-2 mb-2">
+            <button onClick={() => setMode('photo')}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${mode === 'photo' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+              📷 Photo / Camera
+            </button>
+            <button onClick={() => setMode('text')}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${mode === 'text' ? 'bg-indigo-600 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>
+              📝 Paste Text
+            </button>
+          </div>
+
+          {/* Photo mode */}
+          {mode === 'photo' && !text && (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Take photo or select image of fold register page. AI will extract fold data.</p>
+              <div className="flex gap-3">
+                <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden"
+                  onChange={e => { if (e.target.files?.[0]) handlePhoto(e.target.files[0]); e.target.value = '' }} />
+                <input ref={photoRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => { if (e.target.files?.[0]) handlePhoto(e.target.files[0]); e.target.value = '' }} />
+                <button onClick={() => cameraRef.current?.click()} disabled={photoProcessing}
+                  className="flex-1 py-4 border-2 border-dashed border-indigo-300 dark:border-indigo-700 rounded-xl text-indigo-600 dark:text-indigo-400 font-medium hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 transition">
+                  📷 Camera
+                </button>
+                <button onClick={() => photoRef.current?.click()} disabled={photoProcessing}
+                  className="flex-1 py-4 border-2 border-dashed border-indigo-300 dark:border-indigo-700 rounded-xl text-indigo-600 dark:text-indigo-400 font-medium hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 transition">
+                  🖼️ Gallery
+                </button>
+              </div>
+              {photoProcessing && (
+                <div className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" /></svg>
+                  Processing image with AI...
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Text area (always shown if text exists, or in text mode) */}
+          {(mode === 'text' || text) && (
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Paste fold data (one fold per block, separated by blank line):</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              {text && mode === 'photo' ? 'OCR Result (edit if needed):' : 'Paste fold data (one fold per block, separated by blank line):'}
+            </label>
             <textarea
               className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono"
               rows={12}
@@ -181,6 +281,7 @@ function ImportFoldsModal({ onClose, onImported }: { onClose: () => void; onImpo
               onChange={e => { setText(e.target.value); setPreview(null); setImportResult(null); setParseError('') }}
             />
           </div>
+          )}
 
           {parseError && (
             <div className="text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-4 py-2 text-sm">{parseError}</div>
