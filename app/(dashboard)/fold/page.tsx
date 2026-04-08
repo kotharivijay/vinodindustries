@@ -395,11 +395,12 @@ export default function FoldListPage() {
   // Sheet import state
   const [sheetImporting, setSheetImporting] = useState(false)
   const [sheetPreview, setSheetPreview] = useState<any[] | null>(null)
+  const [sheetPreviewMeta, setSheetPreviewMeta] = useState<any>(null)
   const [sheetResult, setSheetResult] = useState<any[] | null>(null)
   const [sheetError, setSheetError] = useState('')
 
   async function importFromSheet(action: 'preview' | 'import') {
-    if (action === 'preview') { setSheetImporting(true); setSheetPreview(null); setSheetResult(null); setSheetError('') }
+    if (action === 'preview') { setSheetImporting(true); setSheetPreview(null); setSheetPreviewMeta(null); setSheetResult(null); setSheetError('') }
     else setSheetImporting(true)
     try {
       const res = await fetch('/api/fold/import-sheet', {
@@ -409,8 +410,10 @@ export default function FoldListPage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed')
-      if (action === 'preview') setSheetPreview(data.folds)
-      else { setSheetResult(data.results); mutate() }
+      if (action === 'preview') {
+        setSheetPreview(data.folds)
+        setSheetPreviewMeta({ total: data.total, newCount: data.newCount, skippedCount: data.skippedCount })
+      } else { setSheetResult(data.results); mutate() }
     } catch (e: any) {
       setSheetError(e.message)
     } finally {
@@ -518,41 +521,49 @@ export default function FoldListPage() {
       {sheetPreview && !sheetResult && (
         <div className="mb-4 bg-white dark:bg-gray-800 rounded-xl border border-orange-200 dark:border-orange-800 p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">Sheet Preview — {sheetPreview.length} folds found</h3>
-            <button onClick={() => setSheetPreview(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+            <div>
+              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">Sheet Preview — {sheetPreview.length} new folds</h3>
+              {(sheetPreviewMeta as any)?.skippedCount > 0 && (
+                <p className="text-[10px] text-gray-400">{(sheetPreviewMeta as any).skippedCount} already imported folds hidden</p>
+              )}
+            </div>
+            <button onClick={() => { setSheetPreview(null); setSheetPreviewMeta(null) }} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
           </div>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {sheetPreview.map((f: any, i: number) => (
-              <div key={i} className={`border rounded-lg px-3 py-2 ${
-                f.exists
-                  ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-                  : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-              }`}>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Fold {f.foldNo}</span>
-                  {f.exists && <span className="text-[10px] bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 px-1.5 py-0.5 rounded font-medium">EXISTS — will skip</span>}
-                  <span className="text-sm text-gray-500 dark:text-gray-400">{f.partyName} · {f.qualityName}</span>
-                </div>
-                <p className="text-xs text-gray-400">{f.batchCount} batches · {f.lots.join(', ')} · {f.totalThan} than · {f.shadeName || 'no shade'}</p>
+          {sheetPreview.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">All folds already imported!</p>
+          ) : (
+            <>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {sheetPreview.map((f: any, i: number) => (
+                  <div key={i} className={`border rounded-lg px-3 py-2 ${
+                    f.status === 'error' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                    : f.status === 'warning' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+                    : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                  }`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm">{f.status === 'ok' ? '✅' : f.status === 'warning' ? '⚠️' : '❌'}</span>
+                      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Fold {f.foldNo}</span>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">{f.partyName} · {f.qualityName}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 ml-6">{f.batchCount} batches · {f.lots.join(', ')} · {f.totalThan} than · {f.shadeName || 'no shade'}</p>
+                    {/* Lot validations */}
+                    {f.lotValidations?.filter((l: any) => l.status !== 'ok').map((l: any, li: number) => (
+                      <p key={li} className={`text-[10px] ml-6 mt-0.5 ${l.status === 'not_found' ? 'text-red-500' : 'text-yellow-600 dark:text-yellow-400'}`}>
+                        {l.status === 'not_found' ? '❌' : '⚠️'} {l.lotNo}: {l.status === 'not_found' ? 'not found in grey' : `needs ${l.needed}, only ${l.available} available`}
+                      </p>
+                    ))}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {(() => {
-            const newCount = sheetPreview.filter((f: any) => !f.exists).length
-            const existCount = sheetPreview.filter((f: any) => f.exists).length
-            return (
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => importFromSheet('import')}
-                  disabled={sheetImporting || newCount === 0}
-                  className="flex-1 py-2 bg-orange-600 text-white rounded-lg text-sm font-semibold hover:bg-orange-700 disabled:opacity-50 transition"
-                >
-                  {sheetImporting ? 'Importing...' : newCount > 0 ? `Import ${newCount} New Folds` : 'All folds already exist'}
-                </button>
-                {existCount > 0 && <span className="text-xs text-yellow-600 dark:text-yellow-400">{existCount} will be skipped</span>}
-              </div>
-            )
-          })()}
+              <button
+                onClick={() => importFromSheet('import')}
+                disabled={sheetImporting}
+                className="w-full py-2 bg-orange-600 text-white rounded-lg text-sm font-semibold hover:bg-orange-700 disabled:opacity-50 transition"
+              >
+                {sheetImporting ? 'Importing...' : `Import ${sheetPreview.length} Folds`}
+              </button>
+            </>
+          )}
         </div>
       )}
       {sheetResult && (

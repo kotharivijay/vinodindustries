@@ -158,25 +158,103 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Preview mode — check which folds already exist
+  // Preview mode — exclude existing folds, validate lots
   if (action === 'preview') {
     const db = prisma as any
     const existingFolds = await db.foldProgram.findMany({ select: { foldNo: true } })
     const existingSet = new Set(existingFolds.map((f: any) => f.foldNo.toLowerCase().trim()))
 
-    return NextResponse.json({
-      folds: folds.map(f => ({
+    // Filter out already imported folds
+    const newFolds = folds.filter(f => !existingSet.has(f.foldNo.toLowerCase().trim()))
+    const skippedCount = folds.length - newFolds.length
+
+    // Get all unique lot numbers across all new folds
+    const allLotNos = new Set<string>()
+    for (const f of newFolds) {
+      for (const b of f.batches) {
+        for (const l of b.lots) allLotNos.add(l.lotNo)
+      }
+    }
+
+    // Fetch grey stock for validation
+    const greyEntries = await prisma.greyEntry.groupBy({
+      by: ['lotNo'],
+      where: { lotNo: { in: Array.from(allLotNos) } },
+      _sum: { than: true },
+    })
+    const greyMap = new Map(greyEntries.map(g => [g.lotNo.toLowerCase().trim(), g._sum.than ?? 0]))
+
+    // Fetch despatch totals
+    const despEntries = await prisma.despatchEntry.groupBy({
+      by: ['lotNo'],
+      where: { lotNo: { in: Array.from(allLotNos) } },
+      _sum: { than: true },
+    })
+    const despMap = new Map(despEntries.map(d => [d.lotNo.toLowerCase().trim(), d._sum.than ?? 0]))
+
+    // Fetch already fold-programmed totals
+    const foldLots = await db.foldBatchLot.findMany({
+      select: { lotNo: true, than: true },
+      where: { lotNo: { in: Array.from(allLotNos) } },
+    })
+    const foldMap = new Map<string, number>()
+    for (const fl of foldLots) {
+      const key = fl.lotNo.toLowerCase().trim()
+      foldMap.set(key, (foldMap.get(key) || 0) + fl.than)
+    }
+
+    // Opening balances
+    const obs = await db.lotOpeningBalance.findMany({
+      where: { lotNo: { in: Array.from(allLotNos) } },
+      select: { lotNo: true, openingThan: true },
+    })
+    const obMap = new Map(obs.map((o: any) => [o.lotNo.toLowerCase().trim(), o.openingThan]))
+
+    // Validate each fold
+    const previewFolds = newFolds.map(f => {
+      const allLots = [...new Set(f.batches.flatMap(b => b.lots.map(l => l.lotNo)))]
+      const lotValidations: { lotNo: string; needed: number; available: number; status: 'ok' | 'low' | 'not_found' }[] = []
+
+      for (const lotNo of allLots) {
+        const key = lotNo.toLowerCase().trim()
+        const greyThan = greyMap.get(key) ?? 0
+        const ob = obMap.get(key) ?? 0
+        const desp = despMap.get(key) ?? 0
+        const folded = foldMap.get(key) ?? 0
+        const available = ob + greyThan - desp - folded
+        const needed = f.batches.reduce((s, b) => s + b.lots.filter(l => l.lotNo === lotNo).reduce((ls, l) => ls + l.than, 0), 0)
+
+        if (greyThan === 0 && ob === 0) {
+          lotValidations.push({ lotNo, needed, available: 0, status: 'not_found' })
+        } else if (available < needed) {
+          lotValidations.push({ lotNo, needed, available: Math.max(0, available), status: 'low' })
+        } else {
+          lotValidations.push({ lotNo, needed, available, status: 'ok' })
+        }
+      }
+
+      const hasError = lotValidations.some(l => l.status === 'not_found')
+      const hasWarning = lotValidations.some(l => l.status === 'low')
+
+      return {
         foldNo: f.foldNo,
         partyName: f.partyName,
         qualityName: f.qualityName,
         date: f.date,
         batchCount: f.batches.length,
-        lots: [...new Set(f.batches.flatMap(b => b.lots.map(l => l.lotNo)))],
+        lots: allLots,
         totalThan: f.batches.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + l.than, 0), 0),
         shadeName: f.batches[0]?.shadeName || f.batches[0]?.shadeNo || '',
-        exists: existingSet.has(f.foldNo.toLowerCase().trim()),
-      })),
+        lotValidations,
+        status: hasError ? 'error' : hasWarning ? 'warning' : 'ok',
+      }
+    })
+
+    return NextResponse.json({
+      folds: previewFolds,
       total: folds.length,
+      newCount: newFolds.length,
+      skippedCount,
     })
   }
 
