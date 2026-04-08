@@ -210,6 +210,26 @@ export async function POST(req: NextRequest) {
     })
     const obMap = new Map(obs.map((o: any) => [o.lotNo.toLowerCase().trim(), o.openingThan]))
 
+    // Manual reservations
+    const reserves = await db.lotManualReservation.findMany({
+      where: { lotNo: { in: Array.from(allLotNos) } },
+      select: { lotNo: true, usedThan: true },
+    })
+    const reserveMap = new Map(reserves.map((r: any) => [r.lotNo.toLowerCase().trim(), r.usedThan]))
+
+    // Dyeing used without fold (standalone dyeing entries)
+    const dyeLots = await db.dyeingEntryLot.findMany({
+      where: { lotNo: { in: Array.from(allLotNos) } },
+      select: { lotNo: true, than: true, entry: { select: { foldBatchId: true } } },
+    })
+    const dyeMap = new Map<string, number>()
+    for (const d of dyeLots) {
+      if (!d.entry?.foldBatchId) {
+        const key = d.lotNo.toLowerCase().trim()
+        dyeMap.set(key, (dyeMap.get(key) || 0) + d.than)
+      }
+    }
+
     // Validate each fold
     const previewFolds = newFolds.map(f => {
       const allLots = [...new Set(f.batches.flatMap(b => b.lots.map(l => l.lotNo)))]
@@ -221,10 +241,13 @@ export async function POST(req: NextRequest) {
         const ob = obMap.get(key) ?? 0
         const desp = despMap.get(key) ?? 0
         const folded = foldMap.get(key) ?? 0
-        const available = ob + greyThan - desp - folded
+        const manual = reserveMap.get(key) ?? 0
+        const dyeUsed = dyeMap.get(key) ?? 0
+        const stock = ob + greyThan - desp
+        const available = Math.max(0, stock - folded - manual - dyeUsed)
         const needed = f.batches.reduce((s, b) => s + b.lots.filter(l => l.lotNo === lotNo).reduce((ls, l) => ls + l.than, 0), 0)
 
-        if (greyThan === 0 && ob === 0) {
+        if (stock <= 0 && greyThan === 0 && ob === 0) {
           lotValidations.push({ lotNo, needed, available: 0, status: 'not_found' })
         } else if (available < needed) {
           lotValidations.push({ lotNo, needed, available: Math.max(0, available), status: 'low' })
