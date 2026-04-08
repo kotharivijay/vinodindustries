@@ -1,11 +1,28 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import ComboSelect from '@/components/ComboSelect'
 
 interface Option { id: number; name: string }
 interface Masters { parties: Option[]; qualities: Option[]; transports: Option[] }
+
+interface LotRow {
+  lotNo: string
+  qualityId: number | null
+  qualityName: string
+  than: string
+  meter: string
+  rate: string
+  amount: string
+  description: string
+  lookupStatus: 'idle' | 'loading' | 'found' | 'not_found' | 'no_stock'
+  stock: number | null
+}
+
+const emptyRow = (): LotRow => ({
+  lotNo: '', qualityId: null, qualityName: '', than: '', meter: '', rate: '', amount: '', description: '', lookupStatus: 'idle', stock: null,
+})
 
 export default function DespatchEditForm({ id }: { id: string }) {
   const router = useRouter()
@@ -13,17 +30,14 @@ export default function DespatchEditForm({ id }: { id: string }) {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [lotLookup, setLotLookup] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle')
 
   const [form, setForm] = useState({
-    date: '', challanNo: '', partyId: null as number | null, qualityId: null as number | null,
-    grayInwDate: '', lotNo: '', jobDelivery: '', than: '',
-    billNo: '', rate: '', lrNo: '', transportId: null as number | null, bale: '',
+    date: '', challanNo: '',
+    partyId: null as number | null, partyName: '',
+    transportId: null as number | null, lrNo: '', bale: '', billNo: '',
   })
 
-  const pTotal = form.than && form.rate
-    ? (parseFloat(form.than) * parseFloat(form.rate)).toFixed(2)
-    : ''
+  const [lotRows, setLotRows] = useState<LotRow[]>([emptyRow()])
 
   useEffect(() => {
     const load = (type: string) => fetch(`/api/masters/${type}`).then(r => r.json())
@@ -34,27 +48,101 @@ export default function DespatchEditForm({ id }: { id: string }) {
       setForm({
         date: new Date(e.date).toISOString().split('T')[0],
         challanNo: String(e.challanNo),
-        partyId: e.partyId, qualityId: e.qualityId,
-        grayInwDate: e.grayInwDate ? new Date(e.grayInwDate).toISOString().split('T')[0] : '',
-        lotNo: e.lotNo, jobDelivery: e.jobDelivery ?? '',
-        than: String(e.than), billNo: e.billNo ?? '',
-        rate: e.rate ? String(e.rate) : '', lrNo: e.lrNo ?? '',
-        transportId: e.transportId, bale: e.bale ? String(e.bale) : '',
+        partyId: e.partyId, partyName: e.party?.name || '',
+        transportId: e.transportId, lrNo: e.lrNo ?? '',
+        bale: e.bale ? String(e.bale) : '', billNo: e.billNo ?? '',
       })
+
+      // Load lot rows from despatchLots or fallback to single lot
+      if (e.despatchLots?.length) {
+        setLotRows(e.despatchLots.map((l: any) => ({
+          lotNo: l.lotNo,
+          qualityId: l.qualityId ?? e.qualityId,
+          qualityName: l.quality?.name || e.quality?.name || '',
+          than: String(l.than),
+          meter: l.meter ? String(l.meter) : '',
+          rate: l.rate ? String(l.rate) : '',
+          amount: l.amount ? String(l.amount) : '',
+          description: l.description || '',
+          lookupStatus: 'found' as const,
+          stock: null,
+        })))
+      } else {
+        setLotRows([{
+          lotNo: e.lotNo,
+          qualityId: e.qualityId,
+          qualityName: e.quality?.name || '',
+          than: String(e.than),
+          meter: '',
+          rate: e.rate ? String(e.rate) : '',
+          amount: e.pTotal ? String(e.pTotal) : '',
+          description: e.narration || '',
+          lookupStatus: 'found' as const,
+          stock: null,
+        }])
+      }
       setLoading(false)
     })
   }, [id])
 
-  async function handleLotBlur() {
-    if (!form.lotNo.trim() || form.grayInwDate) return
-    setLotLookup('loading')
-    const res = await fetch(`/api/grey/lookup?lotNo=${encodeURIComponent(form.lotNo.trim())}`)
-    const data = await res.json()
-    if (data.date) {
-      setForm(prev => ({ ...prev, grayInwDate: new Date(data.date).toISOString().split('T')[0] }))
-      setLotLookup('found')
-    } else {
-      setLotLookup('not_found')
+  const calcAmount = (row: LotRow): string => {
+    const r = parseFloat(row.rate)
+    if (!r) return ''
+    const t = parseInt(row.than)
+    const m = parseFloat(row.meter)
+    if (m) return (m * r).toFixed(2)
+    if (t) return (t * r).toFixed(2)
+    return ''
+  }
+
+  const updateRow = useCallback((idx: number, field: keyof LotRow, value: string) => {
+    setLotRows(prev => {
+      const rows = [...prev]
+      const row = { ...rows[idx], [field]: value }
+      if (field === 'than' || field === 'rate' || field === 'meter') {
+        row.amount = calcAmount(row)
+      }
+      rows[idx] = row
+      return rows
+    })
+  }, [])
+
+  const removeRow = (idx: number) => {
+    setLotRows(prev => prev.length <= 1 ? [emptyRow()] : prev.filter((_, i) => i !== idx))
+  }
+
+  const addRow = () => setLotRows(prev => [...prev, emptyRow()])
+
+  const handleLotBlur = async (idx: number) => {
+    const lotNo = lotRows[idx].lotNo.trim()
+    if (!lotNo) return
+    updateRow(idx, 'lookupStatus' as any, 'loading')
+    try {
+      const res = await fetch(`/api/grey/lookup?lotNo=${encodeURIComponent(lotNo)}`)
+      const data = await res.json()
+      setLotRows(prev => {
+        const rows = [...prev]
+        if (data.date) {
+          const stock = data.stock ?? 0
+          if (stock <= 0) {
+            rows[idx] = { ...rows[idx], qualityId: data.qualityId, qualityName: data.qualityName || '', lookupStatus: 'no_stock', stock: 0 }
+          } else {
+            rows[idx] = { ...rows[idx], qualityId: data.qualityId, qualityName: data.qualityName || '', lookupStatus: 'found', stock }
+          }
+        } else {
+          rows[idx] = { ...rows[idx], lookupStatus: 'not_found', stock: null }
+        }
+        return rows
+      })
+      if (data.partyId && !form.partyId) {
+        setForm(prev => ({ ...prev, partyId: data.partyId, partyName: data.partyName || '' }))
+      }
+    } catch {
+      setLotRows(prev => {
+        const rows = [...prev]
+        rows[idx] = { ...rows[idx], lookupStatus: 'not_found' }
+        return rows
+      })
     }
   }
 
@@ -70,13 +158,35 @@ export default function DespatchEditForm({ id }: { id: string }) {
 
   const set = (field: string, value: any) => setForm(prev => ({ ...prev, [field]: value }))
 
+  const totalThan = lotRows.reduce((s, r) => s + (parseInt(r.than) || 0), 0)
+  const totalAmount = lotRows.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0)
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.partyId || !form.qualityId) { setError('Please fill Party and Quality.'); return }
+    const validLots = lotRows.filter(r => r.lotNo.trim() && r.than)
+    if (!form.partyId) { setError('Please select a party.'); return }
+    if (validLots.length === 0) { setError('Add at least one lot row.'); return }
     setSaving(true); setError('')
     const res = await fetch(`/api/despatch/${id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, pTotal }),
+      body: JSON.stringify({
+        date: form.date,
+        challanNo: form.challanNo,
+        partyId: form.partyId,
+        transportId: form.transportId,
+        lrNo: form.lrNo,
+        bale: form.bale,
+        billNo: form.billNo,
+        lots: validLots.map(r => ({
+          lotNo: r.lotNo.trim(),
+          qualityId: r.qualityId,
+          than: parseInt(r.than),
+          meter: r.meter ? parseFloat(r.meter) : null,
+          rate: r.rate ? parseFloat(r.rate) : null,
+          amount: r.amount ? parseFloat(r.amount) : null,
+          description: r.description || null,
+        })),
+      }),
     })
     if (res.ok) {
       router.push('/despatch')
@@ -87,41 +197,89 @@ export default function DespatchEditForm({ id }: { id: string }) {
     }
   }
 
-  if (loading) return <div className="p-8 text-gray-400">Loading...</div>
+  if (loading) return <div className="p-8 text-gray-400 dark:text-gray-500">Loading...</div>
 
   return (
     <div className="p-4 md:p-8 max-w-5xl">
       <div className="flex items-center gap-4 mb-8">
-        <button onClick={() => router.back()} className="text-gray-500 hover:text-gray-800 text-sm">← Back</button>
-        <h1 className="text-2xl font-bold text-gray-800">Edit Despatch Entry</h1>
+        <button onClick={() => router.back()} className="text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 text-sm">← Back</button>
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Edit Despatch Entry</h1>
       </div>
-      {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-6 text-sm">{error}</div>}
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {error && <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 rounded-lg px-4 py-3 mb-6 text-sm">{error}</div>}
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+        {/* Header fields */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Field label="Date *"><input type="date" className={inp} value={form.date} onChange={e => set('date', e.target.value)} required /></Field>
           <Field label="Challan No *"><input type="number" className={inp} value={form.challanNo} onChange={e => set('challanNo', e.target.value)} required /></Field>
-          <Field label="A-Job Party *"><ComboSelect options={masters.parties} value={form.partyId} onChange={id => set('partyId', id)} onAddNew={n => addMaster('parties', n)} placeholder="Select party..." /></Field>
-          <Field label="A/Quality *"><ComboSelect options={masters.qualities} value={form.qualityId} onChange={id => set('qualityId', id)} onAddNew={n => addMaster('qualities', n)} placeholder="Select quality..." /></Field>
-          <Field label="A-Lot No *">
-            <input type="text" className={inp} value={form.lotNo}
-              onChange={e => { set('lotNo', e.target.value); setLotLookup('idle') }}
-              onBlur={handleLotBlur} required />
-            {lotLookup === 'loading' && <p className="text-xs text-gray-400 mt-0.5">Looking up grey date...</p>}
-            {lotLookup === 'found' && <p className="text-xs text-green-600 mt-0.5">✓ Grey date auto-filled</p>}
-            {lotLookup === 'not_found' && <p className="text-xs text-amber-500 mt-0.5">Lot not in grey register</p>}
+          <Field label="Party">
+            <ComboSelect options={masters.parties} value={form.partyId} onChange={id => set('partyId', id)} onAddNew={n => addMaster('parties', n)} placeholder={form.partyName || 'Select party...'} />
           </Field>
-          <Field label="Gray Inw Date"><input type="date" className={inp} value={form.grayInwDate} onChange={e => set('grayInwDate', e.target.value)} /></Field>
-          <Field label="Job Delivery"><input type="text" className={inp} value={form.jobDelivery} onChange={e => set('jobDelivery', e.target.value)} /></Field>
-          <Field label="Than *"><input type="number" className={inp} value={form.than} onChange={e => set('than', e.target.value)} required /></Field>
-          <Field label="Bill No"><input type="text" className={inp} value={form.billNo} onChange={e => set('billNo', e.target.value)} /></Field>
-          <Field label="Rate"><input type="number" step="0.01" className={inp} value={form.rate} onChange={e => set('rate', e.target.value)} /></Field>
-          <Field label="P.Total (auto)"><input type="text" className={`${inp} bg-gray-50 text-gray-600`} value={pTotal} readOnly /></Field>
-          <Field label="LR No"><input type="text" className={inp} value={form.lrNo} onChange={e => set('lrNo', e.target.value)} /></Field>
           <Field label="Transport"><ComboSelect options={masters.transports} value={form.transportId} onChange={id => set('transportId', id)} onAddNew={n => addMaster('transports', n)} placeholder="Select transport..." /></Field>
+          <Field label="LR No"><input type="text" className={inp} value={form.lrNo} onChange={e => set('lrNo', e.target.value)} /></Field>
           <Field label="Bale"><input type="number" className={inp} value={form.bale} onChange={e => set('bale', e.target.value)} /></Field>
+          <Field label="Bill No"><input type="text" className={inp} value={form.billNo} onChange={e => set('billNo', e.target.value)} /></Field>
         </div>
-        <div className="mt-6 flex gap-3 justify-end">
-          <button type="button" onClick={() => router.back()} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
+
+        {/* Lot rows */}
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Lot Details</h2>
+          <button type="button" onClick={addRow} className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 font-medium">+ Add Lot Row</button>
+        </div>
+
+        <div className="overflow-x-auto mb-4">
+          <table className="w-full text-sm min-w-[700px]">
+            <thead>
+              <tr className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-600">
+                <th className="text-left px-2 py-2">Lot No</th>
+                <th className="text-left px-2 py-2">Quality</th>
+                <th className="text-left px-2 py-2 w-16">Than</th>
+                <th className="text-left px-2 py-2 w-20">Meter</th>
+                <th className="text-left px-2 py-2 w-16">Rate</th>
+                <th className="text-left px-2 py-2 w-20">Amount</th>
+                <th className="text-left px-2 py-2">Description</th>
+                <th className="w-8"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              {lotRows.map((row, idx) => (
+                <tr key={idx}>
+                  <td className="px-2 py-2">
+                    <input type="text" className={inp + ' w-28'} value={row.lotNo}
+                      onChange={e => updateRow(idx, 'lotNo', e.target.value)}
+                      onBlur={() => handleLotBlur(idx)} placeholder="e.g. PS-689" />
+                    {row.lookupStatus === 'loading' && <p className="text-[10px] text-gray-400 mt-0.5">Looking up...</p>}
+                    {row.lookupStatus === 'found' && <p className="text-[10px] text-green-600 dark:text-green-400 mt-0.5">✓ Stock: {row.stock} than</p>}
+                    {row.lookupStatus === 'no_stock' && <p className="text-[10px] text-red-500 mt-0.5">❌ Not available (0 stock)</p>}
+                    {row.lookupStatus === 'not_found' && <p className="text-[10px] text-amber-500 mt-0.5">⚠️ Lot not found</p>}
+                  </td>
+                  <td className="px-2 py-2 text-xs text-gray-500 dark:text-gray-400">{row.qualityName || '—'}</td>
+                  <td className="px-2 py-2"><input type="number" className={inp + ' w-16'} value={row.than} onChange={e => updateRow(idx, 'than', e.target.value)} /></td>
+                  <td className="px-2 py-2"><input type="number" step="0.1" className={inp + ' w-20'} value={row.meter} onChange={e => updateRow(idx, 'meter', e.target.value)} /></td>
+                  <td className="px-2 py-2"><input type="number" step="0.01" className={inp + ' w-16'} value={row.rate} onChange={e => updateRow(idx, 'rate', e.target.value)} /></td>
+                  <td className="px-2 py-2 text-xs font-medium text-gray-600 dark:text-gray-300">{row.amount ? `₹${row.amount}` : '—'}</td>
+                  <td className="px-2 py-2"><input type="text" className={inp + ' w-28'} value={row.description} onChange={e => updateRow(idx, 'description', e.target.value)} placeholder="e.g. Black" /></td>
+                  <td className="px-2 py-2">
+                    <button type="button" onClick={() => removeRow(idx)} className="text-red-400 hover:text-red-600 text-lg">✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-gray-50 dark:bg-gray-700/50 border-t border-gray-200 dark:border-gray-600">
+                <td className="px-2 py-2 text-xs font-semibold text-gray-600 dark:text-gray-300">{lotRows.filter(r => r.lotNo).length} rows</td>
+                <td></td>
+                <td className="px-2 py-2 text-xs font-bold text-gray-800 dark:text-gray-100">{totalThan}</td>
+                <td></td>
+                <td></td>
+                <td className="px-2 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400">{totalAmount > 0 ? `₹${totalAmount.toFixed(2)}` : ''}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div className="flex gap-3 justify-end">
+          <button type="button" onClick={() => router.back()} className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
           <button type="submit" disabled={saving} className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60">
             {saving ? 'Saving...' : 'Update Entry'}
           </button>
@@ -131,7 +289,13 @@ export default function DespatchEditForm({ id }: { id: string }) {
   )
 }
 
-const inp = 'w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400'
+const inp = 'w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400'
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>{children}</div>
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{label}</label>
+      {children}
+    </div>
+  )
 }

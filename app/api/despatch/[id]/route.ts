@@ -12,15 +12,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     entry = await db.despatchEntry.findUnique({
       where: { id: parseInt(id) },
-      include: { party: true, quality: true, transport: true, changeLogs: { orderBy: { createdAt: 'desc' } } },
+      include: { party: true, quality: true, transport: true, despatchLots: { include: { quality: true } }, changeLogs: { orderBy: { createdAt: 'desc' } } },
     })
   } catch {
-    // Fallback without changeLogs if table doesn't exist
     const raw = await prisma.despatchEntry.findUnique({
       where: { id: parseInt(id) },
       include: { party: true, quality: true, transport: true },
     })
-    entry = raw ? { ...raw, changeLogs: [] } : null
+    entry = raw ? { ...raw, changeLogs: [], despatchLots: [] } : null
   }
   if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(entry)
@@ -32,6 +31,56 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
   const entryId = parseInt(id)
   const data = await req.json()
+  const db = prisma as any
+
+  // Fetch existing entry for change tracking
+  const existing = await prisma.despatchEntry.findUnique({ where: { id: entryId } })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Multi-lot mode
+  if (data.lots?.length) {
+    const lots = data.lots as { lotNo: string; qualityId: number | null; than: number; meter: number | null; rate: number | null; amount: number | null; description: string | null }[]
+    const totalThan = lots.reduce((s: number, l: any) => s + (l.than || 0), 0)
+    const totalAmount = lots.reduce((s: number, l: any) => s + (l.amount || 0), 0)
+
+    // Delete old despatch lots
+    await db.despatchEntryLot.deleteMany({ where: { entryId } })
+
+    // Update main entry
+    const entry = await db.despatchEntry.update({
+      where: { id: entryId },
+      data: {
+        date: new Date(data.date),
+        challanNo: parseInt(data.challanNo),
+        partyId: parseInt(data.partyId),
+        qualityId: lots[0]?.qualityId ? parseInt(String(lots[0].qualityId)) : existing.qualityId,
+        lotNo: lots[0]?.lotNo || existing.lotNo,
+        than: totalThan,
+        rate: lots[0]?.rate ?? null,
+        pTotal: totalAmount || null,
+        billNo: data.billNo || null,
+        lrNo: data.lrNo || null,
+        transportId: data.transportId ? parseInt(data.transportId) : null,
+        bale: data.bale ? parseInt(data.bale) : null,
+        despatchLots: {
+          create: lots.map(l => ({
+            lotNo: l.lotNo,
+            than: l.than,
+            meter: l.meter,
+            rate: l.rate,
+            amount: l.amount,
+            description: l.description,
+            qualityId: l.qualityId ? parseInt(String(l.qualityId)) : null,
+          })),
+        },
+      },
+      include: { party: true, quality: true, transport: true, despatchLots: { include: { quality: true } } },
+    })
+
+    return NextResponse.json(entry)
+  }
+
+  // Legacy single-lot mode
   const newThan = parseInt(data.than)
   const rate = data.rate ? parseFloat(data.rate) : null
   const pTotal = rate && newThan ? parseFloat((newThan * rate).toFixed(2)) : null
@@ -39,18 +88,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const newRate = rate
   const newBillNo = data.billNo || null
 
-  // Fetch existing entry for change tracking
-  const existing = await prisma.despatchEntry.findUnique({ where: { id: entryId } })
-  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  const db = prisma as any
   const entry = await db.despatchEntry.update({
     where: { id: entryId },
     data: {
       date: new Date(data.date),
       challanNo: parseInt(data.challanNo),
       partyId: parseInt(data.partyId),
-      qualityId: parseInt(data.qualityId),
+      qualityId: data.qualityId ? parseInt(data.qualityId) : existing.qualityId,
       grayInwDate: data.grayInwDate ? new Date(data.grayInwDate) : null,
       lotNo: newLotNo,
       jobDelivery: data.jobDelivery || null,
@@ -66,7 +110,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     include: { party: true, quality: true, transport: true },
   })
 
-  // Track changes for: than, lotNo, rate, billNo
+  // Track changes
   const changes: { field: string; oldValue: string; newValue: string }[] = []
   if (existing.than !== newThan) changes.push({ field: 'than', oldValue: String(existing.than), newValue: String(newThan) })
   if (existing.lotNo !== newLotNo) changes.push({ field: 'lotNo', oldValue: existing.lotNo, newValue: newLotNo })
@@ -75,29 +119,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (changes.length > 0) {
     try {
-      // Log changes
       await db.despatchChangeLog.createMany({
         data: changes.map(c => ({ entryId, ...c, changedBy: session.user?.email || 'unknown' }))
       })
-
-      // Notify all approved users
-      const approvedEmails = (process.env.APPROVED_EMAILS || '').split(',').map((e: string) => e.trim()).filter(Boolean)
-      for (const email of approvedEmails) {
-        for (const c of changes) {
-          await db.despatchNotification.create({
-            data: {
-              entryId,
-              challanNo: existing.challanNo,
-              lotNo: newLotNo,
-              message: `${c.field}: ${c.oldValue} \u2192 ${c.newValue}`,
-              userEmail: email,
-            }
-          })
-        }
-      }
-    } catch {
-      // Silently fail if new models not yet migrated
-    }
+    } catch {}
   }
 
   return NextResponse.json(entry)
