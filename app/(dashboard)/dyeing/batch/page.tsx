@@ -69,8 +69,8 @@ interface ChemicalMaster {
   currentPrice: number | null
 }
 
-interface DyeingProcessItem { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }
-interface DyeingProcess { id: number; name: string; description?: string; items: DyeingProcessItem[] }
+interface DyeingProcessItem { chemicalId: number; quantity: number; quantityHigh?: number | null; chemical: { id: number; name: string; unit: string } }
+interface DyeingProcess { id: number; name: string; description?: string; threshold?: number; items: DyeingProcessItem[] }
 
 interface SavedEntry {
   id: number
@@ -319,8 +319,14 @@ export default function BatchDyeingPage() {
 
   // Open process popup instead of directly applying
   function openProcessPopup(process: DyeingProcess) {
+    const threshold = process.threshold ?? 220
+    const batchWeight = selectedBatch?.totalWeight ?? 0
+    const useHigh = batchWeight > threshold
     const qtys: Record<number, string> = {}
-    process.items.forEach(item => { qtys[item.chemicalId] = String(item.quantity) })
+    process.items.forEach(item => {
+      const qty = useHigh && item.quantityHigh != null ? item.quantityHigh : item.quantity
+      qtys[item.chemicalId] = String(qty)
+    })
     setProcessQtys(qtys)
     setProcessPopup(process)
   }
@@ -1104,13 +1110,25 @@ export default function BatchDyeingPage() {
         )
       })()}
       {/* Process Popup Modal */}
-      {processPopup && (
+      {processPopup && (() => {
+        const threshold = processPopup.threshold ?? 220
+        const batchWeight = selectedBatch?.totalWeight ?? 0
+        const useHigh = batchWeight > threshold
+        const hasHighPreset = processPopup.items.some(i => i.quantityHigh != null)
+        return (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setProcessPopup(null)}>
           <div className="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-5 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">{processPopup.name}</h3>
               <button onClick={() => setProcessPopup(null)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
             </div>
+            {hasHighPreset && batchWeight > 0 && (
+              <div className={`text-xs px-2 py-1 rounded mb-3 ${useHigh ? 'bg-orange-900/30 text-orange-400' : 'bg-purple-900/30 text-purple-400'}`}>
+                {useHigh
+                  ? `> ${threshold} kg preset (batch: ${batchWeight.toFixed(1)} kg)`
+                  : `\u2264 ${threshold} kg preset (batch: ${batchWeight.toFixed(1)} kg)`}
+              </div>
+            )}
             <div className="space-y-3">
               {processPopup.items.map(item => (
                 <div key={item.chemicalId} className="flex items-center gap-3 border border-gray-200 dark:border-gray-600 rounded-lg p-3 bg-gray-50 dark:bg-gray-900">
@@ -1131,11 +1149,12 @@ export default function BatchDyeingPage() {
               onClick={confirmProcessPopup}
               className="mt-4 w-full bg-green-600 text-white py-2.5 rounded-xl text-sm font-medium hover:bg-green-700 transition"
             >
-              Add to Slip ✓
+              Add to Slip
             </button>
           </div>
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

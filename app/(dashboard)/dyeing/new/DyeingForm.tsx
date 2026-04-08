@@ -9,8 +9,8 @@ type StockStatus = 'idle' | 'loading' | 'ok' | 'no_stock' | 'not_found'
 
 interface ChemicalMaster { id: number; name: string; unit: string; currentPrice: number | null }
 
-interface DyeingProcessItem { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }
-interface DyeingProcess { id: number; name: string; description?: string; items: DyeingProcessItem[] }
+interface DyeingProcessItem { chemicalId: number; quantity: number; quantityHigh?: number | null; chemical: { id: number; name: string; unit: string } }
+interface DyeingProcess { id: number; name: string; description?: string; threshold?: number; items: DyeingProcessItem[] }
 
 interface ChemicalRow {
   name: string
@@ -158,7 +158,7 @@ export default function DyeingForm() {
 
   // Process buttons - track which processes are added
   const [addedProcesses, setAddedProcesses] = useState<Set<number>>(new Set())
-  const [processPopup, setProcessPopup] = useState<{ process: DyeingProcess; items: { chemicalId: number; name: string; unit: string; quantity: string }[] } | null>(null)
+  const [processPopup, setProcessPopup] = useState<{ process: DyeingProcess; batchWeight?: number; items: { chemicalId: number; name: string; unit: string; quantity: string }[] } | null>(null)
 
   // Save to Shade Master
   const [showSaveShade, setShowSaveShade] = useState(false)
@@ -1034,10 +1034,13 @@ export default function DyeingForm() {
   }
 
   function applyPreset(process: DyeingProcess) {
+    const threshold = process.threshold ?? 220
+    const batchWeight = calcBatchWeight()
+    const useHigh = batchWeight > threshold
     const rows: ChemicalRow[] = process.items.map(item => {
       const master = masterChemicals.find(m => m.id === item.chemicalId)
       const rate = master?.currentPrice?.toString() ?? ''
-      const qty = String(item.quantity)
+      const qty = String(useHigh && item.quantityHigh != null ? item.quantityHigh : item.quantity)
       const rateNum = parseFloat(rate)
       const qtyNum = parseFloat(qty)
       const cost = !isNaN(rateNum) && !isNaN(qtyNum) ? parseFloat((rateNum * qtyNum).toFixed(2)) : null
@@ -2021,13 +2024,17 @@ export default function DyeingForm() {
                       key={p.id}
                       type="button"
                       onClick={() => {
+                        const threshold = p.threshold ?? 220
+                        const batchWeight = calcBatchWeight()
+                        const useHigh = batchWeight > threshold
                         setProcessPopup({
                           process: p,
+                          batchWeight,
                           items: p.items.map(item => ({
                             chemicalId: item.chemicalId,
                             name: item.chemical.name,
                             unit: item.chemical.unit || 'kg',
-                            quantity: String(item.quantity),
+                            quantity: String(useHigh && item.quantityHigh != null ? item.quantityHigh : item.quantity),
                           })),
                         })
                       }}
@@ -2048,13 +2055,25 @@ export default function DyeingForm() {
           )}
 
           {/* Process Popup */}
-          {processPopup && (
+          {processPopup && (() => {
+            const threshold = processPopup.process.threshold ?? 220
+            const batchWeight = processPopup.batchWeight ?? 0
+            const useHigh = batchWeight > threshold
+            const hasHighPreset = processPopup.process.items.some(i => i.quantityHigh != null)
+            return (
             <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setProcessPopup(null)}>
               <div className="bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[80vh] overflow-y-auto border border-gray-700" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between p-4 border-b border-gray-700">
                   <h3 className="text-base font-bold text-white">{processPopup.process.name}</h3>
                   <button onClick={() => setProcessPopup(null)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
                 </div>
+                {hasHighPreset && batchWeight > 0 && (
+                  <div className={`mx-4 mt-3 text-xs px-2 py-1 rounded ${useHigh ? 'bg-orange-900/30 text-orange-400' : 'bg-purple-900/30 text-purple-400'}`}>
+                    {useHigh
+                      ? `> ${threshold} kg preset (batch: ${batchWeight.toFixed(1)} kg)`
+                      : `\u2264 ${threshold} kg preset (batch: ${batchWeight.toFixed(1)} kg)`}
+                  </div>
+                )}
                 <div className="p-4 space-y-3">
                   {processPopup.items.map((item, idx) => (
                     <div key={idx} className="flex items-center gap-3">
@@ -2087,7 +2106,8 @@ export default function DyeingForm() {
                 </div>
               </div>
             </div>
-          )}
+            )
+          })()}
 
           {chemicals.length === 0 ? (
             <p className="text-xs text-gray-500 text-center py-4">

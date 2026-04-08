@@ -244,17 +244,19 @@ model DyeingProcess {
   id          Int                 @id @default(autoincrement())
   name        String              @unique
   description String?
+  threshold   Float               @default(220) // kg — below this uses quantity, above uses quantityHigh
   createdAt   DateTime            @default(now())
   items       DyeingProcessItem[]
 }
 
 model DyeingProcessItem {
-  id         Int           @id @default(autoincrement())
-  processId  Int
-  process    DyeingProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
-  chemicalId Int
-  chemical   Chemical      @relation(fields: [chemicalId], references: [id])
-  quantity   Float
+  id           Int           @id @default(autoincrement())
+  processId    Int
+  process      DyeingProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+  chemicalId   Int
+  chemical     Chemical      @relation(fields: [chemicalId], references: [id])
+  quantity     Float
+  quantityHigh Float?        // quantity when batch weight > threshold
   @@unique([processId, chemicalId])
 }
 

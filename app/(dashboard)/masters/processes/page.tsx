@@ -14,6 +14,7 @@ interface ProcessItem {
   id: number
   chemicalId: number
   quantity: number
+  quantityHigh: number | null
   chemical: { id: number; name: string; unit: string }
 }
 
@@ -21,6 +22,7 @@ interface DyeingProcess {
   id: number
   name: string
   description: string | null
+  threshold: number
   items: ProcessItem[]
 }
 
@@ -32,14 +34,16 @@ export default function ProcessMasterPage() {
   // New process form
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
-  const [newItems, setNewItems] = useState<{ chemicalId: number | null; quantity: string; search: string }[]>([])
+  const [newThreshold, setNewThreshold] = useState('220')
+  const [newItems, setNewItems] = useState<{ chemicalId: number | null; quantity: string; quantityHigh: string; search: string }[]>([])
   const [saving, setSaving] = useState(false)
 
   // Edit state
   const [editId, setEditId] = useState<number | null>(null)
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
-  const [editItems, setEditItems] = useState<{ chemicalId: number | null; quantity: string; search: string }[]>([])
+  const [editThreshold, setEditThreshold] = useState('220')
+  const [editItems, setEditItems] = useState<{ chemicalId: number | null; quantity: string; quantityHigh: string; search: string }[]>([])
   const [editSaving, setEditSaving] = useState(false)
 
   // Chemical dropdown
@@ -58,7 +62,7 @@ export default function ProcessMasterPage() {
   }, [])
 
   function addNewRow() {
-    setNewItems(prev => [...prev, { chemicalId: null, quantity: '', search: '' }])
+    setNewItems(prev => [...prev, { chemicalId: null, quantity: '', quantityHigh: '', search: '' }])
   }
 
   async function handleCreate() {
@@ -71,9 +75,11 @@ export default function ProcessMasterPage() {
         body: JSON.stringify({
           name: newName.trim(),
           description: newDesc.trim() || undefined,
+          threshold: parseFloat(newThreshold) || 220,
           items: newItems.filter(i => i.chemicalId && parseFloat(i.quantity) > 0).map(i => ({
             chemicalId: i.chemicalId!,
             quantity: parseFloat(i.quantity),
+            quantityHigh: i.quantityHigh ? parseFloat(i.quantityHigh) : null,
           })),
         }),
       })
@@ -82,6 +88,7 @@ export default function ProcessMasterPage() {
         setProcesses(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
         setNewName('')
         setNewDesc('')
+        setNewThreshold('220')
         setNewItems([])
       } else {
         const err = await res.json()
@@ -96,9 +103,11 @@ export default function ProcessMasterPage() {
     setEditId(p.id)
     setEditName(p.name)
     setEditDesc(p.description || '')
+    setEditThreshold(String(p.threshold ?? 220))
     setEditItems(p.items.map(i => ({
       chemicalId: i.chemicalId,
       quantity: String(i.quantity),
+      quantityHigh: i.quantityHigh != null ? String(i.quantityHigh) : '',
       search: i.chemical.name,
     })))
   }
@@ -113,9 +122,11 @@ export default function ProcessMasterPage() {
         body: JSON.stringify({
           name: editName.trim(),
           description: editDesc.trim() || undefined,
+          threshold: parseFloat(editThreshold) || 220,
           items: editItems.filter(i => i.chemicalId && parseFloat(i.quantity) > 0).map(i => ({
             chemicalId: i.chemicalId!,
             quantity: parseFloat(i.quantity),
+            quantityHigh: i.quantityHigh ? parseFloat(i.quantityHigh) : null,
           })),
         }),
       })
@@ -142,7 +153,7 @@ export default function ProcessMasterPage() {
   }
 
   function ChemDropdown({ items, setItems, idx, context }: {
-    items: { chemicalId: number | null; quantity: string; search: string }[]
+    items: { chemicalId: number | null; quantity: string; quantityHigh: string; search: string }[]
     setItems: React.Dispatch<React.SetStateAction<typeof items>>
     idx: number
     context: 'new' | 'edit'
@@ -205,7 +216,7 @@ export default function ProcessMasterPage() {
       {/* Add New Process */}
       <div className="bg-gray-800 rounded-xl border border-gray-700 p-5 mb-6">
         <h2 className="text-sm font-semibold text-gray-200 mb-3">Add New Process</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
           <input
             type="text"
             placeholder="Process name"
@@ -220,8 +231,27 @@ export default function ProcessMasterPage() {
             onChange={e => setNewDesc(e.target.value)}
             className="bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-400 whitespace-nowrap">Threshold</label>
+            <input
+              type="number"
+              step="1"
+              value={newThreshold}
+              onChange={e => setNewThreshold(e.target.value)}
+              className="w-20 bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <span className="text-xs text-gray-500">kg</span>
+          </div>
         </div>
 
+        {newItems.length > 0 && (
+          <div className="flex gap-2 mb-2 text-xs text-gray-400 px-1">
+            <span className="flex-1">Chemical</span>
+            <span className="w-24 text-center">{`\u2264 ${newThreshold || 220}`} kg</span>
+            <span className="w-24 text-center">{`> ${newThreshold || 220}`} kg</span>
+            <span className="w-6" />
+          </div>
+        )}
         {newItems.map((item, idx) => (
           <div key={idx} className="flex gap-2 mb-2 items-center">
             <div className="flex-1">
@@ -237,6 +267,21 @@ export default function ProcessMasterPage() {
                 setNewItems(prev => {
                   const u = [...prev]
                   u[idx] = { ...u[idx], quantity: val }
+                  return u
+                })
+              }}
+              className="w-24 bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+            />
+            <input
+              type="number"
+              step="0.01"
+              placeholder="Qty (high)"
+              value={item.quantityHigh}
+              onChange={e => {
+                const val = e.target.value
+                setNewItems(prev => {
+                  const u = [...prev]
+                  u[idx] = { ...u[idx], quantityHigh: val }
                   return u
                 })
               }}
@@ -272,7 +317,7 @@ export default function ProcessMasterPage() {
             {editId === p.id ? (
               /* Edit mode */
               <div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                   <input
                     type="text"
                     value={editName}
@@ -286,8 +331,27 @@ export default function ProcessMasterPage() {
                     onChange={e => setEditDesc(e.target.value)}
                     className="bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
                   />
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-400 whitespace-nowrap">Threshold</label>
+                    <input
+                      type="number"
+                      step="1"
+                      value={editThreshold}
+                      onChange={e => setEditThreshold(e.target.value)}
+                      className="w-20 bg-gray-900 border border-gray-600 text-gray-100 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    <span className="text-xs text-gray-500">kg</span>
+                  </div>
                 </div>
 
+                {editItems.length > 0 && (
+                  <div className="flex gap-2 mb-2 text-xs text-gray-400 px-1">
+                    <span className="flex-1">Chemical</span>
+                    <span className="w-24 text-center">{`\u2264 ${editThreshold || 220}`} kg</span>
+                    <span className="w-24 text-center">{`> ${editThreshold || 220}`} kg</span>
+                    <span className="w-6" />
+                  </div>
+                )}
                 {editItems.map((item, idx) => (
                   <div key={idx} className="flex gap-2 mb-2 items-center">
                     <div className="flex-1">
@@ -308,6 +372,21 @@ export default function ProcessMasterPage() {
                       }}
                       className="w-24 bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
                     />
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Qty (high)"
+                      value={item.quantityHigh}
+                      onChange={e => {
+                        const val = e.target.value
+                        setEditItems(prev => {
+                          const u = [...prev]
+                          u[idx] = { ...u[idx], quantityHigh: val }
+                          return u
+                        })
+                      }}
+                      className="w-24 bg-gray-800 border border-gray-600 text-gray-100 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                    />
                     <button
                       onClick={() => setEditItems(prev => prev.filter((_, i) => i !== idx))}
                       className="text-red-400 hover:text-red-300 text-sm px-2"
@@ -319,7 +398,7 @@ export default function ProcessMasterPage() {
 
                 <div className="flex gap-2 mt-3">
                   <button
-                    onClick={() => setEditItems(prev => [...prev, { chemicalId: null, quantity: '', search: '' }])}
+                    onClick={() => setEditItems(prev => [...prev, { chemicalId: null, quantity: '', quantityHigh: '', search: '' }])}
                     className="text-xs text-purple-400 hover:text-purple-300 border border-purple-700 rounded px-3 py-1.5"
                   >
                     + Add Chemical
@@ -342,7 +421,10 @@ export default function ProcessMasterPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <h3 className="text-base font-semibold text-white">{p.name}</h3>
-                    {p.description && <p className="text-xs text-gray-400 mt-0.5">{p.description}</p>}
+                    <div className="flex items-center gap-3 mt-0.5">
+                      {p.description && <span className="text-xs text-gray-400">{p.description}</span>}
+                      <span className="text-xs text-gray-500">Threshold: {p.threshold ?? 220} kg</span>
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => startEdit(p)} className="text-xs text-indigo-400 hover:text-indigo-300 border border-indigo-700 rounded px-2 py-1">
@@ -355,10 +437,26 @@ export default function ProcessMasterPage() {
                 </div>
                 {p.items.length > 0 ? (
                   <div className="space-y-1.5">
+                    {p.items.some(i => i.quantityHigh != null) && (
+                      <div className="flex items-center text-xs text-gray-500 px-3">
+                        <span className="flex-1" />
+                        <span className="w-24 text-right">{`\u2264 ${p.threshold ?? 220}`} kg</span>
+                        <span className="w-24 text-right">{`> ${p.threshold ?? 220}`} kg</span>
+                      </div>
+                    )}
                     {p.items.map(item => (
-                      <div key={item.id} className="flex items-center justify-between bg-gray-900 rounded-lg px-3 py-2">
-                        <span className="text-sm text-gray-200">{item.chemical.name}</span>
-                        <span className="text-sm text-purple-400 font-medium">{item.quantity} {item.chemical.unit}</span>
+                      <div key={item.id} className="flex items-center bg-gray-900 rounded-lg px-3 py-2">
+                        <span className="text-sm text-gray-200 flex-1">{item.chemical.name}</span>
+                        <span className="text-sm text-purple-400 font-medium w-24 text-right">{item.quantity} {item.chemical.unit}</span>
+                        {p.items.some(i => i.quantityHigh != null) && (
+                          <span className="text-sm font-medium w-24 text-right">
+                            {item.quantityHigh != null ? (
+                              <span className="text-orange-400">{item.quantityHigh} {item.chemical.unit}</span>
+                            ) : (
+                              <span className="text-gray-600">--</span>
+                            )}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>

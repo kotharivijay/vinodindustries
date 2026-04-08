@@ -9,10 +9,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id: idStr } = await params
   const id = parseInt(idStr)
-  const { name, description, items } = await req.json() as {
+  const { name, description, threshold, items } = await req.json() as {
     name: string
     description?: string
-    items: { chemicalId: number; quantity: number }[]
+    threshold?: number
+    items: { chemicalId: number; quantity: number; quantityHigh?: number | null }[]
   }
   if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
@@ -20,14 +21,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const process = await (prisma as any).$transaction(async (tx: any) => {
       await tx.dyeingProcess.update({
         where: { id },
-        data: { name: name.trim(), description: description?.trim() || null },
+        data: { name: name.trim(), description: description?.trim() || null, threshold: threshold ?? 220 },
       })
       await tx.dyeingProcessItem.deleteMany({ where: { processId: id } })
       if (items?.length > 0) {
         await tx.dyeingProcessItem.createMany({
           data: items
             .filter(i => i.chemicalId && i.quantity > 0)
-            .map(i => ({ processId: id, chemicalId: i.chemicalId, quantity: i.quantity })),
+            .map(i => ({ processId: id, chemicalId: i.chemicalId, quantity: i.quantity, quantityHigh: i.quantityHigh ?? null })),
         })
       }
       return tx.dyeingProcess.findUnique({

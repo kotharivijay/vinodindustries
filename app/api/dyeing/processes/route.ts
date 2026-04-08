@@ -57,10 +57,11 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { name, description, items } = await req.json() as {
+  const { name, description, threshold, items } = await req.json() as {
     name: string
     description?: string
-    items: { chemicalId: number; quantity: number }[]
+    threshold?: number
+    items: { chemicalId: number; quantity: number; quantityHigh?: number | null }[]
   }
   if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
@@ -69,10 +70,11 @@ export async function POST(req: NextRequest) {
       data: {
         name: name.trim(),
         description: description?.trim() || null,
+        threshold: threshold ?? 220,
         items: {
           create: (items ?? [])
             .filter(i => i.chemicalId && i.quantity > 0)
-            .map(i => ({ chemicalId: i.chemicalId, quantity: i.quantity })),
+            .map(i => ({ chemicalId: i.chemicalId, quantity: i.quantity, quantityHigh: i.quantityHigh ?? null })),
         },
       },
       include,
