@@ -93,6 +93,21 @@ export async function POST(req: NextRequest) {
     const party = (row[4] || '').trim() // E
     const quality = (row[5] || '').trim() // F
 
+    // Parse grey inward date from column C (DD/MM/YYYY or MM/DD/YYYY)
+    let greyDate: Date | null = null
+    const dateStr = (row[2] || '').trim()
+    if (dateStr) {
+      const parts = dateStr.split('/')
+      if (parts.length === 3) {
+        let d = parseInt(parts[0]), m = parseInt(parts[1]), y = parseInt(parts[2])
+        if (y < 100) y = 2000 + y
+        // If first part > 12, it's DD/MM/YYYY; else could be MM/DD/YYYY
+        if (d > 12) { greyDate = new Date(y, m - 1, d) }
+        else if (m > 12) { greyDate = new Date(y, d - 1, m) } // MM/DD/YYYY
+        else { greyDate = new Date(y, m - 1, d) } // assume DD/MM/YYYY
+      }
+    }
+
     if (!lotNo || stock <= 0) { skipped++; continue }
 
     // Extract despatch sets
@@ -117,6 +132,7 @@ export async function POST(req: NextRequest) {
           totalDespatched: totalDesp,
           party,
           quality,
+          greyDate,
           notes: `SN:${snValue} | Imported from 2024-25 sheet`,
           despatchHistory: despSets.length ? { create: despSets } : undefined,
         },
@@ -126,6 +142,7 @@ export async function POST(req: NextRequest) {
           totalDespatched: totalDesp,
           party,
           quality,
+          greyDate,
         },
       })
       imported++

@@ -26,14 +26,13 @@ export async function GET(req: NextRequest) {
   const db = prisma as any
   const ob = await db.lotOpeningBalance.findFirst({
     where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
-    select: { lotNo: true, party: true, quality: true },
+    select: { lotNo: true, party: true, quality: true, greyDate: true },
   })
 
   if (ob) {
-    // Find partyId and qualityId by name
     const party = ob.party ? await prisma.party.findFirst({ where: { name: { equals: ob.party, mode: 'insensitive' } } }) : null
     const quality = ob.quality ? await prisma.quality.findFirst({ where: { name: { equals: ob.quality, mode: 'insensitive' } } }) : null
-    return NextResponse.json({ date: new Date('2025-03-31'), lotNo: ob.lotNo, partyId: party?.id ?? null, qualityId: quality?.id ?? null, partyName: ob.party, qualityName: ob.quality })
+    return NextResponse.json({ date: ob.greyDate ?? new Date('2025-03-31'), lotNo: ob.lotNo, partyId: party?.id ?? null, qualityId: quality?.id ?? null, partyName: ob.party, qualityName: ob.quality })
   }
 
   return NextResponse.json({ date: null, lotNo: null, partyId: null, qualityId: null })

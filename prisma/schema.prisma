@@ -535,6 +535,7 @@ model LotOpeningBalance {
   totalDespatched Int?     // total despatched last year
   party           String?  // party name for reference
   quality         String?  // quality for reference
+  greyDate        DateTime? // original grey inward date
   notes           String?
   createdAt       DateTime @default(now())
   despatchHistory LotCarryForwardDespatch[]
