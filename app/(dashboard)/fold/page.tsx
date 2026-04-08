@@ -381,13 +381,29 @@ export default function FoldListPage() {
   const { data: programs, isLoading, mutate } = useSWR<FoldProgram[]>('/api/fold', fetcher)
   const [search, setSearch] = useState('')
   const [showImport, setShowImport] = useState(false)
+  const [sortBy, setSortBy] = useState<'fold-asc' | 'fold-desc' | 'date-desc' | 'date-asc'>('fold-asc')
 
   const filtered = (programs ?? []).filter(p =>
     p.foldNo.toLowerCase().includes(search.toLowerCase()) ||
     p.batches.some(b =>
       b.lots.some(l => l.lotNo.toLowerCase().includes(search.toLowerCase()))
     )
-  )
+  ).sort((a, b) => {
+    switch (sortBy) {
+      case 'fold-asc': {
+        const na = parseInt(a.foldNo.replace(/\D/g, '')) || 0
+        const nb = parseInt(b.foldNo.replace(/\D/g, '')) || 0
+        return na - nb || a.foldNo.localeCompare(b.foldNo)
+      }
+      case 'fold-desc': {
+        const na = parseInt(a.foldNo.replace(/\D/g, '')) || 0
+        const nb = parseInt(b.foldNo.replace(/\D/g, '')) || 0
+        return nb - na || b.foldNo.localeCompare(a.foldNo)
+      }
+      case 'date-desc': return new Date(b.date).getTime() - new Date(a.date).getTime()
+      case 'date-asc': return new Date(a.date).getTime() - new Date(b.date).getTime()
+    }
+  })
 
   async function deleteProgram(id: number, foldNo: string) {
     if (!confirm(`Delete Fold Program ${foldNo}? This cannot be undone.`)) return
@@ -429,10 +445,26 @@ export default function FoldListPage() {
       <input
         type="text"
         placeholder="Search fold no, lot no..."
-        className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-4 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"
         value={search}
         onChange={e => setSearch(e.target.value)}
       />
+
+      {/* Sort */}
+      <div className="flex gap-2 mb-4 flex-wrap items-center">
+        <span className="text-[10px] text-gray-500 dark:text-gray-400">Sort:</span>
+        {([['fold-asc', 'Fold No ↑'], ['fold-desc', 'Fold No ↓'], ['date-desc', 'Date ↓'], ['date-asc', 'Date ↑']] as [typeof sortBy, string][]).map(([key, label]) => (
+          <button key={key} onClick={() => setSortBy(key)}
+            className={`text-xs px-3 py-1.5 rounded-full border transition ${
+              sortBy === key
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+            }`}>
+            {label}
+          </button>
+        ))}
+        <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">{filtered.length} folds</span>
+      </div>
 
       {filtered.length === 0 ? (
         <div className="text-center text-gray-400 py-16">
