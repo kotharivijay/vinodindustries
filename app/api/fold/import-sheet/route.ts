@@ -208,14 +208,14 @@ export async function POST(req: NextRequest) {
       where: { lotNo: { in: Array.from(allLotNos) } },
       select: { lotNo: true, openingThan: true },
     })
-    const obMap = new Map(obs.map((o: any) => [o.lotNo.toLowerCase().trim(), o.openingThan]))
+    const obMap = new Map<string, number>(obs.map((o: any) => [o.lotNo.toLowerCase().trim(), o.openingThan as number]))
 
     // Manual reservations
     const reserves = await db.lotManualReservation.findMany({
       where: { lotNo: { in: Array.from(allLotNos) } },
       select: { lotNo: true, usedThan: true },
     })
-    const reserveMap = new Map(reserves.map((r: any) => [r.lotNo.toLowerCase().trim(), r.usedThan]))
+    const reserveMap = new Map<string, number>(reserves.map((r: any) => [r.lotNo.toLowerCase().trim(), r.usedThan as number]))
 
     // Dyeing used without fold (standalone dyeing entries)
     const dyeLots = await db.dyeingEntryLot.findMany({
