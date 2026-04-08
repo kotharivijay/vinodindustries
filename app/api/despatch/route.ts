@@ -8,15 +8,15 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const entries = await prisma.despatchEntry.findMany({
-    include: { party: true, quality: true, transport: true },
+  const db = prisma as any
+  const entries = await db.despatchEntry.findMany({
+    include: { party: true, quality: true, transport: true, despatchLots: { include: { quality: true } } },
     orderBy: { date: 'desc' },
   })
 
   // Include last year despatch from carry-forward data
   let lastYearDesp: any[] = []
   try {
-    const db = prisma as any
     const obs = await db.lotOpeningBalance.findMany({
       include: { despatchHistory: { orderBy: { setNo: 'asc' } } },
     })
@@ -39,6 +39,7 @@ export async function GET() {
           bale: null,
           grayInwDate: null,
           jobDelivery: null,
+          despatchLots: [],
           isLastYear: true,
           financialYear: ob.financialYear,
         })
@@ -54,11 +55,65 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const data = await req.json()
+  const db = prisma as any
+
+  // Multi-lot mode
+  if (data.lots && Array.isArray(data.lots) && data.lots.length > 0) {
+    const firstLot = data.lots[0]
+
+    // Resolve qualityId for the first lot (backward compat fields)
+    let qualityId = firstLot.qualityId ? parseInt(firstLot.qualityId) : null
+    if (!qualityId && firstLot.lotNo) {
+      const greyMatch = await prisma.greyEntry.findFirst({
+        where: { lotNo: { equals: firstLot.lotNo, mode: 'insensitive' } },
+        select: { qualityId: true },
+      })
+      qualityId = greyMatch?.qualityId ?? null
+    }
+    if (!qualityId) return NextResponse.json({ error: 'Quality not found for first lot' }, { status: 400 })
+
+    const totalThan = data.lots.reduce((s: number, l: any) => s + (parseInt(l.than) || 0), 0)
+    const totalAmount = data.lots.reduce((s: number, l: any) => s + (parseFloat(l.amount) || 0), 0)
+
+    const entry = await db.despatchEntry.create({
+      data: {
+        date: new Date(data.date),
+        challanNo: parseInt(data.challanNo),
+        partyId: parseInt(data.partyId),
+        qualityId,
+        lotNo: firstLot.lotNo,
+        than: totalThan,
+        rate: firstLot.rate ? parseFloat(firstLot.rate) : null,
+        pTotal: totalAmount || null,
+        billNo: data.billNo || null,
+        lrNo: data.lrNo || null,
+        transportId: data.transportId ? parseInt(data.transportId) : null,
+        bale: data.bale ? parseInt(data.bale) : null,
+        narration: data.lots.map((l: any) => l.description).filter(Boolean).join(', ') || null,
+        despatchLots: {
+          create: data.lots.map((l: any) => ({
+            lotNo: l.lotNo,
+            than: parseInt(l.than),
+            meter: l.meter ? parseFloat(l.meter) : null,
+            rate: l.rate ? parseFloat(l.rate) : null,
+            amount: l.amount ? parseFloat(l.amount) : null,
+            description: l.description || null,
+            qualityId: l.qualityId ? parseInt(l.qualityId) : null,
+          })),
+        },
+      },
+      include: { party: true, quality: true, transport: true, despatchLots: true },
+    })
+
+    appendDespatchRowToSheet(despatchEntryToSheetRow(entry)).catch(() => {})
+    return NextResponse.json(entry, { status: 201 })
+  }
+
+  // Legacy single-lot mode (backward compat for imports/sync)
   const than = parseInt(data.than)
   const rate = data.rate ? parseFloat(data.rate) : null
   const pTotal = rate && than ? parseFloat((than * rate).toFixed(2)) : null
 
-  // Auto-fetch qualityId from grey register by lotNo if not provided
   let qualityId = data.qualityId ? parseInt(data.qualityId) : null
   if (!qualityId && data.lotNo) {
     const greyMatch = await prisma.greyEntry.findFirst({
@@ -69,7 +124,6 @@ export async function POST(req: NextRequest) {
   }
   if (!qualityId) return NextResponse.json({ error: 'Quality not found for lot' }, { status: 400 })
 
-  const db = prisma as any
   const entry = await db.despatchEntry.create({
     data: {
       date: new Date(data.date),

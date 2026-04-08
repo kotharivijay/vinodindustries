@@ -20,6 +20,17 @@ function useDebounce(value: string, delay = 200) {
   return [debounced, set] as const
 }
 
+interface DespatchLot {
+  id: number
+  lotNo: string
+  than: number
+  meter: number | null
+  rate: number | null
+  amount: number | null
+  description: string | null
+  quality: { name: string } | null
+}
+
 interface DespatchEntry {
   id: number
   date: string
@@ -37,6 +48,7 @@ interface DespatchEntry {
   quality: { name: string }
   transport: { name: string } | null
   narration: string | null
+  despatchLots?: DespatchLot[]
   isLastYear?: boolean
   financialYear?: string
 }
@@ -118,18 +130,24 @@ export default function DespatchListPage() {
 
   const stockSummary = useMemo<StockSummaryRow[]>(() => {
     const map = new Map<string, StockSummaryRow>()
-    for (const e of entries) {
-      const existing = map.get(e.lotNo)
+    const addToMap = (lotNo: string, party: string, quality: string, than: number, pTotal: number, date: string) => {
+      const existing = map.get(lotNo)
       if (!existing) {
-        map.set(e.lotNo, {
-          lotNo: e.lotNo, party: e.party.name, quality: e.quality.name,
-          entries: 1, totalThan: e.than, totalPTotal: e.pTotal ?? 0, lastDate: e.date,
-        })
+        map.set(lotNo, { lotNo, party, quality, entries: 1, totalThan: than, totalPTotal: pTotal, lastDate: date })
       } else {
         existing.entries++
-        existing.totalThan += e.than
-        existing.totalPTotal += e.pTotal ?? 0
-        if (new Date(e.date) > new Date(existing.lastDate)) existing.lastDate = e.date
+        existing.totalThan += than
+        existing.totalPTotal += pTotal
+        if (new Date(date) > new Date(existing.lastDate)) existing.lastDate = date
+      }
+    }
+    for (const e of entries) {
+      if (e.despatchLots && e.despatchLots.length > 0) {
+        for (const l of e.despatchLots) {
+          addToMap(l.lotNo, e.party.name, l.quality?.name ?? e.quality.name, l.than, l.amount ?? 0, e.date)
+        }
+      } else {
+        addToMap(e.lotNo, e.party.name, e.quality.name, e.than, e.pTotal ?? 0, e.date)
       }
     }
     return Array.from(map.values()).sort((a, b) => a.lotNo.localeCompare(b.lotNo))
@@ -378,15 +396,17 @@ export default function DespatchListPage() {
             ) : (
               <>
                 {/* ── Mobile card view ── */}
-                <div className="block sm:hidden divide-y divide-gray-100">
-                  {filtered.map((e) => (
-                    <div key={e.id} className={`p-4 ${isDup(e) ? 'bg-red-50' : ''}`}>
+                <div className="block sm:hidden divide-y divide-gray-100 dark:divide-gray-700">
+                  {filtered.map((e) => {
+                    const lots = e.despatchLots && e.despatchLots.length > 0 ? e.despatchLots : null
+                    return (
+                    <div key={e.id} className={`p-4 ${isDup(e) ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
                       <div className="flex items-start justify-between mb-1.5">
-                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                           <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
-                          <span className="text-gray-300">·</span>
-                          <Link href={`/despatch/${e.id}`} className="text-indigo-600 font-medium hover:underline">Ch {e.challanNo}</Link>
-                          {isDup(e) && <span className="bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>⚠ Dup: {getDupReason(e)}</span>}
+                          <span className="text-gray-300 dark:text-gray-600">·</span>
+                          <Link href={`/despatch/${e.id}`} className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Ch {e.challanNo}</Link>
+                          {isDup(e) && <span className="bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>Dup: {getDupReason(e)}</span>}
                         </div>
                         <div className="flex gap-3 shrink-0">
                           <button onClick={() => router.push(`/despatch/${e.id}/edit`)} className="text-indigo-500 text-xs font-medium">Edit</button>
@@ -394,25 +414,46 @@ export default function DespatchListPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-800">{e.party?.name ?? '-'}</p>
-                        {e.isLastYear && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">Last Year</span>}
+                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{e.party?.name ?? '-'}</p>
+                        {e.isLastYear && <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded font-medium">Last Year</span>}
                       </div>
-                      <p className="text-xs text-gray-500 mb-1">{e.quality?.name ?? '-'}</p>
-                      {e.narration && <p className="text-xs text-gray-400 italic mb-1">{e.narration}</p>}
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-indigo-100 active:bg-indigo-200">
-                          🔖 {e.lotNo}
-                        </Link>
-                        <span className="text-xs text-gray-600">Than: <strong>{e.than}</strong></span>
-                        {e.pTotal != null && (
-                          <span className="text-xs font-semibold text-gray-700">₹{e.pTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
-                        )}
-                      </div>
-                      <button onClick={() => toggleExpand(e.id)} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">
-                        {expandedIds.has(e.id) ? '▲ Less' : '▼ More details'}
+                      {lots ? (
+                        <div className="mt-1.5 space-y-1">
+                          {lots.map((l, li) => (
+                            <div key={li} className="flex flex-wrap items-center gap-1.5 text-xs">
+                              <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="inline-flex items-center bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50">
+                                {l.lotNo}
+                              </Link>
+                              <span className="text-gray-600 dark:text-gray-400">({l.than}T)</span>
+                              {l.description && <span className="text-gray-500 dark:text-gray-400 italic">{l.description}</span>}
+                              {l.amount != null && l.amount > 0 && <span className="font-semibold text-gray-700 dark:text-gray-300">Rs.{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
+                            </div>
+                          ))}
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Total: {lots.reduce((s, l) => s + l.than, 0)} than
+                            {e.pTotal != null && e.pTotal > 0 && <span> · Rs.{e.pTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{e.quality?.name ?? '-'}</p>
+                          {e.narration && <p className="text-xs text-gray-400 dark:text-gray-500 italic mb-1">{e.narration}</p>}
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-indigo-100">
+                              {e.lotNo}
+                            </Link>
+                            <span className="text-xs text-gray-600 dark:text-gray-400">Than: <strong>{e.than}</strong></span>
+                            {e.pTotal != null && (
+                              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Rs.{e.pTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                      <button onClick={() => toggleExpand(e.id)} className="text-xs text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium mt-1">
+                        {expandedIds.has(e.id) ? '- Less' : '+ More details'}
                       </button>
                       {expandedIds.has(e.id) && (
-                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 bg-gray-50 rounded-lg p-3">
+                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
                           <span>Gray Inw: {e.grayInwDate ? new Date(e.grayInwDate).toLocaleDateString('en-IN') : '—'}</span>
                           <span>Job: {e.jobDelivery || '—'}</span>
                           <span>Bill No: {e.billNo || '—'}</span>
@@ -423,7 +464,7 @@ export default function DespatchListPage() {
                         </div>
                       )}
                     </div>
-                  ))}
+                  )})}
                 </div>
 
                 {/* ── Desktop table ── */}
@@ -460,43 +501,58 @@ export default function DespatchListPage() {
                         <PlainTh label="" />
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {filtered.map((e) => (
-                        <tr key={e.id} className={`hover:bg-gray-50 transition ${isDup(e) ? 'bg-red-50' : ''}`}>
+                    <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                      {filtered.map((e) => {
+                        const lots = e.despatchLots && e.despatchLots.length > 0 ? e.despatchLots : null
+                        return (
+                        <tr key={e.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition ${isDup(e) ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
                           <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
                           <td className="px-3 py-2.5">
-                            <Link href={`/despatch/${e.id}`} className="text-indigo-600 font-medium hover:underline">{e.challanNo}</Link>
-                            {isDup(e) && <span className="ml-1.5 bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>⚠ {getDupReason(e)}</span>}
+                            <Link href={`/despatch/${e.id}`} className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">{e.challanNo}</Link>
+                            {isDup(e) && <span className="ml-1.5 bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>Dup</span>}
                           </td>
-                          <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
+                          <td className="px-3 py-2.5 font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">
                             {e.party?.name ?? '-'}
-                            {e.isLastYear && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded">LY</span>}
+                            {e.isLastYear && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1 py-0.5 rounded">LY</span>}
                           </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">{e.quality?.name ?? '-'}</td>
-                          <td className="px-3 py-2.5 font-medium text-indigo-700">
-                            <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="hover:underline">{e.lotNo}</Link>
+                          <td className="px-3 py-2.5">
+                            {lots ? (
+                              <div className="space-y-0.5">
+                                {lots.map((l, li) => (
+                                  <div key={li} className="flex items-center gap-1.5 text-xs">
+                                    <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="font-medium text-indigo-700 dark:text-indigo-400 hover:underline">{l.lotNo}</Link>
+                                    <span className="text-gray-500 dark:text-gray-400">({l.than}T)</span>
+                                    {l.description && <span className="text-gray-400 dark:text-gray-500 italic">{l.description}</span>}
+                                    {l.amount != null && l.amount > 0 && <span className="text-gray-600 dark:text-gray-300 font-medium">Rs.{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="font-medium text-indigo-700 dark:text-indigo-400 hover:underline">{e.lotNo}</Link>
+                            )}
                           </td>
-                          <td className="px-3 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">
                             {e.grayInwDate ? new Date(e.grayInwDate).toLocaleDateString('en-IN') : '—'}
                           </td>
-                          <td className="px-3 py-2.5 text-gray-500 text-xs">{e.jobDelivery || '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 text-xs">{e.jobDelivery || '—'}</td>
                           <td className="px-3 py-2.5 text-right font-semibold">{e.than}</td>
-                          <td className="px-3 py-2.5 text-gray-500">{e.billNo || '—'}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-600">{e.rate ?? '—'}</td>
-                          <td className="px-3 py-2.5 text-right font-medium text-gray-800">
-                            {e.pTotal != null ? `₹${e.pTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.billNo || '—'}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-600 dark:text-gray-400">{e.rate ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-right font-medium text-gray-800 dark:text-gray-200">
+                            {e.pTotal != null ? `Rs.${e.pTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                           </td>
-                          <td className="px-3 py-2.5 text-gray-500">{e.lrNo || '—'}</td>
-                          <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{e.transport?.name ?? '—'}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-500">{e.bale ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.lrNo || '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.transport?.name ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-500 dark:text-gray-400">{e.bale ?? '—'}</td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
-                            <button onClick={() => router.push(`/despatch/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 text-xs font-medium mr-3">Edit</button>
+                            <button onClick={() => router.push(`/despatch/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 text-xs font-medium mr-3">Edit</button>
                             <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-600 text-xs font-medium disabled:opacity-40">
                               {deletingId === e.id ? '...' : 'Delete'}
                             </button>
                           </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
