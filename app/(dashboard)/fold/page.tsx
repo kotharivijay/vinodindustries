@@ -392,6 +392,32 @@ export default function FoldListPage() {
   const [showImport, setShowImport] = useState(false)
   const [sortBy, setSortBy] = useState<'fold-asc' | 'fold-desc' | 'date-desc' | 'date-asc'>('fold-asc')
 
+  // Sheet import state
+  const [sheetImporting, setSheetImporting] = useState(false)
+  const [sheetPreview, setSheetPreview] = useState<any[] | null>(null)
+  const [sheetResult, setSheetResult] = useState<any[] | null>(null)
+  const [sheetError, setSheetError] = useState('')
+
+  async function importFromSheet(action: 'preview' | 'import') {
+    if (action === 'preview') { setSheetImporting(true); setSheetPreview(null); setSheetResult(null); setSheetError('') }
+    else setSheetImporting(true)
+    try {
+      const res = await fetch('/api/fold/import-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed')
+      if (action === 'preview') setSheetPreview(data.folds)
+      else { setSheetResult(data.results); mutate() }
+    } catch (e: any) {
+      setSheetError(e.message)
+    } finally {
+      setSheetImporting(false)
+    }
+  }
+
   const filtered = (programs ?? []).filter(p =>
     p.foldNo.toLowerCase().includes(search.toLowerCase()) ||
     p.batches.some(b =>
@@ -437,6 +463,13 @@ export default function FoldListPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400">{programs?.length ?? 0} programs</p>
         </div>
         <button
+          onClick={() => importFromSheet('preview')}
+          disabled={sheetImporting}
+          className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition"
+        >
+          {sheetImporting ? 'Loading...' : '📊 Import Sheet'}
+        </button>
+        <button
           onClick={() => setShowImport(true)}
           className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition"
         >
@@ -474,6 +507,57 @@ export default function FoldListPage() {
         ))}
         <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">{filtered.length} folds</span>
       </div>
+
+      {/* Sheet Import Preview */}
+      {sheetError && (
+        <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg px-4 py-2 text-sm">
+          {sheetError}
+          <button onClick={() => setSheetError('')} className="ml-2 text-red-400 hover:text-red-600">✕</button>
+        </div>
+      )}
+      {sheetPreview && !sheetResult && (
+        <div className="mb-4 bg-white dark:bg-gray-800 rounded-xl border border-orange-200 dark:border-orange-800 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">Sheet Preview — {sheetPreview.length} folds found</h3>
+            <button onClick={() => setSheetPreview(null)} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+          </div>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {sheetPreview.map((f: any, i: number) => (
+              <div key={i} className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-3 py-2">
+                <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Fold {f.foldNo}</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">{f.partyName} · {f.qualityName}</span>
+                <p className="text-xs text-gray-400">{f.batchCount} batches · {f.lots.join(', ')} · {f.totalThan} than · {f.shadeName || 'no shade'}</p>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => importFromSheet('import')}
+            disabled={sheetImporting}
+            className="w-full py-2 bg-orange-600 text-white rounded-lg text-sm font-semibold hover:bg-orange-700 disabled:opacity-50 transition"
+          >
+            {sheetImporting ? 'Importing...' : `Import All ${sheetPreview.length} Folds`}
+          </button>
+        </div>
+      )}
+      {sheetResult && (
+        <div className="mb-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">Import Results</h3>
+            <button onClick={() => { setSheetResult(null); setSheetPreview(null) }} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+          </div>
+          {sheetResult.map((r: any, i: number) => (
+            <div key={i} className={`flex items-center gap-2 text-sm px-3 py-1 rounded ${
+              r.status === 'ok' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+              : r.status === 'skipped' ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
+              : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+            }`}>
+              <span>{r.status === 'ok' ? '✓' : r.status === 'skipped' ? '⊘' : '✗'}</span>
+              <span>Fold {r.foldNo}</span>
+              {r.error && <span className="text-xs ml-1">— {r.error}</span>}
+            </div>
+          ))}
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="text-center text-gray-400 py-16">
