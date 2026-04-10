@@ -234,6 +234,12 @@ export default function FinishStockPage() {
   })
   const slipEntries = useMemo(() => finishSlips ?? [], [finishSlips])
 
+  // Quality dropdown options (carry-forward + current year)
+  const { data: qualityOptions = [] } = useSWR<string[]>('/api/finish/qualities', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 60_000,
+  })
+
   const [tab, setTab] = useState<Tab>('slips')
 
   /* ── Stock Register state ─────────────────────────────────────── */
@@ -1222,10 +1228,13 @@ export default function FinishStockPage() {
               </div>
               <div>
                 <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Quality</label>
-                <input type="text" placeholder="Filter..."
-                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                <select
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
                   value={filterQuality}
-                  onChange={e => { setFilterQualityRaw(e.target.value); setDebouncedQuality(e.target.value) }} />
+                  onChange={e => { setFilterQualityRaw(e.target.value); setDebouncedQuality(e.target.value) }}>
+                  <option value="">All</option>
+                  {qualityOptions.map(q => <option key={q} value={q}>{q}</option>)}
+                </select>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
