@@ -630,7 +630,7 @@ async function callGemini(systemPrompt: string, userMessage: string, history: { 
 
 // ─── System Prompt ─────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an AI assistant for Kothari Synthetic Industries (KSI), a textile dyeing company based in India. Users will ask questions about their business data in Hindi or English. Be helpful, concise, and friendly.
+const SYSTEM_PROMPT = `You are an AI assistant for Kothari Synthetic Industries (KSI), a textile dyeing company based in India. Users may ask questions in any language but you MUST always respond in English only. Be helpful, concise, and friendly.
 
 Available functions to query data:
 - stock_summary(): Get total stock across all parties with party-wise breakdown
@@ -668,15 +668,16 @@ IMPORTANT RULES:
 6. Lot numbers are typically like PS-885, RD-120, SS-50 etc.
 7. "Than" is a unit of fabric measurement used in this business.
 8. User may type in ANY language (Hindi, Hinglish, English). ALWAYS understand the intent and extract names/numbers correctly.
-9. ALWAYS respond in English. Convert Hindi names to English: e.g. "प्रकाश शर्टिंग" → "Prakash Shirting", "मैजिक" → "Magic".
-10. Party names, lot numbers, shade names — match them in English as stored in database.`
+9. ALWAYS respond in English only. Never respond in Hindi or Hinglish. Convert Hindi names to English: e.g. "प्रकाश शर्टिंग" → "Prakash Shirting", "मैजिक" → "Magic".
+10. Party names, lot numbers, shade names — match them in English as stored in database.
+11. All questions and results must be in English. If user asks in Hindi, understand but reply in English only.`
 
 const FORMAT_PROMPT = `You are an AI assistant for Kothari Synthetic Industries (KSI), a textile dyeing company.
-Format the following data into a clear, human-readable response. Use the same language as the user's original question.
+Format the following data into a clear, human-readable response in English only.
 Keep it concise but informative. Use numbers and bullet points where helpful.
 If data is empty or shows no results, say so politely and suggest checking the spelling or trying a different query.
 Do NOT use markdown formatting like ** or ## — just plain text with line breaks.
-Respond in Hindi if the user asked in Hindi, otherwise English.`
+ALWAYS respond in English only.`
 
 // ─── App-side Result Formatter (no second Gemini call) ─────────────────────
 
@@ -868,6 +869,7 @@ function formatResult(fn: string, args: any, data: any): string {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if ((session as any).role !== 'admin') return NextResponse.json({ error: 'Access denied' }, { status: 403 })
 
   try {
     const { message, history = [] } = await req.json()

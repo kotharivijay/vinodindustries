@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRole } from './RoleContext'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -30,6 +31,7 @@ interface ShadeOption {
 }
 
 export default function AIChatBubble() {
+  const role = useRole()
   const [open, setOpen] = useState(false)
   const [hidden, setHidden] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -578,6 +580,9 @@ export default function AIChatBubble() {
       </div>
     )
   }
+
+  // Only show for admin users
+  if (role !== 'admin') return null
 
   return (
     <div className="fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] max-w-sm sm:w-96 h-[75vh] max-h-[520px] bg-gray-800 rounded-2xl shadow-2xl border border-gray-700 flex flex-col overflow-hidden">
