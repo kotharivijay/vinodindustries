@@ -4,6 +4,7 @@ import PrintTrigger, { PrintButton } from './PrintTrigger'
 import PrintSettings from './PrintSettings'
 import BluetoothPrint from './BluetoothPrint'
 import ReceiptPrint from './ReceiptPrint'
+import SharePDFButton from './SharePDFButton'
 
 export default async function DyeingPrintPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ round?: string }> }) {
   const { id } = await params
@@ -359,6 +360,21 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
       {/* Print buttons (screen only) */}
       <div className="no-print mt-8 flex flex-wrap justify-center items-start gap-3">
         <PrintButton />
+        <SharePDFButton slip={{
+          slipNo: entry.slipNo,
+          date: entry.date,
+          shadeName: entry.shadeName || null,
+          shadeDescription: shadeDescription || null,
+          lots: lots.map((l: any) => ({ lotNo: l.lotNo, than: l.than })),
+          chemicals: chemicals.map((c: any) => ({ name: c.name, quantity: c.quantity, unit: c.unit, rate: c.rate, cost: c.cost })),
+          notes: entry.notes || null,
+          status: entry.status || null,
+          dyeingDoneAt: entry.dyeingDoneAt || null,
+          machine: entry.machine?.name || null,
+          operator: entry.operator?.name || null,
+          totalRounds: totalRounds,
+          mandi: entry.mandi || null,
+        }} />
         <ReceiptPrint data={{
           slipNo: entry.slipNo,
           date: new Date(entry.date).toLocaleDateString('en-IN'),

@@ -13,6 +13,7 @@
     "@prisma/client": "^5.22.0",
     "google-auth-library": "^10.6.2",
     "googleapis": "^171.4.0",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "next": "14.0.0",

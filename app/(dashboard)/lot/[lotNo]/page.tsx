@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
+import ShareDyeingPDFButton from './ShareDyeingPDFButton'
 
 export default async function LotTrackPage({ params }: { params: { lotNo: string } }) {
   const session = await getServerSession(authOptions)
@@ -265,7 +266,21 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       {/* Dyeing entries */}
       {dyeingEntries.length > 0 && (
         <section className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">🎨 Dyeing Slip ({dyeingEntries.length})</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">🎨 Dyeing Slip ({dyeingEntries.length})</h2>
+            <ShareDyeingPDFButton lotNo={lotNo} slips={dyeingEntries.map((e: any) => ({
+              slipNo: e.slipNo,
+              date: e.date?.toISOString ? e.date.toISOString() : e.date,
+              shadeName: e.shadeName || null,
+              lots: (e.lots?.length ? e.lots : [{ lotNo: e.lotNo || lotNo, than: e._lotThan ?? e.than }]).map((l: any) => ({ lotNo: l.lotNo, than: l.than })),
+              chemicals: (e.chemicals || []).map((c: any) => ({ name: c.name || c.chemical?.name || '', quantity: c.quantity, unit: c.unit, rate: c.rate, cost: c.cost })),
+              notes: e.notes || null,
+              status: e.status || null,
+              machine: e.machine?.name || null,
+              operator: e.operator?.name || null,
+              totalRounds: e.totalRounds || null,
+            }))} />
+          </div>
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-50">
             {dyeingEntries.map((e: any) => {
               const lotThan = e._lotThan ?? e.than

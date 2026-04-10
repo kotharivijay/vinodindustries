@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../BackButton'
+import { generateMultiSlipPDF, sharePDF, type SlipData } from '@/lib/pdf-share'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -166,6 +167,63 @@ export default function DyeingListPage() {
   const [debouncedFilterSlip, setDebouncedFilterSlip] = useDebounce()
   const [filterParty, setFilterParty] = useState('')
   const [debouncedFilterParty, setDebouncedFilterParty] = useDebounce()
+
+  // ─── PDF share state ─────────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [sharingPDF, setSharingPDF] = useState(false)
+
+  function toggleSelect(id: number) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filtered.map(e => e.id)))
+    }
+  }
+
+  async function handleShareSelected() {
+    if (selectedIds.size === 0) return
+    setSharingPDF(true)
+    try {
+      const slips: SlipData[] = entries
+        .filter(e => selectedIds.has(e.id))
+        .map(e => {
+          const lotsArr = e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than }]
+          return {
+            slipNo: e.slipNo,
+            date: e.date,
+            shadeName: e.shadeName ?? e.foldBatch?.shade?.name ?? null,
+            lots: lotsArr.map(l => ({ lotNo: l.lotNo, than: l.than })),
+            chemicals: (e.chemicals || []).map(c => ({
+              name: c.name,
+              quantity: c.quantity,
+              unit: c.unit,
+              rate: null,
+              cost: c.cost,
+            })),
+            notes: e.notes,
+            status: e.status,
+            machine: e.machine?.name ?? null,
+            operator: e.operator?.name ?? null,
+            totalRounds: e.totalRounds ?? null,
+          }
+        })
+      const blob = generateMultiSlipPDF(slips)
+      await sharePDF(blob, `dyeing_slips_${slips.length}.pdf`)
+    } catch (err) {
+      console.error('PDF share failed', err)
+      alert('Failed to share PDF')
+    } finally {
+      setSharingPDF(false)
+    }
+  }
 
   // ─── Confirm modal state ────────────────────────────────────────────────────
   const [confirmEntry, setConfirmEntry] = useState<DyeingEntry | null>(null)
@@ -724,6 +782,17 @@ export default function DyeingListPage() {
               )}
               <span className="text-xs text-gray-500 ml-auto">{filtered.length} of {entries.length}</span>
             </div>
+            {/* Share selected bar */}
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-3 bg-green-900/30 border border-green-700 rounded-lg px-4 py-2 mt-2">
+                <span className="text-xs text-green-300 font-medium">{selectedIds.size} selected</span>
+                <button onClick={handleShareSelected} disabled={sharingPDF}
+                  className="text-xs font-medium bg-green-700 text-white px-3 py-1 rounded hover:bg-green-600 disabled:opacity-50">
+                  {sharingPDF ? 'Preparing…' : '📄 Share as PDF'}
+                </button>
+                <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-200 ml-auto">Clear</button>
+              </div>
+            )}
           </div>
 
           <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
@@ -745,6 +814,7 @@ export default function DyeingListPage() {
                         <div key={e.id} className="p-4">
                           <div className="flex items-start justify-between mb-1.5">
                             <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-400">
+                              <input type="checkbox" checked={selectedIds.has(e.id)} onChange={() => toggleSelect(e.id)} className="accent-green-500 mr-1" />
                               <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                               <span className="text-gray-600">&middot;</span>
                               <Link href={`/dyeing/${e.id}`} className="text-purple-400 font-medium hover:underline">Slip {e.slipNo}</Link>
@@ -838,6 +908,9 @@ export default function DyeingListPage() {
                     <table className="w-full text-sm">
                       <thead className="bg-gray-700/60 border-b border-gray-700">
                         <tr>
+                          <th className="px-2 py-3 text-center w-8">
+                            <input type="checkbox" checked={filtered.length > 0 && selectedIds.size === filtered.length} onChange={toggleSelectAll} className="accent-green-500" />
+                          </th>
                           <SortTh field="date" label="Date" />
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap cursor-pointer hover:text-purple-400"
                             onClick={() => toggleSort('slipNo')}>
@@ -879,6 +952,9 @@ export default function DyeingListPage() {
                           const dTotalThan = dLots.reduce((s, l) => s + l.than, 0)
                           return (
                           <tr key={e.id} className="hover:bg-gray-700/40 transition text-gray-300">
+                            <td className="px-2 py-2.5 text-center">
+                              <input type="checkbox" checked={selectedIds.has(e.id)} onChange={() => toggleSelect(e.id)} className="accent-green-500" />
+                            </td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-gray-400">{new Date(e.date).toLocaleDateString('en-IN')}</td>
                             <td className="px-3 py-2.5 font-medium">
                               <Link href={`/dyeing/${e.id}`} className="text-purple-400 hover:underline">{e.slipNo}</Link>

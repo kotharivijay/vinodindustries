@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { generateSlipPDF, sharePDF, type SlipData } from '@/lib/pdf-share'
 
 interface Lot { id: number; lotNo: string; than: number }
 interface Chemical {
@@ -53,6 +54,7 @@ export default function DyeingDetailView({ id }: { id: string }) {
   const router = useRouter()
   const [entry, setEntry] = useState<Entry | null>(null)
   const [loading, setLoading] = useState(true)
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     fetch(`/api/dyeing/${id}`)
@@ -60,6 +62,39 @@ export default function DyeingDetailView({ id }: { id: string }) {
       .then(d => { setEntry(d); setLoading(false) })
       .catch(() => setLoading(false))
   }, [id])
+
+  async function handleSharePDF() {
+    if (!entry) return
+    setSharing(true)
+    try {
+      const slipLots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo, than: entry.than }]
+      const slip: SlipData = {
+        slipNo: entry.slipNo,
+        date: entry.date,
+        shadeName: entry.shadeName ?? entry.foldBatch?.shade?.name ?? null,
+        lots: slipLots.map(l => ({ lotNo: l.lotNo, than: l.than })),
+        chemicals: (entry.chemicals || []).map(c => ({
+          name: c.name,
+          quantity: c.quantity,
+          unit: c.unit,
+          rate: c.rate,
+          cost: c.cost,
+        })),
+        notes: entry.notes,
+        status: entry.status,
+        machine: entry.machine?.name ?? null,
+        operator: entry.operator?.name ?? null,
+        totalRounds: entry.totalRounds ?? null,
+      }
+      const blob = generateSlipPDF(slip)
+      await sharePDF(blob, `dyeing_slip_${entry.slipNo}.pdf`)
+    } catch (err) {
+      console.error('PDF share failed', err)
+      alert('Failed to share PDF')
+    } finally {
+      setSharing(false)
+    }
+  }
 
   if (loading) return <div className="p-8 text-gray-400">Loading...</div>
   if (!entry) return <div className="p-8 text-red-500">Entry not found.</div>
@@ -76,6 +111,13 @@ export default function DyeingDetailView({ id }: { id: string }) {
         <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg px-4 py-2 text-sm font-medium transition">&larr; Back</button>
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Slip #{entry.slipNo}</h1>
         <div className="ml-auto flex gap-2">
+          <button
+            onClick={handleSharePDF}
+            disabled={sharing}
+            className="text-sm font-medium text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 border border-green-200 dark:border-green-700 rounded-lg px-3 py-1.5 disabled:opacity-50"
+          >
+            {sharing ? 'Preparing…' : '📄 Share PDF'}
+          </button>
           <Link href={`/dyeing/${id}/print`} target="_blank" className="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5">
             Print
           </Link>
