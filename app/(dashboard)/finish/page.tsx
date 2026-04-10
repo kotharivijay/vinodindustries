@@ -412,7 +412,7 @@ export default function FinishStockPage() {
 
   const handleEditSubmit = useCallback(async () => {
     if (!editingSlipId) return
-    if (!editSlipNo.trim()) { setEditError('Slip No is required.'); return }
+    if (!editSlipNo.trim()) { setEditError('FP No is required.'); return }
     setEditSaving(true)
     setEditError('')
 
@@ -786,7 +786,7 @@ export default function FinishStockPage() {
 
   const handleFinishSubmit = useCallback(async () => {
     if (selectedLots.size === 0) return
-    if (!finishSlipNo.trim()) { setFinishError('Slip No is required.'); return }
+    if (!finishSlipNo.trim()) { setFinishError('FP No is required.'); return }
     setFinishSaving(true)
     setFinishError('')
 
@@ -969,7 +969,7 @@ export default function FinishStockPage() {
           <div className="mb-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div>
-                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Slip No</label>
+                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">FP No</label>
                 <input type="text" placeholder="Filter..."
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-400"
                   value={slipFilterSlip}
@@ -992,7 +992,7 @@ export default function FinishStockPage() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] text-gray-400 dark:text-gray-500">Sort:</span>
-              {([['date', 'Date'], ['slipNo', 'Slip'], ['lotNo', 'Lot'], ['party', 'Party'], ['than', 'Than']] as [SlipSortField, string][]).map(([f, label]) => (
+              {([['date', 'Date'], ['slipNo', 'FP'], ['lotNo', 'Lot'], ['party', 'Party'], ['than', 'Than']] as [SlipSortField, string][]).map(([f, label]) => (
                 <button key={f} onClick={() => toggleSlipSort(f)}
                   className={`text-xs px-2 py-1 rounded border ${slipSortField === f ? 'bg-teal-100 dark:bg-teal-900/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300 font-medium' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/40'}`}>
                   {label} {slipSortField === f ? (slipSortDir === 'asc' ? '\u2191' : '\u2193') : ''}
@@ -1025,7 +1025,7 @@ export default function FinishStockPage() {
                     return (
                       <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl border-2 border-teal-300 dark:border-teal-700 shadow-lg p-5 space-y-4">
                         <div className="flex items-center justify-between">
-                          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Edit Finish Slip #{entry.slipNo}</h2>
+                          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Edit Finish FP #{entry.slipNo}</h2>
                           <button onClick={cancelEdit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
                         </div>
 
@@ -1041,7 +1041,7 @@ export default function FinishStockPage() {
                               className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Slip No</label>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">FP No</label>
                             <input type="number" value={editSlipNo} onChange={e => setEditSlipNo(e.target.value)}
                               className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                           </div>
@@ -1160,7 +1160,7 @@ export default function FinishStockPage() {
                         <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                           <span>{new Date(entry.date).toLocaleDateString('en-IN')}</span>
                           <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                          <span className="text-teal-600 dark:text-teal-400 font-medium">Slip {entry.slipNo}</span>
+                          <span className="text-teal-600 dark:text-teal-400 font-medium">FP {entry.slipNo}</span>
                           {entry.mandi != null && (
                             <>
                               <span className="text-gray-300 dark:text-gray-600">&middot;</span>
@@ -1248,7 +1248,7 @@ export default function FinishStockPage() {
           <div className="mb-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div>
-                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Slip No</label>
+                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">FP No</label>
                 <input type="text" placeholder="Filter..."
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-400"
                   value={filterSlip}
@@ -1319,7 +1319,7 @@ export default function FinishStockPage() {
                             <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                               <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                               <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                              <span className="text-teal-600 dark:text-teal-400 font-medium">Slip {e.slipNo}</span>
+                              <span className="text-teal-600 dark:text-teal-400 font-medium">FP {e.slipNo}</span>
                             </div>
                             <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{e.totalThan}T</span>
                           </div>
@@ -1349,7 +1349,7 @@ export default function FinishStockPage() {
                       <thead className="bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700">
                         <tr>
                           <ThSort field="date" label="Date" active={sortField} dir={sortDir} toggle={toggleSort} />
-                          <ThSort field="slipNo" label="Slip" active={sortField} dir={sortDir} toggle={toggleSort} />
+                          <ThSort field="slipNo" label="FP" active={sortField} dir={sortDir} toggle={toggleSort} />
                           <ThSort field="lotNo" label="Lot No (Than)" active={sortField} dir={sortDir} toggle={toggleSort} />
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Shade</th>
                           <ThSort field="party" label="Party" active={sortField} dir={sortDir} toggle={toggleSort} />
@@ -1635,7 +1635,7 @@ export default function FinishStockPage() {
                           className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Slip No</label>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">FP No</label>
                         <input type="number" value={finishSlipNo} onChange={e => setFinishSlipNo(e.target.value)}
                           className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                       </div>
@@ -1860,7 +1860,7 @@ export default function FinishStockPage() {
                     <p className="text-2xl font-bold text-gray-800 dark:text-gray-100 mt-1">{packingPartyGroups.length}</p>
                   </div>
                   <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
-                    <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Finish Slips</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Finish Programs</p>
                     <p className="text-2xl font-bold text-teal-600 dark:text-teal-400 mt-1">{packingEntries.length}</p>
                   </div>
                   <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
