@@ -100,10 +100,14 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
   }
 
   return (
-    <div className="print-page bg-white text-black min-h-screen">
+    <div className="print-page bg-white text-black min-h-screen" data-theme="light">
       <style>{`
+        .print-page {
+          background: #fff !important;
+          color: #000 !important;
+        }
         @media print {
-          body { margin: 0; padding: 0; }
+          body, html { background: #fff !important; color: #000 !important; }
           .print-page { padding: 10mm; }
           .no-print { display: none !important; }
           table { page-break-inside: auto; }
