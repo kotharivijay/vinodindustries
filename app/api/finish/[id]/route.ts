@@ -46,6 +46,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         than: lots[0].than,
         meter: data.totalMeter != null ? parseFloat(data.totalMeter) : null,
         mandi: data.mandi != null ? parseFloat(data.mandi) : null,
+        opMandi: data.opMandi != null ? parseFloat(data.opMandi) : null,
+        newMandi: data.newMandi != null ? parseFloat(data.newMandi) : null,
+        stockMandi: data.stockMandi != null ? parseFloat(data.stockMandi) : null,
         notes: data.notes || null,
       },
     })

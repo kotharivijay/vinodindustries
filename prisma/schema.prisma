@@ -286,18 +286,21 @@ model DyeingDraftItem {
 // ─── Finish/Center Entry ─────────────────────────────────────────────────────
 
 model FinishEntry {
-  id        Int                  @id @default(autoincrement())
-  date      DateTime
-  slipNo    Int
-  lotNo     String               // backward compat: first lot
-  than      Int                  // backward compat: first lot's than
-  meter     Float?               // total meter
-  mandi     Float?               // mandi in liters
-  notes     String?
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
-  chemicals FinishSlipChemical[]
-  lots      FinishEntryLot[]
+  id         Int                  @id @default(autoincrement())
+  date       DateTime
+  slipNo     Int
+  lotNo      String               // backward compat: first lot
+  than       Int                  // backward compat: first lot's than
+  meter      Float?               // total meter
+  mandi      Float?               // mandi in liters (legacy)
+  opMandi    Float?               // opening mandi (litres)
+  newMandi   Float?               // new mandi added (litres)
+  stockMandi Float?               // stock mandi remaining (litres)
+  notes      String?
+  createdAt  DateTime             @default(now())
+  updatedAt  DateTime             @updatedAt
+  chemicals  FinishSlipChemical[]
+  lots       FinishEntryLot[]
 }
 
 model FinishEntryLot {

@@ -96,6 +96,9 @@ interface FinishSlipEntry {
   than: number
   meter: number | null
   mandi: number | null
+  opMandi: number | null
+  newMandi: number | null
+  stockMandi: number | null
   notes: string | null
   lots: FinishLot[]
   chemicals: FinishSlipChemical[]
@@ -353,6 +356,9 @@ export default function FinishStockPage() {
   const [editDate, setEditDate] = useState('')
   const [editSlipNo, setEditSlipNo] = useState('')
   const [editMandi, setEditMandi] = useState('')
+  const [editOpMandi, setEditOpMandi] = useState('')
+  const [editNewMandi, setEditNewMandi] = useState('')
+  const [editStockMandi, setEditStockMandi] = useState('')
   const [editNotes, setEditNotes] = useState('')
   const [editLots, setEditLots] = useState<{ lotNo: string; than: string; meter: string }[]>([])
   const [editChemicals, setEditChemicals] = useState<FinishChemicalRow[]>([])
@@ -395,6 +401,9 @@ export default function FinishStockPage() {
     setEditDate(new Date(entry.date).toISOString().split('T')[0])
     setEditSlipNo(String(entry.slipNo))
     setEditMandi(entry.mandi != null ? String(entry.mandi) : '')
+    setEditOpMandi(entry.opMandi != null ? String(entry.opMandi) : '')
+    setEditNewMandi(entry.newMandi != null ? String(entry.newMandi) : '')
+    setEditStockMandi(entry.stockMandi != null ? String(entry.stockMandi) : '')
     setEditNotes(entry.notes ?? '')
     setEditLots(entry.lots.map(l => ({ lotNo: l.lotNo, than: String(l.than), meter: l.meter != null ? String(l.meter) : '' })))
     setEditChemicals(entry.chemicals.map(c => ({
@@ -461,6 +470,9 @@ export default function FinishStockPage() {
       slipNo: editSlipNo,
       notes: editNotes || null,
       mandi: editMandi ? parseFloat(editMandi) : null,
+      opMandi: editOpMandi ? parseFloat(editOpMandi) : null,
+      newMandi: editNewMandi ? parseFloat(editNewMandi) : null,
+      stockMandi: editStockMandi ? parseFloat(editStockMandi) : null,
       totalMeter: totalMeter || null,
       lots: editLots.map(l => ({
         lotNo: l.lotNo.trim(),
@@ -1182,6 +1194,123 @@ export default function FinishStockPage() {
                           <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)}
                             rows={2} placeholder="Optional notes..."
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none" />
+                        </div>
+
+                        {/* ── Consumption Section ── */}
+                        <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                          <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-3">Chemical Mandi Consumption</h3>
+                          <div className="grid grid-cols-3 gap-3 mb-3">
+                            <div>
+                              <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">Op Mandi (ltr)</label>
+                              <input type="number" step="0.1" value={editOpMandi} onChange={e => setEditOpMandi(e.target.value)}
+                                placeholder="0" className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">New Mandi (ltr)</label>
+                              <input type="number" step="0.1" value={editNewMandi} onChange={e => setEditNewMandi(e.target.value)}
+                                placeholder="0" className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">Stock Mandi (ltr)</label>
+                              <input type="number" step="0.1" value={editStockMandi} onChange={e => setEditStockMandi(e.target.value)}
+                                placeholder="0" className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                            </div>
+                          </div>
+
+                          {/* Calculations */}
+                          {(() => {
+                            const op = parseFloat(editOpMandi) || 0
+                            const nw = parseFloat(editNewMandi) || 0
+                            const st = parseFloat(editStockMandi) || 0
+                            const consumed = op + nw - st
+                            const totalThanDone = entry.lots.reduce((s, l) => s + (l.status === 'done' ? l.than : l.status === 'partial' ? l.doneThan : 0), 0)
+                            const totalThanAll = entry.lots.reduce((s, l) => s + l.than, 0)
+
+                            // Calculate cost from recipe (per 100 litres)
+                            const chemCosts = editChemicals.filter(c => c.name.trim()).map(c => {
+                              const recipeQty = parseFloat(c.quantity) || 0
+                              const rate = parseFloat(c.rate) || 0
+                              const usedQty = consumed > 0 ? (recipeQty / 100) * consumed : 0
+                              const cost = usedQty * rate
+                              return { name: c.name, recipeQty, rate, usedQty, cost, unit: c.unit }
+                            })
+                            const costPer100L = editChemicals.filter(c => c.name.trim()).reduce((s, c) => {
+                              const qty = parseFloat(c.quantity) || 0
+                              const rate = parseFloat(c.rate) || 0
+                              return s + (qty * rate)
+                            }, 0)
+                            const costPerLtr = costPer100L / 100
+                            const totalCost = consumed > 0 ? costPerLtr * consumed : 0
+                            const costPerThan = totalThanDone > 0 ? totalCost / totalThanDone : 0
+
+                            if (consumed <= 0 && op === 0 && nw === 0) return null
+
+                            return (
+                              <div className="space-y-3">
+                                {/* Consumed Mandi */}
+                                <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-4 py-3">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">Consumed Mandi</span>
+                                    <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{consumed.toFixed(1)} ltr</span>
+                                  </div>
+                                  <p className="text-[10px] text-gray-400 mt-0.5">Op ({op}) + New ({nw}) - Stock ({st})</p>
+                                </div>
+
+                                {/* Chemical usage table */}
+                                {chemCosts.length > 0 && consumed > 0 && (
+                                  <div>
+                                    <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">Chemical Usage ({consumed.toFixed(0)} ltr consumed)</p>
+                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                      <table className="w-full text-xs">
+                                        <thead>
+                                          <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                                            <th className="text-left px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Chemical</th>
+                                            <th className="text-right px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Recipe/100L</th>
+                                            <th className="text-right px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Used</th>
+                                            <th className="text-right px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Cost</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                                          {chemCosts.map((c, i) => (
+                                            <tr key={i}>
+                                              <td className="px-2 py-1.5 text-gray-700 dark:text-gray-200">{c.name}</td>
+                                              <td className="px-2 py-1.5 text-right text-gray-500">{c.recipeQty} {c.unit}</td>
+                                              <td className="px-2 py-1.5 text-right font-medium text-gray-700 dark:text-gray-200">{c.usedQty.toFixed(2)} {c.unit}</td>
+                                              <td className="px-2 py-1.5 text-right text-emerald-600 dark:text-emerald-400">&#8377;{c.cost.toFixed(0)}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Cost summary */}
+                                <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-3 space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs text-gray-600 dark:text-gray-300">Cost per Litre</span>
+                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-200">&#8377;{costPerLtr.toFixed(2)}/ltr</span>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">Total Cost ({consumed.toFixed(0)} ltr)</span>
+                                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">&#8377;{totalCost.toFixed(0)}</span>
+                                  </div>
+                                  {totalThanDone > 0 && (
+                                    <div className="flex items-center justify-between border-t border-emerald-200 dark:border-emerald-800 pt-1 mt-1">
+                                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">Cost per Than ({totalThanDone}T done)</span>
+                                      <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">&#8377;{costPerThan.toFixed(2)}/than</span>
+                                    </div>
+                                  )}
+                                  {totalThanDone === 0 && totalThanAll > 0 && (
+                                    <div className="flex items-center justify-between border-t border-emerald-200 dark:border-emerald-800 pt-1 mt-1">
+                                      <span className="text-xs text-gray-500">Cost per Than (all {totalThanAll}T)</span>
+                                      <span className="text-xs text-gray-500">&#8377;{(totalThanAll > 0 ? totalCost / totalThanAll : 0).toFixed(2)}/than</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })()}
                         </div>
 
                         {/* Actions */}
