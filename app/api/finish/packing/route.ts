@@ -18,11 +18,18 @@ export async function GET() {
     orderBy: { date: 'desc' },
   })
 
-  // Packing stock = ALL finish entries (despatch filtering will be added later when despatch module is linked)
-  // For now show all finish entries as packing stock
+  // Packing stock = only lots marked done or partial in finish
   const packingEntries: any[] = []
   for (const fe of finishEntries) {
-    const lots = fe.lots?.length ? fe.lots : [{ lotNo: fe.lotNo, than: fe.than, meter: fe.meter }]
+    const rawLots = fe.lots?.length ? fe.lots : [{ lotNo: fe.lotNo, than: fe.than, meter: fe.meter, doneThan: 0, status: 'pending' }]
+    // Only include lots that are done or partial
+    const doneLots = rawLots
+      .filter((l: any) => l.status === 'done' || l.status === 'partial')
+      .map((l: any) => ({
+        ...l,
+        than: l.status === 'done' ? l.than : l.doneThan, // use doneThan for partial
+      }))
+    if (doneLots.length === 0) continue
     packingEntries.push({
       id: fe.id,
       slipNo: fe.slipNo,
@@ -30,8 +37,8 @@ export async function GET() {
       meter: fe.meter,
       mandi: fe.mandi,
       notes: fe.notes,
-      lots,
-      totalThan: lots.reduce((s: number, l: any) => s + (l.than || 0), 0),
+      lots: doneLots,
+      totalThan: doneLots.reduce((s: number, l: any) => s + (l.than || 0), 0),
     })
   }
 
