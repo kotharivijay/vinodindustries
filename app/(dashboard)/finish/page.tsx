@@ -1196,6 +1196,10 @@ export default function FinishStockPage() {
 
                       {/* Actions */}
                       <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                        <Link href={`/finish/${entry.id}/print`} target="_blank"
+                          className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium">
+                          Print
+                        </Link>
                         <button onClick={() => startEdit(entry)}
                           className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium">
                           Edit
