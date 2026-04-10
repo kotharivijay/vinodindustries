@@ -1061,11 +1061,13 @@ export default function FinishStockPage() {
 
                   if (isEditing) {
                     return (
-                      <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl border-2 border-teal-300 dark:border-teal-700 shadow-lg p-5 space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Edit Finish FP #{entry.slipNo}</h2>
+                      <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl border-2 border-teal-300 dark:border-teal-700 shadow-lg overflow-hidden">
+                        {/* FP Header */}
+                        <div className="flex items-center justify-between px-4 py-3 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800">
+                          <span className="text-sm font-bold text-teal-600 dark:text-teal-400">Edit FP {entry.slipNo}</span>
                           <button onClick={cancelEdit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
                         </div>
+                        <div className="p-5 space-y-4">
 
                         {editError && (
                           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg px-4 py-3 text-sm">{editError}</div>
@@ -1187,6 +1189,7 @@ export default function FinishStockPage() {
                           <button onClick={cancelEdit} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
                             Cancel
                           </button>
+                        </div>
                         </div>
                       </div>
                     )
