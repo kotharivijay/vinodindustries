@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
 import ShareDyeingPDFButton from './ShareDyeingPDFButton'
+import EditCarryForward from './EditCarryForward'
 
 export default async function LotTrackPage({ params }: { params: { lotNo: string } }) {
   const session = await getServerSession(authOptions)
@@ -188,7 +189,11 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
               <div><span className="text-gray-400 text-xs">Despatched (prev yr)</span><p className="font-semibold">{openingBalance.totalDespatched} than</p></div>
               <div><span className="text-gray-400 text-xs">Carry-Forward</span><p className="font-bold text-blue-600">{openingBalance.openingThan} than</p></div>
               {openingBalance.party && <div><span className="text-gray-400 text-xs">Party</span><p>{openingBalance.party}</p></div>}
+              {openingBalance.weight && <div><span className="text-gray-400 text-xs">Weight</span><p className="font-semibold">{openingBalance.weight}</p></div>}
+              {openingBalance.grayMtr && <div><span className="text-gray-400 text-xs">Gray Mtr</span><p className="font-semibold">{openingBalance.grayMtr}</p></div>}
+              {openingBalance.quality && <div><span className="text-gray-400 text-xs">Quality</span><p>{openingBalance.quality}</p></div>}
             </div>
+            <EditCarryForward lotNo={lotNo} weight={openingBalance.weight} grayMtr={openingBalance.grayMtr} />
 
             {/* Previous year despatch history */}
             {openingBalance.despatchHistory?.length > 0 && (

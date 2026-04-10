@@ -160,6 +160,36 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ imported, skipped, totalThan, total: rows.length })
 }
 
+// PATCH - update a single opening balance by lotNo
+export async function PATCH(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  const { lotNo, weight, grayMtr, party, quality, openingThan, notes } = body
+  if (!lotNo) return NextResponse.json({ error: 'lotNo required' }, { status: 400 })
+
+  const db = prisma as any
+  const existing = await db.lotOpeningBalance.findFirst({
+    where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+  })
+  if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const data: any = {}
+  if (weight !== undefined) data.weight = weight || null
+  if (grayMtr !== undefined) data.grayMtr = grayMtr != null ? parseFloat(grayMtr) : null
+  if (party !== undefined) data.party = party || null
+  if (quality !== undefined) data.quality = quality || null
+  if (openingThan !== undefined) data.openingThan = parseInt(openingThan) || 0
+  if (notes !== undefined) data.notes = notes || null
+
+  const updated = await db.lotOpeningBalance.update({
+    where: { id: existing.id },
+    data,
+  })
+  return NextResponse.json(updated)
+}
+
 // DELETE - clear all opening balances
 export async function DELETE() {
   const session = await getServerSession(authOptions)
