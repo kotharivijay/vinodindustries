@@ -161,10 +161,65 @@ export default function PrintActions({ data }: { data: PrintData }) {
         printerRef.current = new BluetoothPrinter()
       }
       const printer = printerRef.current
-      await printer.connect()
-      const receipt = buildReceipt(data)
-      const encoder = new TextEncoder()
-      await printer.write(encoder.encode(receipt))
+      const savedId = typeof localStorage !== 'undefined' ? localStorage.getItem('bt-printer-id') || undefined : undefined
+      await printer.smartConnect(savedId)
+      if (printer.deviceId) localStorage.setItem('bt-printer-id', printer.deviceId)
+      await printer.init()
+
+      const W = 32
+
+      // Header
+      await printer.printCentered('================================', false, 'normal')
+      await printer.printCentered('KOTHARI SYNTHETIC', true, 'double-height')
+      await printer.printCentered('INDUSTRIES', true, 'double-height')
+      await printer.printCentered('Finish Program', true, 'normal')
+      await printer.printCentered('================================', false, 'normal')
+
+      // Info
+      await printer.printKeyValue(`Prg: ${data.slipNo}`, data.date, W)
+      if (data.partyName) await printer.printText(`Party: ${data.partyName}`)
+      if (data.qualityName) await printer.printText(`Quality: ${data.qualityName}`)
+      await printer.printDivider('-', W)
+
+      // Fold → Slip → Lots
+      for (const fg of data.foldGroups) {
+        await printer.printLine(`Fold: ${fg.foldNo}`, true, 'normal')
+        for (const slip of fg.slips) {
+          const shade = slip.shadeName || ''
+          await printer.printText(`  Slip ${slip.slipNo} ${shade}`)
+          for (const lot of slip.lots) {
+            const lotPad = Math.max(1, W - 6 - lot.lotNo.length - String(lot.than).length - 1)
+            await printer.printLine(`    ${lot.lotNo}${' '.repeat(lotPad)}${lot.than}T`, false, 'normal')
+          }
+        }
+      }
+
+      await printer.printDivider('-', W)
+      const totalStr = `Total: ${data.totalThan} than`
+      await printer.printLine(totalStr, true, 'normal')
+      if (data.totalMeter) await printer.printText(`Meter: ${data.totalMeter}`)
+      await printer.printDivider('-', W)
+
+      // Chemicals
+      if (data.chemicals.length > 0) {
+        await printer.printLine('CHEMICALS (per 100L)', true, 'normal')
+        await printer.printDivider('-', W)
+        for (const c of data.chemicals) {
+          const qty = c.quantity != null ? Number(c.quantity).toFixed(1) : '---'
+          const valStr = `${qty} ${c.unit}`
+          const pad = Math.max(1, W - 2 - c.name.length - valStr.length)
+          await printer.printLine(`  ${c.name}${' '.repeat(pad)}${valStr}`, false, 'normal')
+        }
+        await printer.printDivider('-', W)
+      }
+
+      if (data.notes) await printer.printText(`Note: ${data.notes}`)
+
+      await printer.printCentered('================================')
+      await printer.feedLines(1)
+      await printer.cut()
+      await printer.disconnect()
+
       setBtState('done')
       setTimeout(() => setBtState('idle'), 3000)
     } catch (err: any) {
