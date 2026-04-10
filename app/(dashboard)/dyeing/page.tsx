@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../BackButton'
 import { generateMultiSlipPDF, sharePDF, type SlipData } from '@/lib/pdf-share'
+import { useRole } from '../RoleContext'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -148,6 +149,7 @@ function readConfirmPhoto(file: File): Promise<{base64: string, mediaType: strin
 
 export default function DyeingListPage() {
   const router = useRouter()
+  const role = useRole()
   const { data: entries = [], isLoading: loading, mutate } = useSWR<DyeingEntry[]>('/api/dyeing', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
@@ -824,9 +826,9 @@ export default function DyeingListPage() {
                             </div>
                             <div className="flex gap-2 shrink-0">
                               <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-400 text-xs font-medium border border-indigo-700 rounded px-2 py-0.5">Edit</button>
-                              <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 text-xs font-medium border border-red-800 rounded px-2 py-0.5 disabled:opacity-40">
+                              {role === 'admin' && <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 text-xs font-medium border border-red-800 rounded px-2 py-0.5 disabled:opacity-40">
                                 {deletingId === e.id ? '...' : 'Del'}
-                              </button>
+                              </button>}
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -987,9 +989,9 @@ export default function DyeingListPage() {
                             <td className="px-3 py-2.5 whitespace-nowrap">
                               <Link href={`/dyeing/${e.id}/print`} target="_blank" className="text-gray-400 hover:text-purple-300 text-xs font-medium mr-3">Print</Link>
                               <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-400 hover:text-indigo-300 text-xs font-medium mr-3">Edit</button>
-                              <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-300 text-xs font-medium disabled:opacity-40">
+                              {role === 'admin' && <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 hover:text-red-300 text-xs font-medium disabled:opacity-40">
                                 {deletingId === e.id ? '...' : 'Delete'}
-                              </button>
+                              </button>}
                             </td>
                           </tr>
                           )

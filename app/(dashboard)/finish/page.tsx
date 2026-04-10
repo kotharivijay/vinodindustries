@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../BackButton'
+import { useRole } from '../RoleContext'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -223,6 +224,7 @@ interface FinishChemicalRow {
 
 export default function FinishStockPage() {
   const router = useRouter()
+  const role = useRole()
   void router
 
   const { data: rawData, isLoading: loading, mutate: mutateStock } = useSWR<{ stock: StockEntry[]; totalSlips: number; totalThan: number }>('/api/finish/stock', fetcher, {
@@ -1198,7 +1200,7 @@ export default function FinishStockPage() {
                           className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium">
                           Edit
                         </button>
-                        {deleteConfirmId === entry.id ? (
+                        {role === 'admin' && (deleteConfirmId === entry.id ? (
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-red-600 dark:text-red-400">Delete this entry?</span>
                             <button onClick={() => handleDelete(entry.id)} disabled={deleting}
@@ -1215,7 +1217,7 @@ export default function FinishStockPage() {
                             className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-300 font-medium">
                             Delete
                           </button>
-                        )}
+                        ))}
                       </div>
                     </div>
                   )

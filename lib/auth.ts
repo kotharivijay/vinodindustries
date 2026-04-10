@@ -6,6 +6,17 @@ const approvedEmails = (process.env.APPROVED_EMAILS ?? '')
   .map((e) => e.trim())
   .filter(Boolean)
 
+const ksiEmails = (process.env.KSI_EMAILS ?? '')
+  .split(',')
+  .map((e) => e.trim())
+  .filter(Boolean)
+
+function getRole(email: string): 'admin' | 'ksi' | null {
+  if (approvedEmails.includes(email)) return 'admin'
+  if (ksiEmails.includes(email)) return 'ksi'
+  return null
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
@@ -19,17 +30,20 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user }) {
       if (!user.email) return false
-      if (approvedEmails.length === 0) return false
-      return approvedEmails.includes(user.email)
+      return getRole(user.email) !== null
     },
     async jwt({ token, account }) {
       if (account?.access_token) {
         token.accessToken = account.access_token
       }
+      if (token.email) {
+        token.role = getRole(token.email) ?? 'ksi'
+      }
       return token
     },
     async session({ session, token }) {
       session.accessToken = token.accessToken
+      ;(session as any).role = token.role
       return session
     },
   },

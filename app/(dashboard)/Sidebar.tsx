@@ -10,6 +10,7 @@ import { useTheme } from '../theme-provider'
 interface Props {
   userName?: string | null
   userEmail?: string | null
+  role?: 'admin' | 'ksi'
 }
 
 const ksiNavGroups = [
@@ -112,18 +113,23 @@ function saveCustomization(company: string, c: SidebarCustomization) {
   localStorage.setItem(`${SIDEBAR_STORAGE_KEY}-${company}`, JSON.stringify(c))
 }
 
-function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: {
+function SidebarContent({ pathname, onNavigate, userName, userEmail, company, role = 'admin' }: {
   pathname: string
   onNavigate: () => void
   userName?: string | null
   userEmail?: string | null
   company: string
+  role?: 'admin' | 'ksi'
 }) {
   const initial = userName?.[0]?.toUpperCase() ?? 'U'
   const { theme, toggle } = useTheme()
   const companyName = company === 'vi' ? 'Vinod Industries' : 'Kothari Synthetic Industries'
   const companyIcon = company === 'vi' ? '\u{1F3E2}' : '\u{1F3ED}'
-  const defaultGroups = company === 'vi' ? viNavGroups : ksiNavGroups
+  const baseGroups = company === 'vi' ? viNavGroups : ksiNavGroups
+  // KSI role: hide Vault and Accounts sections
+  const defaultGroups = role === 'ksi'
+    ? baseGroups.filter(g => g.label !== 'Vault' && g.label !== 'Accounts')
+    : baseGroups
 
   const [editMode, setEditMode] = useState(false)
   const [custom, setCustom] = useState<SidebarCustomization>({ renames: {}, hidden: [], order: [] })
@@ -230,9 +236,11 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
           <NotificationBell />
         </div>
         <div className="flex gap-2 mt-2">
-          <Link href="/select-company" className="flex-1 flex items-center justify-center gap-1.5 text-xs text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] bg-[var(--sidebar-btn)] hover:bg-[var(--sidebar-btn-hover)] rounded-lg px-3 py-1.5 transition">
-            Switch
-          </Link>
+          {role === 'admin' && (
+            <Link href="/select-company" className="flex-1 flex items-center justify-center gap-1.5 text-xs text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] bg-[var(--sidebar-btn)] hover:bg-[var(--sidebar-btn-hover)] rounded-lg px-3 py-1.5 transition">
+              Switch
+            </Link>
+          )}
           <button
             onClick={() => setEditMode(!editMode)}
             className={`flex items-center justify-center gap-1 text-xs rounded-lg px-3 py-1.5 transition ${
@@ -353,17 +361,18 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company }: 
   )
 }
 
-export default function Sidebar({ userName, userEmail }: Props) {
+export default function Sidebar({ userName, userEmail, role = 'admin' }: Props) {
   const [open, setOpen] = useState(false)
   const [company, setCompany] = useState<string>('ksi')
   const pathname = usePathname()
   const { theme, toggle } = useTheme()
 
-  // Read selected company from localStorage
+  // Read selected company from localStorage (ksi role is locked to ksi)
   useEffect(() => {
+    if (role === 'ksi') { setCompany('ksi'); return }
     const saved = localStorage.getItem('selectedCompany')
     if (saved) setCompany(saved)
-  }, [])
+  }, [role])
 
   const companyName = company === 'vi' ? 'Vinod Industries' : 'Kothari Synthetic Industries'
 
@@ -395,7 +404,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
         <button onClick={toggle} className="text-lg shrink-0" title="Toggle dark mode">
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
-        <Link href="/select-company" className="text-[10px] text-[var(--sidebar-text-muted)] hover:text-white bg-[var(--sidebar-btn)] rounded px-2 py-1 shrink-0">Switch</Link>
+        {role === 'admin' && <Link href="/select-company" className="text-[10px] text-[var(--sidebar-text-muted)] hover:text-white bg-[var(--sidebar-btn)] rounded px-2 py-1 shrink-0">Switch</Link>}
       </header>
 
       {/* ── MOBILE DRAWER OVERLAY ── */}
@@ -423,6 +432,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
               userName={userName}
               userEmail={userEmail}
               company={company}
+              role={role}
             />
           </aside>
         </div>
@@ -436,6 +446,7 @@ export default function Sidebar({ userName, userEmail }: Props) {
           userName={userName}
           userEmail={userEmail}
           company={company}
+          role={role}
         />
       </aside>
     </>
