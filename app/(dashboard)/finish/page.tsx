@@ -1678,7 +1678,7 @@ export default function FinishStockPage() {
                                   {slips.map(slip => {
                                     const overrideKey = `${slip.slipNo}::${lotNo}`
                                     return (
-                                    <div key={`${slip.slipNo}-${slip.lotNo}`} className="px-3 py-1.5 flex items-center justify-between text-xs">
+                                    <div key={`${slip.slipNo}-${slip.lotNo}`} className="px-3 py-1.5 text-xs">
                                       <div className="flex items-center gap-2">
                                         <span className="text-gray-500 dark:text-gray-400">Slip {slip.slipNo}</span>
                                         <input
@@ -1689,7 +1689,7 @@ export default function FinishStockPage() {
                                         />
                                         <span className="text-gray-400">than</span>
                                       </div>
-                                      <span className="text-gray-500 dark:text-gray-400 truncate max-w-[180px]">{slip.shade || '\u2014'}</span>
+                                      {slip.shade && <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{slip.shade}</p>}
                                     </div>
                                     )
                                   })}
