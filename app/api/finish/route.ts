@@ -21,24 +21,77 @@ export async function GET() {
     return NextResponse.json([])
   }
 
-  // Enrich with party names
+  // Enrich with party/quality names
   const allLotNos = new Set<string>()
   for (const e of entries) {
     if (e.lots?.length) e.lots.forEach((l: any) => allLotNos.add(l.lotNo))
     else allLotNos.add(e.lotNo)
   }
 
-  const greyWithParty = await prisma.greyEntry.findMany({
-    where: { lotNo: { in: Array.from(allLotNos) } },
-    select: { lotNo: true, party: { select: { name: true } } },
-    distinct: ['lotNo'],
-  })
-  const lotPartyMap = new Map(greyWithParty.map(g => [g.lotNo, g.party.name]))
+  const { buildLotInfoMap } = await import('@/lib/lot-info')
+  const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
+
+  // Get dyeing info (shade, fold) for these lots
+  const db2 = prisma as any
+  let dyeingByLot = new Map<string, { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }>()
+  try {
+    const dyeingEntries = await db2.dyeingEntry.findMany({
+      where: {
+        OR: [
+          { lotNo: { in: Array.from(allLotNos) } },
+          { lots: { some: { lotNo: { in: Array.from(allLotNos) } } } },
+        ],
+      },
+      select: {
+        slipNo: true,
+        shadeName: true,
+        lots: { select: { lotNo: true } },
+        foldBatch: {
+          select: {
+            foldProgram: { select: { foldNo: true } },
+            shade: { select: { name: true, description: true } },
+          },
+        },
+      },
+    })
+    for (const de of dyeingEntries) {
+      const foldNo = de.foldBatch?.foldProgram?.foldNo || null
+      const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
+      const shadeDesc = de.foldBatch?.shade?.description || null
+      const dLots = de.lots?.length ? de.lots.map((l: any) => l.lotNo) : []
+      for (const ln of dLots) {
+        if (!dyeingByLot.has(ln)) {
+          dyeingByLot.set(ln, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
+        }
+      }
+    }
+  } catch {}
 
   const enriched = entries.map((e: any) => {
-    const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
-    const partyNames = [...new Set(lots.map((l: any) => lotPartyMap.get(l.lotNo)).filter(Boolean))]
-    return { ...e, partyName: partyNames.join(', ') || null }
+    const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than, doneThan: 0, status: 'pending' }]
+    const partyNames = [...new Set(lots.map((l: any) => lotInfoMap.get(l.lotNo.toLowerCase().trim())?.party).filter(Boolean))]
+
+    // Enrich each lot with party, quality, dyeing info
+    const enrichedLots = lots.map((l: any) => {
+      const info = lotInfoMap.get(l.lotNo.toLowerCase().trim())
+      const dye = dyeingByLot.get(l.lotNo)
+      return {
+        ...l,
+        party: info?.party || null,
+        quality: info?.quality || null,
+        dyeSlipNo: dye?.slipNo || null,
+        shadeName: dye?.shadeName || null,
+        shadeDesc: dye?.shadeDesc || null,
+        foldNo: dye?.foldNo || null,
+      }
+    })
+
+    // FP status
+    const allDone = enrichedLots.every((l: any) => l.status === 'done')
+    const anyDone = enrichedLots.some((l: any) => l.status === 'done' || l.status === 'partial')
+    const fpStatus = allDone ? 'finished' : anyDone ? 'partial' : 'pending'
+
+    return { ...e, lots: enrichedLots, partyName: partyNames.join(', ') || null, fpStatus }
   })
 
   return NextResponse.json(enriched)

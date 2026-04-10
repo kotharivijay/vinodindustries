@@ -67,6 +67,14 @@ interface FinishLot {
   lotNo: string
   than: number
   meter: number | null
+  doneThan: number
+  status: string
+  party: string | null
+  quality: string | null
+  dyeSlipNo: number | null
+  shadeName: string | null
+  shadeDesc: string | null
+  foldNo: string | null
 }
 
 interface FinishSlipChemical {
@@ -92,6 +100,7 @@ interface FinishSlipEntry {
   lots: FinishLot[]
   chemicals: FinishSlipChemical[]
   partyName: string | null
+  fpStatus: string
 }
 
 type SlipSortField = 'date' | 'slipNo' | 'lotNo' | 'party' | 'than'
@@ -351,6 +360,35 @@ export default function FinishStockPage() {
   const [editError, setEditError] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [expandedFPs, setExpandedFPs] = useState<Set<number>>(new Set())
+  const [partialLotId, setPartialLotId] = useState<number | null>(null)
+  const [partialThanInput, setPartialThanInput] = useState('')
+  const [lotUpdating, setLotUpdating] = useState<number | null>(null)
+
+  const toggleFP = (id: number) => {
+    setExpandedFPs(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  async function updateLotStatus(lotId: number, status: string, doneThan?: number) {
+    setLotUpdating(lotId)
+    try {
+      const res = await fetch('/api/finish/lot-status', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lotId, status, doneThan }),
+      })
+      if (res.ok) {
+        mutateSlips()
+        setPartialLotId(null)
+        setPartialThanInput('')
+      }
+    } catch {}
+    setLotUpdating(null)
+  }
 
   const startEdit = useCallback(async (entry: FinishSlipEntry) => {
     setEditingSlipId(entry.id)
@@ -1154,75 +1192,162 @@ export default function FinishStockPage() {
                     )
                   }
 
+                  const fpOpen = expandedFPs.has(entry.id)
+                  const statusBadge = entry.fpStatus === 'finished'
+                    ? { label: 'Finished', cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800' }
+                    : entry.fpStatus === 'partial'
+                    ? { label: 'Partial', cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800' }
+                    : { label: 'Pending', cls: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600' }
+
+                  // Group lots by party → fold → dyeSlip
+                  const partyMap = new Map<string, Map<string, FinishLot[]>>()
+                  for (const lot of entry.lots) {
+                    const p = lot.party || 'Unknown'
+                    const f = lot.foldNo || 'No Fold'
+                    if (!partyMap.has(p)) partyMap.set(p, new Map())
+                    const fMap = partyMap.get(p)!
+                    if (!fMap.has(f)) fMap.set(f, [])
+                    fMap.get(f)!.push(lot)
+                  }
+
                   return (
-                    <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                          <span>{new Date(entry.date).toLocaleDateString('en-IN')}</span>
-                          <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                          <span className="text-teal-600 dark:text-teal-400 font-medium">FP {entry.slipNo}</span>
-                          {entry.mandi != null && (
-                            <>
-                              <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                              <span>Mandi: {entry.mandi}L</span>
-                            </>
-                          )}
-                          {entry.chemicals.length > 0 && (
-                            <>
-                              <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                              <span>{entry.chemicals.length} chemical{entry.chemicals.length !== 1 ? 's' : ''}</span>
-                            </>
-                          )}
+                    <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+                      {/* FP Header — clickable to expand */}
+                      <button onClick={() => toggleFP(entry.id)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+                        <div className="flex items-center gap-2 text-left">
+                          <span className="text-sm font-bold text-teal-600 dark:text-teal-400">FP {entry.slipNo}</span>
+                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusBadge.cls}`}>{statusBadge.label}</span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(entry.date).toLocaleDateString('en-IN')}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3">
                           <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThanEntry}T</span>
-                          {totalMeter > 0 && <span className="text-xs text-gray-400 dark:text-gray-500">{totalMeter}m</span>}
+                          <span className={`text-gray-400 dark:text-gray-500 transition-transform text-xs ${fpOpen ? 'rotate-90' : ''}`}>&#9654;</span>
                         </div>
-                      </div>
+                      </button>
 
-                      {/* Lots */}
-                      <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                        {entry.lots.map((lot, li) => (
-                          <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`}
-                            className="inline-flex items-center gap-1 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30">
-                            {lot.lotNo} <span className="text-teal-400 dark:text-teal-500 font-normal">({lot.than}T{lot.meter != null ? ` / ${lot.meter}m` : ''})</span>
-                          </Link>
-                        ))}
-                      </div>
-
-                      {/* Party + notes */}
-                      {entry.partyName && <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">{entry.partyName}</p>}
-                      {entry.notes && <p className="text-xs text-gray-500 dark:text-gray-400 italic mb-1">{entry.notes}</p>}
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100 dark:border-gray-700">
-                        <Link href={`/finish/${entry.id}/print`} target="_blank"
-                          className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium">
-                          Print
-                        </Link>
-                        <button onClick={() => startEdit(entry)}
-                          className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium">
-                          Edit
-                        </button>
-                        {role === 'admin' && (deleteConfirmId === entry.id ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-red-600 dark:text-red-400">Delete this entry?</span>
-                            <button onClick={() => handleDelete(entry.id)} disabled={deleting}
-                              className="text-xs text-red-600 dark:text-red-400 font-bold hover:text-red-700 disabled:opacity-50">
-                              {deleting ? 'Deleting...' : 'Yes'}
-                            </button>
-                            <button onClick={() => setDeleteConfirmId(null)}
-                              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
-                              No
-                            </button>
+                      {/* Expanded content */}
+                      {fpOpen && (
+                        <div className="border-t border-gray-100 dark:border-gray-700">
+                          {/* Actions bar */}
+                          <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-700/30 border-b border-gray-100 dark:border-gray-700">
+                            <Link href={`/finish/${entry.id}/print`} target="_blank"
+                              className="text-xs text-purple-600 dark:text-purple-400 hover:text-purple-700 font-medium">Print</Link>
+                            <button onClick={() => startEdit(entry)}
+                              className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium">Edit</button>
+                            {role === 'admin' && (deleteConfirmId === entry.id ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-red-600 dark:text-red-400">Delete?</span>
+                                <button onClick={() => handleDelete(entry.id)} disabled={deleting}
+                                  className="text-xs text-red-600 dark:text-red-400 font-bold disabled:opacity-50">{deleting ? '...' : 'Yes'}</button>
+                                <button onClick={() => setDeleteConfirmId(null)}
+                                  className="text-xs text-gray-400">No</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => setDeleteConfirmId(entry.id)}
+                                className="text-xs text-red-400 hover:text-red-600 font-medium">Delete</button>
+                            ))}
+                            {entry.notes && <span className="text-[10px] text-gray-400 dark:text-gray-500 italic ml-auto">{entry.notes}</span>}
                           </div>
-                        ) : (
-                          <button onClick={() => setDeleteConfirmId(entry.id)}
-                            className="text-xs text-red-400 hover:text-red-600 dark:hover:text-red-300 font-medium">
-                            Delete
-                          </button>
-                        ))}
-                      </div>
+
+                          {/* Party → Fold → Lots hierarchy */}
+                          <div className="px-3 py-2 space-y-2">
+                            {Array.from(partyMap.entries()).map(([partyName, foldMap]) => (
+                              <div key={partyName}>
+                                <div className="text-xs font-bold text-gray-700 dark:text-gray-200 mb-1">👤 {partyName}</div>
+                                {Array.from(foldMap.entries()).map(([foldNo, lots]) => (
+                                  <div key={foldNo} className="ml-3 mb-2">
+                                    <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 mb-1">📁 Fold {foldNo}</div>
+                                    {/* Group lots by dyeSlipNo for shade display */}
+                                    {(() => {
+                                      const slipMap = new Map<number, FinishLot[]>()
+                                      for (const lot of lots) {
+                                        const s = lot.dyeSlipNo || 0
+                                        if (!slipMap.has(s)) slipMap.set(s, [])
+                                        slipMap.get(s)!.push(lot)
+                                      }
+                                      return Array.from(slipMap.entries()).map(([slipNo, sLots]) => {
+                                        const shade = [sLots[0]?.shadeName, sLots[0]?.shadeDesc].filter(Boolean).join(' — ')
+                                        return (
+                                          <div key={slipNo} className="ml-3 mb-1.5">
+                                            {slipNo > 0 && (
+                                              <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">
+                                                Slip {slipNo}{shade ? ` — ${shade}` : ''}
+                                              </div>
+                                            )}
+                                            <div className="space-y-1">
+                                              {sLots.map(lot => (
+                                                <div key={lot.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg px-3 py-2">
+                                                  <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
+                                                    className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{lot.lotNo}</Link>
+                                                  <span className="text-xs text-gray-600 dark:text-gray-400">{lot.than}T</span>
+
+                                                  {/* Status + actions */}
+                                                  {lot.status === 'done' ? (
+                                                    <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium ml-auto">✅ Done ({lot.doneThan}T)</span>
+                                                  ) : lot.status === 'partial' ? (
+                                                    <div className="flex items-center gap-1.5 ml-auto">
+                                                      <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">🟡 {lot.doneThan}T done</span>
+                                                      {partialLotId === lot.id ? (
+                                                        <div className="flex items-center gap-1">
+                                                          <input type="number" value={partialThanInput} onChange={e => setPartialThanInput(e.target.value)}
+                                                            placeholder="than" className="w-14 text-xs border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 bg-white dark:bg-gray-700 dark:text-gray-100" />
+                                                          <button onClick={() => updateLotStatus(lot.id, 'partial', parseInt(partialThanInput))}
+                                                            disabled={lotUpdating === lot.id} className="text-[10px] text-teal-600 font-bold">Save</button>
+                                                          <button onClick={() => setPartialLotId(null)} className="text-[10px] text-gray-400">✕</button>
+                                                        </div>
+                                                      ) : (
+                                                        <button onClick={() => { setPartialLotId(lot.id); setPartialThanInput(String(lot.doneThan)) }}
+                                                          className="text-[10px] text-indigo-500 hover:text-indigo-400 underline">Edit</button>
+                                                      )}
+                                                      <button onClick={() => updateLotStatus(lot.id, 'done')}
+                                                        disabled={lotUpdating === lot.id} className="text-[10px] text-green-600 font-medium">Full Done</button>
+                                                    </div>
+                                                  ) : (
+                                                    <div className="flex items-center gap-1.5 ml-auto">
+                                                      <button onClick={() => updateLotStatus(lot.id, 'done')}
+                                                        disabled={lotUpdating === lot.id}
+                                                        className="text-[10px] bg-green-600 text-white px-2 py-0.5 rounded font-medium hover:bg-green-700 disabled:opacity-50">
+                                                        {lotUpdating === lot.id ? '...' : '✅ Done'}
+                                                      </button>
+                                                      <button onClick={() => { setPartialLotId(lot.id); setPartialThanInput('') }}
+                                                        className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded font-medium hover:bg-amber-700">
+                                                        🟡 Partial
+                                                      </button>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )
+                                      })
+                                    })()}
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Partial than input popup */}
+                          {partialLotId && entry.lots.some(l => l.id === partialLotId && l.status === 'pending') && (
+                            <div className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-t border-amber-200 dark:border-amber-800">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-amber-700 dark:text-amber-400 font-medium">Done than:</span>
+                                <input type="number" value={partialThanInput} onChange={e => setPartialThanInput(e.target.value)}
+                                  placeholder="Enter done than"
+                                  className="w-20 text-sm border border-amber-300 dark:border-amber-700 rounded px-2 py-1 bg-white dark:bg-gray-800 dark:text-gray-100" />
+                                <button onClick={() => updateLotStatus(partialLotId, 'partial', parseInt(partialThanInput))}
+                                  disabled={lotUpdating === partialLotId || !partialThanInput}
+                                  className="text-xs bg-amber-600 text-white px-3 py-1 rounded font-medium hover:bg-amber-700 disabled:opacity-50">
+                                  {lotUpdating === partialLotId ? '...' : 'Save'}
+                                </button>
+                                <button onClick={() => { setPartialLotId(null); setPartialThanInput('') }}
+                                  className="text-xs text-gray-400 hover:text-gray-200">Cancel</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )
                 })}

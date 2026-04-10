@@ -301,12 +301,14 @@ model FinishEntry {
 }
 
 model FinishEntryLot {
-  id      Int          @id @default(autoincrement())
-  entryId Int
-  entry   FinishEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  lotNo   String
-  than    Int
-  meter   Float?
+  id       Int          @id @default(autoincrement())
+  entryId  Int
+  entry    FinishEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  lotNo    String
+  than     Int
+  meter    Float?
+  doneThan Int          @default(0)
+  status   String       @default("pending") // pending | partial | done
 }
 
 model FinishSlipChemical {
