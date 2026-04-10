@@ -34,6 +34,8 @@ interface StockEntry {
   date: string
   shadeName: string | null
   shadeDescription: string | null
+  foldNo: string | null
+  batchNo: number | null
   marka: string | null
   isPcJob: boolean
   machineName: string | null
@@ -118,17 +120,25 @@ interface SlipDetail {
   date: string
   shadeName: string | null
   shadeDescription: string | null
+  foldNo: string | null
+  batchNo: number | null
   lots: StockLot[]
   totalThan: number
   machineName: string | null
   operatorName: string | null
 }
 
+interface FoldGroup {
+  foldNo: string
+  totalThan: number
+  slips: SlipDetail[]
+}
+
 interface QualityGroup {
   quality: string
   weight: string | null
   totalThan: number
-  slips: SlipDetail[]
+  folds: FoldGroup[]
 }
 
 interface PartyGroup {
@@ -468,13 +478,14 @@ export default function FinishStockPage() {
 
   const partyGroups = useMemo<PartyGroup[]>(() => {
     // Flatten: for each entry, for each lot, produce a record
-    const records: { party: string; quality: string; weight: string | null; slip: SlipDetail; lotNo: string; than: number }[] = []
+    const records: { party: string; quality: string; weight: string | null; foldNo: string; slip: SlipDetail; lotNo: string; than: number }[] = []
     for (const e of entries) {
       for (const l of e.lots) {
         records.push({
           party: l.party ?? 'Unknown',
           quality: l.quality ?? 'Unknown',
           weight: l.weight,
+          foldNo: e.foldNo ?? 'No Fold',
           slip: e,
           lotNo: l.lotNo,
           than: l.than,
@@ -482,17 +493,25 @@ export default function FinishStockPage() {
       }
     }
 
-    // Group by party
-    const partyMap = new Map<string, Map<string, { weight: string | null; slipSet: Set<number>; slips: Map<number, SlipDetail>; totalThan: number; lotSet: Set<string> }>>()
+    // Group by party → quality → fold
+    type FoldData = { slipSet: Set<number>; slips: Map<number, SlipDetail>; totalThan: number }
+    type QualityData = { weight: string | null; folds: Map<string, FoldData>; totalThan: number; slipSet: Set<number>; lotSet: Set<string> }
+    const partyMap = new Map<string, Map<string, QualityData>>()
+
     for (const r of records) {
       if (!partyMap.has(r.party)) partyMap.set(r.party, new Map())
       const qMap = partyMap.get(r.party)!
-      if (!qMap.has(r.quality)) qMap.set(r.quality, { weight: r.weight, slipSet: new Set(), slips: new Map(), totalThan: 0, lotSet: new Set() })
+      if (!qMap.has(r.quality)) qMap.set(r.quality, { weight: r.weight, folds: new Map(), totalThan: 0, slipSet: new Set(), lotSet: new Set() })
       const qg = qMap.get(r.quality)!
       qg.totalThan += r.than
       qg.lotSet.add(r.lotNo)
       qg.slipSet.add(r.slip.id)
-      if (!qg.slips.has(r.slip.id)) qg.slips.set(r.slip.id, r.slip)
+
+      if (!qg.folds.has(r.foldNo)) qg.folds.set(r.foldNo, { slipSet: new Set(), slips: new Map(), totalThan: 0 })
+      const fg = qg.folds.get(r.foldNo)!
+      fg.totalThan += r.than
+      fg.slipSet.add(r.slip.id)
+      if (!fg.slips.has(r.slip.id)) fg.slips.set(r.slip.id, r.slip)
     }
 
     const result: PartyGroup[] = []
@@ -502,12 +521,16 @@ export default function FinishStockPage() {
       let totalSlips = 0
       const lotSet = new Set<string>()
       for (const [quality, data] of qMap) {
-        qualities.push({
-          quality,
-          weight: data.weight,
-          totalThan: data.totalThan,
-          slips: Array.from(data.slips.values()).sort((a, b) => a.slipNo - b.slipNo),
-        })
+        const folds: FoldGroup[] = []
+        for (const [foldNo, fd] of data.folds) {
+          folds.push({
+            foldNo,
+            totalThan: fd.totalThan,
+            slips: Array.from(fd.slips.values()).sort((a, b) => a.slipNo - b.slipNo),
+          })
+        }
+        folds.sort((a, b) => a.foldNo.localeCompare(b.foldNo))
+        qualities.push({ quality, weight: data.weight, totalThan: data.totalThan, folds })
         totalThan += data.totalThan
         totalSlips += data.slipSet.size
         data.lotSet.forEach(l => lotSet.add(l))
@@ -522,6 +545,7 @@ export default function FinishStockPage() {
   /* ── Stock Report expand state ─────────────────────────────────── */
   const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set())
   const [expandedQualities, setExpandedQualities] = useState<Set<string>>(new Set())
+  const [expandedFolds, setExpandedFolds] = useState<Set<string>>(new Set())
 
   const toggleParty = (party: string) => {
     setExpandedParties(prev => {
@@ -532,6 +556,13 @@ export default function FinishStockPage() {
   }
   const toggleQuality = (key: string) => {
     setExpandedQualities(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
+      return next
+    })
+  }
+  const toggleFold = (key: string) => {
+    setExpandedFolds(prev => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key); else next.add(key)
       return next
@@ -1459,53 +1490,80 @@ export default function FinishStockPage() {
                                   </div>
                                 </button>
 
-                                {/* Level 3: Slip details inside quality */}
+                                {/* Level 3: Fold groups inside quality */}
                                 {qOpen && (
-                                  <div className="border-t border-gray-50 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700">
-                                    {qg.slips.map(slip => {
-                                      const shade = shadeDisplay(slip.shadeName, slip.shadeDescription)
-                                      // Filter lots that belong to this quality
-                                      const qLots = slip.lots.filter(l => (l.quality ?? 'Unknown') === qg.quality && (l.party ?? 'Unknown') === pg.party)
-                                      const slipQualityThan = qLots.reduce((s, l) => s + l.than, 0)
+                                  <div className="border-t border-gray-50 dark:border-gray-700 px-2 pb-2 pt-1 space-y-1.5">
+                                    {qg.folds.map(fg => {
+                                      const fKey = `${pg.party}::${qg.quality}::${fg.foldNo}`
+                                      const fOpen = expandedFolds.has(fKey)
                                       return (
-                                        <div key={slip.id} className="px-3 py-2.5">
-                                          <div className="flex items-center justify-between mb-1">
-                                            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                              <span className="font-medium text-teal-600 dark:text-teal-400">Slip {slip.slipNo}</span>
-                                              <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                                              <span>{new Date(slip.date).toLocaleDateString('en-IN')}</span>
+                                        <div key={fKey} className="border border-gray-100 dark:border-gray-600 rounded-lg overflow-hidden">
+                                          <button
+                                            onClick={() => toggleFold(fKey)}
+                                            className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Fold {fg.foldNo}</span>
+                                              <span className="text-[10px] text-gray-400 dark:text-gray-500">{fg.slips.length} slip{fg.slips.length !== 1 ? 's' : ''}</span>
                                             </div>
-                                            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{slipQualityThan}T</span>
-                                          </div>
-                                          {shade && <p className="text-xs text-gray-600 dark:text-gray-300 mb-0.5">{shade}</p>}
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {qLots.map((lot, li) => {
-                                              const lotData: SelectedLot = {
-                                                lotNo: lot.lotNo,
-                                                than: lot.than,
-                                                party: pg.party,
-                                                quality: qg.quality,
-                                                shade: shade ?? '',
-                                                slipNo: slip.slipNo,
-                                              }
-                                              const isSelected = selectedLots.has(lotKey(lotData))
-                                              return (
-                                                <label key={li} className="inline-flex items-center gap-1 cursor-pointer">
-                                                  <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    onChange={() => toggleLotSelection(lotData)}
-                                                    className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500 dark:bg-gray-700"
-                                                  />
-                                                  <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
-                                                    onClick={e => e.stopPropagation()}
-                                                    className={`inline-flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30 ${isSelected ? 'bg-teal-200 dark:bg-teal-800/40 text-teal-800 dark:text-teal-200 font-bold' : 'bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300'}`}>
-                                                    {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span>
-                                                  </Link>
-                                                </label>
-                                              )
-                                            })}
-                                          </div>
+                                            <div className="flex items-center gap-3">
+                                              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{fg.totalThan} than</span>
+                                              <span className={`text-gray-400 dark:text-gray-500 text-[10px] transition-transform ${fOpen ? 'rotate-90' : ''}`}>&#9654;</span>
+                                            </div>
+                                          </button>
+
+                                          {/* Level 4: Slip details inside fold */}
+                                          {fOpen && (
+                                            <div className="border-t border-gray-50 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700">
+                                              {fg.slips.map(slip => {
+                                                const shade = shadeDisplay(slip.shadeName, slip.shadeDescription)
+                                                const qLots = slip.lots.filter(l => (l.quality ?? 'Unknown') === qg.quality && (l.party ?? 'Unknown') === pg.party)
+                                                const slipQualityThan = qLots.reduce((s, l) => s + l.than, 0)
+                                                return (
+                                                  <div key={slip.id} className="px-3 py-2.5">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                      <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                                        <span className="font-medium text-teal-600 dark:text-teal-400">Slip {slip.slipNo}</span>
+                                                        <span className="text-gray-300 dark:text-gray-600">&middot;</span>
+                                                        <span>{new Date(slip.date).toLocaleDateString('en-IN')}</span>
+                                                        {slip.batchNo && <span className="text-[10px] text-gray-400">B{slip.batchNo}</span>}
+                                                      </div>
+                                                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{slipQualityThan}T</span>
+                                                    </div>
+                                                    {shade && <p className="text-xs text-gray-600 dark:text-gray-300 mb-0.5">{shade}</p>}
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                      {qLots.map((lot, li) => {
+                                                        const lotData: SelectedLot = {
+                                                          lotNo: lot.lotNo,
+                                                          than: lot.than,
+                                                          party: pg.party,
+                                                          quality: qg.quality,
+                                                          shade: shade ?? '',
+                                                          slipNo: slip.slipNo,
+                                                        }
+                                                        const isSelected = selectedLots.has(lotKey(lotData))
+                                                        return (
+                                                          <label key={li} className="inline-flex items-center gap-1 cursor-pointer">
+                                                            <input
+                                                              type="checkbox"
+                                                              checked={isSelected}
+                                                              onChange={() => toggleLotSelection(lotData)}
+                                                              className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500 dark:bg-gray-700"
+                                                            />
+                                                            <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
+                                                              onClick={e => e.stopPropagation()}
+                                                              className={`inline-flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30 ${isSelected ? 'bg-teal-200 dark:bg-teal-800/40 text-teal-800 dark:text-teal-200 font-bold' : 'bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300'}`}>
+                                                              {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span>
+                                                            </Link>
+                                                          </label>
+                                                        )
+                                                      })}
+                                                    </div>
+                                                  </div>
+                                                )
+                                              })}
+                                            </div>
+                                          )}
                                         </div>
                                       )
                                     })}

@@ -25,7 +25,7 @@ export async function GET() {
       machine: { select: { name: true } },
       operator: { select: { name: true } },
       lots: { select: { lotNo: true, than: true } },
-      foldBatch: { select: { shade: { select: { name: true, description: true } } } },
+      foldBatch: { select: { batchNo: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
     },
     orderBy: { dyeingDoneAt: 'desc' },
   })
@@ -89,6 +89,8 @@ export async function GET() {
       dyeingDoneAt: d.dyeingDoneAt,
       shadeName,
       shadeDescription: shadeDesc,
+      foldNo: d.foldBatch?.foldProgram?.foldNo || null,
+      batchNo: d.foldBatch?.batchNo || null,
       lots: adjustedLots,
       totalThan: adjustedLots.reduce((s: number, l: any) => s + l.than, 0),
       party: lotInfo?.party || null,
