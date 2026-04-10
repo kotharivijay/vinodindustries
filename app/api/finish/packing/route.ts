@@ -41,12 +41,8 @@ export async function GET() {
     for (const l of pe.lots) allLotNos.add(l.lotNo)
   }
 
-  const greyEntries = await prisma.greyEntry.findMany({
-    where: { lotNo: { in: Array.from(allLotNos) } },
-    select: { lotNo: true, weight: true, party: { select: { name: true } }, quality: { select: { name: true } } },
-    distinct: ['lotNo'],
-  })
-  const lotInfoMap = new Map(greyEntries.map(g => [g.lotNo.toLowerCase().trim(), { party: g.party.name, quality: g.quality.name, weight: g.weight }]))
+  const { buildLotInfoMap } = await import('@/lib/lot-info')
+  const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
 
   // Get shade info from dyeing entries for these lots
   const dyeingEntries = await db.dyeingEntry.findMany({

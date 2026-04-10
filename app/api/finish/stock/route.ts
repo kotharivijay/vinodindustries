@@ -37,13 +37,9 @@ export async function GET() {
     for (const l of lots) allLotNos.add(l.lotNo)
   }
 
-  // Batch fetch party + quality for all lots
-  const greyEntries = await prisma.greyEntry.findMany({
-    where: { lotNo: { in: Array.from(allLotNos) } },
-    select: { lotNo: true, weight: true, party: { select: { name: true } }, quality: { select: { name: true } } },
-    distinct: ['lotNo'],
-  })
-  const lotInfoMap = new Map(greyEntries.map(g => [g.lotNo.toLowerCase().trim(), { party: g.party.name, quality: g.quality.name, weight: g.weight }]))
+  // Batch fetch party + quality for all lots (GreyEntry + carry-forward fallback)
+  const { buildLotInfoMap } = await import('@/lib/lot-info')
+  const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
 
   // Fetch all finish entry lots to calculate finished than per lotNo
   const finishLots = await db.finishEntryLot.findMany({

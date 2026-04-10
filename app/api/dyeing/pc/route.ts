@@ -31,16 +31,12 @@ export async function GET() {
     else allLotNos.add(e.lotNo)
   }
 
-  const greyWithParty = await prisma.greyEntry.findMany({
-    where: { lotNo: { in: Array.from(allLotNos) } },
-    select: { lotNo: true, party: { select: { name: true } } },
-    distinct: ['lotNo'],
-  })
-  const lotPartyMap = new Map(greyWithParty.map(g => [g.lotNo, g.party.name]))
+  const { buildLotInfoMap } = await import('@/lib/lot-info')
+  const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
 
   const enriched = entries.map((e: any) => {
     const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
-    const partyNames = [...new Set(lots.map((l: any) => lotPartyMap.get(l.lotNo)).filter(Boolean))]
+    const partyNames = [...new Set(lots.map((l: any) => lotInfoMap.get(l.lotNo.toLowerCase().trim())?.party).filter(Boolean))]
     return { ...e, partyName: partyNames.join(', ') || null }
   })
 

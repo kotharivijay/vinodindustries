@@ -31,16 +31,13 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
 
   if (!entry) notFound()
 
-  // Enrich with party name + quality
+  // Enrich with party name + quality (GreyEntry + carry-forward fallback)
   const lotNos = entry.lots?.length ? entry.lots.map((l: any) => l.lotNo) : [entry.lotNo]
-  const greyWithParty = await prisma.greyEntry.findMany({
-    where: { lotNo: { in: lotNos } },
-    select: { lotNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
-    distinct: ['lotNo'],
-  })
-  const partyNames = [...new Set(greyWithParty.map(g => g.party.name))]
+  const { buildLotInfoMap } = await import('@/lib/lot-info')
+  const lotInfoMap = await buildLotInfoMap(lotNos)
+  const partyNames = [...new Set(Array.from(lotInfoMap.values()).map(v => v.party).filter(Boolean))]
   const partyName = partyNames.join(', ') || null
-  const qualityNames = [...new Set(greyWithParty.map(g => g.quality?.name).filter(Boolean))]
+  const qualityNames = [...new Set(Array.from(lotInfoMap.values()).map(v => v.quality).filter(Boolean))]
   const qualityName = qualityNames.join(', ') || null
 
   // Get shade description
