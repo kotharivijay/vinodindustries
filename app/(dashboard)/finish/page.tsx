@@ -1757,40 +1757,44 @@ export default function FinishStockPage() {
                       {finishChemicals.length > 0 && (
                         <div className="space-y-2">
                           {finishChemicals.map((chem, ci) => (
-                            <div key={ci} className="flex items-center gap-2">
-                              <div className="relative flex-1">
-                                <input
-                                  type="text"
-                                  placeholder="Chemical name"
-                                  value={chem.name}
-                                  onChange={e => updateFinishChemical(ci, 'name', e.target.value)}
-                                  className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
-                                  list={`chem-list-${ci}`}
-                                />
-                                <datalist id={`chem-list-${ci}`}>
-                                  {masterChemicals.map(m => (
-                                    <option key={m.id} value={m.name} onClick={() => selectFinishChemicalMaster(ci, m)} />
-                                  ))}
-                                </datalist>
+                            <div key={ci} className="border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                  <input
+                                    type="text"
+                                    placeholder="Chemical name"
+                                    value={chem.name}
+                                    onChange={e => updateFinishChemical(ci, 'name', e.target.value)}
+                                    className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
+                                    list={`chem-list-${ci}`}
+                                  />
+                                  <datalist id={`chem-list-${ci}`}>
+                                    {masterChemicals.map(m => (
+                                      <option key={m.id} value={m.name} onClick={() => selectFinishChemicalMaster(ci, m)} />
+                                    ))}
+                                  </datalist>
+                                </div>
+                                <button type="button" onClick={() => removeFinishChemical(ci)}
+                                  className="text-red-400 hover:text-red-600 text-lg leading-none shrink-0">&times;</button>
                               </div>
-                              <input type="number" step="0.01" placeholder="Qty"
-                                value={chem.quantity} onChange={e => updateFinishChemical(ci, 'quantity', e.target.value)}
-                                className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
-                              <select value={chem.unit} onChange={e => updateFinishChemical(ci, 'unit', e.target.value)}
-                                className="w-14 border border-gray-300 dark:border-gray-600 rounded px-1 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400">
-                                <option value="kg">kg</option>
-                                <option value="ltr">ltr</option>
-                                <option value="gm">gm</option>
-                                <option value="ml">ml</option>
-                              </select>
-                              <input type="number" step="0.01" placeholder="Rate"
-                                value={chem.rate} onChange={e => updateFinishChemical(ci, 'rate', e.target.value)}
-                                className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
-                              {chem.cost != null && (
-                                <span className="text-xs text-gray-500 dark:text-gray-400 w-14 text-right">{chem.cost.toFixed(0)}</span>
-                              )}
-                              <button type="button" onClick={() => removeFinishChemical(ci)}
-                                className="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
+                              <div className="flex items-center gap-2">
+                                <input type="number" step="0.01" placeholder="Qty"
+                                  value={chem.quantity} onChange={e => updateFinishChemical(ci, 'quantity', e.target.value)}
+                                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                                <select value={chem.unit} onChange={e => updateFinishChemical(ci, 'unit', e.target.value)}
+                                  className="w-14 border border-gray-300 dark:border-gray-600 rounded px-1 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400">
+                                  <option value="kg">kg</option>
+                                  <option value="ltr">ltr</option>
+                                  <option value="gm">gm</option>
+                                  <option value="ml">ml</option>
+                                </select>
+                                <input type="number" step="0.01" placeholder="Rate"
+                                  value={chem.rate} onChange={e => updateFinishChemical(ci, 'rate', e.target.value)}
+                                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                                {chem.cost != null && chem.cost > 0 && (
+                                  <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 shrink-0">&#8377;{chem.cost.toFixed(0)}</span>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
