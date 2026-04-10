@@ -273,7 +273,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
               date: e.date?.toISOString ? e.date.toISOString() : e.date,
               shadeName: e.shadeName || null,
               lots: (e.lots?.length ? e.lots : [{ lotNo: e.lotNo || lotNo, than: e._lotThan ?? e.than }]).map((l: any) => ({ lotNo: l.lotNo, than: l.than })),
-              chemicals: (e.chemicals || []).map((c: any) => ({ name: c.name || c.chemical?.name || '', quantity: c.quantity, unit: c.unit, rate: c.rate, cost: c.cost })),
+              chemicals: (e.chemicals || []).map((c: any) => ({ name: c.name || c.chemical?.name || '', quantity: c.quantity, unit: c.unit, rate: c.rate, cost: c.cost, processTag: c.processTag || null })),
               notes: e.notes || null,
               status: e.status || null,
               machine: e.machine?.name || null,

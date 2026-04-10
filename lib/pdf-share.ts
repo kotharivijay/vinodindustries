@@ -1,15 +1,28 @@
 // PDF generation + share utility for dyeing slips
-// Generates A4 PDF in light mode regardless of app theme
+// Matches the existing print page layout (print/page.tsx)
 
 import jsPDF from 'jspdf'
+
+export interface SlipChemical {
+  name: string
+  quantity: number | null
+  unit: string
+  rate: number | null
+  cost: number | null
+  processTag?: string | null
+}
 
 export interface SlipData {
   slipNo: number | string
   date: string | Date
+  partyName?: string | null
   shadeName?: string | null
   shadeDescription?: string | null
+  qualityName?: string | null
+  marka?: string | null
+  isPcJob?: boolean
   lots: { lotNo: string; than: number }[]
-  chemicals: { name: string; quantity: number | null; unit: string; rate: number | null; cost: number | null }[]
+  chemicals: SlipChemical[]
   mandi?: number | null
   notes?: string | null
   status?: string | null
@@ -17,10 +30,10 @@ export interface SlipData {
   machine?: string | null
   operator?: string | null
   totalRounds?: number | null
+  isReDyed?: boolean
 }
 
 const COMPANY_NAME = 'KOTHARI SYNTHETIC INDUSTRIES'
-const COMPANY_SUBTITLE = 'Dyeing Slip'
 
 function fmtDate(d: string | Date | null | undefined): string {
   if (!d) return ''
@@ -29,221 +42,234 @@ function fmtDate(d: string | Date | null | undefined): string {
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-function fmtNum(n: number): string {
-  return n.toLocaleString('en-IN')
-}
-
 /**
- * Render one slip onto a jsPDF page.
- * @param doc - jsPDF instance
- * @param slip - slip data
- * @param isFirstPage - whether to skip addPage()
+ * Render one slip onto a jsPDF page — matching the print page layout.
  */
 function renderSlipPage(doc: jsPDF, slip: SlipData, isFirstPage: boolean) {
   if (!isFirstPage) doc.addPage()
 
   const pageW = doc.internal.pageSize.getWidth()
-  let y = 15
+  const pageH = doc.internal.pageSize.getHeight()
+  const ml = 15 // margin left
+  const mr = pageW - 15 // margin right
+  let y = 12
 
-  // ── HEADER ──
-  doc.setFillColor(99, 102, 241) // indigo-500
-  doc.rect(0, 0, pageW, 18, 'F')
-  doc.setTextColor(255, 255, 255)
+  // ── HEADER (centered, border-bottom like print page) ──
+  doc.setTextColor(0, 0, 0)
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(14)
-  doc.text(COMPANY_NAME, pageW / 2, 8, { align: 'center' })
+  doc.setFontSize(16)
+  doc.text(COMPANY_NAME, pageW / 2, y, { align: 'center' })
+  y += 6
+  doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
-  doc.setFont('helvetica', 'normal')
-  doc.text(COMPANY_SUBTITLE, pageW / 2, 14, { align: 'center' })
+  const subtitle = slip.isPcJob ? 'PC Dyeing Slip' : 'Dyeing Slip'
+  doc.setTextColor(100, 100, 100)
+  doc.text(subtitle, pageW / 2, y, { align: 'center' })
+  if (slip.isReDyed && slip.totalRounds && slip.totalRounds > 1) {
+    y += 4
+    doc.setFontSize(8)
+    doc.setTextColor(220, 38, 38)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`RE-DYED (${slip.totalRounds} rounds)`, pageW / 2, y, { align: 'center' })
+  }
+  y += 4
+  doc.setDrawColor(0, 0, 0)
+  doc.setLineWidth(0.5)
+  doc.line(ml, y, mr, y)
+  y += 6
 
-  // ── BODY START ──
-  y = 26
-  doc.setTextColor(15, 23, 42) // dark text
-  doc.setFontSize(11)
+  // ── SLIP INFO GRID (2 columns, bordered box like print page) ──
+  doc.setTextColor(0, 0, 0)
+  doc.setFontSize(9)
+  const infoStartY = y
+  const colW = (mr - ml) / 2
+  const rowH = 5.5
 
-  // Slip No + Date row
+  const infoRows: [string, string, string, string][] = [
+    ['Slip No:', String(slip.slipNo), 'Date:', fmtDate(slip.date)],
+    ['Party:', slip.partyName || '\u2014', 'Shade:', [slip.shadeName, slip.shadeDescription].filter(Boolean).join(' \u2014 ') || '\u2014'],
+  ]
+  if (slip.qualityName || slip.marka) {
+    infoRows.push(['Quality:', slip.qualityName || '\u2014', 'Marka:', slip.marka || '\u2014'])
+  }
+  infoRows.push(['Machine:', slip.machine || '\u2014', 'Operator:', slip.operator || '\u2014'])
+
+  // Draw bordered box
+  const boxH = infoRows.length * rowH + 4
+  doc.setDrawColor(180, 180, 180)
+  doc.setLineWidth(0.3)
+  doc.roundedRect(ml, y - 2, mr - ml, boxH, 1, 1)
+
+  for (const [label1, val1, label2, val2] of infoRows) {
+    doc.setFont('helvetica', 'bold')
+    doc.text(label1, ml + 3, y + 2)
+    doc.setFont('helvetica', 'normal')
+    doc.text(val1, ml + 25, y + 2)
+    doc.setFont('helvetica', 'bold')
+    doc.text(label2, ml + colW + 3, y + 2)
+    doc.setFont('helvetica', 'normal')
+    // Truncate long shade text
+    const maxValW = colW - 28
+    const truncVal2 = doc.getTextWidth(val2) > maxValW ? val2.substring(0, 40) + '...' : val2
+    doc.text(truncVal2, ml + colW + 25, y + 2)
+    y += rowH
+  }
+  y += 6
+
+  // ── LOTS (inline like print page) ──
+  doc.setFontSize(10)
   doc.setFont('helvetica', 'bold')
-  doc.text('Slip No:', 15, y)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(13)
-  doc.setTextColor(99, 102, 241)
-  doc.text(`#${slip.slipNo}`, 35, y)
+  doc.text('Lots: ', ml, y)
 
-  doc.setFontSize(11)
-  doc.setTextColor(15, 23, 42)
-  doc.setFont('helvetica', 'bold')
-  doc.text('Date:', pageW - 60, y)
-  doc.setFont('helvetica', 'normal')
-  doc.text(fmtDate(slip.date), pageW - 45, y)
-
+  let lotX = ml + doc.getTextWidth('Lots: ') + 1
+  const totalThan = slip.lots.reduce((s, l) => s + l.than, 0)
+  for (let i = 0; i < slip.lots.length; i++) {
+    const l = slip.lots[i]
+    doc.setFont('helvetica', 'bold')
+    const lotText = l.lotNo
+    doc.text(lotText, lotX, y)
+    lotX += doc.getTextWidth(lotText)
+    doc.setFont('helvetica', 'normal')
+    const thanText = ` (${l.than} than)${i < slip.lots.length - 1 ? ', ' : ''}`
+    doc.text(thanText, lotX, y)
+    lotX += doc.getTextWidth(thanText) + 1
+    // Wrap if too wide
+    if (lotX > mr - 30 && i < slip.lots.length - 1) {
+      y += 5
+      lotX = ml + 5
+    }
+  }
+  if (slip.lots.length > 1) {
+    doc.setFont('helvetica', 'bold')
+    doc.text(`  Total: ${totalThan} than`, lotX, y)
+  }
   y += 8
 
-  // Shade row
-  if (slip.shadeName || slip.shadeDescription) {
-    doc.setFont('helvetica', 'bold')
-    doc.text('Shade:', 15, y)
-    doc.setFont('helvetica', 'normal')
-    const shadeText = [slip.shadeName, slip.shadeDescription].filter(Boolean).join(' — ')
-    doc.text(shadeText, 35, y)
-    y += 7
-  }
-
-  // Status row
-  if (slip.status || slip.dyeingDoneAt) {
-    doc.setFont('helvetica', 'bold')
-    doc.text('Status:', 15, y)
-    doc.setFont('helvetica', 'normal')
-    const statusText = slip.status === 'done' || slip.dyeingDoneAt
-      ? `✓ Done${slip.dyeingDoneAt ? ' • ' + fmtDate(slip.dyeingDoneAt) : ''}`
-      : (slip.status || 'pending')
-    if (slip.status === 'done' || slip.dyeingDoneAt) doc.setTextColor(34, 197, 94)
-    doc.text(statusText, 35, y)
-    doc.setTextColor(15, 23, 42)
-    y += 7
-  }
-
-  // Machine + Operator
-  if (slip.machine || slip.operator) {
-    doc.setFont('helvetica', 'bold')
-    if (slip.machine) {
-      doc.text('Machine:', 15, y)
-      doc.setFont('helvetica', 'normal')
-      doc.text(slip.machine, 38, y)
-    }
-    if (slip.operator) {
-      doc.setFont('helvetica', 'bold')
-      doc.text('Operator:', pageW / 2, y)
-      doc.setFont('helvetica', 'normal')
-      doc.text(slip.operator, pageW / 2 + 23, y)
-    }
-    y += 7
-  }
-
-  y += 3
-  doc.setDrawColor(226, 232, 240)
-  doc.line(15, y, pageW - 15, y)
-  y += 6
-
-  // ── LOTS SECTION ──
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.setTextColor(99, 102, 241)
-  doc.text('LOTS', 15, y)
-  y += 6
-
-  doc.setTextColor(15, 23, 42)
-  doc.setFontSize(10)
-  let totalThan = 0
-  for (const lot of slip.lots) {
-    doc.setFont('helvetica', 'normal')
-    doc.text(`▪ ${lot.lotNo}`, 20, y)
-    doc.setFont('helvetica', 'bold')
-    doc.text(`${fmtNum(lot.than)} than`, pageW - 20, y, { align: 'right' })
-    totalThan += lot.than
-    y += 6
-  }
-
-  // Total than
-  doc.setDrawColor(226, 232, 240)
-  doc.line(pageW - 60, y, pageW - 15, y)
-  y += 5
-  doc.setFont('helvetica', 'bold')
-  doc.text('Total', pageW - 60, y)
-  doc.text(`${fmtNum(totalThan)} than`, pageW - 15, y, { align: 'right' })
-
-  y += 8
-  doc.setDrawColor(226, 232, 240)
-  doc.line(15, y, pageW - 15, y)
-  y += 6
-
-  // ── CHEMICALS SECTION ──
+  // ── CHEMICALS (grouped by processTag, table format like print page) ──
   if (slip.chemicals && slip.chemicals.length > 0) {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    doc.setTextColor(99, 102, 241)
-    doc.text('CHEMICALS', 15, y)
-    y += 6
-
-    doc.setTextColor(15, 23, 42)
-    doc.setFontSize(9)
-
-    let totalCost = 0
+    // Group by processTag
+    const grouped: Record<string, SlipChemical[]> = {}
     for (const c of slip.chemicals) {
-      doc.setFont('helvetica', 'normal')
-      doc.text(`▪ ${c.name}`, 20, y)
-      const qtyStr = c.quantity ? `${c.quantity} ${c.unit}` : ''
-      doc.text(qtyStr, pageW / 2 + 5, y)
-      const costStr = c.cost ? `₹${fmtNum(Math.round(c.cost))}` : ''
-      doc.setFont('helvetica', 'bold')
-      doc.text(costStr, pageW - 20, y, { align: 'right' })
-      totalCost += c.cost || 0
-      y += 5
+      const tag = c.processTag || '_other'
+      if (!grouped[tag]) grouped[tag] = []
+      grouped[tag].push(c)
     }
+    const tagOrder = Object.keys(grouped).sort((a, b) => {
+      if (a === 'shade') return -1
+      if (b === 'shade') return 1
+      if (a === '_other') return 1
+      if (b === '_other') return -1
+      return a.localeCompare(b)
+    })
 
-    if (totalCost > 0) {
-      y += 1
-      doc.setDrawColor(226, 232, 240)
-      doc.line(pageW - 60, y, pageW - 15, y)
-      y += 5
-      doc.setFont('helvetica', 'bold')
+    for (const tag of tagOrder) {
+      const chems = grouped[tag]
+      const isDye = tag === 'shade'
+      const label = isDye ? 'Dyes (grams)' : tag === '_other' ? 'Other (kg)' : `${tag} (kg)`
+
+      // Section header with underline
       doc.setFontSize(10)
-      doc.text('Total Cost', pageW - 60, y)
-      doc.text(`₹${fmtNum(Math.round(totalCost))}`, pageW - 15, y, { align: 'right' })
-      y += 5
-      if (totalThan > 0) {
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(0, 0, 0)
+      doc.text(label.toUpperCase(), ml, y)
+      y += 1
+      doc.setDrawColor(150, 150, 150)
+      doc.setLineWidth(0.3)
+      doc.line(ml, y, mr, y)
+      y += 4
+
+      // Table header
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(80, 80, 80)
+      doc.text('#', ml, y)
+      doc.text('Chemical', ml + 8, y)
+      doc.text('Quantity', mr - 35, y, { align: 'right' })
+      doc.text('Unit', mr - 20, y)
+      y += 1
+      doc.setDrawColor(200, 200, 200)
+      doc.line(ml, y, mr, y)
+      y += 4
+
+      // Chemical rows
+      doc.setTextColor(0, 0, 0)
+      doc.setFontSize(9)
+      for (let i = 0; i < chems.length; i++) {
+        const c = chems[i]
+        let qty = '\u2014'
+        let unit = c.unit
+        if (c.quantity != null) {
+          if (isDye) {
+            qty = String(Math.round(c.quantity * 1000)).padStart(4, '0')
+            unit = 'gm'
+          } else {
+            qty = Number(c.quantity).toFixed(1)
+            unit = 'kg'
+          }
+        }
+
         doc.setFont('helvetica', 'normal')
-        doc.setFontSize(9)
-        doc.setTextColor(100, 116, 139)
-        doc.text(`Cost / than`, pageW - 60, y)
-        doc.text(`₹${(totalCost / totalThan).toFixed(2)}`, pageW - 15, y, { align: 'right' })
-        doc.setTextColor(15, 23, 42)
+        doc.setTextColor(120, 120, 120)
+        doc.text(String(i + 1), ml, y)
+        doc.setTextColor(0, 0, 0)
+        doc.setFont('helvetica', 'normal')
+        doc.text(c.name, ml + 8, y)
+        doc.setFont('helvetica', 'bold')
+        doc.text(qty, mr - 35, y, { align: 'right' })
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(100, 100, 100)
+        doc.text(unit, mr - 20, y)
+        y += 1
+        doc.setDrawColor(230, 230, 230)
+        doc.line(ml, y, mr, y)
+        y += 4
+
+        // Page overflow check
+        if (y > pageH - 40) {
+          doc.addPage()
+          y = 15
+        }
       }
+      y += 4
     }
-
-    y += 8
-    doc.setDrawColor(226, 232, 240)
-    doc.line(15, y, pageW - 15, y)
-    y += 6
-  }
-
-  // ── BOTTOM INFO ──
-  doc.setFontSize(10)
-  if (slip.mandi) {
-    doc.setFont('helvetica', 'bold')
-    doc.text('Mandi:', 15, y)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`${slip.mandi} L`, 33, y)
-    y += 6
-  }
-
-  if (slip.totalRounds) {
-    doc.setFont('helvetica', 'bold')
-    doc.text('Rounds:', 15, y)
-    doc.setFont('helvetica', 'normal')
-    doc.text(String(slip.totalRounds), 35, y)
-    y += 6
-  }
-
-  if (slip.notes) {
-    doc.setFont('helvetica', 'bold')
-    doc.text('Notes:', 15, y)
-    y += 5
-    doc.setFont('helvetica', 'normal')
+  } else {
     doc.setFontSize(9)
-    const noteLines = doc.splitTextToSize(slip.notes, pageW - 30)
-    doc.text(noteLines, 15, y)
+    doc.setFont('helvetica', 'italic')
+    doc.setTextColor(150, 150, 150)
+    doc.text('No chemicals recorded.', ml, y)
+    y += 8
   }
 
-  // Footer
+  // ── NOTES ──
+  if (slip.notes) {
+    doc.setDrawColor(200, 200, 200)
+    doc.line(ml, y, mr, y)
+    y += 4
+    doc.setFontSize(9)
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Notes: ', ml, y)
+    doc.setFont('helvetica', 'normal')
+    const noteLines = doc.splitTextToSize(slip.notes, mr - ml - 15)
+    doc.text(noteLines, ml + 15, y)
+    y += noteLines.length * 4 + 4
+  }
+
+  // ── SIGNATURE LINES (like print page) ──
+  const sigY = Math.max(y + 20, pageH - 30)
+  doc.setDrawColor(0, 0, 0)
+  doc.setLineWidth(0.3)
+  doc.line(ml, sigY, ml + 40, sigY)
+  doc.line(mr - 40, sigY, mr, sigY)
   doc.setFontSize(8)
-  doc.setTextColor(148, 163, 184)
   doc.setFont('helvetica', 'normal')
-  doc.text(`Generated on ${fmtDate(new Date())}`, pageW / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' })
+  doc.setTextColor(0, 0, 0)
+  doc.text('Prepared By', ml + 5, sigY + 4)
+  doc.text('Approved By', mr - 35, sigY + 4)
 }
 
 /**
  * Generate PDF for a single dyeing slip.
- * Returns a Blob that can be shared or downloaded.
  */
 export function generateSlipPDF(slip: SlipData): Blob {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
@@ -267,13 +293,12 @@ export function generateMultiSlipPDF(slips: SlipData[]): Blob {
 export async function sharePDF(blob: Blob, filename: string): Promise<void> {
   const file = new File([blob], filename, { type: 'application/pdf' })
 
-  // Try Web Share API first (mobile → WhatsApp)
+  // Try Web Share API first (mobile -> WhatsApp)
   if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: filename })
       return
     } catch (err: any) {
-      // User cancelled — that's OK
       if (err?.name === 'AbortError') return
     }
   }

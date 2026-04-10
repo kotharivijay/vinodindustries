@@ -363,17 +363,21 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
         <SharePDFButton slip={{
           slipNo: entry.slipNo,
           date: entry.date,
+          partyName: partyName || null,
           shadeName: entry.shadeName || null,
           shadeDescription: shadeDescription || null,
+          qualityName: qualityName || null,
+          marka: entry.marka || null,
+          isPcJob: entry.isPcJob || false,
           lots: lots.map((l: any) => ({ lotNo: l.lotNo, than: l.than })),
-          chemicals: chemicals.map((c: any) => ({ name: c.name, quantity: c.quantity, unit: c.unit, rate: c.rate, cost: c.cost })),
+          chemicals: chemicals.map((c: any) => ({ name: c.name, quantity: c.quantity, unit: c.unit, rate: c.rate, cost: c.cost, processTag: c.processTag || null })),
           notes: entry.notes || null,
           status: entry.status || null,
           dyeingDoneAt: entry.dyeingDoneAt || null,
           machine: entry.machine?.name || null,
           operator: entry.operator?.name || null,
           totalRounds: totalRounds,
-          mandi: entry.mandi || null,
+          isReDyed: isReDyed,
         }} />
         <ReceiptPrint data={{
           slipNo: entry.slipNo,

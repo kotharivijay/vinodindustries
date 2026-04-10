@@ -201,18 +201,21 @@ export default function DyeingListPage() {
             date: e.date,
             shadeName: e.shadeName ?? e.foldBatch?.shade?.name ?? null,
             lots: lotsArr.map(l => ({ lotNo: l.lotNo, than: l.than })),
+            partyName: e.partyName ?? null,
             chemicals: (e.chemicals || []).map(c => ({
               name: c.name,
               quantity: c.quantity,
               unit: c.unit,
               rate: null,
               cost: c.cost,
+              processTag: (c as any).processTag || null,
             })),
             notes: e.notes,
             status: e.status,
             machine: e.machine?.name ?? null,
             operator: e.operator?.name ?? null,
             totalRounds: e.totalRounds ?? null,
+            isReDyed: (e.additions?.length ?? 0) > 0,
           }
         })
       const blob = generateMultiSlipPDF(slips)

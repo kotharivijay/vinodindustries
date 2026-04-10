@@ -79,6 +79,7 @@ export default function DyeingDetailView({ id }: { id: string }) {
           unit: c.unit,
           rate: c.rate,
           cost: c.cost,
+          processTag: c.processTag,
         })),
         notes: entry.notes,
         status: entry.status,
