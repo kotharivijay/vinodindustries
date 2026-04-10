@@ -644,6 +644,7 @@ export default function FinishStockPage() {
   const [finishMandi, setFinishMandi] = useState('')
   const [finishNotes, setFinishNotes] = useState('')
   const [finishMeters, setFinishMeters] = useState<Record<string, string>>({})
+  const [finishThanOverrides, setFinishThanOverrides] = useState<Record<string, string>>({})
   const [finishChemicals, setFinishChemicals] = useState<FinishChemicalRow[]>([])
   const [finishSaving, setFinishSaving] = useState(false)
   const [finishError, setFinishError] = useState('')
@@ -678,6 +679,7 @@ export default function FinishStockPage() {
     setShowFinishForm(false)
     setFinishChemicals([])
     setFinishMeters({})
+    setFinishThanOverrides({})
     setFinishMandi('')
     setFinishNotes('')
     setFinishError('')
@@ -786,12 +788,14 @@ export default function FinishStockPage() {
     setFinishSaving(true)
     setFinishError('')
 
-    // Group selected lots by lotNo and sum than
+    // Group selected lots by lotNo and sum than (with overrides)
     const lotMap = new Map<string, { lotNo: string; than: number }>()
     for (const l of selectedLots.values()) {
+      const overrideKey = `${l.slipNo}::${l.lotNo}`
+      const overrideThan = finishThanOverrides[overrideKey] ? parseInt(finishThanOverrides[overrideKey]) : l.than
       const existing = lotMap.get(l.lotNo)
-      if (existing) existing.than += l.than
-      else lotMap.set(l.lotNo, { lotNo: l.lotNo, than: l.than })
+      if (existing) existing.than += overrideThan
+      else lotMap.set(l.lotNo, { lotNo: l.lotNo, than: overrideThan })
     }
     const lots = Array.from(lotMap.values())
     const marka = lots.map(l => ({
@@ -835,6 +839,7 @@ export default function FinishStockPage() {
         setSelectedLots(new Map())
         setFinishChemicals([])
         setFinishMeters({})
+        setFinishThanOverrides({})
         setFinishMandi('')
         setFinishNotes('')
         setFinishSaving(false)
@@ -1550,11 +1555,17 @@ export default function FinishStockPage() {
                                                               onChange={() => toggleLotSelection(lotData)}
                                                               className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500 dark:bg-gray-700"
                                                             />
-                                                            <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
-                                                              onClick={e => e.stopPropagation()}
-                                                              className={`inline-flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30 ${isSelected ? 'bg-teal-200 dark:bg-teal-800/40 text-teal-800 dark:text-teal-200 font-bold' : 'bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300'}`}>
-                                                              {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span>
-                                                            </Link>
+                                                            {selectedLots.size > 0 ? (
+                                                              <span className={`inline-flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded-full ${isSelected ? 'bg-teal-200 dark:bg-teal-800/40 text-teal-800 dark:text-teal-200 font-bold' : 'bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300'}`}>
+                                                                {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span>
+                                                              </span>
+                                                            ) : (
+                                                              <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
+                                                                onClick={e => e.stopPropagation()}
+                                                                className={`inline-flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300`}>
+                                                                {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span>
+                                                              </Link>
+                                                            )}
                                                           </label>
                                                         )
                                                       })}
@@ -1641,7 +1652,10 @@ export default function FinishStockPage() {
                             grouped.get(lot.lotNo)!.push(lot)
                           }
                           return Array.from(grouped.entries()).map(([lotNo, slips]) => {
-                            const totalThan = slips.reduce((s, l) => s + l.than, 0)
+                            const totalThan = slips.reduce((s, l) => {
+                              const ok = `${l.slipNo}::${l.lotNo}`
+                              return s + (finishThanOverrides[ok] ? parseInt(finishThanOverrides[ok]) || 0 : l.than)
+                            }, 0)
                             return (
                               <div key={lotNo} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                                 {/* Lot header */}
@@ -1661,15 +1675,24 @@ export default function FinishStockPage() {
                                 </div>
                                 {/* Slip details */}
                                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                                  {slips.map(slip => (
+                                  {slips.map(slip => {
+                                    const overrideKey = `${slip.slipNo}::${lotNo}`
+                                    return (
                                     <div key={`${slip.slipNo}-${slip.lotNo}`} className="px-3 py-1.5 flex items-center justify-between text-xs">
                                       <div className="flex items-center gap-2">
                                         <span className="text-gray-500 dark:text-gray-400">Slip {slip.slipNo}</span>
-                                        <span className="text-gray-600 dark:text-gray-300 font-medium">{slip.than} than</span>
+                                        <input
+                                          type="number"
+                                          value={finishThanOverrides[overrideKey] ?? slip.than}
+                                          onChange={e => setFinishThanOverrides(prev => ({ ...prev, [overrideKey]: e.target.value }))}
+                                          className="w-14 border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400 text-center font-medium"
+                                        />
+                                        <span className="text-gray-400">than</span>
                                       </div>
                                       <span className="text-gray-500 dark:text-gray-400 truncate max-w-[180px]">{slip.shade || '\u2014'}</span>
                                     </div>
-                                  ))}
+                                    )
+                                  })}
                                 </div>
                               </div>
                             )
