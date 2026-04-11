@@ -111,6 +111,9 @@ interface FinishSlipEntry {
   opMandi: number | null
   newMandi: number | null
   stockMandi: number | null
+  finishThan: number | null
+  finishMtr: number | null
+  finishDespSlipNo: string | null
   notes: string | null
   lots: FinishLot[]
   chemicals: FinishSlipChemical[]
@@ -206,6 +209,7 @@ interface PackingEntry {
   meter: number | null
   mandi: number | null
   notes: string | null
+  finishDespSlipNo: string | null
   lots: PackingLot[]
   totalThan: number
 }
@@ -232,6 +236,7 @@ interface PackingSlipDetail {
   lots: PackingLot[]
   totalThan: number
   meter: number | null
+  finishDespSlipNo: string | null
 }
 
 /* ── Finish form chemical row type ────────────────────────────────── */
@@ -372,6 +377,9 @@ export default function FinishStockPage() {
   const [editOpMandi, setEditOpMandi] = useState('')
   const [editNewMandi, setEditNewMandi] = useState('')
   const [editStockMandi, setEditStockMandi] = useState('')
+  const [editFinishThan, setEditFinishThan] = useState('')
+  const [editFinishMtr, setEditFinishMtr] = useState('')
+  const [editDespSlipNo, setEditDespSlipNo] = useState('')
   const [editAdditions, setEditAdditions] = useState<FinishAdditionRow[]>([])
   const [editNotes, setEditNotes] = useState('')
   const [editLots, setEditLots] = useState<{ lotNo: string; than: string; meter: string }[]>([])
@@ -418,6 +426,9 @@ export default function FinishStockPage() {
     setEditOpMandi(entry.opMandi != null ? String(entry.opMandi) : '')
     setEditNewMandi(entry.newMandi != null ? String(entry.newMandi) : '')
     setEditStockMandi(entry.stockMandi != null ? String(entry.stockMandi) : '')
+    setEditFinishThan(entry.finishThan != null ? String(entry.finishThan) : '')
+    setEditFinishMtr(entry.finishMtr != null ? String(entry.finishMtr) : '')
+    setEditDespSlipNo(entry.finishDespSlipNo || '')
     setEditAdditions((entry.additions || []).map(a => ({
       reason: a.reason || '',
       chemicals: a.chemicals.map(c => ({
@@ -497,6 +508,9 @@ export default function FinishStockPage() {
       opMandi: editOpMandi ? parseFloat(editOpMandi) : null,
       newMandi: editNewMandi ? parseFloat(editNewMandi) : null,
       stockMandi: editStockMandi ? parseFloat(editStockMandi) : null,
+      finishThan: editFinishThan ? parseInt(editFinishThan) : null,
+      finishMtr: editFinishMtr ? parseFloat(editFinishMtr) : null,
+      finishDespSlipNo: editDespSlipNo || null,
       totalMeter: totalMeter || null,
       lots: editLots.map(l => ({
         lotNo: l.lotNo.trim(),
@@ -953,7 +967,7 @@ export default function FinishStockPage() {
           party: l.party ?? 'Unknown',
           quality: l.quality ?? 'Unknown',
           weight: l.weight,
-          slip: { id: pe.id, slipNo: pe.slipNo, date: pe.date, lots: pe.lots, totalThan: pe.totalThan, meter: pe.meter },
+          slip: { id: pe.id, slipNo: pe.slipNo, date: pe.date, lots: pe.lots, totalThan: pe.totalThan, meter: pe.meter, finishDespSlipNo: pe.finishDespSlipNo },
           lotNo: l.lotNo,
           than: l.than,
         })
@@ -1200,6 +1214,28 @@ export default function FinishStockPage() {
                           <input type="number" step="0.1" value={editMandi} onChange={e => setEditMandi(e.target.value)}
                             placeholder="Liters"
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                        </div>
+
+                        {/* Finish Completion */}
+                        <div className="border border-teal-200 dark:border-teal-800 rounded-lg p-3 bg-teal-50/50 dark:bg-teal-900/10">
+                          <h3 className="text-xs font-bold text-teal-700 dark:text-teal-400 mb-2">Finish Completion</h3>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">Finish Than</label>
+                              <input type="number" value={editFinishThan} onChange={e => setEditFinishThan(e.target.value)}
+                                placeholder="0" className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">Finish Mtr</label>
+                              <input type="number" step="0.1" value={editFinishMtr} onChange={e => setEditFinishMtr(e.target.value)}
+                                placeholder="0" className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">Finish Desp Slip No</label>
+                              <input type="text" value={editDespSlipNo} onChange={e => setEditDespSlipNo(e.target.value)}
+                                placeholder="e.g. D-45" className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                            </div>
+                          </div>
                         </div>
 
                         {/* Chemicals */}
@@ -2316,7 +2352,10 @@ export default function FinishStockPage() {
                                         <div key={slip.id} className="px-3 py-2.5">
                                           <div className="flex items-center justify-between mb-1">
                                             <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                                              <span className="font-medium text-teal-600 dark:text-teal-400">Finish Slip {slip.slipNo}</span>
+                                              {slip.finishDespSlipNo && (
+                                                <span className="font-bold text-white bg-purple-600 dark:bg-purple-500 px-2 py-0.5 rounded text-[10px]">Desp: {slip.finishDespSlipNo}</span>
+                                              )}
+                                              <span className="font-medium text-teal-600 dark:text-teal-400">FP {slip.slipNo}</span>
                                               <span className="text-gray-300 dark:text-gray-600">&middot;</span>
                                               <span>{new Date(slip.date).toLocaleDateString('en-IN')}</span>
                                               {slip.meter != null && (

@@ -50,6 +50,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         opMandi: data.opMandi != null ? parseFloat(data.opMandi) : null,
         newMandi: data.newMandi != null ? parseFloat(data.newMandi) : null,
         stockMandi: data.stockMandi != null ? parseFloat(data.stockMandi) : null,
+        finishThan: data.finishThan != null ? parseInt(data.finishThan) : null,
+        finishMtr: data.finishMtr != null ? parseFloat(data.finishMtr) : null,
+        finishDespSlipNo: data.finishDespSlipNo || null,
         notes: data.notes || null,
       },
     })

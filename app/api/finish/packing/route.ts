@@ -37,6 +37,7 @@ export async function GET() {
       meter: fe.meter,
       mandi: fe.mandi,
       notes: fe.notes,
+      finishDespSlipNo: fe.finishDespSlipNo || null,
       lots: doneLots,
       totalThan: doneLots.reduce((s: number, l: any) => s + (l.than || 0), 0),
     })

@@ -294,10 +294,13 @@ model FinishEntry {
   than       Int                  // backward compat: first lot's than
   meter      Float?               // total meter
   mandi      Float?               // mandi in liters (legacy)
-  opMandi    Float?               // opening mandi (litres)
-  newMandi   Float?               // new mandi added (litres)
-  stockMandi Float?               // stock mandi remaining (litres)
-  notes      String?
+  opMandi      Float?               // opening mandi (litres)
+  newMandi     Float?               // new mandi added (litres)
+  stockMandi   Float?               // stock mandi remaining (litres)
+  finishThan   Int?                 // total than actually finished
+  finishMtr    Float?               // total finish meters
+  finishDespSlipNo String?           // finish despatch slip number
+  notes        String?
   createdAt  DateTime             @default(now())
   updatedAt  DateTime             @updatedAt
   chemicals  FinishSlipChemical[]
