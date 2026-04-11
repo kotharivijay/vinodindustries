@@ -14,6 +14,7 @@ export async function GET() {
       include: {
         chemicals: { include: { chemical: true } },
         lots: true,
+        additions: { include: { chemicals: true }, orderBy: { createdAt: 'asc' } },
       },
       orderBy: { date: 'desc' },
     })

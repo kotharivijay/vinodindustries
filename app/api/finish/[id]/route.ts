@@ -15,6 +15,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       include: {
         chemicals: { include: { chemical: true } },
         lots: true,
+        additions: { include: { chemicals: true }, orderBy: { createdAt: 'asc' } },
       },
     })
     if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -75,9 +76,41 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       })
     }
 
+    // Save additions (delete old, recreate)
+    if (data.additions !== undefined) {
+      // Delete old additions and their chemicals (cascade)
+      const oldAdditions = await db.finishAddition.findMany({ where: { entryId }, select: { id: true } })
+      for (const a of oldAdditions) {
+        await db.finishAdditionChemical.deleteMany({ where: { additionId: a.id } })
+      }
+      await db.finishAddition.deleteMany({ where: { entryId } })
+
+      // Create new additions
+      if (data.additions?.length) {
+        for (const add of data.additions) {
+          const chems = (add.chemicals || []).filter((c: any) => c.quantity && parseFloat(c.quantity) > 0)
+          if (chems.length === 0 && !add.reason) continue
+          await db.finishAddition.create({
+            data: {
+              entryId,
+              reason: add.reason || null,
+              chemicals: {
+                create: chems.map((c: any) => ({
+                  chemicalId: c.chemicalId ?? null,
+                  name: c.name,
+                  quantity: parseFloat(c.quantity) || 0,
+                  unit: c.unit || 'kg',
+                })),
+              },
+            },
+          })
+        }
+      }
+    }
+
     const updated = await db.finishEntry.findUnique({
       where: { id: entryId },
-      include: { chemicals: { include: { chemical: true } }, lots: true },
+      include: { chemicals: { include: { chemical: true } }, lots: true, additions: { include: { chemicals: true } } },
     })
     return NextResponse.json(updated)
   } catch (err: any) {

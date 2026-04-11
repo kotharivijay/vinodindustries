@@ -88,6 +88,18 @@ interface FinishSlipChemical {
   cost: number | null
 }
 
+interface FinishAdditionChem {
+  chemicalId: number | null
+  name: string
+  quantity: string
+  unit: string
+}
+
+interface FinishAdditionRow {
+  reason: string
+  chemicals: FinishAdditionChem[]
+}
+
 interface FinishSlipEntry {
   id: number
   date: string
@@ -102,6 +114,7 @@ interface FinishSlipEntry {
   notes: string | null
   lots: FinishLot[]
   chemicals: FinishSlipChemical[]
+  additions?: { id: number; reason: string | null; chemicals: { name: string; quantity: number | null; unit: string; chemicalId: number | null }[] }[]
   partyName: string | null
   fpStatus: string
 }
@@ -359,6 +372,7 @@ export default function FinishStockPage() {
   const [editOpMandi, setEditOpMandi] = useState('')
   const [editNewMandi, setEditNewMandi] = useState('')
   const [editStockMandi, setEditStockMandi] = useState('')
+  const [editAdditions, setEditAdditions] = useState<FinishAdditionRow[]>([])
   const [editNotes, setEditNotes] = useState('')
   const [editLots, setEditLots] = useState<{ lotNo: string; than: string; meter: string }[]>([])
   const [editChemicals, setEditChemicals] = useState<FinishChemicalRow[]>([])
@@ -404,6 +418,15 @@ export default function FinishStockPage() {
     setEditOpMandi(entry.opMandi != null ? String(entry.opMandi) : '')
     setEditNewMandi(entry.newMandi != null ? String(entry.newMandi) : '')
     setEditStockMandi(entry.stockMandi != null ? String(entry.stockMandi) : '')
+    setEditAdditions((entry.additions || []).map(a => ({
+      reason: a.reason || '',
+      chemicals: a.chemicals.map(c => ({
+        chemicalId: c.chemicalId,
+        name: c.name,
+        quantity: c.quantity != null ? String(c.quantity) : '',
+        unit: c.unit,
+      })),
+    })))
     setEditNotes(entry.notes ?? '')
     setEditLots(entry.lots.map(l => ({ lotNo: l.lotNo, than: String(l.than), meter: l.meter != null ? String(l.meter) : '' })))
     setEditChemicals(entry.chemicals.map(c => ({
@@ -430,6 +453,7 @@ export default function FinishStockPage() {
     setEditingSlipId(null)
     setEditChemicals([])
     setEditLots([])
+    setEditAdditions([])
     setEditError('')
   }, [])
 
@@ -489,6 +513,15 @@ export default function FinishStockPage() {
           rate: c.rate ? parseFloat(c.rate) : null,
           cost: c.cost,
         })),
+      additions: editAdditions.map(a => ({
+        reason: a.reason || null,
+        chemicals: a.chemicals.map(c => ({
+          chemicalId: c.chemicalId,
+          name: c.name,
+          quantity: c.quantity || null,
+          unit: c.unit,
+        })),
+      })),
     }
 
     try {
@@ -1229,6 +1262,58 @@ export default function FinishStockPage() {
                             className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none" />
                         </div>
 
+                        {/* ── Additions Section ── */}
+                        <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200">Additions</h3>
+                            <button type="button" onClick={() => {
+                              // Pre-fill with chemicals from recipe
+                              const chemTemplate = editChemicals.filter(c => c.name.trim()).map(c => ({
+                                chemicalId: c.chemicalId,
+                                name: c.name,
+                                quantity: '',
+                                unit: c.unit,
+                              }))
+                              setEditAdditions(prev => [...prev, { reason: '', chemicals: chemTemplate }])
+                            }} className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium">
+                              + Add Addition
+                            </button>
+                          </div>
+                          {editAdditions.length > 0 && (
+                            <div className="space-y-3">
+                              {editAdditions.map((add, ai) => (
+                                <div key={ai} className="border border-amber-200 dark:border-amber-800 rounded-lg p-3 bg-amber-50/50 dark:bg-amber-900/10">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-bold text-amber-700 dark:text-amber-400">Addition #{ai + 1}</span>
+                                    <button type="button" onClick={() => setEditAdditions(prev => prev.filter((_, i) => i !== ai))}
+                                      className="text-red-400 hover:text-red-600 text-sm">🗑️</button>
+                                  </div>
+                                  <input type="text" placeholder="Reason (optional)" value={add.reason}
+                                    onChange={e => setEditAdditions(prev => { const u = [...prev]; u[ai] = { ...u[ai], reason: e.target.value }; return u })}
+                                    className="w-full border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400 mb-2" />
+                                  <div className="space-y-1">
+                                    {add.chemicals.map((c, ci) => (
+                                      <div key={ci} className="flex items-center gap-2">
+                                        <span className="text-xs text-gray-600 dark:text-gray-300 flex-1 truncate">{c.name}</span>
+                                        <input type="number" step="0.01" placeholder="Qty" value={c.quantity}
+                                          onChange={e => setEditAdditions(prev => {
+                                            const u = [...prev]
+                                            const chems = [...u[ai].chemicals]
+                                            chems[ci] = { ...chems[ci], quantity: e.target.value }
+                                            u[ai] = { ...u[ai], chemicals: chems }
+                                            return u
+                                          })}
+                                          className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400 text-center" />
+                                        <span className="text-[10px] text-gray-400 w-8">{c.unit}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
                         {/* ── Consumption Section ── */}
                         <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                           <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-3">Chemical Mandi Consumption</h3>
@@ -1259,21 +1344,29 @@ export default function FinishStockPage() {
                             const totalThanDone = entry.lots.reduce((s, l) => s + (l.status === 'done' ? l.than : l.status === 'partial' ? l.doneThan : 0), 0)
                             const totalThanAll = entry.lots.reduce((s, l) => s + l.than, 0)
 
-                            // Calculate cost from recipe (per 100 litres)
+                            // Sum addition quantities per chemical name
+                            const additionQtyMap = new Map<string, number>()
+                            for (const add of editAdditions) {
+                              for (const c of add.chemicals) {
+                                if (c.quantity) {
+                                  const key = c.name.toLowerCase().trim()
+                                  additionQtyMap.set(key, (additionQtyMap.get(key) || 0) + (parseFloat(c.quantity) || 0))
+                                }
+                              }
+                            }
+
+                            // Calculate cost from recipe (per 100 litres) + additions
                             const chemCosts = editChemicals.filter(c => c.name.trim()).map(c => {
                               const recipeQty = parseFloat(c.quantity) || 0
                               const rate = parseFloat(c.rate) || 0
-                              const usedQty = consumed > 0 ? (recipeQty / 100) * consumed : 0
+                              const mandiUsed = consumed > 0 ? (recipeQty / 100) * consumed : 0
+                              const addQty = additionQtyMap.get(c.name.toLowerCase().trim()) || 0
+                              const usedQty = mandiUsed + addQty
                               const cost = usedQty * rate
-                              return { name: c.name, recipeQty, rate, usedQty, cost, unit: c.unit }
+                              return { name: c.name, recipeQty, rate, mandiUsed, addQty, usedQty, cost, unit: c.unit }
                             })
-                            const costPer100L = editChemicals.filter(c => c.name.trim()).reduce((s, c) => {
-                              const qty = parseFloat(c.quantity) || 0
-                              const rate = parseFloat(c.rate) || 0
-                              return s + (qty * rate)
-                            }, 0)
-                            const costPerLtr = costPer100L / 100
-                            const totalCost = consumed > 0 ? costPerLtr * consumed : 0
+                            const totalCost = chemCosts.reduce((s, c) => s + c.cost, 0)
+                            const costPerLtr = consumed > 0 ? totalCost / consumed : 0
                             const costPerThan = totalThanDone > 0 ? totalCost / totalThanDone : 0
 
                             if (consumed <= 0 && op === 0 && nw === 0) return null
@@ -1293,13 +1386,14 @@ export default function FinishStockPage() {
                                 {chemCosts.length > 0 && consumed > 0 && (
                                   <div>
                                     <p className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1">Chemical Usage ({consumed.toFixed(0)} ltr consumed)</p>
-                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                    <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden overflow-x-auto">
                                       <table className="w-full text-xs">
                                         <thead>
                                           <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                                             <th className="text-left px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Chemical</th>
-                                            <th className="text-right px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Recipe/100L</th>
-                                            <th className="text-right px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Used</th>
+                                            <th className="text-right px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Mandi</th>
+                                            {editAdditions.length > 0 && <th className="text-right px-2 py-1.5 font-semibold text-amber-600 dark:text-amber-400">+Add</th>}
+                                            <th className="text-right px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Total</th>
                                             <th className="text-right px-2 py-1.5 font-semibold text-gray-600 dark:text-gray-300">Cost</th>
                                           </tr>
                                         </thead>
@@ -1307,7 +1401,8 @@ export default function FinishStockPage() {
                                           {chemCosts.map((c, i) => (
                                             <tr key={i}>
                                               <td className="px-2 py-1.5 text-gray-700 dark:text-gray-200">{c.name}</td>
-                                              <td className="px-2 py-1.5 text-right text-gray-500">{c.recipeQty} {c.unit}</td>
+                                              <td className="px-2 py-1.5 text-right text-gray-500">{c.mandiUsed.toFixed(2)}</td>
+                                              {editAdditions.length > 0 && <td className="px-2 py-1.5 text-right text-amber-600 dark:text-amber-400">{c.addQty > 0 ? `+${c.addQty.toFixed(2)}` : '-'}</td>}
                                               <td className="px-2 py-1.5 text-right font-medium text-gray-700 dark:text-gray-200">{c.usedQty.toFixed(2)} {c.unit}</td>
                                               <td className="px-2 py-1.5 text-right text-emerald-600 dark:text-emerald-400">&#8377;{c.cost.toFixed(0)}</td>
                                             </tr>
@@ -1320,12 +1415,14 @@ export default function FinishStockPage() {
 
                                 {/* Cost summary */}
                                 <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-3 space-y-1">
+                                  {consumed > 0 && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs text-gray-600 dark:text-gray-300">Cost per Litre</span>
+                                      <span className="text-xs font-medium text-gray-700 dark:text-gray-200">&#8377;{costPerLtr.toFixed(2)}/ltr</span>
+                                    </div>
+                                  )}
                                   <div className="flex items-center justify-between">
-                                    <span className="text-xs text-gray-600 dark:text-gray-300">Cost per Litre</span>
-                                    <span className="text-xs font-medium text-gray-700 dark:text-gray-200">&#8377;{costPerLtr.toFixed(2)}/ltr</span>
-                                  </div>
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">Total Cost ({consumed.toFixed(0)} ltr)</span>
+                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">Total Cost{consumed > 0 ? ` (${consumed.toFixed(0)} ltr)` : ''}</span>
                                     <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">&#8377;{totalCost.toFixed(0)}</span>
                                   </div>
                                   {totalThanDone > 0 && (

@@ -213,6 +213,7 @@ model Chemical {
   processItems   DyeingProcessItem[]
   additionUsages DyeingAdditionItem[]
   finishRecipeItems FinishRecipeItem[]
+  finishAdditionChemicals FinishAdditionChemical[]
 }
 
 model ChemicalPriceHistory {
@@ -301,6 +302,7 @@ model FinishEntry {
   updatedAt  DateTime             @updatedAt
   chemicals  FinishSlipChemical[]
   lots       FinishEntryLot[]
+  additions  FinishAddition[]
 }
 
 model FinishEntryLot {
@@ -326,6 +328,26 @@ model FinishSlipChemical {
   rate       Float?
   cost       Float?
   createdAt  DateTime     @default(now())
+}
+
+model FinishAddition {
+  id        Int                      @id @default(autoincrement())
+  entryId   Int
+  entry     FinishEntry              @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  reason    String?
+  createdAt DateTime                 @default(now())
+  chemicals FinishAdditionChemical[]
+}
+
+model FinishAdditionChemical {
+  id         Int             @id @default(autoincrement())
+  additionId Int
+  addition   FinishAddition  @relation(fields: [additionId], references: [id], onDelete: Cascade)
+  chemicalId Int?
+  chemical   Chemical?       @relation(fields: [chemicalId], references: [id])
+  name       String
+  quantity   Float?
+  unit       String          @default("kg")
 }
 
 // ─── Despatch Entry ────────────────────────────────────────────────────────────
