@@ -558,7 +558,7 @@ export default function FinishStockPage() {
       setEditError('Network error')
     }
     setEditSaving(false)
-  }, [editingSlipId, editDate, editSlipNo, editNotes, editMandi, editLots, editChemicals, mutateSlips, mutateStock])
+  }, [editingSlipId, editDate, editSlipNo, editNotes, editMandi, editOpMandi, editNewMandi, editStockMandi, editFinishThan, editFinishMtr, editDespSlipNo, editLots, editChemicals, editAdditions, mutateSlips, mutateStock])
 
   const handleDelete = useCallback(async (id: number) => {
     setDeleting(true)
