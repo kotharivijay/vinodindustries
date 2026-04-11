@@ -114,6 +114,14 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
         <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ml-auto ${statusCls}`}>{fpStatus}</span>
       </div>
 
+      {/* Finish Desp Slip No — highlighted */}
+      {entry.finishDespSlipNo && (
+        <div className="bg-purple-100 dark:bg-purple-900/30 border border-purple-300 dark:border-purple-700 rounded-xl px-4 py-3 mb-4 flex items-center gap-3">
+          <span className="text-xs font-bold text-purple-700 dark:text-purple-300">Finish Desp Slip No:</span>
+          <span className="text-base font-bold text-purple-800 dark:text-purple-200">{entry.finishDespSlipNo}</span>
+        </div>
+      )}
+
       {/* Info */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-4">
         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -121,6 +129,8 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
           <div><p className="text-xs text-gray-400">Quality</p><p className="font-medium">{qualityNames.join(', ') || '—'}</p></div>
           <div><p className="text-xs text-gray-400">Total Than</p><p className="font-bold text-emerald-600 dark:text-emerald-400">{totalThan}</p></div>
           <div><p className="text-xs text-gray-400">Done Than</p><p className="font-bold text-teal-600 dark:text-teal-400">{totalDoneThan}</p></div>
+          {entry.finishThan != null && <div><p className="text-xs text-gray-400">Finish Than</p><p className="font-bold text-indigo-600 dark:text-indigo-400">{entry.finishThan}</p></div>}
+          {entry.finishMtr != null && <div><p className="text-xs text-gray-400">Finish Mtr</p><p className="font-bold text-indigo-600 dark:text-indigo-400">{entry.finishMtr}</p></div>}
           {totalMeter > 0 && <div><p className="text-xs text-gray-400">Total Meter</p><p className="font-medium">{totalMeter}</p></div>}
         </div>
       </div>
@@ -221,19 +231,20 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
         </div>
       )}
 
-      {/* Consumption Detail */}
+      {/* Chemical Consumed */}
       {chemUsage.length > 0 && (consumed > 0 || addQtyMap.size > 0) && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-4">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Consumption Detail</h2>
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Chemical Consumed</h2>
           <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden overflow-x-auto mb-3">
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
                   <th className="text-left px-2 py-1.5 font-semibold">Chemical</th>
-                  <th className="text-right px-2 py-1.5 font-semibold">Mandi</th>
+                  <th className="text-right px-2 py-1.5 font-semibold">Qty</th>
                   {addQtyMap.size > 0 && <th className="text-right px-2 py-1.5 font-semibold text-amber-600">+Add</th>}
                   <th className="text-right px-2 py-1.5 font-semibold">Total</th>
-                  <th className="text-right px-2 py-1.5 font-semibold">Cost</th>
+                  <th className="text-right px-2 py-1.5 font-semibold">Rate</th>
+                  <th className="text-right px-2 py-1.5 font-semibold">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -243,40 +254,51 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
                     <td className="px-2 py-1.5 text-right text-gray-500">{c.mandiUsed.toFixed(2)}</td>
                     {addQtyMap.size > 0 && <td className="px-2 py-1.5 text-right text-amber-600">{c.addQty > 0 ? `+${c.addQty.toFixed(2)}` : '-'}</td>}
                     <td className="px-2 py-1.5 text-right font-medium">{c.usedQty.toFixed(2)} {c.unit}</td>
-                    <td className="px-2 py-1.5 text-right text-emerald-600 dark:text-emerald-400">₹{c.cost.toFixed(0)}</td>
+                    <td className="px-2 py-1.5 text-right text-gray-500">{c.rate > 0 ? `₹${c.rate}` : '-'}</td>
+                    <td className="px-2 py-1.5 text-right text-emerald-600 dark:text-emerald-400 font-medium">₹{c.cost.toFixed(0)}</td>
                   </tr>
                 ))}
+                <tr className="bg-gray-50 dark:bg-gray-700/50 font-bold">
+                  <td className="px-2 py-2 text-gray-700 dark:text-gray-200" colSpan={addQtyMap.size > 0 ? 5 : 4}>Total</td>
+                  <td className="px-2 py-2 text-right text-emerald-600 dark:text-emerald-400">₹{totalCost.toFixed(0)}</td>
+                </tr>
               </tbody>
             </table>
           </div>
+        </div>
+      )}
 
-          <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-3 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-700 dark:text-gray-200">Total Cost</span>
-              <span className="text-base font-bold text-emerald-600 dark:text-emerald-400">₹{totalCost.toFixed(0)}</span>
-            </div>
-            {costPerThan > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600 dark:text-gray-300">Cost / Than ({thanForCalc}T)</span>
-                <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">₹{costPerThan.toFixed(2)}</span>
-              </div>
-            )}
-            {costPerMtr > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600 dark:text-gray-300">Cost / Meter ({totalMeter}m)</span>
-                <span className="text-sm font-medium">₹{costPerMtr.toFixed(2)}</span>
-              </div>
-            )}
+      {/* Consumption Report */}
+      {(consumed > 0 || totalCost > 0) && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-4">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Consumption Report</h2>
+          <div className="grid grid-cols-2 gap-3">
             {ltrPerThan > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600 dark:text-gray-300">Consumption / Than</span>
-                <span className="text-sm font-medium">{ltrPerThan.toFixed(2)} ltr/than</span>
+              <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-4 py-3 text-center">
+                <p className="text-[10px] text-gray-500 uppercase">Consumption</p>
+                <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{ltrPerThan.toFixed(2)}</p>
+                <p className="text-[10px] text-gray-400">ltr / than</p>
               </div>
             )}
             {costPerLtr > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-600 dark:text-gray-300">Cost / Litre</span>
-                <span className="text-sm font-medium">₹{costPerLtr.toFixed(2)}</span>
+              <div className="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-lg px-4 py-3 text-center">
+                <p className="text-[10px] text-gray-500 uppercase">Cost / Litre</p>
+                <p className="text-lg font-bold text-gray-700 dark:text-gray-200">₹{costPerLtr.toFixed(2)}</p>
+                <p className="text-[10px] text-gray-400">per ltr</p>
+              </div>
+            )}
+            {costPerThan > 0 && (
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-3 text-center">
+                <p className="text-[10px] text-gray-500 uppercase">Cost / Than</p>
+                <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">₹{costPerThan.toFixed(2)}</p>
+                <p className="text-[10px] text-gray-400">{thanForCalc}T</p>
+              </div>
+            )}
+            {costPerMtr > 0 && (
+              <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg px-4 py-3 text-center">
+                <p className="text-[10px] text-gray-500 uppercase">Cost / Meter</p>
+                <p className="text-lg font-bold text-teal-600 dark:text-teal-400">₹{costPerMtr.toFixed(2)}</p>
+                <p className="text-[10px] text-gray-400">{totalMeter}m</p>
               </div>
             )}
           </div>
