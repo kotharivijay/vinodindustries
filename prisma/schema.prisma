@@ -586,6 +586,7 @@ model LotOpeningBalance {
   weight          String?  // e.g. "90g", ".98g"
   grayMtr         Float?   // total gray meters
   greyDate        DateTime? // original grey inward date
+  marka           String?
   notes           String?
   createdAt       DateTime @default(now())
   despatchHistory LotCarryForwardDespatch[]
