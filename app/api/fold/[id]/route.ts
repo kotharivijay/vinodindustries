@@ -22,7 +22,32 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     },
   })
   if (!program) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  return NextResponse.json(program)
+
+  // Enrich with marka for Pali PC Job lots
+  const allLotNos: string[] = program.batches.flatMap((b: any) => b.lots.map((l: any) => l.lotNo))
+  const hasPali = program.batches.some((b: any) => b.lots.some((l: any) => l.party?.tag?.toLowerCase().includes('pali pc job')))
+  let lotMarkaMap = new Map<string, string>()
+  if (hasPali && allLotNos.length > 0) {
+    const { buildLotInfoMap } = await import('@/lib/lot-info')
+    const infoMap = await buildLotInfoMap([...new Set(allLotNos)])
+    for (const [key, info] of infoMap) {
+      if (info.marka) lotMarkaMap.set(key, info.marka)
+    }
+  }
+
+  // Add marka + isPali flag to response
+  const enriched = {
+    ...program,
+    isPali: hasPali,
+    batches: program.batches.map((b: any) => ({
+      ...b,
+      lots: b.lots.map((l: any) => ({
+        ...l,
+        marka: lotMarkaMap.get(l.lotNo.toLowerCase().trim()) || null,
+      })),
+    })),
+  }
+  return NextResponse.json(enriched)
 }
 
 // PATCH /api/fold/[id] — update status or notes

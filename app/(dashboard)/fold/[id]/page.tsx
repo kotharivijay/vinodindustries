@@ -105,7 +105,8 @@ interface FoldBatchLot {
   id: number
   lotNo: string
   than: number
-  party?: { name: string }
+  marka?: string | null
+  party?: { name: string; tag?: string | null }
   quality?: { name: string }
 }
 
@@ -123,6 +124,7 @@ interface FoldProgram {
   date: string
   status: 'draft' | 'confirmed'
   notes?: string
+  isPali?: boolean
   batches: FoldBatch[]
 }
 
@@ -394,10 +396,38 @@ export default function FoldDetailPage() {
                   </button>
                 </div>
               </div>
-              <table className="w-full text-sm">
+              {/* Mobile card view */}
+              <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-700">
+                {batch.lots.map(lot => (
+                  <div key={lot.id} className="px-4 py-2.5">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <div className="flex items-center gap-2">
+                        <LotPicker currentLotNo={lot.lotNo} currentThan={lot.than} lotId={lot.id} stockLots={allStockLots} onSave={updateLot} />
+                        {program?.isPali && lot.marka && (
+                          <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">🏷️ {lot.marka}</span>
+                        )}
+                      </div>
+                      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{lot.than}T</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                      <span>{lot.party?.name ?? '-'}</span>
+                      <span className="text-gray-300 dark:text-gray-600">·</span>
+                      <span>{lot.quality?.name ?? '-'}</span>
+                    </div>
+                  </div>
+                ))}
+                <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Batch Total</span>
+                  <span className="font-bold text-indigo-700 dark:text-indigo-400">{batchTotal}</span>
+                </div>
+              </div>
+
+              {/* Desktop table view */}
+              <table className="hidden sm:table w-full text-sm">
                 <thead>
                   <tr className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
                     <th className="text-left px-4 py-2">Lot No</th>
+                    {program?.isPali && <th className="text-left px-4 py-2">Marka</th>}
                     <th className="text-left px-4 py-2">Party</th>
                     <th className="text-left px-4 py-2">Quality</th>
                     <th className="text-right px-4 py-2">Than</th>
@@ -407,14 +437,13 @@ export default function FoldDetailPage() {
                   {batch.lots.map(lot => (
                     <tr key={lot.id} className="border-b border-gray-50 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-4 py-2">
-                        <LotPicker
-                          currentLotNo={lot.lotNo}
-                          currentThan={lot.than}
-                          lotId={lot.id}
-                          stockLots={allStockLots}
-                          onSave={updateLot}
-                        />
+                        <LotPicker currentLotNo={lot.lotNo} currentThan={lot.than} lotId={lot.id} stockLots={allStockLots} onSave={updateLot} />
                       </td>
+                      {program?.isPali && (
+                        <td className="px-4 py-2">
+                          {lot.marka ? <span className="text-xs font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded">🏷️ {lot.marka}</span> : <span className="text-gray-300">-</span>}
+                        </td>
+                      )}
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{lot.party?.name ?? '-'}</td>
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{lot.quality?.name ?? '-'}</td>
                       <td className="px-4 py-2 text-right font-bold text-gray-800 dark:text-gray-100">{lot.than}</td>
@@ -423,7 +452,7 @@ export default function FoldDetailPage() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-indigo-50 dark:bg-indigo-900/20">
-                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold text-right text-gray-600 dark:text-gray-400">Batch Total:</td>
+                    <td colSpan={program?.isPali ? 4 : 3} className="px-4 py-2 text-xs font-semibold text-right text-gray-600 dark:text-gray-400">Batch Total:</td>
                     <td className="px-4 py-2 text-right font-bold text-indigo-700 dark:text-indigo-400">{batchTotal}</td>
                   </tr>
                 </tfoot>
