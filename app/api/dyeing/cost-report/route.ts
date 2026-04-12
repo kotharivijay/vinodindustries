@@ -80,14 +80,30 @@ export async function GET(req: NextRequest) {
     const shadeDesc = e.foldBatch?.shade?.description || e.foldBatch?.shadeDescription || ''
     const shadeLabel = shadeName + (shadeDesc ? ` — ${shadeDesc}` : '')
 
+    // Split chemicals into dyes and auxiliary
+    const dyes: any[] = []
+    const auxiliary: any[] = []
+    for (const c of (e.chemicals || [])) {
+      const item = { name: c.name, quantity: c.quantity, unit: c.unit, cost: c.cost ?? 0, processTag: c.processTag }
+      if (c.processTag === 'shade') dyes.push(item)
+      else auxiliary.push(item)
+    }
+    const dyeCost = dyes.reduce((s: number, c: any) => s + c.cost, 0)
+    const auxCost = auxiliary.reduce((s: number, c: any) => s + c.cost, 0)
+
     fg.batches.push({
+      id: e.id,
       batchNo: e.foldBatch?.batchNo || null,
       slipNo: e.slipNo,
       date: e.date,
       shade: shadeLabel,
       than: entryThan,
       cost: Math.round(entryCost),
+      dyeCost: Math.round(dyeCost),
+      auxCost: Math.round(auxCost),
       costPerThan: entryThan > 0 ? Math.round(entryCost / entryThan * 100) / 100 : 0,
+      dyes,
+      auxiliary,
     })
 
     if (!shadeMap.has(shadeLabel)) shadeMap.set(shadeLabel, { than: 0, cost: 0, count: 0 })

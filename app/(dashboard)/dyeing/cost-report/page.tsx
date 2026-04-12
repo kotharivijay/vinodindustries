@@ -6,14 +6,26 @@ import BackButton from '../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+interface ChemItem {
+  name: string
+  quantity: number | null
+  unit: string
+  cost: number
+}
+
 interface BatchDetail {
+  id: number
   batchNo: number | null
   slipNo: number
   date: string
   shade: string
   than: number
   cost: number
+  dyeCost: number
+  auxCost: number
   costPerThan: number
+  dyes: ChemItem[]
+  auxiliary: ChemItem[]
 }
 
 interface FoldGroup {
@@ -61,6 +73,7 @@ export default function DyeingCostReportPage() {
   const [partySearch, setPartySearch] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [expandedFolds, setExpandedFolds] = useState<Set<string>>(new Set())
+  const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set())
   const dropRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown on outside click
@@ -95,6 +108,14 @@ export default function DyeingCostReportPage() {
     setExpandedFolds(prev => {
       const next = new Set(prev)
       if (next.has(foldNo)) next.delete(foldNo); else next.add(foldNo)
+      return next
+    })
+  }
+
+  function toggleBatch(key: string) {
+    setExpandedBatches(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key); else next.add(key)
       return next
     })
   }
@@ -205,23 +226,70 @@ export default function DyeingCostReportPage() {
                       {isOpen && (
                         <div className="border-t border-gray-100 dark:border-gray-700">
                           <div className="divide-y divide-gray-50 dark:divide-gray-700">
-                            {f.batches.map((b, bi) => (
-                              <div key={bi} className="px-4 py-2.5 flex items-center justify-between">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
-                                      {b.batchNo ? `B${b.batchNo}` : `Slip ${b.slipNo}`}
-                                    </span>
-                                    <span className="text-[10px] text-gray-400">{new Date(b.date).toLocaleDateString('en-IN')}</span>
-                                  </div>
-                                  <p className="text-[10px] text-purple-600 dark:text-purple-400">{b.shade}</p>
+                            {f.batches.map((b, bi) => {
+                              const bKey = `${f.foldNo}-${bi}`
+                              const bOpen = expandedBatches.has(bKey)
+                              return (
+                                <div key={bi}>
+                                  <button onClick={() => toggleBatch(bKey)} className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+                                    <div className="text-left">
+                                      <div className="flex items-center gap-2">
+                                        <a href={`/dyeing/${b.id}`} target="_blank" onClick={e => e.stopPropagation()}
+                                          className="text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline">
+                                          Slip {b.slipNo}
+                                        </a>
+                                        {b.batchNo && <span className="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">B{b.batchNo}</span>}
+                                        <span className="text-[10px] text-gray-400">{new Date(b.date).toLocaleDateString('en-IN')}</span>
+                                      </div>
+                                      <p className="text-[10px] text-purple-500 dark:text-purple-400">{b.shade}</p>
+                                    </div>
+                                    <div className="text-right flex items-center gap-2">
+                                      <div>
+                                        <p className="text-xs text-gray-600 dark:text-gray-300">{b.than}T · {fmtINR(b.cost)}</p>
+                                        <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">{fmtINR(b.costPerThan)}/T</p>
+                                      </div>
+                                      <span className={`text-gray-400 text-[10px] transition-transform ${bOpen ? 'rotate-90' : ''}`}>▶</span>
+                                    </div>
+                                  </button>
+
+                                  {bOpen && (
+                                    <div className="px-4 pb-3 space-y-2">
+                                      {/* Dye vs Aux cost bar */}
+                                      <div className="flex gap-2 text-[10px]">
+                                        <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded font-medium">Dyes: {fmtINR(b.dyeCost)}</span>
+                                        <span className="bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded font-medium">Auxiliary: {fmtINR(b.auxCost)}</span>
+                                      </div>
+
+                                      {/* Dyes */}
+                                      {b.dyes.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400 mb-1">Dyes</p>
+                                          {b.dyes.map((c, ci) => (
+                                            <div key={ci} className="flex items-center justify-between text-[10px] py-0.5">
+                                              <span className="text-gray-700 dark:text-gray-300">{c.name}</span>
+                                              <span className="text-gray-500">{c.quantity != null ? Number(c.quantity).toFixed(3) : '-'} {c.unit} · {fmtINR(c.cost)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+
+                                      {/* Auxiliary */}
+                                      {b.auxiliary.length > 0 && (
+                                        <div>
+                                          <p className="text-[10px] font-bold text-teal-600 dark:text-teal-400 mb-1">Auxiliary</p>
+                                          {b.auxiliary.map((c, ci) => (
+                                            <div key={ci} className="flex items-center justify-between text-[10px] py-0.5">
+                                              <span className="text-gray-700 dark:text-gray-300">{c.name}</span>
+                                              <span className="text-gray-500">{c.quantity != null ? Number(c.quantity).toFixed(3) : '-'} {c.unit} · {fmtINR(c.cost)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
-                                <div className="text-right">
-                                  <p className="text-xs text-gray-600 dark:text-gray-300">{b.than}T · {fmtINR(b.cost)}</p>
-                                  <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">{fmtINR(b.costPerThan)}/T</p>
-                                </div>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                           <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-between">
                             <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fold Total</span>
