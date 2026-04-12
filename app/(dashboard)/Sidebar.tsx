@@ -23,13 +23,10 @@ const ksiNavGroups = [
       { href: '/despatch', label: 'Despatch', icon: '🚚' },
       { href: '/dyeing', label: 'Dyeing Slip', icon: '🎨' },
       { href: '/dyeing/batch', label: 'Dyeing (Batch)', icon: '🧫' },
-      { href: '/dyeing/pc', label: 'PC Dyeing', icon: '🏭' },
-      { href: '/dyeing/program', label: 'Dyeing Program', icon: '📋' },
       { href: '/dyeing/color-lab', label: 'Color Lab', icon: '🎨' },
       { href: '/finish', label: 'Finish/Center', icon: '✨' },
       { href: '/stock', label: 'Stock Summary', icon: '📊' },
       { href: '/fold', label: 'Fold Program', icon: '🪡' },
-      { href: '/fold/pc', label: 'PC Fold', icon: '📋' },
     ],
   },
   {
@@ -49,6 +46,12 @@ const ksiNavGroups = [
     ],
   },
   {
+    label: 'Reports',
+    links: [
+      { href: '/dyeing/cost-report', label: 'Dyeing Cost Report', icon: '📊' },
+    ],
+  },
+  {
     label: 'Accounts',
     links: [
       { href: '/ksi/tally', label: 'Tally Dashboard', icon: '📊' },
@@ -61,6 +64,14 @@ const ksiNavGroups = [
     label: 'Vault',
     links: [
       { href: '/vault', label: 'Document Vault', icon: '🔒' },
+    ],
+  },
+  {
+    label: 'Archive',
+    links: [
+      { href: '/dyeing/pc', label: 'PC Dyeing', icon: '🏭' },
+      { href: '/dyeing/program', label: 'Dyeing Program', icon: '📋' },
+      { href: '/fold/pc', label: 'PC Fold', icon: '📋' },
     ],
   },
   {
