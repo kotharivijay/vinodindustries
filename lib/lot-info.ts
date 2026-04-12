@@ -33,12 +33,12 @@ export async function buildLotInfoMap(lotNos: string[]): Promise<Map<string, Lot
     try {
       const obEntries = await db.lotOpeningBalance.findMany({
         where: { lotNo: { in: missingLots } },
-        select: { lotNo: true, party: true, quality: true, weight: true },
+        select: { lotNo: true, party: true, quality: true, weight: true, marka: true },
       })
       for (const ob of obEntries) {
         const key = ob.lotNo.toLowerCase().trim()
         if (!map.has(key)) {
-          map.set(key, { party: ob.party || null, quality: ob.quality || null, weight: ob.weight || null, marka: null })
+          map.set(key, { party: ob.party || null, quality: ob.quality || null, weight: ob.weight || null, marka: ob.marka || null })
         }
       }
     } catch {}
