@@ -29,7 +29,29 @@ export async function GET() {
       orderBy: { date: 'desc' },
     })
 
-    return NextResponse.json(entries)
+    // Enrich lots with marka from OB/Grey
+    const allLotNos: string[] = entries.flatMap((e: any) => (e.lots?.length ? e.lots : [{ lotNo: e.lotNo }]).map((l: any) => l.lotNo))
+    const { buildLotInfoMap } = await import('@/lib/lot-info')
+    const lotInfoMap = await buildLotInfoMap([...new Set(allLotNos)])
+
+    // Get Pali PC party names
+    const paliParties = await prisma.party.findMany({ where: { tag: 'Pali PC Job' }, select: { name: true } })
+    const paliNames = new Set(paliParties.map(p => p.name.toLowerCase().trim()))
+
+    const enriched = entries.map((e: any) => {
+      const lots = (e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]).map((l: any) => {
+        const info = lotInfoMap.get(l.lotNo.toLowerCase().trim())
+        return { ...l, marka: info?.marka || null }
+      })
+      const isPali = lots.some((l: any) => {
+        const info = lotInfoMap.get(l.lotNo.toLowerCase().trim())
+        return info?.party && paliNames.has(info.party.toLowerCase().trim())
+      })
+      const lotMarka = lots.find((l: any) => l.marka)?.marka || null
+      return { ...e, lots, isPcJob: e.isPcJob || isPali, marka: e.marka || lotMarka }
+    })
+
+    return NextResponse.json(enriched)
   } catch (err: any) {
     console.error('GET /api/dyeing/batch error:', err)
     return NextResponse.json({ error: err.message ?? 'Server error' }, { status: 500 })

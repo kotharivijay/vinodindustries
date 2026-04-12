@@ -92,7 +92,7 @@ interface SavedEntry {
   machine?: { name: string } | null
   operator?: { name: string } | null
   chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
-  lots: { lotNo: string; than: number }[]
+  lots: { lotNo: string; than: number; marka?: string | null }[]
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -1080,13 +1080,13 @@ export default function BatchDyeingPage() {
                     </div>
 
                     <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5 flex-wrap">
-                      {(entry.isPcJob || entry.foldBatch?.foldProgram?.isPcJob) && (
+                      {entry.isPcJob && (
                         <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">PC</span>
                       )}
                       <span>Fold {foldNo} / Batch {batchNo}</span>
-                      {(entry.marka || entry.foldBatch?.marka) && (
+                      {entry.marka && (
                         <span className="text-[10px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
-                          {entry.marka || entry.foldBatch?.marka}
+                          🏷️ {entry.marka}
                         </span>
                       )}
                       {entry.machine && <span>· {entry.machine.name}</span>}
@@ -1096,7 +1096,7 @@ export default function BatchDyeingPage() {
                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                       {lots.map((l: any, li: number) => (
                         <span key={li} className="text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-full">
-                          {l.lotNo} ({l.than}T)
+                          {l.lotNo}{l.marka ? ` [${l.marka}]` : ''} ({l.than}T)
                         </span>
                       ))}
                     </div>
