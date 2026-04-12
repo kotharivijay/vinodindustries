@@ -49,6 +49,7 @@ const ksiNavGroups = [
     label: 'Reports',
     links: [
       { href: '/dyeing/cost-report', label: 'Dyeing Cost Report', icon: '📊' },
+      { href: '/dyeing/production-report', label: 'Production Report', icon: '🏭' },
     ],
   },
   {
