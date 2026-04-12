@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 
-interface SlipLot { lotNo: string; than: number }
+interface SlipLot { lotNo: string; than: number; marka?: string | null }
 interface SlipChemical { name: string; quantity: number | null; unit: string; processTag: string | null }
 interface SlipAddition {
   roundNo: number; type: string; defectType: string | null; reason: string | null
@@ -327,9 +327,10 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       const lotW = lotEsc === 'large' ? Math.floor(W / 2) : W
       await printer.printLine('LOTS:', true, lotEsc)
       for (const l of data.lots) {
+        const lotLabel = l.marka ? `${l.lotNo} [${l.marka}]` : l.lotNo
         const thanStr = `${l.than} than`
-        const lotPad = Math.max(1, lotW - 2 - l.lotNo.length - thanStr.length)
-        await printer.printLine(`  ${l.lotNo}${' '.repeat(lotPad)}${thanStr}`, boldLotNo, lotEsc)
+        const lotPad = Math.max(1, lotW - 2 - lotLabel.length - thanStr.length)
+        await printer.printLine(`  ${lotLabel}${' '.repeat(lotPad)}${thanStr}`, boldLotNo, lotEsc)
       }
       if (data.lots.length > 1) {
         const totalStr = `${data.totalThan} than`
@@ -476,9 +477,10 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
       const lotW = lotEsc === 'large' ? Math.floor(W / 2) : W
       await printer.printLine('LOTS:', true, lotEsc)
       for (const l of data.lots) {
+        const lotLabel = l.marka ? `${l.lotNo} [${l.marka}]` : l.lotNo
         const thanStr = `${l.than} than`
-        const lotPad = Math.max(1, lotW - 2 - l.lotNo.length - thanStr.length)
-        await printer.printLine(`  ${l.lotNo}${' '.repeat(lotPad)}${thanStr}`, boldLotNo, lotEsc)
+        const lotPad = Math.max(1, lotW - 2 - lotLabel.length - thanStr.length)
+        await printer.printLine(`  ${lotLabel}${' '.repeat(lotPad)}${thanStr}`, boldLotNo, lotEsc)
       }
       if (data.lots.length > 1) {
         const totalStr = `${data.totalThan} than`
