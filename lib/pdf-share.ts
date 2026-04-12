@@ -21,7 +21,7 @@ export interface SlipData {
   qualityName?: string | null
   marka?: string | null
   isPcJob?: boolean
-  lots: { lotNo: string; than: number }[]
+  lots: { lotNo: string; than: number; marka?: string | null }[]
   chemicals: SlipChemical[]
   mandi?: number | null
   notes?: string | null
@@ -126,7 +126,7 @@ function renderSlipPage(doc: jsPDF, slip: SlipData, isFirstPage: boolean) {
   for (let i = 0; i < slip.lots.length; i++) {
     const l = slip.lots[i]
     doc.setFont('helvetica', 'bold')
-    const lotText = l.lotNo
+    const lotText = l.marka ? `${l.lotNo} [${l.marka}]` : l.lotNo
     doc.text(lotText, lotX, y)
     lotX += doc.getTextWidth(lotText)
     doc.setFont('helvetica', 'normal')

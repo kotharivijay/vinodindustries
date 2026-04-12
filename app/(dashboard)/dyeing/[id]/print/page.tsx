@@ -35,10 +35,18 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
   const lotNos = entry.lots?.length ? entry.lots.map((l: any) => l.lotNo) : [entry.lotNo]
   const { buildLotInfoMap } = await import('@/lib/lot-info')
   const lotInfoMap = await buildLotInfoMap(lotNos)
-  const partyNames = [...new Set(Array.from(lotInfoMap.values()).map(v => v.party).filter(Boolean))]
+  const lotInfos = Array.from(lotInfoMap.values())
+  const partyNames = [...new Set(lotInfos.map(v => v.party).filter(Boolean))]
   const partyName = partyNames.join(', ') || null
-  const qualityNames = [...new Set(Array.from(lotInfoMap.values()).map(v => v.quality).filter(Boolean))]
+  const qualityNames = [...new Set(lotInfos.map(v => v.quality).filter(Boolean))]
   const qualityName = qualityNames.join(', ') || null
+
+  // Build per-lot marka map
+  const lotMarkaMap = new Map<string, string>()
+  for (const [key, info] of lotInfoMap) {
+    if (info.marka) lotMarkaMap.set(key, info.marka)
+  }
+  const entryMarka = entry.marka || lotInfos.find(li => li.marka)?.marka || null
 
   // Get shade description
   let shadeDescription: string | null = null
@@ -148,10 +156,10 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
             <span>{qualityName}</span>
           </div>
         )}
-        {entry.marka && (
+        {entryMarka && (
           <div className="flex gap-2">
             <span className="font-semibold w-24">Marka:</span>
-            <span>{entry.marka}</span>
+            <span>{entryMarka}</span>
           </div>
         )}
         <div className="flex gap-2">
@@ -174,11 +182,14 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
       {/* Lots */}
       <div data-print="lot" className="text-sm mb-4">
         <span data-print-bold="lot" className="font-bold">Lots: </span>
-        {lots.map((l: any, i: number) => (
-          <span key={i} data-print-bold="lot" className="font-bold">
-            {l.lotNo} <span className="font-normal">({l.than} than)</span>{i < lots.length - 1 ? ', ' : ''}
-          </span>
-        ))}
+        {lots.map((l: any, i: number) => {
+          const lotMarka = lotMarkaMap.get(l.lotNo.toLowerCase().trim())
+          return (
+            <span key={i} data-print-bold="lot" className="font-bold">
+              {l.lotNo}{lotMarka ? ` [${lotMarka}]` : ''} <span className="font-normal">({l.than} than)</span>{i < lots.length - 1 ? ', ' : ''}
+            </span>
+          )
+        })}
         {lots.length > 1 && (
           <span data-print-bold="lot" className="ml-2 font-bold">Total: {totalThan} than</span>
         )}
@@ -364,9 +375,9 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           shadeName: entry.shadeName || null,
           shadeDescription: shadeDescription || null,
           qualityName: qualityName || null,
-          marka: entry.marka || null,
+          marka: entryMarka || null,
           isPcJob: entry.isPcJob || false,
-          lots: lots.map((l: any) => ({ lotNo: l.lotNo, than: l.than })),
+          lots: lots.map((l: any) => ({ lotNo: l.lotNo, than: l.than, marka: lotMarkaMap.get(l.lotNo.toLowerCase().trim()) || null })),
           chemicals: chemicals.map((c: any) => ({ name: c.name, quantity: c.quantity, unit: c.unit, rate: c.rate, cost: c.cost, processTag: c.processTag || null })),
           notes: entry.notes || null,
           status: entry.status || null,
@@ -383,7 +394,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           shadeName: entry.shadeName || null,
           shadeDescription: shadeDescription || null,
           qualityName: qualityName || null,
-          marka: entry.marka || null,
+          marka: entryMarka || null,
           isPcJob: entry.isPcJob || false,
           machineName: entry.machine?.name || null,
           operatorName: entry.operator?.name || null,
@@ -406,7 +417,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           shadeName: entry.shadeName || null,
           shadeDescription: shadeDescription || null,
           qualityName: qualityName || null,
-          marka: entry.marka || null,
+          marka: entryMarka || null,
           isPcJob: entry.isPcJob || false,
           machineName: entry.machine?.name || null,
           operatorName: entry.operator?.name || null,
