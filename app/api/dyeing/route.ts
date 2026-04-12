@@ -56,8 +56,10 @@ export async function GET(req: NextRequest) {
 
   const enriched = entries.map((e: any) => {
     const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
-    const partyNames = [...new Set(lots.map((l: any) => lotInfoMap.get(l.lotNo.toLowerCase().trim())?.party).filter(Boolean))]
-    return { ...e, partyName: partyNames.join(', ') || null }
+    const lotInfos = lots.map((l: any) => lotInfoMap.get(l.lotNo.toLowerCase().trim())).filter(Boolean)
+    const partyNames = [...new Set(lotInfos.map((li: any) => li.party).filter(Boolean))]
+    const lotMarka = lotInfos.find((li: any) => li.marka)?.marka || null
+    return { ...e, partyName: partyNames.join(', ') || null, marka: e.marka || lotMarka }
   })
 
   return NextResponse.json(enriched)

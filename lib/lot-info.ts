@@ -4,6 +4,7 @@ export interface LotInfo {
   party: string | null
   quality: string | null
   weight: string | null
+  marka: string | null
 }
 
 /**
@@ -19,11 +20,11 @@ export async function buildLotInfoMap(lotNos: string[]): Promise<Map<string, Lot
   // 1. GreyEntry (primary source)
   const greyEntries = await prisma.greyEntry.findMany({
     where: { lotNo: { in: lotNos } },
-    select: { lotNo: true, weight: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+    select: { lotNo: true, weight: true, marka: true, party: { select: { name: true } }, quality: { select: { name: true } } },
     distinct: ['lotNo'],
   })
   for (const g of greyEntries) {
-    map.set(g.lotNo.toLowerCase().trim(), { party: g.party.name, quality: g.quality.name, weight: g.weight })
+    map.set(g.lotNo.toLowerCase().trim(), { party: g.party.name, quality: g.quality.name, weight: g.weight, marka: g.marka || null })
   }
 
   // 2. LotOpeningBalance fallback for lots not found in GreyEntry
@@ -37,7 +38,7 @@ export async function buildLotInfoMap(lotNos: string[]): Promise<Map<string, Lot
       for (const ob of obEntries) {
         const key = ob.lotNo.toLowerCase().trim()
         if (!map.has(key)) {
-          map.set(key, { party: ob.party || null, quality: ob.quality || null, weight: ob.weight || null })
+          map.set(key, { party: ob.party || null, quality: ob.quality || null, weight: ob.weight || null, marka: null })
         }
       }
     } catch {}

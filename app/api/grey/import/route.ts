@@ -188,7 +188,10 @@ export async function POST(req: NextRequest) {
 
     const party = partyMap.get(norm(partyName))
     const quality = qualityMap.get(norm(qualityName))
-    const weaver = weaverMap.get(norm(weaverName))
+    const isPaliPc = party?.tag?.toLowerCase().includes('pali pc job') ?? false
+    const marka = isPaliPc ? weaverName : ''
+    const actualWeaverName = isPaliPc ? '' : weaverName
+    const weaver = actualWeaverName ? weaverMap.get(norm(actualWeaverName)) : null
     const transport = transportMap.get(norm(transportName))
 
     const missingMasters: string[] = []
@@ -196,7 +199,7 @@ export async function POST(req: NextRequest) {
     else if (!party) missingMasters.push(`Party: "${partyName}"`)
     if (!qualityName) missingMasters.push('Quality: (empty)')
     else if (!quality) missingMasters.push(`Quality: "${qualityName}"`)
-    if (weaverName && !weaver) missingMasters.push(`Weaver: "${weaverName}"`)
+    if (actualWeaverName && !weaver) missingMasters.push(`Weaver: "${actualWeaverName}"`)
     if (transportName && !transport && transportName.toLowerCase() !== 'open')
       missingMasters.push(`Transport: "${transportName}"`)
 
@@ -218,7 +221,8 @@ export async function POST(req: NextRequest) {
       challanNo,
       partyName,
       qualityName,
-      weaverName,
+      weaverName: actualWeaverName,
+      marka,
       transportName,
       lotNo,
       than,
@@ -294,6 +298,7 @@ export async function PUT(req: NextRequest) {
           echBaleThan: row.echBaleThan ?? undefined,
           weaverId,
           viverNameBill: row.weaverName || undefined,
+          marka: row.marka || undefined,
           lrNo: row.lrNo || undefined,
           lotNo: row.lotNo,
         },

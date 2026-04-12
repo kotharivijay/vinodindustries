@@ -49,6 +49,7 @@ interface ParsedFold {
   batches: {
     sn: number
     date: string
+    marka?: string
     shadeNo: string
     shadeName: string
     lots: { lotNo: string; than: number }[]
@@ -123,6 +124,7 @@ export async function POST(req: NextRequest) {
 
       const sn = parseInt(dataRow[1]) || 0
       const dateVal = (dataRow[2] || '').trim()
+      const marka = (dataRow[3] || '').trim()
       const shadeNo = (dataRow[4] || '').trim()
       const shadeName = (dataRow[5] || '').trim()
 
