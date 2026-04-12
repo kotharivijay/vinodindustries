@@ -158,6 +158,11 @@ export default function AIChatBubble() {
       const reply = data.reply || data.error || 'Sorry, something went wrong.'
       setMessages(prev => [...prev, { role: 'assistant', content: reply }])
 
+      // Handle open cost report action
+      if (data.action === 'open_cost_report') {
+        window.open('/dyeing/cost-report', '_blank')
+      }
+
       // Handle fold creation action
       if (data.action === 'fold_create' && data.lots?.length > 0) {
         setFoldLots(data.lots)

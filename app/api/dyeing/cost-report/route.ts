@@ -51,10 +51,16 @@ export async function GET(req: NextRequest) {
     orderBy: { date: 'desc' },
   })
 
+  // Get quality per lot
+  const { buildLotInfoMap } = await import('@/lib/lot-info')
+  const entryLotNos: string[] = entries.flatMap((e: any) => (e.lots?.length ? e.lots : [{ lotNo: e.lotNo }]).map((l: any) => l.lotNo))
+  const lotInfoMap = await buildLotInfoMap([...new Set(entryLotNos)])
+
   let totalThan = 0
   let totalCost = 0
   const foldMap = new Map<string, { slips: number; than: number; cost: number; batches: any[] }>()
   const shadeMap = new Map<string, { than: number; cost: number; count: number }>()
+  const qualityMap = new Map<string, { than: number; cost: number; count: number }>()
 
   for (const e of entries) {
     const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
@@ -89,6 +95,16 @@ export async function GET(req: NextRequest) {
     sg.than += entryThan
     sg.cost += entryCost
     sg.count++
+
+    // Quality grouping
+    const lotList = e.lots?.length ? e.lots : [{ lotNo: e.lotNo }]
+    const qualities = [...new Set(lotList.map((l: any) => lotInfoMap.get(l.lotNo.toLowerCase().trim())?.quality).filter(Boolean))]
+    const qualityName = qualities.join(', ') || 'Unknown'
+    if (!qualityMap.has(qualityName)) qualityMap.set(qualityName, { than: 0, cost: 0, count: 0 })
+    const qg = qualityMap.get(qualityName)!
+    qg.than += entryThan
+    qg.cost += entryCost
+    qg.count++
   }
 
   const folds = Array.from(foldMap.entries()).map(([foldNo, d]) => ({
@@ -108,6 +124,14 @@ export async function GET(req: NextRequest) {
     count: d.count,
   })).sort((a, b) => b.cost - a.cost)
 
+  const qualities = Array.from(qualityMap.entries()).map(([quality, d]) => ({
+    quality,
+    than: d.than,
+    cost: Math.round(d.cost),
+    avgPerThan: d.than > 0 ? Math.round(d.cost / d.than * 100) / 100 : 0,
+    count: d.count,
+  })).sort((a, b) => b.cost - a.cost)
+
   return NextResponse.json({
     party: party.name,
     totalSlips: entries.length,
@@ -116,5 +140,6 @@ export async function GET(req: NextRequest) {
     avgCostPerThan: totalThan > 0 ? Math.round(totalCost / totalThan * 100) / 100 : 0,
     folds,
     shades,
+    qualities,
   })
 }

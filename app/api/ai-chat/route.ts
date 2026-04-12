@@ -767,7 +767,7 @@ Available functions to query data:
 - fold_available_lots(party, quality?, tag?): Get available lots for fold creation filtered by party, quality, and/or tag (e.g. "Pali PC Job", "Local")
 - create_fold(foldNo, date, batches): Create a new fold program
 - sales_data(party?, dateFrom?, dateTo?): Tally sales data
-- dyeing_cost_report(party): Dyeing cost report for a party — overall avg, fold-wise with batch details, shade-wise cost
+- dyeing_cost_report(party): Dyeing cost report for a party — overall avg, fold-wise with batch details, shade-wise cost. When user asks about dyeing cost, respond with: { "function": "dyeing_cost_report", "args": { "party": "..." } } AND also add "action": "open_cost_report" to tell the UI to open the cost report page.
 
 FOLD CREATION RULES:
 - When user wants to create a fold, call fold_available_lots first with the party name they mention
@@ -1061,6 +1061,12 @@ export async function POST(req: NextRequest) {
     } catch (queryErr: any) {
       console.error('Query execution error:', queryErr)
       return NextResponse.json({ reply: 'Sorry, there was an error running the database query. Please try again or rephrase your question.' })
+    }
+
+    // Special handling for dyeing_cost_report — tell UI to open cost page
+    if (parsed.function === 'dyeing_cost_report' && data && !data.error) {
+      const reply = formatResult(parsed.function, parsed.args, data)
+      return NextResponse.json({ reply, action: 'open_cost_report', partyName: data.party })
     }
 
     // Special handling for fold_available_lots — return raw data for UI

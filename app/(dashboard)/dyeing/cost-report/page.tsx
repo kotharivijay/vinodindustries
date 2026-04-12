@@ -33,6 +33,14 @@ interface ShadeGroup {
   count: number
 }
 
+interface QualityGroup {
+  quality: string
+  than: number
+  cost: number
+  avgPerThan: number
+  count: number
+}
+
 interface CostReport {
   party: string
   totalSlips: number
@@ -41,6 +49,7 @@ interface CostReport {
   avgCostPerThan: number
   folds: FoldGroup[]
   shades: ShadeGroup[]
+  qualities: QualityGroup[]
 }
 
 export default function DyeingCostReportPage() {
@@ -242,6 +251,28 @@ export default function DyeingCostReportPage() {
                       <div className="text-right">
                         <span className="text-xs text-gray-500">{s.than}T · {fmtINR(s.cost)}</span>
                         <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 ml-2">{fmtINR(s.avgPerThan)}/T</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Quality-wise */}
+          {report.qualities?.length > 0 && (
+            <div>
+              <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200 mb-2">Quality-wise Cost</h2>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+                <div className="divide-y divide-gray-50 dark:divide-gray-700">
+                  {report.qualities.map((q, i) => (
+                    <div key={i} className="px-4 py-2.5 flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{q.quality}</span>
+                        <span className="text-[10px] text-gray-400 ml-2">{q.count} slips</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs text-gray-500">{q.than}T · {fmtINR(q.cost)}</span>
+                        <span className="text-xs font-bold text-teal-600 dark:text-teal-400 ml-2">{fmtINR(q.avgPerThan)}/T</span>
                       </div>
                     </div>
                   ))}
