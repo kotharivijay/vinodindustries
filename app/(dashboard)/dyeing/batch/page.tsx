@@ -12,6 +12,7 @@ interface LotInfo {
   than: number
   weightPerThan: number
   quality?: string
+  marka?: string | null
 }
 
 interface RecipeItem {
@@ -618,7 +619,7 @@ export default function BatchDyeingPage() {
                                   <div className="flex flex-wrap gap-1.5">
                                     {b.lots.map((l, li) => (
                                       <span key={li} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-full font-medium">
-                                        {l.lotNo} ({l.than}T)
+                                        {l.lotNo} ({l.than}T){l.marka ? ` 🏷️${l.marka}` : ''}
                                       </span>
                                     ))}
                                     <span className="text-[10px] text-gray-400 ml-auto">{b.totalWeight.toFixed(1)} kg</span>
@@ -653,6 +654,9 @@ export default function BatchDyeingPage() {
                     <div>
                       <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{lot.lotNo}</span>
                       <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{lot.than} than</span>
+                      {lot.marka && (
+                        <span className="ml-2 text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">🏷️ {lot.marka}</span>
+                      )}
                     </div>
                     <div className="text-right">
                       <p className="text-xs text-gray-500 dark:text-gray-400">{lot.weightPerThan.toFixed(2)} kg/than</p>

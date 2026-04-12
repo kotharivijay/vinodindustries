@@ -76,7 +76,7 @@ export async function GET() {
     // Fetch opening balance weight data for carry-forward lots
     const obEntries = await db.lotOpeningBalance.findMany({
       where: { lotNo: { in: Array.from(allLotNos) } },
-      select: { lotNo: true, weight: true, grayMtr: true, greyThan: true, quality: true },
+      select: { lotNo: true, weight: true, grayMtr: true, greyThan: true, quality: true, marka: true },
     })
     const obMap = new Map<string, { weight: string | null; grayMtr: number; than: number; quality: string | null }>()
     for (const o of obEntries) {
@@ -108,11 +108,25 @@ export async function GET() {
       return 0
     }
 
+    // Build marka map from grey + OB
+    const greyMarkaMap = new Map<string, string>()
+    const greyWithMarka = await prisma.greyEntry.findMany({
+      where: { lotNo: { in: Array.from(allLotNos) }, marka: { not: null } },
+      select: { lotNo: true, marka: true },
+    })
+    for (const g of greyWithMarka) { if (g.marka) greyMarkaMap.set(g.lotNo, g.marka) }
+    for (const o of obEntries) { if (o.marka && !greyMarkaMap.has(o.lotNo)) greyMarkaMap.set(o.lotNo, o.marka) }
+
+    // Get Pali PC Job party IDs
+    const paliParties = await prisma.party.findMany({ where: { tag: 'Pali PC Job' }, select: { id: true } })
+    const paliIds = new Set(paliParties.map(p => p.id))
+
     // Build response — exclude batches already linked to a DyeingEntry
     const result = []
     for (const prog of programs) {
       for (const batch of prog.batches) {
         if (usedBatchIds.has(batch.id)) continue
+        const isPali = batch.lots.some((l: any) => l.partyId && paliIds.has(l.partyId))
         const lots = batch.lots.map(lot => {
           const wpt = calcWeightPerThan(lot.lotNo)
           return {
@@ -120,6 +134,7 @@ export async function GET() {
             than: lot.than,
             weightPerThan: Math.round(wpt * 100) / 100,
             quality: qualityMap.get(lot.lotNo) ?? '',
+            marka: greyMarkaMap.get(lot.lotNo) ?? null,
           }
         })
 
@@ -154,8 +169,7 @@ export async function GET() {
           totalThan,
           totalWeight: Math.round(totalWeight * 100) / 100,
           recipe,
-          isPcJob: prog.isPcJob ?? false,
-          marka: batch.marka ?? null,
+          isPcJob: isPali,
         })
       }
     }
