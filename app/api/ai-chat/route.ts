@@ -588,6 +588,123 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
       amount: s.amount,
     }))
   },
+
+  dyeing_cost_report: async ({ party }: any) => {
+    if (!party) return { error: 'Party name required' }
+
+    // Find party
+    const partyRecord = await prisma.party.findFirst({ where: { name: { contains: party, mode: 'insensitive' } } })
+    if (!partyRecord) return { error: `Party "${party}" not found` }
+
+    // Get all lot numbers for this party from grey + OB
+    const greyLots = await prisma.greyEntry.findMany({
+      where: { partyId: partyRecord.id },
+      select: { lotNo: true },
+      distinct: ['lotNo'],
+    })
+    const obLots = await db.lotOpeningBalance.findMany({
+      where: { party: { equals: partyRecord.name, mode: 'insensitive' } },
+      select: { lotNo: true },
+    })
+    const allLotNos = [...new Set([...greyLots.map((g: any) => g.lotNo), ...obLots.map((o: any) => o.lotNo)])]
+    if (allLotNos.length === 0) return { party: partyRecord.name, error: 'No lots found for this party' }
+
+    // Get dyeing entries for these lots
+    const entries = await db.dyeingEntry.findMany({
+      where: {
+        OR: [
+          { lotNo: { in: allLotNos } },
+          { lots: { some: { lotNo: { in: allLotNos } } } },
+        ],
+      },
+      include: {
+        chemicals: true,
+        lots: true,
+        foldBatch: {
+          select: {
+            batchNo: true,
+            foldProgram: { select: { foldNo: true } },
+            shade: { select: { name: true, description: true } },
+            shadeName: true,
+            shadeDescription: true,
+          },
+        },
+      },
+      orderBy: { date: 'desc' },
+    })
+
+    if (entries.length === 0) return { party: partyRecord.name, totalSlips: 0, message: 'No dyeing entries found' }
+
+    // Overall summary
+    let totalThan = 0
+    let totalCost = 0
+    const foldMap = new Map<string, { slips: number; than: number; cost: number; batches: any[] }>()
+    const shadeMap = new Map<string, { than: number; cost: number; count: number }>()
+
+    for (const e of entries) {
+      const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
+      const entryThan = lots.reduce((s: number, l: any) => s + l.than, 0)
+      const entryCost = (e.chemicals || []).reduce((s: number, c: any) => s + (c.cost ?? 0), 0)
+      totalThan += entryThan
+      totalCost += entryCost
+
+      // Fold grouping
+      const foldNo = e.foldBatch?.foldProgram?.foldNo || 'No Fold'
+      if (!foldMap.has(foldNo)) foldMap.set(foldNo, { slips: 0, than: 0, cost: 0, batches: [] })
+      const fg = foldMap.get(foldNo)!
+      fg.slips++
+      fg.than += entryThan
+      fg.cost += entryCost
+
+      const shadeName = e.shadeName || e.foldBatch?.shade?.name || e.foldBatch?.shadeName || 'Unknown'
+      const shadeDesc = e.foldBatch?.shade?.description || e.foldBatch?.shadeDescription || ''
+      const batchNo = e.foldBatch?.batchNo || null
+
+      fg.batches.push({
+        batchNo,
+        slipNo: e.slipNo,
+        shade: shadeName + (shadeDesc ? ` — ${shadeDesc}` : ''),
+        than: entryThan,
+        cost: entryCost,
+        costPerThan: entryThan > 0 ? Math.round(entryCost / entryThan * 100) / 100 : 0,
+      })
+
+      // Shade grouping
+      const shadeKey = shadeName + (shadeDesc ? ` — ${shadeDesc}` : '')
+      if (!shadeMap.has(shadeKey)) shadeMap.set(shadeKey, { than: 0, cost: 0, count: 0 })
+      const sg = shadeMap.get(shadeKey)!
+      sg.than += entryThan
+      sg.cost += entryCost
+      sg.count++
+    }
+
+    const folds = Array.from(foldMap.entries()).map(([foldNo, data]) => ({
+      foldNo,
+      slips: data.slips,
+      than: data.than,
+      cost: Math.round(data.cost),
+      avgPerThan: data.than > 0 ? Math.round(data.cost / data.than * 100) / 100 : 0,
+      batches: data.batches.sort((a: any, b: any) => (a.batchNo || 0) - (b.batchNo || 0)),
+    })).sort((a, b) => parseInt(a.foldNo) - parseInt(b.foldNo) || a.foldNo.localeCompare(b.foldNo))
+
+    const shades = Array.from(shadeMap.entries()).map(([shade, data]) => ({
+      shade,
+      than: data.than,
+      cost: Math.round(data.cost),
+      avgPerThan: data.than > 0 ? Math.round(data.cost / data.than * 100) / 100 : 0,
+      count: data.count,
+    })).sort((a, b) => b.cost - a.cost)
+
+    return {
+      party: partyRecord.name,
+      totalSlips: entries.length,
+      totalThan,
+      totalCost: Math.round(totalCost),
+      avgCostPerThan: totalThan > 0 ? Math.round(totalCost / totalThan * 100) / 100 : 0,
+      folds,
+      shades,
+    }
+  },
 }
 
 // ─── Gemini API Call ───────────────────────────────────────────────────────
@@ -650,6 +767,7 @@ Available functions to query data:
 - fold_available_lots(party, quality?, tag?): Get available lots for fold creation filtered by party, quality, and/or tag (e.g. "Pali PC Job", "Local")
 - create_fold(foldNo, date, batches): Create a new fold program
 - sales_data(party?, dateFrom?, dateTo?): Tally sales data
+- dyeing_cost_report(party): Dyeing cost report for a party — overall avg, fold-wise with batch details, shade-wise cost
 
 FOLD CREATION RULES:
 - When user wants to create a fold, call fold_available_lots first with the party name they mention
@@ -856,6 +974,38 @@ function formatResult(fn: string, args: any, data: any): string {
         r += `\n  ${fmtDate(s.date)} | ${s.party} | ${s.item || '-'} | ${fmtINR(s.amount || 0)}`
       }
       if (data.length > 10) r += `\n  ...and ${data.length - 10} more`
+      return r
+    }
+
+    case 'dyeing_cost_report': {
+      if (data.error) return data.error
+      if (data.totalSlips === 0) return `No dyeing entries found for ${data.party}.`
+
+      let r = `Dyeing Cost Report: ${data.party}\n`
+      r += `━━━━━━━━━━━━━━━━━━━━\n`
+      r += `\nOverall Summary:\n`
+      r += `  Slips: ${data.totalSlips} | Than: ${fmt(data.totalThan)} | Cost: ${fmtINR(data.totalCost)}\n`
+      r += `  Avg Cost/Than: ${fmtINR(data.avgCostPerThan)}\n`
+
+      if (data.folds?.length > 0) {
+        r += `\nFold-wise:\n`
+        for (const f of data.folds) {
+          r += `\n📁 Fold ${f.foldNo} — ${f.slips} slips, ${fmt(f.than)}T, ${fmtINR(f.cost)}, Avg: ${fmtINR(f.avgPerThan)}/T\n`
+          for (const b of f.batches) {
+            const bLabel = b.batchNo ? `B${b.batchNo}` : `Slip ${b.slipNo}`
+            r += `  ${bLabel} | ${b.shade} | ${b.than}T | ${fmtINR(b.cost)} | ${fmtINR(b.costPerThan)}/T\n`
+          }
+        }
+      }
+
+      if (data.shades?.length > 0) {
+        r += `\nShade-wise Cost:\n`
+        for (const s of data.shades.slice(0, 15)) {
+          r += `  ${s.shade} — ${s.than}T, ${fmtINR(s.cost)}, Avg: ${fmtINR(s.avgPerThan)}/T\n`
+        }
+        if (data.shades.length > 15) r += `  ...and ${data.shades.length - 15} more shades\n`
+      }
+
       return r
     }
 
