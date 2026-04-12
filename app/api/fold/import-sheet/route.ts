@@ -300,11 +300,6 @@ export async function POST(req: NextRequest) {
         quality = await prisma.quality.create({ data: { name: fold.qualityName } })
       }
 
-      // Find shade — shadeNo is the shade master name (e.g., "PS/RC/1"), shadeName is the description (e.g., "Super White")
-      const shadeNo = fold.batches[0]?.shadeNo || null  // shade name in master
-      const shadeDesc = fold.batches[0]?.shadeName || null  // shade description
-      const shade = shadeNo ? await db.shade.findFirst({ where: { name: { equals: shadeNo, mode: 'insensitive' } } }) : null
-
       // Check if fold already exists
       const existing = await db.foldProgram.findFirst({ where: { foldNo: fold.foldNo } })
       if (existing) {
@@ -312,7 +307,15 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // Create fold program
+      // Pre-fetch all unique shades for this fold's batches
+      const uniqueShadeNos = [...new Set(fold.batches.map(b => b.shadeNo).filter(Boolean))]
+      const shadeMap = new Map<string, number>()
+      for (const sn of uniqueShadeNos) {
+        const shade = await db.shade.findFirst({ where: { name: { equals: sn, mode: 'insensitive' } } })
+        if (shade) shadeMap.set(sn.toLowerCase().trim(), shade.id)
+      }
+
+      // Create fold program with per-batch shade
       await db.foldProgram.create({
         data: {
           foldNo: fold.foldNo,
@@ -321,9 +324,9 @@ export async function POST(req: NextRequest) {
           batches: {
             create: fold.batches.map((b, bi) => ({
               batchNo: bi + 1,
-              shadeId: shade?.id ?? null,
-              shadeName: shadeNo || shadeDesc || null,
-              shadeDescription: shadeDesc || null,
+              shadeId: shadeMap.get(b.shadeNo.toLowerCase().trim()) ?? null,
+              shadeName: b.shadeNo || b.shadeName || null,
+              shadeDescription: b.shadeName || null,
               lots: {
                 create: b.lots.map(l => ({
                   lotNo: l.lotNo,
