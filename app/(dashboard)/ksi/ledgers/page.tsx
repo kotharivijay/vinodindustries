@@ -52,8 +52,31 @@ export default function KSILedgerMasterPage() {
   const [showSyncLog, setShowSyncLog] = useState(false)
   const [tagDropId, setTagDropId] = useState<number | null>(null)
   const [tagFilter, setTagFilter] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkTagging, setBulkTagging] = useState(false)
 
   const DEFAULT_TAGS = ['Dyes & Auxiliary', 'Machinery', 'Packing Material', 'Fuel', 'Transport', 'Employee', 'Customer', 'Pali PC Job']
+
+  function toggleSelect(id: number) {
+    setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
+
+  function selectAll() {
+    if (selectedIds.size === ledgers.length) setSelectedIds(new Set())
+    else setSelectedIds(new Set(ledgers.map(l => l.id)))
+  }
+
+  async function bulkTag(tag: string) {
+    if (selectedIds.size === 0) return
+    setBulkTagging(true)
+    await fetch('/api/tally/ledger-tags', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add-tag', ledgerIds: Array.from(selectedIds), tag }),
+    })
+    setLedgers(prev => prev.map(l => selectedIds.has(l.id) && !(l.tags || []).includes(tag) ? { ...l, tags: [...(l.tags || []), tag] } : l))
+    setBulkTagging(false)
+    setSelectedIds(new Set())
+  }
 
   async function toggleTag(ledgerId: number, tag: string, currentTags: string[]) {
     const hasTag = currentTags.includes(tag)
@@ -176,7 +199,33 @@ export default function KSILedgerMasterPage() {
         </select>
       </div>
 
-      <p className="text-xs text-gray-500 mb-3">Showing {ledgers.length} of {total}</p>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={ledgers.length > 0 && selectedIds.size === ledgers.length} onChange={selectAll}
+              className="w-3.5 h-3.5 rounded border-gray-600 text-purple-600" />
+            <span className="text-xs text-gray-500">Select All</span>
+          </label>
+          <span className="text-xs text-gray-500">Showing {ledgers.length} of {total}</span>
+        </div>
+        {selectedIds.size > 0 && (
+          <span className="text-xs text-purple-400 font-medium">{selectedIds.size} selected</span>
+        )}
+      </div>
+
+      {/* Bulk tag bar */}
+      {selectedIds.size > 0 && (
+        <div className="mb-3 bg-purple-900/30 border border-purple-700 rounded-xl px-4 py-2.5 flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-purple-300 font-medium">{selectedIds.size} selected — Add tag:</span>
+          {DEFAULT_TAGS.map(tag => (
+            <button key={tag} onClick={() => bulkTag(tag)} disabled={bulkTagging}
+              className="text-[10px] px-2 py-0.5 rounded border bg-purple-800/50 text-purple-300 border-purple-600 hover:bg-purple-700 disabled:opacity-50 font-medium">
+              + {tag}
+            </button>
+          ))}
+          <button onClick={() => setSelectedIds(new Set())} className="text-[10px] text-gray-400 hover:text-gray-200 ml-auto">Clear</button>
+        </div>
+      )}
 
       {/* Ledger Cards */}
       {loading ? (
@@ -197,8 +246,12 @@ export default function KSILedgerMasterPage() {
               <div key={ledger.id} ref={isLast ? lastItemRef : undefined}
                 className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
                 <div className="flex items-start">
+                  <label className="flex items-center pl-3 pt-3.5 cursor-pointer" onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedIds.has(ledger.id)} onChange={() => toggleSelect(ledger.id)}
+                      className="w-3.5 h-3.5 rounded border-gray-600 text-purple-600" />
+                  </label>
                   <button onClick={() => setExpandedId(expanded ? null : ledger.id)}
-                    className="flex-1 text-left px-4 py-3 flex items-start gap-3 hover:bg-gray-700 transition">
+                    className="flex-1 text-left px-3 py-3 flex items-start gap-3 hover:bg-gray-700 transition">
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-100 text-sm truncate">{ledger.name}</p>
                       {ledger.parent && <p className="text-xs text-gray-500 mt-0.5">{ledger.parent}</p>}
