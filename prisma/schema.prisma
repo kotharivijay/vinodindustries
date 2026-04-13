@@ -861,6 +861,9 @@ model InventoryItem {
   updatedAt    DateTime               @updatedAt
   transactions InventoryTransaction[]
   physicalStock PhysicalStockEntry[]
+  aliases      InventoryItemAlias[]
+  poItems      PurchaseOrderItem[]
+  deliveryItems DeliveryChallanItem[]
   @@unique([name, categoryId])
 }
 
@@ -886,4 +889,70 @@ model PhysicalStockEntry {
   quantity   Float          // actual quantity found
   notes      String?
   createdAt  DateTime       @default(now())
+}
+
+// ─── Purchase Order ───────────────────────────────────────────────────────────
+
+model PurchaseOrder {
+  id         Int                 @id @default(autoincrement())
+  poNo       String              @unique
+  date       DateTime
+  partyName  String
+  partyMobile String?
+  status     String              @default("draft") // draft | sent | partial | delivered | closed
+  notes      String?
+  items      PurchaseOrderItem[]
+  deliveries DeliveryChallan[]
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+}
+
+model PurchaseOrderItem {
+  id       Int            @id @default(autoincrement())
+  poId     Int
+  po       PurchaseOrder  @relation(fields: [poId], references: [id], onDelete: Cascade)
+  itemId   Int
+  item     InventoryItem  @relation(fields: [itemId], references: [id])
+  quantity Float
+  rate     Float?
+  notes    String?
+}
+
+// ─── Delivery Challan (Inward) ────────────────────────────────────────────────
+
+model DeliveryChallan {
+  id          Int                   @id @default(autoincrement())
+  challanNo   String
+  date        DateTime
+  partyName   String
+  poId        Int?                  // optional link to PO
+  po          PurchaseOrder?        @relation(fields: [poId], references: [id])
+  notes       String?
+  items       DeliveryChallanItem[]
+  createdAt   DateTime              @default(now())
+}
+
+model DeliveryChallanItem {
+  id              Int            @id @default(autoincrement())
+  challanId       Int
+  challan         DeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  itemId          Int
+  item            InventoryItem  @relation(fields: [itemId], references: [id])
+  itemDescription String?        // party's name for this item (alias)
+  quantity        Float
+  rate            Float?
+  amount          Float?
+}
+
+// ─── Item Alias (party-wise item names) ───────────────────────────────────────
+
+model InventoryItemAlias {
+  id        Int           @id @default(autoincrement())
+  itemId    Int
+  item      InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  partyName String
+  alias     String
+  usedAt    DateTime      @default(now()) // for "most recently used" sorting
+  createdAt DateTime      @default(now())
+  @@unique([alias, partyName])
 }
