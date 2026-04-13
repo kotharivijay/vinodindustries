@@ -621,6 +621,7 @@ model TallyLedger {
   stateCode      String?
   openingBalance Float?
   closingBalance Float?
+  tags           String[] @default([])
   lastSynced     DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

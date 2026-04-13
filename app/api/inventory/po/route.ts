@@ -15,9 +15,12 @@ export async function GET(req: NextRequest) {
 
   // Return Tally ledger names for party selection
   if (action === 'ledgers') {
+    const tagFilter = req.nextUrl.searchParams.get('tag')
+    const where: any = { firmCode: 'KSI' }
+    if (tagFilter) where.tags = { has: tagFilter }
     const ledgers = await db.tallyLedger.findMany({
-      where: { firmCode: 'KSI' },
-      select: { name: true, parent: true, mobileNos: true },
+      where,
+      select: { name: true, parent: true, mobileNos: true, tags: true },
       orderBy: { name: 'asc' },
     })
     return NextResponse.json(ledgers)

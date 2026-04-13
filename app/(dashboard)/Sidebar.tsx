@@ -60,6 +60,7 @@ const ksiNavGroups = [
       { href: '/ksi/outstanding', label: 'Outstanding', icon: '💰' },
       { href: '/ksi/sales', label: 'Sales Register', icon: '📈' },
       { href: '/ksi/ledgers', label: 'Ledger Master', icon: '📒' },
+      { href: '/ksi/ledger-tags', label: 'Ledger Tags', icon: '🏷️' },
     ],
   },
   {
