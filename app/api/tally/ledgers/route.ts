@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { viPrisma } from '@/lib/prisma'
+import { prisma, viPrisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   const page = parseInt(req.nextUrl.searchParams.get('page') || '1') || 1
   const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '50') || 50, 200)
 
-  const db = viPrisma as any
+  const db = (firm === 'KSI' ? prisma : viPrisma) as any
   try {
     const where: any = {}
     if (firm) where.firmCode = firm

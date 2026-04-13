@@ -14,6 +14,7 @@ interface Ledger {
   panNo: string | null
   mobileNos: string | null
   state: string | null
+  tags: string[]
   lastSynced: string | null
 }
 
@@ -49,6 +50,20 @@ export default function KSILedgerMasterPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncLog, setSyncLog] = useState<string[]>([])
   const [showSyncLog, setShowSyncLog] = useState(false)
+  const [tagDropId, setTagDropId] = useState<number | null>(null)
+  const [tagFilter, setTagFilter] = useState('')
+
+  const DEFAULT_TAGS = ['Dyes & Auxiliary', 'Machinery', 'Packing Material', 'Fuel', 'Transport', 'Employee', 'Customer', 'Pali PC Job']
+
+  async function toggleTag(ledgerId: number, tag: string, currentTags: string[]) {
+    const hasTag = currentTags.includes(tag)
+    await fetch('/api/tally/ledger-tags', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: hasTag ? 'remove-tag' : 'add-tag', ledgerIds: [ledgerId], tag }),
+    })
+    setLedgers(prev => prev.map(l => l.id === ledgerId ? { ...l, tags: hasTag ? l.tags.filter(t => t !== tag) : [...l.tags, tag] } : l))
+    setTagDropId(null)
+  }
 
   const observerRef = useRef<IntersectionObserver | null>(null)
   const lastItemRef = useCallback((node: HTMLDivElement | null) => {
@@ -187,6 +202,30 @@ export default function KSILedgerMasterPage() {
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-100 text-sm truncate">{ledger.name}</p>
                       {ledger.parent && <p className="text-xs text-gray-500 mt-0.5">{ledger.parent}</p>}
+                      {/* Tags */}
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {(ledger.tags || []).map(tag => (
+                          <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded border bg-purple-900/30 text-purple-300 border-purple-800">{tag}</span>
+                        ))}
+                        <button onClick={e => { e.stopPropagation(); setTagDropId(tagDropId === ledger.id ? null : ledger.id) }}
+                          className="text-[9px] px-1.5 py-0.5 rounded border border-dashed border-gray-600 text-gray-500 hover:text-purple-400 hover:border-purple-600">
+                          + tag
+                        </button>
+                      </div>
+                      {/* Tag dropdown */}
+                      {tagDropId === ledger.id && (
+                        <div className="mt-1 flex flex-wrap gap-1" onClick={e => e.stopPropagation()}>
+                          {DEFAULT_TAGS.map(tag => {
+                            const has = (ledger.tags || []).includes(tag)
+                            return (
+                              <button key={tag} onClick={() => toggleTag(ledger.id, tag, ledger.tags || [])}
+                                className={`text-[9px] px-1.5 py-0.5 rounded border transition ${has ? 'bg-purple-600 text-white border-purple-600' : 'bg-gray-800 text-gray-400 border-gray-600 hover:border-purple-500'}`}>
+                                {has ? '✓ ' : ''}{tag}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
                       {!expanded && (ledger.gstNo || ledger.mobileNos) && (
                         <div className="flex flex-wrap gap-x-3 mt-1">
                           {ledger.gstNo && <span className="text-xs text-gray-500">GST: {ledger.gstNo}</span>}
