@@ -53,10 +53,41 @@ export default function ConsumptionReportPage() {
     return getDateRange(period, offset)
   }, [period, offset, customFrom, customTo])
 
+  const [chemSearch, setChemSearch] = useState('')
+  const [dyeSort, setDyeSort] = useState<{ field: 'name' | 'consumed' | 'cost'; dir: 'asc' | 'desc' }>({ field: 'cost', dir: 'desc' })
+  const [auxSort, setAuxSort] = useState<{ field: 'name' | 'consumed' | 'cost'; dir: 'asc' | 'desc' }>({ field: 'cost', dir: 'desc' })
+
   const { data, isLoading } = useSWR(
     range.from && range.to ? `/api/dyeing/consumption-report?from=${range.from}&to=${range.to}` : null,
     fetcher, { revalidateOnFocus: false }
   )
+
+  function sortItems(items: any[], sort: { field: string; dir: string }) {
+    return [...items].sort((a, b) => {
+      const va = sort.field === 'name' ? a.name.toLowerCase() : a[sort.field]
+      const vb = sort.field === 'name' ? b.name.toLowerCase() : b[sort.field]
+      return sort.dir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1)
+    })
+  }
+
+  function toggleSort(current: typeof dyeSort, field: 'name' | 'consumed' | 'cost') {
+    if (current.field === field) return { field, dir: current.dir === 'asc' ? 'desc' as const : 'asc' as const }
+    return { field, dir: field === 'name' ? 'asc' as const : 'desc' as const }
+  }
+
+  const filteredDyes = useMemo(() => {
+    if (!data?.dyes) return []
+    const q = chemSearch.toLowerCase()
+    const filtered = q ? data.dyes.filter((d: any) => d.name.toLowerCase().includes(q)) : data.dyes
+    return sortItems(filtered, dyeSort)
+  }, [data, chemSearch, dyeSort])
+
+  const filteredAux = useMemo(() => {
+    if (!data?.auxiliary) return []
+    const q = chemSearch.toLowerCase()
+    const filtered = q ? data.auxiliary.filter((a: any) => a.name.toLowerCase().includes(q)) : data.auxiliary
+    return sortItems(filtered, auxSort)
+  }, [data, chemSearch, auxSort])
 
   function navigate(dir: number) {
     if (period === 'today' || period === 'yesterday') setOffset(prev => prev + dir)
@@ -99,6 +130,11 @@ export default function ConsumptionReportPage() {
         )}
       </div>
 
+      {/* Search */}
+      <input type="text" placeholder="🔍 Search chemical name..."
+        value={chemSearch} onChange={e => setChemSearch(e.target.value)}
+        className="w-full mb-4 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400" />
+
       {isLoading && <div className="p-12 text-center text-gray-400">Loading...</div>}
 
       {data && !isLoading && (
@@ -130,21 +166,21 @@ export default function ConsumptionReportPage() {
           </div>
 
           {/* Dyes */}
-          {data.dyes.length > 0 && (
+          {filteredDyes.length > 0 && (
             <div>
-              <h2 className="text-sm font-bold text-purple-700 dark:text-purple-400 mb-2">Dyes ({data.dyes.length})</h2>
+              <h2 className="text-sm font-bold text-purple-700 dark:text-purple-400 mb-2">Dyes ({filteredDyes.length})</h2>
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-purple-50 dark:bg-purple-900/20 border-b border-gray-200 dark:border-gray-700">
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Chemical</th>
-                      <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Consumed</th>
+                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:text-purple-600" onClick={() => setDyeSort(toggleSort(dyeSort, 'name'))}>Chemical {dyeSort.field === 'name' ? (dyeSort.dir === 'asc' ? '↑' : '↓') : '↕'}</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:text-purple-600" onClick={() => setDyeSort(toggleSort(dyeSort, 'consumed'))}>Consumed {dyeSort.field === 'consumed' ? (dyeSort.dir === 'asc' ? '↑' : '↓') : '↕'}</th>
                       <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Rate</th>
-                      <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Cost</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:text-purple-600" onClick={() => setDyeSort(toggleSort(dyeSort, 'cost'))}>Cost {dyeSort.field === 'cost' ? (dyeSort.dir === 'asc' ? '↑' : '↓') : '↕'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {data.dyes.map((d: any, i: number) => (
+                    {filteredDyes.map((d: any, i: number) => (
                       <tr key={i}>
                         <td className="px-3 py-2 text-gray-700 dark:text-gray-200 font-medium">{d.name}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{d.consumed} {d.unit}</td>
@@ -156,7 +192,7 @@ export default function ConsumptionReportPage() {
                   <tfoot>
                     <tr className="bg-purple-50 dark:bg-purple-900/20 font-bold">
                       <td className="px-3 py-2 text-gray-700 dark:text-gray-200" colSpan={3}>Dyes Total</td>
-                      <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">{fmtINR(data.dyeTotal)}</td>
+                      <td className="px-3 py-2 text-right text-purple-600 dark:text-purple-400">{fmtINR(filteredDyes.reduce((s: number, d: any) => s + d.cost, 0))}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -165,21 +201,21 @@ export default function ConsumptionReportPage() {
           )}
 
           {/* Auxiliary */}
-          {data.auxiliary.length > 0 && (
+          {filteredAux.length > 0 && (
             <div>
-              <h2 className="text-sm font-bold text-teal-700 dark:text-teal-400 mb-2">Auxiliary ({data.auxiliary.length})</h2>
+              <h2 className="text-sm font-bold text-teal-700 dark:text-teal-400 mb-2">Auxiliary ({filteredAux.length})</h2>
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-teal-50 dark:bg-teal-900/20 border-b border-gray-200 dark:border-gray-700">
-                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Chemical</th>
-                      <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Consumed</th>
+                      <th className="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:text-teal-600" onClick={() => setAuxSort(toggleSort(auxSort, 'name'))}>Chemical {auxSort.field === 'name' ? (auxSort.dir === 'asc' ? '↑' : '↓') : '↕'}</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:text-teal-600" onClick={() => setAuxSort(toggleSort(auxSort, 'consumed'))}>Consumed {auxSort.field === 'consumed' ? (auxSort.dir === 'asc' ? '↑' : '↓') : '↕'}</th>
                       <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Rate</th>
-                      <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Cost</th>
+                      <th className="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300 cursor-pointer hover:text-teal-600" onClick={() => setAuxSort(toggleSort(auxSort, 'cost'))}>Cost {auxSort.field === 'cost' ? (auxSort.dir === 'asc' ? '↑' : '↓') : '↕'}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {data.auxiliary.map((a: any, i: number) => (
+                    {filteredAux.map((a: any, i: number) => (
                       <tr key={i}>
                         <td className="px-3 py-2 text-gray-700 dark:text-gray-200 font-medium">{a.name}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{a.consumed} {a.unit}</td>
@@ -191,7 +227,7 @@ export default function ConsumptionReportPage() {
                   <tfoot>
                     <tr className="bg-teal-50 dark:bg-teal-900/20 font-bold">
                       <td className="px-3 py-2 text-gray-700 dark:text-gray-200" colSpan={3}>Auxiliary Total</td>
-                      <td className="px-3 py-2 text-right text-teal-600 dark:text-teal-400">{fmtINR(data.auxTotal)}</td>
+                      <td className="px-3 py-2 text-right text-teal-600 dark:text-teal-400">{fmtINR(filteredAux.reduce((s: number, a: any) => s + a.cost, 0))}</td>
                     </tr>
                   </tfoot>
                 </table>
