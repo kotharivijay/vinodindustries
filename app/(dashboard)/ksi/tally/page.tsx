@@ -95,7 +95,7 @@ export default function KSITallyDashboard() {
     setShowSyncLog(true)
 
     const routes: Record<string, string> = {
-      ledgers: '/api/tally/sync-stream?firm=KSI',
+      ledgers: '/api/tally/ledger-sync',
       outstanding: '/api/tally/outstanding-sync?firm=KSI',
       sales: '/api/tally/sales-sync?firm=KSI',
       all: '',
