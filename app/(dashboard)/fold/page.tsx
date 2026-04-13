@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -388,6 +388,12 @@ function ImportFoldsModal({ onClose, onImported }: { onClose: () => void; onImpo
 export default function FoldListPage() {
   const router = useRouter()
   const { data: programs, isLoading, mutate } = useSWR<FoldProgram[]>('/api/fold', fetcher)
+  const { data: validations } = useSWR<any[]>('/api/fold/validate', fetcher, { revalidateOnFocus: false })
+  const validationMap = useMemo(() => {
+    const map = new Map<number, any>()
+    if (validations) for (const v of validations) map.set(v.foldId, v)
+    return map
+  }, [validations])
   const [search, setSearch] = useState('')
   const [showImport, setShowImport] = useState(false)
   const [sortBy, setSortBy] = useState<'fold-asc' | 'fold-desc' | 'date-desc' | 'date-asc'>('fold-asc')
@@ -610,6 +616,17 @@ export default function FoldListPage() {
                   </div>
                   <p className="text-xs text-gray-400 dark:text-gray-500">
                     {new Date(p.date).toLocaleDateString('en-IN')} &middot; {p.batches.length} batch{p.batches.length !== 1 ? 'es' : ''} &middot; {p.batches.reduce((s, b) => s + b.lots.length, 0)} lots
+                    {(() => {
+                      const v = validationMap.get(p.id)
+                      if (!v) return null
+                      if (v.status === 'valid') return <span className="ml-1 text-green-500">✅</span>
+                      return (
+                        <>
+                          {v.errorCount > 0 && <span className="ml-1 text-red-500">❌ {v.errorCount}</span>}
+                          {v.warningCount > 0 && <span className="ml-1 text-amber-500">⚠️ {v.warningCount}</span>}
+                        </>
+                      )
+                    })()}
                   </p>
                 </div>
                 <div className="text-right shrink-0">

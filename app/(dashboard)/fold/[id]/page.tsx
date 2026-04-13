@@ -251,7 +251,9 @@ export default function FoldDetailPage() {
   const id = params.id as string
   const { data: program, isLoading, mutate } = useSWR<FoldProgram>(`/api/fold/${id}`, fetcher)
   const { data: shades = [] } = useSWR<ShadeOption[]>('/api/shades', fetcher)
+  const { data: validation, mutate: revalidate } = useSWR<any>(`/api/fold/validate?foldId=${id}`, fetcher, { revalidateOnFocus: false })
   const [confirming, setConfirming] = useState(false)
+  const [creatingShade, setCreatingShade] = useState<string | null>(null)
 
   // Fetch stock data for lot picker
   const { data: stockData } = useSWR<{ parties: { party: string; lots: StockLot[] }[] }>('/api/stock', fetcher)
@@ -372,6 +374,73 @@ export default function FoldDetailPage() {
       {program.notes && (
         <div className="mb-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg px-4 py-2 text-sm text-gray-700 dark:text-yellow-300">
           {program.notes}
+        </div>
+      )}
+
+      {/* Validation Issues */}
+      {validation && (validation.errorCount > 0 || validation.warningCount > 0) && (
+        <div className={`mb-4 rounded-xl border p-4 ${validation.errorCount > 0 ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800' : 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-bold text-gray-700 dark:text-gray-200">
+              {validation.errorCount > 0 ? '❌' : '⚠️'} Validation Issues ({validation.errorCount + validation.warningCount})
+            </h3>
+            <button onClick={() => revalidate()} className="text-[10px] text-purple-600 dark:text-purple-400 font-medium hover:underline">Re-validate</button>
+          </div>
+
+          {/* Missing shades */}
+          {validation.shadeIssues?.length > 0 && (
+            <div className="space-y-1 mb-2">
+              {validation.shadeIssues.map((s: any, i: number) => (
+                <div key={i} className="flex items-center justify-between text-xs bg-white dark:bg-gray-800 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-red-500">❌</span>
+                    <span className="text-gray-700 dark:text-gray-200">Shade &quot;{s.shadeName}&quot; not in master</span>
+                    <span className="text-[10px] text-gray-400">(B{s.batchNo})</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setCreatingShade(s.shadeName)
+                      await fetch('/api/shades', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name: s.shadeName }),
+                      })
+                      setCreatingShade(null)
+                      revalidate()
+                    }}
+                    disabled={creatingShade === s.shadeName}
+                    className="text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded font-medium hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {creatingShade === s.shadeName ? '...' : 'Create Shade'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Lot stock issues */}
+          {validation.lotIssues?.length > 0 && (
+            <div className="space-y-1">
+              {validation.lotIssues.map((l: any, i: number) => (
+                <div key={i} className="flex items-center justify-between text-xs bg-white dark:bg-gray-800 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span>{l.type === 'not_found' ? '❌' : '⚠️'}</span>
+                    <span className="font-medium text-gray-700 dark:text-gray-200">{l.lotNo}</span>
+                    <span className="text-gray-400">
+                      {l.type === 'not_found' ? 'not found in stock' : `needs ${l.needed}T, available ${l.available}T (stock: ${l.stock}T)`}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {validation && validation.status === 'valid' && (
+        <div className="mb-4 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-xl px-4 py-2 flex items-center justify-between">
+          <span className="text-xs font-medium text-green-700 dark:text-green-400">✅ All lots and shades validated</span>
+          <button onClick={() => revalidate()} className="text-[10px] text-purple-600 dark:text-purple-400 font-medium hover:underline">Re-validate</button>
         </div>
       )}
 
