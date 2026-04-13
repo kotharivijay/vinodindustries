@@ -5,19 +5,17 @@ import { authOptions } from '@/lib/auth'
 
 export const maxDuration = 60
 
-const TALLY_COMPANY = 'Kothari Synthetic Industries -( from 2023)'
-
 function decodeXML(s: string): string {
   return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#13;/g, '').replace(/&#10;/g, '').trim()
 }
 
-function buildLedgerXML(): string {
+function buildLedgerXML(tallyCompany: string): string {
   return `<ENVELOPE>
 <HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>LedgerExport</ID></HEADER>
 <BODY><DESC>
 <STATICVARIABLES>
 <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-<SVCURRENTCOMPANY>${TALLY_COMPANY}</SVCURRENTCOMPANY>
+<SVCURRENTCOMPANY>${tallyCompany}</SVCURRENTCOMPANY>
 </STATICVARIABLES>
 <TDL><TDLMESSAGE>
 <COLLECTION NAME="LedgerExport" ISMODIFY="No">
@@ -56,15 +54,18 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
   const start = Date.now()
   const db = prisma as any
 
-  const tunnelUrl = process.env.TALLY_TUNNEL_URL
-  if (!tunnelUrl) throw new Error('TALLY_TUNNEL_URL not configured')
+  // Load config from DB
+  const config = await db.tallyConfig.findUnique({ where: { firmCode: 'KSI' } })
+  const tunnelUrl = config?.tallyTunnelUrl || process.env.TALLY_TUNNEL_URL
+  const tallyCompany = config?.tallyCompanyName || 'Kothari Synthetic Industries -( from 2023)'
+  if (!tunnelUrl) throw new Error('TALLY_TUNNEL_URL not configured. Go to Tally Settings.')
 
   const headers: Record<string, string> = { 'Content-Type': 'text/xml' }
-  if (process.env.TALLY_API_SECRET) headers['X-Tally-Key'] = process.env.TALLY_API_SECRET
-  if (process.env.CF_ACCESS_CLIENT_ID) headers['CF-Access-Client-Id'] = process.env.CF_ACCESS_CLIENT_ID
-  if (process.env.CF_ACCESS_CLIENT_SECRET) headers['CF-Access-Client-Secret'] = process.env.CF_ACCESS_CLIENT_SECRET
+  if (config?.tallyApiSecret || process.env.TALLY_API_SECRET) headers['X-Tally-Key'] = config?.tallyApiSecret || process.env.TALLY_API_SECRET!
+  if (config?.cfAccessClientId || process.env.CF_ACCESS_CLIENT_ID) headers['CF-Access-Client-Id'] = config?.cfAccessClientId || process.env.CF_ACCESS_CLIENT_ID!
+  if (config?.cfAccessClientSecret || process.env.CF_ACCESS_CLIENT_SECRET) headers['CF-Access-Client-Secret'] = config?.cfAccessClientSecret || process.env.CF_ACCESS_CLIENT_SECRET!
 
-  const res = await fetch(tunnelUrl, { method: 'POST', headers, body: buildLedgerXML(), signal: AbortSignal.timeout(50000) })
+  const res = await fetch(tunnelUrl, { method: 'POST', headers, body: buildLedgerXML(tallyCompany), signal: AbortSignal.timeout(50000) })
   if (!res.ok) throw new Error(`Tally HTTP ${res.status} ${res.statusText}`)
 
   const xml = await res.text()

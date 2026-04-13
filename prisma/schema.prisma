@@ -959,6 +959,20 @@ model InventoryItemAlias {
 
 // ─── Tally Sync Log ───────────────────────────────────────────────────────────
 
+model TallyConfig {
+  id                  Int      @id @default(autoincrement())
+  firmCode            String   @unique
+  firmName            String
+  tallyCompanyName    String
+  tallyTunnelUrl      String?
+  cfAccessClientId    String?
+  cfAccessClientSecret String?
+  tallyApiSecret      String?
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
 model TallySyncLog {
   id        Int      @id @default(autoincrement())
   type      String   // "ledger" | "outstanding" | "sales"
