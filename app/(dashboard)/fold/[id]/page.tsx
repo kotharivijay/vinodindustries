@@ -255,6 +255,42 @@ export default function FoldDetailPage() {
   const [confirming, setConfirming] = useState(false)
   const [creatingShade, setCreatingShade] = useState<string | null>(null)
 
+  // Shade creation popup state
+  const [shadePopup, setShadePopup] = useState<string | null>(null)
+  const [shadeDesc, setShadeDesc] = useState('')
+  const [shadeRecipe, setShadeRecipe] = useState<{ chemicalId: string; name: string; quantity: string }[]>([])
+  const [shadeSaving, setShadeSaving] = useState(false)
+  const [chemSearch, setChemSearch] = useState('')
+  const [chemDropOpen, setChemDropOpen] = useState(false)
+  const { data: masterChemicals = [] } = useSWR<{ id: number; name: string; unit: string }[]>(shadePopup ? '/api/chemicals' : null, fetcher)
+
+  function openShadePopup(name: string) {
+    setShadePopup(name)
+    setShadeDesc('')
+    setShadeRecipe([])
+    setChemSearch('')
+  }
+
+  async function saveShade() {
+    if (!shadePopup) return
+    setShadeSaving(true)
+    await fetch('/api/shades', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: shadePopup,
+        description: shadeDesc || null,
+        recipeItems: shadeRecipe.filter(r => r.chemicalId && r.quantity).map(r => ({
+          chemicalId: parseInt(r.chemicalId),
+          quantity: parseFloat(r.quantity),
+        })),
+      }),
+    })
+    setShadeSaving(false)
+    setShadePopup(null)
+    revalidate()
+  }
+
   // Fetch stock data for lot picker
   const { data: stockData } = useSWR<{ parties: { party: string; lots: StockLot[] }[] }>('/api/stock', fetcher)
   const allStockLots = useMemo<StockLot[]>(() => {
@@ -398,20 +434,10 @@ export default function FoldDetailPage() {
                     <span className="text-[10px] text-gray-400">(B{s.batchNo})</span>
                   </div>
                   <button
-                    onClick={async () => {
-                      setCreatingShade(s.shadeName)
-                      await fetch('/api/shades', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name: s.shadeName }),
-                      })
-                      setCreatingShade(null)
-                      revalidate()
-                    }}
-                    disabled={creatingShade === s.shadeName}
-                    className="text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded font-medium hover:bg-purple-700 disabled:opacity-50"
+                    onClick={() => openShadePopup(s.shadeName)}
+                    className="text-[10px] bg-purple-600 text-white px-2 py-0.5 rounded font-medium hover:bg-purple-700"
                   >
-                    {creatingShade === s.shadeName ? '...' : 'Create Shade'}
+                    Create Shade
                   </button>
                 </div>
               ))}
@@ -536,6 +562,95 @@ export default function FoldDetailPage() {
         <span className="font-semibold">Grand Total</span>
         <span className="text-2xl font-bold">{totalThan} than</span>
       </div>
+
+      {/* Shade Creation Popup */}
+      {shadePopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShadePopup(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-5 space-y-3 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100">Create Shade</h2>
+              <button onClick={() => setShadePopup(null)} className="text-gray-400 text-xl">&times;</button>
+            </div>
+
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-0.5">Shade Name</label>
+              <input value={shadePopup} readOnly
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-gray-50 dark:bg-gray-700 dark:text-gray-100 font-medium" />
+            </div>
+
+            <div>
+              <label className="block text-[10px] text-gray-500 mb-0.5">Description</label>
+              <input value={shadeDesc} onChange={e => setShadeDesc(e.target.value)} placeholder="e.g. Dark Navy, Super White"
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100" />
+            </div>
+
+            {/* Recipe */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] text-gray-500 font-medium">Recipe (per 100 kg)</label>
+              </div>
+
+              {/* Add chemical */}
+              <div className="relative mb-2">
+                <input
+                  type="text" placeholder="Search chemical to add..."
+                  value={chemSearch}
+                  onChange={e => { setChemSearch(e.target.value); setChemDropOpen(true) }}
+                  onFocus={() => setChemDropOpen(true)}
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100"
+                />
+                {chemDropOpen && chemSearch && (
+                  <div className="absolute z-10 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-xl max-h-40 overflow-y-auto">
+                    {masterChemicals
+                      .filter((c: any) => c.name.toLowerCase().includes(chemSearch.toLowerCase()))
+                      .filter((c: any) => !shadeRecipe.some(r => r.chemicalId === String(c.id)))
+                      .slice(0, 10)
+                      .map((c: any) => (
+                        <button key={c.id} onClick={() => {
+                          setShadeRecipe(prev => [...prev, { chemicalId: String(c.id), name: c.name, quantity: '' }])
+                          setChemSearch('')
+                          setChemDropOpen(false)
+                        }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-purple-900/20 text-gray-700 dark:text-gray-200">
+                          {c.name} <span className="text-[10px] text-gray-400">({c.unit})</span>
+                        </button>
+                      ))}
+                    {masterChemicals.filter((c: any) => c.name.toLowerCase().includes(chemSearch.toLowerCase())).length === 0 && (
+                      <p className="px-3 py-2 text-xs text-gray-400">No chemicals found</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Recipe items */}
+              {shadeRecipe.length > 0 && (
+                <div className="space-y-1.5">
+                  {shadeRecipe.map((r, ri) => (
+                    <div key={ri} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 rounded-lg px-3 py-2">
+                      <span className="text-xs text-gray-700 dark:text-gray-200 flex-1">{r.name}</span>
+                      <input type="number" step="0.001" placeholder="Qty" value={r.quantity}
+                        onChange={e => setShadeRecipe(prev => { const u = [...prev]; u[ri] = { ...u[ri], quantity: e.target.value }; return u })}
+                        className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 text-center" />
+                      <span className="text-[10px] text-gray-400">kg</span>
+                      <button onClick={() => setShadeRecipe(prev => prev.filter((_, i) => i !== ri))}
+                        className="text-red-400 hover:text-red-600 text-sm">×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {shadeRecipe.length === 0 && (
+                <p className="text-[10px] text-gray-400 italic">No recipe items — shade will be created without recipe. You can add recipe later from Shade Master.</p>
+              )}
+            </div>
+
+            <button onClick={saveShade} disabled={shadeSaving}
+              className="w-full bg-purple-600 text-white py-2.5 rounded-lg text-sm font-bold hover:bg-purple-700 disabled:opacity-50">
+              {shadeSaving ? 'Creating...' : 'Create Shade'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
