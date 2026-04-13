@@ -10,7 +10,18 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const action = req.nextUrl.searchParams.get('action')
   const poId = req.nextUrl.searchParams.get('id')
+
+  // Return Tally ledger names for party selection
+  if (action === 'ledgers') {
+    const ledgers = await db.tallyLedger.findMany({
+      where: { firmCode: 'KSI' },
+      select: { name: true, parent: true, mobileNos: true },
+      orderBy: { name: 'asc' },
+    })
+    return NextResponse.json(ledgers)
+  }
 
   if (poId) {
     const po = await db.purchaseOrder.findUnique({

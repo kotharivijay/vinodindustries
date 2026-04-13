@@ -31,12 +31,12 @@ export default function PurchaseOrdersPage() {
   const partyRef = useRef<HTMLDivElement>(null)
   const itemRef = useRef<HTMLDivElement>(null)
 
-  // Unique party names from inventory transactions
-  const { data: parties = [] } = useSWR('/api/masters/parties', fetcher, { revalidateOnFocus: false })
+  // Tally ledger names for supplier selection
+  const { data: tallyLedgers = [] } = useSWR<{ name: string; parent: string | null; mobileNos: string | null }[]>('/api/inventory/po?action=ledgers', fetcher, { revalidateOnFocus: false })
   const filteredParties = useMemo(() => {
     const q = partySearch.toLowerCase()
-    return parties.filter((p: any) => !q || p.name.toLowerCase().includes(q)).slice(0, 20)
-  }, [parties, partySearch])
+    return tallyLedgers.filter((p: any) => !q || p.name.toLowerCase().includes(q)).slice(0, 20)
+  }, [tallyLedgers, partySearch])
 
   const filteredItems = useMemo(() => {
     const q = itemSearch.toLowerCase()
@@ -54,18 +54,21 @@ export default function PurchaseOrdersPage() {
   }, [])
 
   // Fetch mobile when party selected
-  async function selectParty(name: string) {
+  async function selectParty(name: string, mobile?: string | null) {
     setPartyName(name)
     setPartyDropOpen(false)
     setPartySearch('')
-    try {
-      const res = await fetch('/api/inventory/po', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'party-mobile', partyName: name }),
-      })
-      const d = await res.json()
-      if (d.mobile) setPartyMobile(d.mobile)
-    } catch {}
+    if (mobile) setPartyMobile(mobile)
+    else {
+      try {
+        const res = await fetch('/api/inventory/po', {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'party-mobile', partyName: name }),
+        })
+        const d = await res.json()
+        if (d.mobile) setPartyMobile(d.mobile)
+      } catch {}
+    }
     // Fetch aliases for selected items
     if (selectedItemIds.size > 0) fetchAliases(name, Array.from(selectedItemIds))
   }
@@ -217,10 +220,11 @@ export default function PurchaseOrdersPage() {
                 <input autoFocus type="text" placeholder="Search party..." value={partySearch} onChange={e => setPartySearch(e.target.value)}
                   className="px-3 py-2 text-sm border-b border-gray-100 dark:border-gray-700 bg-transparent focus:outline-none dark:text-gray-100" />
                 <div className="overflow-y-auto flex-1">
-                  {filteredParties.map((p: any) => (
-                    <button key={p.id} onClick={() => selectParty(p.name)}
+                  {filteredParties.map((p: any, i: number) => (
+                    <button key={i} onClick={() => selectParty(p.name, p.mobileNos)}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 dark:hover:bg-purple-900/20 text-gray-700 dark:text-gray-200">
                       {p.name}
+                      {p.parent && <span className="text-[9px] text-gray-400 ml-1">({p.parent})</span>}
                     </button>
                   ))}
                 </div>
