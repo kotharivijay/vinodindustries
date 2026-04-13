@@ -838,3 +838,52 @@ model FinishRecipeTag {
   createdAt  DateTime     @default(now())
   @@unique([partyId, qualityId])
 }
+
+// ─── Inventory Module ─────────────────────────────────────────────────────────
+
+model InventoryCategory {
+  id        Int              @id @default(autoincrement())
+  name      String           @unique // "Dyes & Auxiliary", "Packing Material", "Machinery Parts", "Fuel", "Interlock Service", "Motor Service", "Others"
+  items     InventoryItem[]
+  createdAt DateTime         @default(now())
+}
+
+model InventoryItem {
+  id           Int                    @id @default(autoincrement())
+  name         String
+  unit         String                 @default("kg")
+  categoryId   Int
+  category     InventoryCategory      @relation(fields: [categoryId], references: [id])
+  chemicalId   Int?                   // link to Chemical master (for dyes/auxiliary)
+  minStock     Float?                 // reorder level
+  isActive     Boolean                @default(true)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  transactions InventoryTransaction[]
+  physicalStock PhysicalStockEntry[]
+  @@unique([name, categoryId])
+}
+
+model InventoryTransaction {
+  id         Int            @id @default(autoincrement())
+  itemId     Int
+  item       InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type       String         // "purchase" | "consumed" | "adjustment" | "return"
+  quantity   Float
+  rate       Float?
+  amount     Float?
+  date       DateTime
+  reference  String?        // invoice no, slip no, memo no
+  notes      String?
+  createdAt  DateTime       @default(now())
+}
+
+model PhysicalStockEntry {
+  id         Int            @id @default(autoincrement())
+  itemId     Int
+  item       InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  date       DateTime       // physical count date
+  quantity   Float          // actual quantity found
+  notes      String?
+  createdAt  DateTime       @default(now())
+}

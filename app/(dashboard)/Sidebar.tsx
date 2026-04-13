@@ -50,6 +50,7 @@ const ksiNavGroups = [
     links: [
       { href: '/dyeing/cost-report', label: 'Dyeing Cost Report', icon: '📊' },
       { href: '/dyeing/production-report', label: 'Production Report', icon: '🏭' },
+      { href: '/dyeing/consumption-report', label: 'Consumption Report', icon: '🧪' },
     ],
   },
   {
@@ -65,6 +66,18 @@ const ksiNavGroups = [
     label: 'Vault',
     links: [
       { href: '/vault', label: 'Document Vault', icon: '🔒' },
+    ],
+  },
+  {
+    label: 'Inventory',
+    links: [
+      { href: '/inventory/dyes-auxiliary', label: 'Dyes & Auxiliary', icon: '🧪' },
+      { href: '/inventory/packing', label: 'Packing Material', icon: '📦' },
+      { href: '/inventory/machinery', label: 'Machinery Parts', icon: '⚙️' },
+      { href: '/inventory/fuel', label: 'Fuel', icon: '⛽' },
+      { href: '/inventory/interlock', label: 'Interlock Service', icon: '🔧' },
+      { href: '/inventory/motor', label: 'Motor Service', icon: '🔌' },
+      { href: '/inventory/others', label: 'Others', icon: '📋' },
     ],
   },
   {
