@@ -71,20 +71,52 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
   const xml = await res.text()
   if (!xml.includes('<LEDGER')) throw new Error('No ledger data in response')
 
+  // Step 1 done: Tally connection closed, XML in memory
+
+  // Step 2: Parse (fast, no network)
   const ledgers = parseLedgers(xml)
   if (ledgers.length === 0) throw new Error('Parsed 0 ledgers')
 
-  // Upsert in batches
+  // Step 3: Fast bulk save — delete all KSI + createMany in batches of 2000
+  const now = new Date()
+  const BATCH_SIZE = 2000
+
+  // Delete all existing KSI ledgers (fast clean slate)
+  await db.tallyLedger.deleteMany({ where: { firmCode: 'KSI' } })
+
+  // Bulk insert in batches of 2000
   let synced = 0
-  for (const l of ledgers) {
+  const seen = new Set<string>()
+  const deduped = ledgers.filter(l => { if (seen.has(l.name)) return false; seen.add(l.name); return true })
+
+  for (let i = 0; i < deduped.length; i += BATCH_SIZE) {
+    const batch = deduped.slice(i, i + BATCH_SIZE)
     try {
-      await db.tallyLedger.upsert({
-        where: { firmCode_name: { firmCode: 'KSI', name: l.name } },
-        create: { firmCode: 'KSI', name: l.name, parent: l.parent, address: l.address, gstNo: l.gstNo, panNo: l.panNo, mobileNos: l.mobileNos, state: l.state, closingBalance: l.closingBalance, openingBalance: null, lastSynced: new Date() },
-        update: { parent: l.parent, address: l.address, gstNo: l.gstNo, panNo: l.panNo, mobileNos: l.mobileNos, state: l.state, closingBalance: l.closingBalance, lastSynced: new Date() },
+      const result = await db.tallyLedger.createMany({
+        data: batch.map(l => ({
+          firmCode: 'KSI', name: l.name, parent: l.parent, address: l.address,
+          gstNo: l.gstNo, panNo: l.panNo, mobileNos: l.mobileNos, state: l.state,
+          closingBalance: l.closingBalance, lastSynced: now,
+        })),
+        skipDuplicates: true,
       })
-      synced++
-    } catch {}
+      synced += result.count
+    } catch {
+      // Fallback: smaller batches
+      for (let j = 0; j < batch.length; j += 200) {
+        try {
+          const r = await db.tallyLedger.createMany({
+            data: batch.slice(j, j + 200).map(l => ({
+              firmCode: 'KSI', name: l.name, parent: l.parent, address: l.address,
+              gstNo: l.gstNo, panNo: l.panNo, mobileNos: l.mobileNos, state: l.state,
+              closingBalance: l.closingBalance, lastSynced: now,
+            })),
+            skipDuplicates: true,
+          })
+          synced += r.count
+        } catch {}
+      }
+    }
   }
 
   const duration = (Date.now() - start) / 1000
