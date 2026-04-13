@@ -956,3 +956,16 @@ model InventoryItemAlias {
   createdAt DateTime      @default(now())
   @@unique([alias, partyName])
 }
+
+// ─── Tally Sync Log ───────────────────────────────────────────────────────────
+
+model TallySyncLog {
+  id        Int      @id @default(autoincrement())
+  type      String   // "ledger" | "outstanding" | "sales"
+  company   String   // "KSI" | "VI"
+  status    String   // "success" | "failed"
+  count     Int      @default(0)
+  duration  Float?
+  error     String?
+  createdAt DateTime @default(now())
+}
