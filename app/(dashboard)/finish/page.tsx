@@ -1048,6 +1048,34 @@ export default function FinishStockPage() {
   const [packExpandedQualities, setPackExpandedQualities] = useState<Set<string>>(new Set())
   const [packView, setPackView] = useState<'party' | 'desp'>('party')
   const [expandedDesp, setExpandedDesp] = useState<Set<string>>(new Set())
+  const [frFormLotId, setFrFormLotId] = useState<number | null>(null)
+  const [frSlipNo, setFrSlipNo] = useState('')
+  const [frDate, setFrDate] = useState(new Date().toISOString().split('T')[0])
+  const [frThan, setFrThan] = useState('')
+  const [frSaving, setFrSaving] = useState(false)
+  const [frEditId, setFrEditId] = useState<number | null>(null)
+  const [frEditThan, setFrEditThan] = useState('')
+
+  async function addFoldingReceipt() {
+    if (!frFormLotId || !frSlipNo || !frThan) return
+    setFrSaving(true)
+    await fetch('/api/finish/folding-receipt', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lotEntryId: frFormLotId, slipNo: frSlipNo, date: frDate, than: frThan }),
+    })
+    setFrSaving(false); setFrFormLotId(null); setFrSlipNo(''); setFrThan('')
+    mutatePacking()
+  }
+
+  async function editFoldingReceipt() {
+    if (!frEditId || !frEditThan) return
+    await fetch('/api/finish/folding-receipt', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: frEditId, than: frEditThan }),
+    })
+    setFrEditId(null); setFrEditThan('')
+    mutatePacking()
+  }
 
   const togglePackParty = (party: string) => {
     setPackExpandedParties(prev => {
@@ -2597,12 +2625,64 @@ export default function FinishStockPage() {
                                       </div>
                                       <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{pe.totalThan}T</span>
                                     </div>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {pe.lots.map((l: any, li: number) => (
-                                        <span key={li} className="text-[10px] bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded-full font-medium">
-                                          {l.lotNo} ({l.than}T)
-                                        </span>
-                                      ))}
+                                    <div className="space-y-2 mt-1">
+                                      {pe.lots.map((l: any, li: number) => {
+                                        const recs = l.foldingReceipts || []
+                                        const received = recs.reduce((s: number, r: any) => s + r.than, 0)
+                                        const complete = received >= l.than
+                                        return (
+                                          <div key={li} className={`rounded-lg p-2.5 border ${complete ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'}`}>
+                                            <div className="flex items-center justify-between mb-1">
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">{l.lotNo}</span>
+                                                {l.foldNo && <span className="text-[9px] text-indigo-500">F{l.foldNo}</span>}
+                                              </div>
+                                              <span className="text-xs font-medium">{received}/{l.than}T {complete ? '✅' : '⏳'}</span>
+                                            </div>
+                                            {recs.length > 0 && (
+                                              <div className="space-y-0.5 mb-1">
+                                                {recs.map((r: any) => (
+                                                  <div key={r.id} className="flex items-center justify-between text-[10px]">
+                                                    <span className="text-gray-500">FR {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
+                                                    <div className="flex items-center gap-1">
+                                                      {frEditId === r.id ? (
+                                                        <>
+                                                          <input type="number" value={frEditThan} onChange={e => setFrEditThan(e.target.value)}
+                                                            className="w-12 text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 text-center bg-white dark:bg-gray-700 dark:text-gray-100" />
+                                                          <button onClick={editFoldingReceipt} className="text-[9px] text-teal-600 font-bold">Save</button>
+                                                          <button onClick={() => setFrEditId(null)} className="text-[9px] text-gray-400">✕</button>
+                                                        </>
+                                                      ) : (
+                                                        <>
+                                                          <span className="font-medium text-gray-700 dark:text-gray-200">{r.than}T</span>
+                                                          <button onClick={() => { setFrEditId(r.id); setFrEditThan(String(r.than)) }} className="text-[9px] text-indigo-500 hover:underline">Edit</button>
+                                                        </>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                            {!complete && (
+                                              frFormLotId === l.id ? (
+                                                <div className="flex items-center gap-1.5 mt-1">
+                                                  <input type="text" placeholder="FR No" value={frSlipNo} onChange={e => setFrSlipNo(e.target.value)}
+                                                    className="w-16 text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 bg-white dark:bg-gray-700 dark:text-gray-100" />
+                                                  <input type="date" value={frDate} onChange={e => setFrDate(e.target.value)}
+                                                    className="text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 bg-white dark:bg-gray-700 dark:text-gray-100" />
+                                                  <input type="number" placeholder="Than" value={frThan} onChange={e => setFrThan(e.target.value)}
+                                                    className="w-12 text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-center bg-white dark:bg-gray-700 dark:text-gray-100" />
+                                                  <button onClick={addFoldingReceipt} disabled={frSaving} className="text-[9px] bg-teal-600 text-white px-2 py-0.5 rounded font-medium disabled:opacity-50">Add</button>
+                                                  <button onClick={() => setFrFormLotId(null)} className="text-[9px] text-gray-400">✕</button>
+                                                </div>
+                                              ) : (
+                                                <button onClick={() => { setFrFormLotId(l.id); setFrSlipNo(''); setFrThan(String(l.than - received)); setFrDate(new Date().toISOString().split('T')[0]) }}
+                                                  className="text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium mt-1">+ Add Folding Receipt</button>
+                                              )
+                                            )}
+                                          </div>
+                                        )
+                                      })}
                                     </div>
                                   </div>
                                 ))}
