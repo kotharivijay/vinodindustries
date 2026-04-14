@@ -51,27 +51,34 @@ export async function GET() {
     finishedThanMap.set(key, (finishedThanMap.get(key) || 0) + fl.than)
   }
 
-  // Build stock list, deducting finished than
+  // Build stock list, deducting finished than (FIFO across slips)
   const stock: any[] = []
+  const deductedMap = new Map<string, number>()
   for (const d of doneSlips) {
     const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
     const lotInfo = lotInfoMap.get((lots[0]?.lotNo || d.lotNo).toLowerCase().trim())
     const shadeName = d.shadeName || d.foldBatch?.shade?.name || null
     const shadeDesc = d.foldBatch?.shade?.description || null
 
-    // Deduct finished than per lot
+    // Deduct finished than per lot (FIFO: deduct from oldest slips first)
     const adjustedLots: any[] = []
     for (const l of lots) {
       const key = l.lotNo.toLowerCase().trim()
-      const finishedSoFar = finishedThanMap.get(key) || 0
-      const remaining = l.than - finishedSoFar
+      const totalFinished = finishedThanMap.get(key) || 0
+      // Track how much already deducted from previous slips
+      if (!deductedMap.has(key)) deductedMap.set(key, 0)
+      const alreadyDeducted = deductedMap.get(key)!
+      const remainingToDeduct = Math.max(0, totalFinished - alreadyDeducted)
+      const deductFromThis = Math.min(l.than, remainingToDeduct)
+      deductedMap.set(key, alreadyDeducted + deductFromThis)
+      const remaining = l.than - deductFromThis
       if (remaining > 0) {
         const li = lotInfoMap.get(key)
         adjustedLots.push({
           lotNo: l.lotNo,
           than: remaining,
           originalThan: l.than,
-          finishedThan: finishedSoFar,
+          finishedThan: deductFromThis,
           party: li?.party || lotInfo?.party || null,
           quality: li?.quality || lotInfo?.quality || null,
           weight: li?.weight || lotInfo?.weight || null,
