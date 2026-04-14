@@ -1797,9 +1797,8 @@ export default function FinishStockPage() {
 
                 for (const pe of packingEntries) {
                   for (const l of pe.lots) {
-                    const li = lotInfoMap?.get?.(l.lotNo?.toLowerCase?.()?.trim?.()) || {}
-                    const party = (l as any).party || (li as any)?.party || 'Unknown'
-                    const quality = (l as any).quality || (li as any)?.quality || 'Unknown'
+                    const party = (l as any).party || 'Unknown'
+                    const quality = (l as any).quality || 'Unknown'
                     const fold = (l as any).foldNo || 'No Fold'
                     const desp = pe.finishDespSlipNo || 'No Desp'
 
