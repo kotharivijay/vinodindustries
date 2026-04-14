@@ -220,6 +220,8 @@ interface Recipe {
   id: number
   partyId: number
   qualityId: number
+  variant?: string
+  isDefault?: boolean
   party: { id: number; name: string }
   quality: { id: number; name: string }
   finishWidth: string | null
@@ -228,6 +230,7 @@ interface Recipe {
   notes: string | null
   items: RecipeItem[]
   tags?: RecipeTag[]
+  variants?: { id: number; variant: string; isDefault: boolean }[]
   isTagged?: boolean
   taggedFrom?: string
   updatedAt: string
