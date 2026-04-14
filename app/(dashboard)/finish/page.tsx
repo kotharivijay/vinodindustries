@@ -202,6 +202,10 @@ interface PackingLot {
   weight: string | null
   shadeName: string | null
   shadeDescription: string | null
+  foldingReceipts?: { id: number; slipNo: string; date: string; than: number; notes: string | null }[]
+  receivedThan?: number
+  foldingComplete?: boolean
+  foldNo?: string | null
 }
 
 interface PackingEntry {
@@ -212,6 +216,7 @@ interface PackingEntry {
   mandi: number | null
   notes: string | null
   finishDespSlipNo: string | null
+  allFoldingComplete?: boolean
   lots: PackingLot[]
   totalThan: number
 }
