@@ -1253,13 +1253,6 @@ export default function FinishStockPage() {
                           })()}
                         </div>
 
-                        {/* Mandi */}
-                        <div>
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Mandi (liters)</label>
-                          <input type="number" step="0.1" value={editMandi} onChange={e => setEditMandi(e.target.value)}
-                            placeholder="Liters"
-                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
-                        </div>
 
                         {/* Finish Completion */}
                         <div className="border border-teal-200 dark:border-teal-800 rounded-lg p-3 bg-teal-50/50 dark:bg-teal-900/10">
@@ -2234,13 +2227,6 @@ export default function FinishStockPage() {
                       })()}
                     </div>
 
-                    {/* Mandi */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Mandi (liters)</label>
-                      <input type="number" step="0.1" value={finishMandi} onChange={e => setFinishMandi(e.target.value)}
-                        placeholder="Liters"
-                        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
-                    </div>
 
                     {/* Chemicals */}
                     <div>
