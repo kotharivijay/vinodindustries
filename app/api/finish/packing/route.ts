@@ -74,18 +74,19 @@ export async function GET() {
       lotNo: true,
       shadeName: true,
       lots: { select: { lotNo: true } },
-      foldBatch: { select: { shade: { select: { name: true, description: true } } } },
+      foldBatch: { select: { foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
     },
   })
 
-  const lotShadeMap = new Map<string, { shadeName: string | null; shadeDescription: string | null }>()
+  const lotDyeMap = new Map<string, { shadeName: string | null; shadeDescription: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
     const shade = de.shadeName || de.foldBatch?.shade?.name || null
     const desc = de.foldBatch?.shade?.description || null
+    const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const lotsInEntry = de.lots?.length ? de.lots.map((l: any) => l.lotNo) : [de.lotNo]
     for (const ln of lotsInEntry) {
-      if (!lotShadeMap.has(ln.toLowerCase().trim())) {
-        lotShadeMap.set(ln.toLowerCase().trim(), { shadeName: shade, shadeDescription: desc })
+      if (!lotDyeMap.has(ln.toLowerCase().trim())) {
+        lotDyeMap.set(ln.toLowerCase().trim(), { shadeName: shade, shadeDescription: desc, foldNo })
       }
     }
   }
@@ -95,7 +96,7 @@ export async function GET() {
     ...pe,
     lots: pe.lots.map((l: any) => {
       const li = lotInfoMap.get(l.lotNo.toLowerCase().trim())
-      const shade = lotShadeMap.get(l.lotNo.toLowerCase().trim())
+      const dye = lotDyeMap.get(l.lotNo.toLowerCase().trim())
       return {
         lotNo: l.lotNo,
         than: l.than,
@@ -103,8 +104,12 @@ export async function GET() {
         party: li?.party || null,
         quality: li?.quality || null,
         weight: li?.weight || null,
-        shadeName: shade?.shadeName || null,
-        shadeDescription: shade?.shadeDescription || null,
+        foldNo: dye?.foldNo || null,
+        shadeName: dye?.shadeName || null,
+        shadeDescription: dye?.shadeDescription || null,
+        foldingReceipts: l.foldingReceipts || [],
+        receivedThan: l.receivedThan || 0,
+        foldingComplete: l.foldingComplete || false,
       }
     }),
   }))
