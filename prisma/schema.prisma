@@ -806,6 +806,8 @@ model FinishRecipe {
   party       Party              @relation(fields: [partyId], references: [id])
   qualityId   Int
   quality     Quality            @relation(fields: [qualityId], references: [id])
+  variant     String             @default("Standard")
+  isDefault   Boolean            @default(true)
   finishWidth String?
   finalWidth  String?
   shortage    String?
@@ -814,7 +816,7 @@ model FinishRecipe {
   tags        FinishRecipeTag[]
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
-  @@unique([partyId, qualityId])
+  @@unique([partyId, qualityId, variant])
 }
 
 model FinishRecipeItem {

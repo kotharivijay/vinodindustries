@@ -62,14 +62,19 @@ export async function GET(req: NextRequest) {
   if (partyId && qualityId) {
     const pId = parseInt(partyId)
     const qId = parseInt(qualityId)
+    const variant = url.searchParams.get('variant')
 
-    // 1. Try exact match
-    const recipe = await db.finishRecipe.findUnique({
-      where: { partyId_qualityId: { partyId: pId, qualityId: qId } },
+    // 1. Try exact match — specific variant or default
+    const recipes = await db.finishRecipe.findMany({
+      where: { partyId: pId, qualityId: qId },
       include: recipeInclude,
+      orderBy: { isDefault: 'desc' },
     })
-    if (recipe) {
-      return NextResponse.json({ ...recipe, isTagged: false })
+
+    if (recipes.length > 0) {
+      const selected = variant ? recipes.find((r: any) => r.variant === variant) || recipes[0] : recipes.find((r: any) => r.isDefault) || recipes[0]
+      const allVariants = recipes.map((r: any) => ({ id: r.id, variant: r.variant, isDefault: r.isDefault }))
+      return NextResponse.json({ ...selected, isTagged: false, variants: allVariants })
     }
 
     // 2. Try tag fallback
@@ -144,15 +149,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { partyId, qualityId, finishWidth, finalWidth, shortage, notes, items } = body
+  const { partyId, qualityId, variant, finishWidth, finalWidth, shortage, notes, items } = body
+  const variantName = variant?.trim() || 'Standard'
 
   if (!partyId || !qualityId) {
     return NextResponse.json({ error: 'partyId and qualityId are required' }, { status: 400 })
   }
 
-  // Upsert recipe
+  // Upsert recipe by party+quality+variant
   const existing = await db.finishRecipe.findUnique({
-    where: { partyId_qualityId: { partyId: parseInt(partyId), qualityId: parseInt(qualityId) } },
+    where: { partyId_qualityId_variant: { partyId: parseInt(partyId), qualityId: parseInt(qualityId), variant: variantName } },
   })
 
   if (existing) {
@@ -179,10 +185,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(updated)
   }
 
+  // If this is first recipe for party+quality, make it default
+  const existingCount = await db.finishRecipe.count({ where: { partyId: parseInt(partyId), qualityId: parseInt(qualityId) } })
+
   const created = await db.finishRecipe.create({
     data: {
       partyId: parseInt(partyId),
       qualityId: parseInt(qualityId),
+      variant: variantName,
+      isDefault: existingCount === 0,
       finishWidth: finishWidth || null,
       finalWidth: finalWidth || null,
       shortage: shortage || null,
