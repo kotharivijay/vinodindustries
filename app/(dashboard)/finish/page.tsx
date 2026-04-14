@@ -290,6 +290,21 @@ export default function FinishStockPage() {
     dedupingInterval: 60_000,
   })
 
+  // Recipe variants for quality display
+  const { data: allRecipes } = useSWR<{ party: { name: string }; quality: { name: string }; variant: string }[]>('/api/finish/recipe', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 120_000,
+  })
+  const recipeVariantMap = useMemo(() => {
+    const m = new Map<string, string>()
+    if (!allRecipes) return m
+    for (const r of allRecipes) {
+      const key = `${r.party.name.toLowerCase().trim()}::${r.quality.name.toLowerCase().trim()}`
+      if (!m.has(key) && r.variant) m.set(key, r.variant)
+    }
+    return m
+  }, [allRecipes])
+
   const [tab, setTab] = useState<Tab>('report')
 
   /* ── Stock Register state ─────────────────────────────────────── */
@@ -1941,7 +1956,7 @@ export default function FinishStockPage() {
                                 <div key={qKey} className="border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
                                   <button onClick={() => { setPackExpandedQualities(prev => { const n = new Set(prev); if (n.has(qKey)) n.delete(qKey); else n.add(qKey); return n }) }}
                                     className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">🏷️ {quality}</span>
+                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">🏷️ {quality}{(() => { const rv = recipeVariantMap.get(`${party.toLowerCase().trim()}::${quality.toLowerCase().trim()}`); return rv ? ` (${rv})` : '' })()}</span>
                                     <span className={`text-gray-400 text-[10px] ${packExpandedQualities.has(qKey) ? 'rotate-90' : ''}`}>▶</span>
                                   </button>
                                   {packExpandedQualities.has(qKey) && (
@@ -2269,7 +2284,13 @@ export default function FinishStockPage() {
                                   className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
                                 >
                                   <div className="text-left">
-                                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{qg.quality}</h4>
+                                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                      {qg.quality}
+                                      {(() => {
+                                        const rv = recipeVariantMap.get(`${pg.party.toLowerCase().trim()}::${qg.quality.toLowerCase().trim()}`)
+                                        return rv ? <span className="ml-1.5 text-[10px] font-normal text-teal-600 dark:text-teal-400">({rv})</span> : null
+                                      })()}
+                                    </h4>
                                     {qg.weight && <p className="text-[10px] text-gray-400 dark:text-gray-500">Weight: {qg.weight}</p>}
                                   </div>
                                   <div className="flex items-center gap-3">
@@ -2814,7 +2835,13 @@ export default function FinishStockPage() {
                                   className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
                                 >
                                   <div className="text-left">
-                                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">{qg.quality}</h4>
+                                    <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                      {qg.quality}
+                                      {(() => {
+                                        const rv = recipeVariantMap.get(`${pg.party.toLowerCase().trim()}::${qg.quality.toLowerCase().trim()}`)
+                                        return rv ? <span className="ml-1.5 text-[10px] font-normal text-teal-600 dark:text-teal-400">({rv})</span> : null
+                                      })()}
+                                    </h4>
                                     {qg.weight && <p className="text-[10px] text-gray-400 dark:text-gray-500">Weight: {qg.weight}</p>}
                                   </div>
                                   <div className="flex items-center gap-3">

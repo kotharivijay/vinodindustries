@@ -304,6 +304,7 @@ export default function FinishRecipeMasterPage() {
       .then((data: Recipe | null) => {
         if (data && data.id) {
           setRecipe(data)
+          setVariantName(data.variant || 'Standard')
           setFinishWidth(data.finishWidth || '')
           setFinalWidth(data.finalWidth || '')
           setShortage(data.shortage || '')
@@ -378,6 +379,7 @@ export default function FinishRecipeMasterPage() {
         const data = await recipeRes.json()
         if (data && data.id) {
           setRecipe(data)
+          setVariantName(data.variant || 'Standard')
           setFinishWidth(data.finishWidth || '')
           setFinalWidth(data.finalWidth || '')
           setShortage(data.shortage || '')
@@ -471,7 +473,7 @@ export default function FinishRecipeMasterPage() {
       setMessage('Network error.')
     }
     setSaving(false)
-  }, [selectedPartyId, selectedQualityId, finishWidth, finalWidth, shortage, notes, items, mutateRecipes])
+  }, [selectedPartyId, selectedQualityId, variantName, finishWidth, finalWidth, shortage, notes, items, mutateRecipes])
 
   const handleDelete = useCallback(async () => {
     if (!recipe) return
@@ -691,11 +693,11 @@ export default function FinishRecipeMasterPage() {
                 </div>
               )}
 
-              {/* Variant name input for new recipe */}
-              {!recipe && showNewRecipe && (
+              {/* Variant name input — editable for both new and existing recipes */}
+              {!recipe?.isTagged && (
                 <div>
                   <label className="block text-[10px] text-gray-500 mb-0.5">Variant Name</label>
-                  <input value={variantName} onChange={e => setVariantName(e.target.value)} placeholder="e.g. Standard, Premium Soft, Extra Calender"
+                  <input value={variantName} onChange={e => setVariantName(e.target.value)} placeholder="e.g. PC 46&quot; 77g (white only)"
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                 </div>
               )}
@@ -891,7 +893,7 @@ export default function FinishRecipeMasterPage() {
                     <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{r.party.name}</span>
                     <span className="text-gray-300 dark:text-gray-600 mx-2">/</span>
                     <span className="text-sm text-gray-600 dark:text-gray-300">{r.quality.name}</span>
-                    {r.variant && r.variant !== 'Standard' && (
+                    {r.variant && (
                       <span className="ml-2 text-[10px] bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded">{r.variant}</span>
                     )}
                   </div>
