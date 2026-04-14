@@ -12,7 +12,7 @@ export async function GET() {
   // Fetch all finish entries with lots
   const finishEntries = await db.finishEntry.findMany({
     include: {
-      lots: true,
+      lots: { include: { foldingReceipts: { orderBy: { date: 'asc' as const } } } },
       chemicals: { include: { chemical: true } },
     },
     orderBy: { date: 'desc' },
@@ -25,10 +25,18 @@ export async function GET() {
     // Only include lots that are done or partial
     const doneLots = rawLots
       .filter((l: any) => l.status === 'done' || l.status === 'partial')
-      .map((l: any) => ({
-        ...l,
-        than: l.status === 'done' ? l.than : l.doneThan, // use doneThan for partial
-      }))
+      .map((l: any) => {
+        const receipts = l.foldingReceipts || []
+        const receivedThan = receipts.reduce((s: number, r: any) => s + r.than, 0)
+        const packThan = l.status === 'done' ? l.than : l.doneThan
+        return {
+          ...l,
+          than: packThan,
+          foldingReceipts: receipts,
+          receivedThan,
+          foldingComplete: receivedThan >= packThan,
+        }
+      })
     if (doneLots.length === 0) continue
     packingEntries.push({
       id: fe.id,
@@ -38,6 +46,7 @@ export async function GET() {
       mandi: fe.mandi,
       notes: fe.notes,
       finishDespSlipNo: fe.finishDespSlipNo || null,
+      allFoldingComplete: doneLots.length > 0 && doneLots.every((l: any) => l.foldingComplete),
       lots: doneLots,
       totalThan: doneLots.reduce((s: number, l: any) => s + (l.than || 0), 0),
     })

@@ -317,6 +317,18 @@ model FinishEntryLot {
   meter    Float?
   doneThan Int          @default(0)
   status   String       @default("pending") // pending | partial | done
+  foldingReceipts FoldingReceipt[]
+}
+
+model FoldingReceipt {
+  id         Int            @id @default(autoincrement())
+  lotEntryId Int
+  lotEntry   FinishEntryLot @relation(fields: [lotEntryId], references: [id], onDelete: Cascade)
+  slipNo     String
+  date       DateTime
+  than       Int
+  notes      String?
+  createdAt  DateTime       @default(now())
 }
 
 model FinishSlipChemical {

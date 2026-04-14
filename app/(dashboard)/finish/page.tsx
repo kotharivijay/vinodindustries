@@ -48,7 +48,7 @@ interface StockEntry {
 
 type SortField = 'date' | 'slipNo' | 'lotNo' | 'party' | 'quality' | 'than'
 type SortDir = 'asc' | 'desc'
-type Tab = 'slips' | 'register' | 'report' | 'packing'
+type Tab = 'slips' | 'register' | 'report' | 'packing' | 'folding'
 
 function getValue(e: StockEntry, f: SortField): string | number {
   switch (f) {
@@ -1081,7 +1081,7 @@ export default function FinishStockPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-gray-200 dark:border-gray-700">
-        {([['report', 'Stock Report'], ['slips', 'Finish Prg'], ['packing', 'Packing Stock'], ['register', 'Stock Register']] as [Tab, string][]).map(([key, label]) => (
+        {([['report', 'Stock Report'], ['slips', 'Finish Prg'], ['packing', 'Packing Stock'], ['folding', 'Folding Stock'], ['register', 'Stock Register']] as [Tab, string][]).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === key ? 'border-teal-600 text-teal-600 dark:text-teal-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
             {label}
@@ -1717,6 +1717,189 @@ export default function FinishStockPage() {
               </div>
             )}
         </>
+      )}
+
+      {/* ═══ FOLDING STOCK TAB ═══════════════════════════════════════ */}
+      {tab === 'folding' && (
+        <div>
+          {packingLoading ? <div className="p-12 text-center text-gray-400">Loading...</div> : (
+            <div className="space-y-3">
+              {/* View toggle */}
+              <div className="flex gap-2 mb-3">
+                <button onClick={() => setPackView('desp')}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${packView === 'desp' ? 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500'}`}>
+                  Rec Slip-wise
+                </button>
+                <button onClick={() => setPackView('party')}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${packView === 'party' ? 'bg-teal-100 dark:bg-teal-900/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500'}`}>
+                  Party → Quality → Fold → Desp → Lot
+                </button>
+              </div>
+
+              {/* Rec Slip-wise view */}
+              {packView === 'desp' && (() => {
+                const allReceipts: any[] = []
+                for (const pe of packingEntries) {
+                  for (const l of pe.lots) {
+                    for (const r of (l.foldingReceipts || [])) {
+                      allReceipts.push({ ...r, lotNo: l.lotNo, lotThan: l.than, fpSlipNo: pe.slipNo, despSlipNo: pe.finishDespSlipNo })
+                    }
+                  }
+                }
+                const slipMap = new Map<string, any[]>()
+                for (const r of allReceipts) {
+                  if (!slipMap.has(r.slipNo)) slipMap.set(r.slipNo, [])
+                  slipMap.get(r.slipNo)!.push(r)
+                }
+                return (
+                  <div className="space-y-2">
+                    {allReceipts.length === 0 && <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-8 text-center text-gray-400">No folding receipts yet.</div>}
+                    {Array.from(slipMap.entries()).map(([slipNo, recs]) => {
+                      const totalThan = recs.reduce((s: number, r: any) => s + r.than, 0)
+                      return (
+                        <div key={slipNo} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">FR {slipNo}</span>
+                            <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThan}T</span>
+                          </div>
+                          <div className="space-y-1">
+                            {recs.map((r: any, i: number) => (
+                              <div key={i} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-900 rounded-lg px-3 py-1.5">
+                                <div>
+                                  <span className="font-medium text-gray-700 dark:text-gray-200">{r.lotNo}</span>
+                                  <span className="text-gray-400 ml-2">FP {r.fpSlipNo}</span>
+                                  {r.despSlipNo && <span className="text-purple-500 ml-1">Desp: {r.despSlipNo}</span>}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-400">{new Date(r.date).toLocaleDateString('en-IN')}</span>
+                                  <span className="font-bold text-gray-700 dark:text-gray-200">{r.than}T</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+
+              {/* Party → Quality → Fold → Desp → Lot → Receipts (6-level) */}
+              {packView === 'party' && (() => {
+                // Build 6-level hierarchy from packing entries
+                type L6 = { party: string; qualities: Map<string, { folds: Map<string, { desps: Map<string, { lots: any[] }> }> }> }
+                const partyMap = new Map<string, L6['qualities']>()
+
+                for (const pe of packingEntries) {
+                  for (const l of pe.lots) {
+                    const li = lotInfoMap?.get?.(l.lotNo?.toLowerCase?.()?.trim?.()) || {}
+                    const party = (l as any).party || (li as any)?.party || 'Unknown'
+                    const quality = (l as any).quality || (li as any)?.quality || 'Unknown'
+                    const fold = (l as any).foldNo || 'No Fold'
+                    const desp = pe.finishDespSlipNo || 'No Desp'
+
+                    if (!partyMap.has(party)) partyMap.set(party, new Map())
+                    const qMap = partyMap.get(party)!
+                    if (!qMap.has(quality)) qMap.set(quality, { folds: new Map() })
+                    const fMap = qMap.get(quality)!.folds
+                    if (!fMap.has(fold)) fMap.set(fold, { desps: new Map() })
+                    const dMap = fMap.get(fold)!.desps
+                    if (!dMap.has(desp)) dMap.set(desp, { lots: [] })
+                    dMap.get(desp)!.lots.push({ ...l, fpSlipNo: pe.slipNo })
+                  }
+                }
+
+                return (
+                  <div className="space-y-2">
+                    {Array.from(partyMap.entries()).map(([party, qMap]) => (
+                      <div key={party} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+                        <button onClick={() => togglePackParty(party)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                          <span className="text-sm font-bold text-gray-800 dark:text-gray-100">👤 {party}</span>
+                          <span className={`text-gray-400 text-xs ${packExpandedParties.has(party) ? 'rotate-90' : ''}`}>▶</span>
+                        </button>
+                        {packExpandedParties.has(party) && (
+                          <div className="border-t border-gray-100 dark:border-gray-700 px-3 pb-3 pt-1 space-y-1.5">
+                            {Array.from(qMap.entries()).map(([quality, qData]) => {
+                              const qKey = `${party}::${quality}`
+                              return (
+                                <div key={qKey} className="border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
+                                  <button onClick={() => { setPackExpandedQualities(prev => { const n = new Set(prev); if (n.has(qKey)) n.delete(qKey); else n.add(qKey); return n }) }}
+                                    className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                                    <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">🏷️ {quality}</span>
+                                    <span className={`text-gray-400 text-[10px] ${packExpandedQualities.has(qKey) ? 'rotate-90' : ''}`}>▶</span>
+                                  </button>
+                                  {packExpandedQualities.has(qKey) && (
+                                    <div className="border-t border-gray-50 dark:border-gray-700 px-2 pb-2 pt-1 space-y-1">
+                                      {Array.from(qData.folds.entries()).map(([fold, fData]) => {
+                                        const fKey = `${qKey}::${fold}`
+                                        return (
+                                          <div key={fKey} className="border border-gray-100 dark:border-gray-600 rounded-lg overflow-hidden">
+                                            <button onClick={() => { setExpandedFolds(prev => { const n = new Set(prev); if (n.has(fKey)) n.delete(fKey); else n.add(fKey); return n }) }}
+                                              className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                                              <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">📁 Fold {fold}</span>
+                                              <span className={`text-gray-400 text-[10px] ${expandedFolds.has(fKey) ? 'rotate-90' : ''}`}>▶</span>
+                                            </button>
+                                            {expandedFolds.has(fKey) && (
+                                              <div className="border-t border-gray-50 dark:border-gray-700 px-2 pb-1 pt-1 space-y-1">
+                                                {Array.from(fData.desps.entries()).map(([desp, dData]) => {
+                                                  const dKey = `${fKey}::${desp}`
+                                                  return (
+                                                    <div key={dKey} className="border border-gray-100 dark:border-gray-600 rounded-lg overflow-hidden">
+                                                      <button onClick={() => { setExpandedDesp(prev => { const n = new Set(prev); if (n.has(dKey)) n.delete(dKey); else n.add(dKey); return n }) }}
+                                                        className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                                                        <span className={`text-[11px] font-bold ${desp !== 'No Desp' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400'}`}>📋 {desp}</span>
+                                                        <span className={`text-gray-400 text-[10px] ${expandedDesp.has(dKey) ? 'rotate-90' : ''}`}>▶</span>
+                                                      </button>
+                                                      {expandedDesp.has(dKey) && (
+                                                        <div className="border-t border-gray-50 dark:border-gray-700 px-2 pb-1 pt-1 space-y-1">
+                                                          {dData.lots.map((lot: any, li: number) => {
+                                                            const recs = lot.foldingReceipts || []
+                                                            const received = recs.reduce((s: number, r: any) => s + r.than, 0)
+                                                            const complete = received >= lot.than
+                                                            return (
+                                                              <div key={li} className={`rounded-lg p-2 ${complete ? 'bg-green-50 dark:bg-green-900/10' : 'bg-gray-50 dark:bg-gray-900/50'}`}>
+                                                                <div className="flex items-center justify-between mb-1">
+                                                                  <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">{lot.lotNo}</span>
+                                                                  <span className="text-xs">{received}/{lot.than}T {complete ? '✅' : '⏳'}</span>
+                                                                </div>
+                                                                {recs.length > 0 && (
+                                                                  <div className="space-y-0.5">
+                                                                    {recs.map((r: any) => (
+                                                                      <div key={r.id} className="flex items-center justify-between text-[10px] text-gray-500">
+                                                                        <span>FR {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
+                                                                        <span className="font-medium">{r.than}T</span>
+                                                                      </div>
+                                                                    ))}
+                                                                  </div>
+                                                                )}
+                                                              </div>
+                                                            )
+                                                          })}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  )
+                                                })}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ═══ STOCK REGISTER TAB ═══════════════════════════════════════ */}
