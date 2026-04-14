@@ -852,8 +852,9 @@ export default function FinishStockPage() {
         fetch('/api/masters/parties').then(r => r.json()),
         fetch('/api/masters/qualities').then(r => r.json()),
       ])
-      const party = (partiesRes as any[]).find((p: any) => p.name === partyName)
-      const quality = (qualitiesRes as any[]).find((q: any) => q.name === qualityName)
+      const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, ' ')
+      const party = (partiesRes as any[]).find((p: any) => norm(p.name) === norm(partyName))
+      const quality = (qualitiesRes as any[]).find((q: any) => norm(q.name) === norm(qualityName))
       if (!party || !quality) {
         setRecipeMsg(`No recipe found for ${partyName} / ${qualityName}`)
         setRecipeFetching(false)
