@@ -188,7 +188,7 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
           {step === 'idle' && (
             <div className="text-center py-12">
               <div className="text-5xl mb-4">📊</div>
-              <p className="text-gray-600 mb-2">Fetch data from <strong>Inwerd Gray 2025-26</strong></p>
+              <p className="text-gray-600 mb-2">Fetch data from <strong>Inwerd Gray 2026-27</strong></p>
               <p className="text-gray-400 text-sm mb-6">New rows will be previewed before import</p>
               <button onClick={fetchSheet} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-indigo-700">
                 Fetch Sheet Data
