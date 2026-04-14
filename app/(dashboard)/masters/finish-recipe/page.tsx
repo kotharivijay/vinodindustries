@@ -265,7 +265,7 @@ export default function FinishRecipeMasterPage() {
   const [tagging, setTagging] = useState(false)
   const [showNewRecipe, setShowNewRecipe] = useState(false)
 
-  // Load qualities when party changes
+  // Load qualities when party changes — only qualities related to this party
   useEffect(() => {
     if (!selectedPartyId) { setPartyQualities([]); return }
     setLoadingQualities(true)
@@ -273,18 +273,12 @@ export default function FinishRecipeMasterPage() {
     setRecipe(null)
     setShowTagUI(false)
     setShowNewRecipe(false)
-    // Fetch qualities that exist in grey entries for this party
-    fetch(`/api/finish/recipe?partyId=${selectedPartyId}`)
+    // Fetch qualities from grey entries + OB for this party
+    fetch(`/api/finish/recipe?partyId=${selectedPartyId}&action=party-qualities`)
       .then(r => r.json())
-      .then(() => {
-        // Fetch all grey entries for this party to get unique qualities
-        fetch(`/api/masters/qualities`)
-          .then(r => r.json())
-          .then((qs: Quality[]) => {
-            setPartyQualities(Array.isArray(qs) ? qs : [])
-            setLoadingQualities(false)
-          })
-          .catch(() => setLoadingQualities(false))
+      .then((qs: Quality[]) => {
+        setPartyQualities(Array.isArray(qs) ? qs : [])
+        setLoadingQualities(false)
       })
       .catch(() => setLoadingQualities(false))
   }, [selectedPartyId])

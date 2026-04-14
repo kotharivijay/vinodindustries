@@ -24,6 +24,39 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const partyId = url.searchParams.get('partyId')
   const qualityId = url.searchParams.get('qualityId')
+  const action = url.searchParams.get('action')
+
+  // Get qualities for a party (from grey entries + OB)
+  if (action === 'party-qualities' && partyId) {
+    const pId = parseInt(partyId)
+    const party = await prisma.party.findUnique({ where: { id: pId }, select: { name: true } })
+    if (!party) return NextResponse.json([])
+
+    // From grey entries
+    const greyQualities = await prisma.greyEntry.findMany({
+      where: { partyId: pId },
+      select: { quality: { select: { id: true, name: true } } },
+      distinct: ['qualityId'],
+    })
+    const qualityMap = new Map(greyQualities.map(g => [g.quality.id, g.quality]))
+
+    // From OB (carry-forward lots)
+    try {
+      const obQualities = await db.lotOpeningBalance.findMany({
+        where: { party: { equals: party.name, mode: 'insensitive' } },
+        select: { quality: true },
+        distinct: ['quality'],
+      })
+      for (const ob of obQualities) {
+        if (ob.quality) {
+          const q = await prisma.quality.findFirst({ where: { name: { equals: ob.quality, mode: 'insensitive' } } })
+          if (q && !qualityMap.has(q.id)) qualityMap.set(q.id, q)
+        }
+      }
+    } catch {}
+
+    return NextResponse.json(Array.from(qualityMap.values()).sort((a, b) => a.name.localeCompare(b.name)))
+  }
 
   // Single recipe lookup
   if (partyId && qualityId) {
