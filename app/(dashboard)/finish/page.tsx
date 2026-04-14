@@ -265,9 +265,9 @@ export default function FinishStockPage() {
   })
   const entries = rawData?.stock ?? []
 
-  const { data: packingRaw, isLoading: packingLoading } = useSWR<{ stock: PackingEntry[]; totalSlips: number; totalThan: number }>('/api/finish/packing', fetcher, {
+  const { data: packingRaw, isLoading: packingLoading, mutate: mutatePacking } = useSWR<{ stock: PackingEntry[]; totalSlips: number; totalThan: number }>('/api/finish/packing', fetcher, {
     revalidateOnFocus: false,
-    dedupingInterval: 30_000,
+    dedupingInterval: 10_000,
   })
   const packingEntries = useMemo(() => packingRaw?.stock ?? [], [packingRaw])
 
@@ -413,6 +413,7 @@ export default function FinishStockPage() {
       })
       if (res.ok) {
         mutateSlips()
+        mutatePacking()
         setPartialLotId(null)
         setPartialThanInput('')
       }
@@ -552,6 +553,7 @@ export default function FinishStockPage() {
         setEditLots([])
         mutateSlips()
         mutateStock()
+        mutatePacking()
       } else {
         const d = await res.json().catch(() => ({}))
         setEditError(d.error ?? 'Failed to save')
@@ -570,6 +572,7 @@ export default function FinishStockPage() {
         setDeleteConfirmId(null)
         mutateSlips()
         mutateStock()
+        mutatePacking()
       }
     } catch { /* ignore */ }
     setDeleting(false)
@@ -969,6 +972,7 @@ export default function FinishStockPage() {
         // Live refresh data
         mutateSlips()
         mutateStock()
+        mutatePacking()
         return
       } else {
         const d = await res.json().catch(() => ({}))
