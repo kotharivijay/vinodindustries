@@ -488,16 +488,15 @@ export default function FinishRecipeMasterPage() {
     setDeleting(false)
   }, [recipe, mutateRecipes])
 
-  // Filter all recipes for bottom list
+  // Filter all recipes for bottom list — by selected party or search
   const filteredRecipes = useMemo(() => {
     if (!allRecipes) return []
+    let list = allRecipes
+    if (selectedPartyId) list = list.filter(r => r.party.id === selectedPartyId)
     const term = searchTerm.toLowerCase()
-    if (!term) return allRecipes
-    return allRecipes.filter(r =>
-      r.party.name.toLowerCase().includes(term) ||
-      r.quality.name.toLowerCase().includes(term)
-    )
-  }, [allRecipes, searchTerm])
+    if (term) list = list.filter(r => r.party.name.toLowerCase().includes(term) || r.quality.name.toLowerCase().includes(term))
+    return list
+  }, [allRecipes, searchTerm, selectedPartyId])
 
   const masterChemicals = chemicals ?? []
 
