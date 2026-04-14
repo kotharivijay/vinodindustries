@@ -77,6 +77,7 @@ interface FinishLot {
   shadeName: string | null
   shadeDesc: string | null
   foldNo: string | null
+  dyeSlips: { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }[]
 }
 
 interface FinishSlipChemical {
