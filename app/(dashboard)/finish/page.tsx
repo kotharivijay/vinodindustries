@@ -1404,6 +1404,7 @@ export default function FinishStockPage() {
                             const totalCost = chemCosts.reduce((s, c) => s + c.cost, 0)
                             const costPerLtr = consumed > 0 ? totalCost / consumed : 0
                             const costPerThan = totalThanDone > 0 ? totalCost / totalThanDone : 0
+                            const ltrPerThan = totalThanDone > 0 ? consumed / totalThanDone : totalThanAll > 0 ? consumed / totalThanAll : 0
 
                             if (consumed <= 0 && op === 0 && nw === 0) return null
 
@@ -1471,6 +1472,12 @@ export default function FinishStockPage() {
                                     <div className="flex items-center justify-between border-t border-emerald-200 dark:border-emerald-800 pt-1 mt-1">
                                       <span className="text-xs text-gray-500">Cost per Than (all {totalThanAll}T)</span>
                                       <span className="text-xs text-gray-500">&#8377;{(totalThanAll > 0 ? totalCost / totalThanAll : 0).toFixed(2)}/than</span>
+                                    </div>
+                                  )}
+                                  {ltrPerThan > 0 && (
+                                    <div className="flex items-center justify-between border-t border-emerald-200 dark:border-emerald-800 pt-1 mt-1">
+                                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">Consumption per Than</span>
+                                      <span className="text-sm font-bold text-teal-600 dark:text-teal-400">{ltrPerThan.toFixed(2)} ltr/than</span>
                                     </div>
                                   )}
                                 </div>
