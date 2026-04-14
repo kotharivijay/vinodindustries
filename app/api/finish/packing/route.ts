@@ -98,6 +98,7 @@ export async function GET() {
       const li = lotInfoMap.get(l.lotNo.toLowerCase().trim())
       const dye = lotDyeMap.get(l.lotNo.toLowerCase().trim())
       return {
+        id: l.id,
         lotNo: l.lotNo,
         than: l.than,
         meter: l.meter,

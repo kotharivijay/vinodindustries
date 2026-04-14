@@ -1063,7 +1063,7 @@ export default function FinishStockPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lotEntryId: frFormLotId, slipNo: frSlipNo, date: frDate, than: frThan }),
     })
-    setFrSaving(false); setFrFormLotId(null); setFrSlipNo(''); setFrThan('')
+    setFrSaving(false); setFrFormLotId(null); setFrThan('')
     mutatePacking()
   }
 
