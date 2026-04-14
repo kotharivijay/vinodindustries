@@ -110,12 +110,15 @@ interface FoldBatchLot {
   quality?: { name: string }
 }
 
+interface DyeingRef { id: number; slipNo: number; status: string; dyeingDoneAt: string | null }
+
 interface FoldBatch {
   id: number
   batchNo: number
   shadeName?: string
   shade?: { id: number; name: string }
   lots: FoldBatchLot[]
+  dyeingEntries?: DyeingRef[]
 }
 
 interface FoldProgram {
@@ -474,21 +477,32 @@ export default function FoldDetailPage() {
       <div className="space-y-4">
         {program.batches.map(batch => {
           const batchTotal = batch.lots.reduce((s, l) => s + l.than, 0)
+          const dyed = batch.dyeingEntries && batch.dyeingEntries.length > 0
+          const dyeEntry = batch.dyeingEntries?.[0]
+          const dyeStatus = dyeEntry?.dyeingDoneAt ? 'done' : dyeEntry?.status || null
           return (
-            <div key={batch.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 flex items-center justify-between">
-                <div className="flex items-center">
-                  <span className="font-bold text-indigo-700 dark:text-indigo-400 text-sm">Batch {batch.batchNo}</span>
+            <div key={batch.id} className={`bg-white dark:bg-gray-800 rounded-xl border overflow-hidden ${dyed ? 'border-green-200 dark:border-green-800' : 'border-gray-200 dark:border-gray-700'}`}>
+              <div className={`px-4 py-2 flex items-center justify-between ${dyed ? 'bg-green-50 dark:bg-green-900/20' : 'bg-indigo-50 dark:bg-indigo-900/30'}`}>
+                <div className="flex items-center gap-1.5">
+                  {dyed && <span className="text-sm">🔒</span>}
+                  <span className={`font-bold text-sm ${dyed ? 'text-green-700 dark:text-green-400' : 'text-indigo-700 dark:text-indigo-400'}`}>Batch {batch.batchNo}</span>
                   <ShadePicker batch={batch} shades={shades} onSave={updateBatchShade} />
+                  {dyed && dyeEntry && (
+                    <a href={`/dyeing/${dyeEntry.id}`} className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 hover:underline">
+                      Slip {dyeEntry.slipNo} {dyeStatus === 'done' ? '✅' : dyeStatus === 'patchy' ? '⚠️' : '⏳'}
+                    </a>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{batchTotal} than</span>
-                  <button
-                    onClick={() => router.push(`/dyeing/batch?batchId=${batch.id}`)}
-                    className="text-[10px] bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700 font-medium"
-                  >
-                    🎨 Dye
-                  </button>
+                  <span className={`text-sm font-bold ${dyed ? 'text-green-600 dark:text-green-400' : 'text-indigo-600 dark:text-indigo-400'}`}>{batchTotal} than</span>
+                  {!dyed && (
+                    <button
+                      onClick={() => router.push(`/dyeing/batch?batchId=${batch.id}`)}
+                      className="text-[10px] bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700 font-medium"
+                    >
+                      🎨 Dye
+                    </button>
+                  )}
                 </div>
               </div>
               {/* Mobile card view */}

@@ -16,6 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         include: {
           shade: true,
           lots: { include: { party: true, quality: true } },
+          dyeingEntries: { select: { id: true, slipNo: true, status: true, dyeingDoneAt: true } },
         },
         orderBy: { batchNo: 'asc' },
       },
@@ -137,6 +138,19 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const id = parseInt(params.id)
-  await (prisma as any).foldProgram.delete({ where: { id } })
+  const db = prisma as any
+
+  // Check if any batch has dyeing entries
+  const batches = await db.foldBatch.findMany({
+    where: { foldProgramId: id },
+    include: { dyeingEntries: { select: { id: true, slipNo: true, status: true } } },
+  })
+  const dyedBatches = batches.filter((b: any) => b.dyeingEntries.length > 0)
+  if (dyedBatches.length > 0) {
+    const details = dyedBatches.map((b: any) => `B${b.batchNo} (Slip ${b.dyeingEntries.map((d: any) => d.slipNo).join(',')})`).join(', ')
+    return NextResponse.json({ error: `Cannot delete — ${dyedBatches.length} batch(es) have dyeing entries: ${details}` }, { status: 400 })
+  }
+
+  await db.foldProgram.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }
