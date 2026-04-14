@@ -9,26 +9,33 @@ export async function GET() {
 
   const db = prisma as any
 
-  // Get done dyeing entries — only fields needed
-  const doneSlips = await db.dyeingEntry.findMany({
-    where: { dyeingDoneAt: { not: null } },
-    select: {
-      id: true,
-      slipNo: true,
-      date: true,
-      dyeingDoneAt: true,
-      shadeName: true,
-      lotNo: true,
-      than: true,
-      marka: true,
-      isPcJob: true,
-      machine: { select: { name: true } },
-      operator: { select: { name: true } },
-      lots: { select: { lotNo: true, than: true } },
-      foldBatch: { select: { batchNo: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
-    },
-    orderBy: { dyeingDoneAt: 'desc' },
-  })
+  // Run dyeing entries + finish lots in parallel (independent queries)
+  const { buildLotInfoMap } = await import('@/lib/lot-info')
+
+  const [doneSlips, finishLots] = await Promise.all([
+    db.dyeingEntry.findMany({
+      where: { dyeingDoneAt: { not: null } },
+      select: {
+        id: true,
+        slipNo: true,
+        date: true,
+        dyeingDoneAt: true,
+        shadeName: true,
+        lotNo: true,
+        than: true,
+        marka: true,
+        isPcJob: true,
+        machine: { select: { name: true } },
+        operator: { select: { name: true } },
+        lots: { select: { lotNo: true, than: true } },
+        foldBatch: { select: { batchNo: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
+      },
+      orderBy: { dyeingDoneAt: 'desc' },
+    }),
+    db.finishEntryLot.findMany({
+      select: { lotNo: true, than: true },
+    }),
+  ])
 
   // Collect all lot numbers
   const allLotNos = new Set<string>()
@@ -37,14 +44,7 @@ export async function GET() {
     for (const l of lots) allLotNos.add(l.lotNo)
   }
 
-  // Batch fetch party + quality for all lots (GreyEntry + carry-forward fallback)
-  const { buildLotInfoMap } = await import('@/lib/lot-info')
   const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
-
-  // Fetch all finish entry lots to calculate finished than per lotNo
-  const finishLots = await db.finishEntryLot.findMany({
-    select: { lotNo: true, than: true },
-  })
   const finishedThanMap = new Map<string, number>()
   for (const fl of finishLots) {
     const key = fl.lotNo.toLowerCase().trim()

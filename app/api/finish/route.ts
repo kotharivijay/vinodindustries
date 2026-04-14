@@ -30,18 +30,20 @@ export async function GET() {
   }
 
   const { buildLotInfoMap } = await import('@/lib/lot-info')
-  const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
+  const lotNosArr = Array.from(allLotNos)
 
-  // Get dyeing info (shade, fold) for these lots
+  // Run lot info + dyeing queries in parallel
   const db2 = prisma as any
   let dyeingByLot = new Map<string, { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }>()
   let dyeingAllByLot = new Map<string, any[]>()
-  try {
-    const dyeingEntries = await db2.dyeingEntry.findMany({
+
+  const [lotInfoMap, dyeingEntries] = await Promise.all([
+    buildLotInfoMap(lotNosArr),
+    db2.dyeingEntry.findMany({
       where: {
         OR: [
-          { lotNo: { in: Array.from(allLotNos) } },
-          { lots: { some: { lotNo: { in: Array.from(allLotNos) } } } },
+          { lotNo: { in: lotNosArr } },
+          { lots: { some: { lotNo: { in: lotNosArr } } } },
         ],
       },
       select: {
@@ -55,22 +57,22 @@ export async function GET() {
           },
         },
       },
-    })
-    dyeingAllByLot = new Map<string, any[]>()
-    for (const de of dyeingEntries) {
-      const foldNo = de.foldBatch?.foldProgram?.foldNo || null
-      const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
-      const shadeDesc = de.foldBatch?.shade?.description || null
-      const dLots = de.lots?.length ? de.lots.map((l: any) => l.lotNo) : []
-      for (const ln of dLots) {
-        if (!dyeingByLot.has(ln)) {
-          dyeingByLot.set(ln, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
-        }
-        if (!dyeingAllByLot.has(ln)) dyeingAllByLot.set(ln, [])
-        dyeingAllByLot.get(ln)!.push({ slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
+    }).catch(() => []),
+  ])
+
+  for (const de of dyeingEntries) {
+    const foldNo = de.foldBatch?.foldProgram?.foldNo || null
+    const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
+    const shadeDesc = de.foldBatch?.shade?.description || null
+    const dLots = de.lots?.length ? de.lots.map((l: any) => l.lotNo) : []
+    for (const ln of dLots) {
+      if (!dyeingByLot.has(ln)) {
+        dyeingByLot.set(ln, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
       }
+      if (!dyeingAllByLot.has(ln)) dyeingAllByLot.set(ln, [])
+      dyeingAllByLot.get(ln)!.push({ slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
     }
-  } catch {}
+  }
 
   const enriched = entries.map((e: any) => {
     const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than, doneThan: 0, status: 'pending' }]

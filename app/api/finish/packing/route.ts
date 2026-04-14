@@ -59,24 +59,27 @@ export async function GET() {
   }
 
   const { buildLotInfoMap } = await import('@/lib/lot-info')
-  const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
+  const lotNosArr = Array.from(allLotNos)
 
-  // Get shade info from dyeing entries for these lots
-  const dyeingEntries = await db.dyeingEntry.findMany({
-    where: {
-      dyeingDoneAt: { not: null },
-      OR: [
-        { lotNo: { in: Array.from(allLotNos) } },
-        { lots: { some: { lotNo: { in: Array.from(allLotNos) } } } },
-      ],
-    },
-    select: {
-      lotNo: true,
-      shadeName: true,
-      lots: { select: { lotNo: true } },
-      foldBatch: { select: { foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
-    },
-  })
+  // Run lot info + dyeing queries in parallel
+  const [lotInfoMap, dyeingEntries] = await Promise.all([
+    buildLotInfoMap(lotNosArr),
+    db.dyeingEntry.findMany({
+      where: {
+        dyeingDoneAt: { not: null },
+        OR: [
+          { lotNo: { in: lotNosArr } },
+          { lots: { some: { lotNo: { in: lotNosArr } } } },
+        ],
+      },
+      select: {
+        lotNo: true,
+        shadeName: true,
+        lots: { select: { lotNo: true } },
+        foldBatch: { select: { foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
+      },
+    }),
+  ])
 
   const lotDyeMap = new Map<string, { shadeName: string | null; shadeDescription: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
