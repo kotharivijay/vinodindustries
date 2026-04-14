@@ -75,6 +75,7 @@ export async function GET() {
           party: li?.party || lotInfo?.party || null,
           quality: li?.quality || lotInfo?.quality || null,
           weight: li?.weight || lotInfo?.weight || null,
+          mtrPerThan: li?.mtrPerThan || lotInfo?.mtrPerThan || null,
         })
       }
     }

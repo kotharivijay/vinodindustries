@@ -27,6 +27,7 @@ interface StockLot {
   party: string | null
   quality: string | null
   weight: string | null
+  mtrPerThan: number | null
 }
 
 interface StockEntry {
@@ -763,6 +764,28 @@ export default function FinishStockPage() {
     } catch {
       setFinishSlipNo('')
     }
+    // Auto-fill meters from mtrPerThan
+    const autoMeters: Record<string, string> = {}
+    const grouped = new Map<string, { lotNo: string; totalThan: number; mtrPerThan: number | null }>()
+    for (const lot of selectedLots.values()) {
+      if (!grouped.has(lot.lotNo)) grouped.set(lot.lotNo, { lotNo: lot.lotNo, totalThan: 0, mtrPerThan: null })
+      const g = grouped.get(lot.lotNo)!
+      g.totalThan += lot.than
+    }
+    // Find mtrPerThan from stock entries
+    for (const e of entries) {
+      for (const l of e.lots) {
+        const g = grouped.get(l.lotNo)
+        if (g && l.mtrPerThan && !g.mtrPerThan) g.mtrPerThan = l.mtrPerThan
+      }
+    }
+    for (const [lotNo, g] of grouped) {
+      if (g.mtrPerThan && g.totalThan > 0) {
+        autoMeters[lotNo] = (g.mtrPerThan * g.totalThan).toFixed(1)
+      }
+    }
+    if (Object.keys(autoMeters).length > 0) setFinishMeters(autoMeters)
+
     // Load chemicals master
     if (!chemLoaded) {
       try {
@@ -772,7 +795,7 @@ export default function FinishStockPage() {
         setChemLoaded(true)
       } catch { /* ignore */ }
     }
-  }, [chemLoaded])
+  }, [chemLoaded, selectedLots, entries])
 
   const cancelFinish = useCallback(() => {
     setShowFinishForm(false)
@@ -2105,14 +2128,33 @@ export default function FinishStockPage() {
                                   <span className="font-bold text-teal-700 dark:text-teal-300 text-sm">{lotNo}</span>
                                   <div className="flex items-center gap-3">
                                     <span className="text-xs text-gray-500 dark:text-gray-400">Total: <strong className="text-gray-800 dark:text-gray-200">{totalThan} than</strong></span>
-                                    <input
-                                      type="number"
-                                      step="0.1"
-                                      placeholder="Meter"
-                                      value={finishMeters[lotNo] ?? ''}
-                                      onChange={e => setFinishMeters(prev => ({ ...prev, [lotNo]: e.target.value }))}
-                                      className="w-20 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
-                                    />
+                                    {(() => {
+                                      const firstSlot = slips[0]
+                                      // Find mtrPerThan from entries
+                                      let mpt: number | null = null
+                                      for (const e of entries) {
+                                        const l = e.lots.find((l: any) => l.lotNo === lotNo)
+                                        if (l?.mtrPerThan) { mpt = l.mtrPerThan; break }
+                                      }
+                                      const expected = mpt ? mpt * totalThan : 0
+                                      const actual = parseFloat(finishMeters[lotNo] || '0')
+                                      const diff = expected > 0 && actual > 0 ? ((actual - expected) / expected) * 100 : null
+                                      const flag = diff !== null ? (diff < -6 ? 'red' : diff < -4 ? 'orange' : diff < -1 ? 'green' : 'green') : null
+                                      return (
+                                        <div className="flex items-center gap-1">
+                                          <input
+                                            type="number" step="0.1" placeholder="Meter"
+                                            value={finishMeters[lotNo] ?? ''}
+                                            onChange={e => setFinishMeters(prev => ({ ...prev, [lotNo]: e.target.value }))}
+                                            className={`w-20 border rounded px-2 py-1 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400 ${flag === 'red' ? 'border-red-500' : flag === 'orange' ? 'border-amber-500' : 'border-gray-300 dark:border-gray-600'}`}
+                                          />
+                                          {flag === 'red' && <span className="text-[9px] text-red-500" title="High shortage">🔴 {diff?.toFixed(1)}%</span>}
+                                          {flag === 'orange' && <span className="text-[9px] text-amber-500" title="More shortage">🟠 {diff?.toFixed(1)}%</span>}
+                                          {flag === 'green' && diff !== null && diff < 0 && <span className="text-[9px] text-green-500">{diff?.toFixed(1)}%</span>}
+                                          {expected > 0 && !actual && <span className="text-[9px] text-gray-400">~{expected.toFixed(0)}m</span>}
+                                        </div>
+                                      )
+                                    })()}
                                   </div>
                                 </div>
                                 {/* Slip details */}

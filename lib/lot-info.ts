@@ -5,6 +5,7 @@ export interface LotInfo {
   quality: string | null
   weight: string | null
   marka: string | null
+  mtrPerThan: number | null
 }
 
 /**
@@ -20,11 +21,12 @@ export async function buildLotInfoMap(lotNos: string[]): Promise<Map<string, Lot
   // 1. GreyEntry (primary source)
   const greyEntries = await prisma.greyEntry.findMany({
     where: { lotNo: { in: lotNos } },
-    select: { lotNo: true, weight: true, marka: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+    select: { lotNo: true, weight: true, marka: true, grayMtr: true, than: true, party: { select: { name: true } }, quality: { select: { name: true } } },
     distinct: ['lotNo'],
   })
   for (const g of greyEntries) {
-    map.set(g.lotNo.toLowerCase().trim(), { party: g.party.name, quality: g.quality.name, weight: g.weight, marka: g.marka || null })
+    const mtrPerThan = g.grayMtr && g.than ? g.grayMtr / g.than : null
+    map.set(g.lotNo.toLowerCase().trim(), { party: g.party.name, quality: g.quality.name, weight: g.weight, marka: g.marka || null, mtrPerThan })
   }
 
   // 2. LotOpeningBalance fallback for lots not found in GreyEntry
@@ -33,12 +35,13 @@ export async function buildLotInfoMap(lotNos: string[]): Promise<Map<string, Lot
     try {
       const obEntries = await db.lotOpeningBalance.findMany({
         where: { lotNo: { in: missingLots } },
-        select: { lotNo: true, party: true, quality: true, weight: true, marka: true },
+        select: { lotNo: true, party: true, quality: true, weight: true, marka: true, grayMtr: true, greyThan: true },
       })
       for (const ob of obEntries) {
         const key = ob.lotNo.toLowerCase().trim()
         if (!map.has(key)) {
-          map.set(key, { party: ob.party || null, quality: ob.quality || null, weight: ob.weight || null, marka: ob.marka || null })
+          const obMtrPerThan = ob.grayMtr && ob.greyThan ? ob.grayMtr / ob.greyThan : null
+          map.set(key, { party: ob.party || null, quality: ob.quality || null, weight: ob.weight || null, marka: ob.marka || null, mtrPerThan: obMtrPerThan })
         }
       }
     } catch {}
