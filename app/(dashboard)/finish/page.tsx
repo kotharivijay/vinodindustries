@@ -72,6 +72,7 @@ interface FinishLot {
   status: string
   party: string | null
   quality: string | null
+  mtrPerThan: number | null
   dyeSlipNo: number | null
   shadeName: string | null
   shadeDesc: string | null
@@ -1209,14 +1210,33 @@ export default function FinishStockPage() {
                                             {indices.map(li => {
                                               const lot = editLots[li]
                                               const isCancelled = (parseInt(lot.than) || 0) === 0
+                                              const lotThan = parseInt(lot.than) || 0
+                                              const totalEditThan = editLots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)
+                                              const finMtr = parseFloat(editFinishMtr) || 0
+                                              const distributedMtr = totalEditThan > 0 && finMtr > 0 ? (lotThan / totalEditThan) * finMtr : 0
+                                              const enrichedLot = entry.lots[li]
+                                              const expectedMtr = enrichedLot?.mtrPerThan ? enrichedLot.mtrPerThan * lotThan : 0
+                                              const mtrDiff = expectedMtr > 0 && distributedMtr > 0 ? ((distributedMtr - expectedMtr) / expectedMtr) * 100 : null
+                                              const mtrFlag = mtrDiff !== null ? (mtrDiff < -6 ? 'red' : mtrDiff < -4 ? 'orange' : 'green') : null
                                               return (
-                                                <div key={li} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${isCancelled ? 'bg-red-50 dark:bg-red-900/20 opacity-60' : 'bg-white dark:bg-gray-800'}`}>
-                                                  <span className="text-xs font-semibold text-teal-700 dark:text-teal-300 w-24 truncate">{lot.lotNo}</span>
-                                                  <input type="number" value={lot.than}
-                                                    onChange={e => setEditLots(prev => { const u = [...prev]; u[li] = { ...u[li], than: e.target.value }; return u })}
-                                                    className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400 text-center font-medium" />
-                                                  <span className="text-[10px] text-gray-400">than</span>
-                                                  {isCancelled && <span className="text-[10px] text-red-500 font-medium">Cancelled</span>}
+                                                <div key={li} className={`rounded-lg px-2 py-1.5 ${isCancelled ? 'bg-red-50 dark:bg-red-900/20 opacity-60' : 'bg-white dark:bg-gray-800'}`}>
+                                                  <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-semibold text-teal-700 dark:text-teal-300 w-24 truncate">{lot.lotNo}</span>
+                                                    <input type="number" value={lot.than}
+                                                      onChange={e => setEditLots(prev => { const u = [...prev]; u[li] = { ...u[li], than: e.target.value }; return u })}
+                                                      className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400 text-center font-medium" />
+                                                    <span className="text-[10px] text-gray-400">than</span>
+                                                    {isCancelled && <span className="text-[10px] text-red-500 font-medium">Cancelled</span>}
+                                                  </div>
+                                                  {distributedMtr > 0 && !isCancelled && (
+                                                    <div className="flex items-center gap-1.5 mt-0.5 ml-[6.5rem]">
+                                                      <span className="text-[9px] text-gray-400">{distributedMtr.toFixed(1)} mtr</span>
+                                                      {expectedMtr > 0 && <span className="text-[9px] text-gray-300">({expectedMtr.toFixed(0)} exp)</span>}
+                                                      {mtrFlag === 'red' && <span className="text-[9px] text-red-500">🔴 {mtrDiff?.toFixed(1)}%</span>}
+                                                      {mtrFlag === 'orange' && <span className="text-[9px] text-amber-500">🟠 {mtrDiff?.toFixed(1)}%</span>}
+                                                      {mtrFlag === 'green' && mtrDiff !== null && mtrDiff < -1 && <span className="text-[9px] text-green-500">{mtrDiff?.toFixed(1)}%</span>}
+                                                    </div>
+                                                  )}
                                                 </div>
                                               )
                                             })}

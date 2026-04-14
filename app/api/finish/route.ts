@@ -80,6 +80,7 @@ export async function GET() {
         ...l,
         party: info?.party || null,
         quality: info?.quality || null,
+        mtrPerThan: info?.mtrPerThan || null,
         dyeSlipNo: dye?.slipNo || null,
         shadeName: dye?.shadeName || null,
         shadeDesc: dye?.shadeDesc || null,
