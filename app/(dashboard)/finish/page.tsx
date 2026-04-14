@@ -776,6 +776,9 @@ export default function FinishStockPage() {
   const [finishTotalMeterOverride, setFinishTotalMeterOverride] = useState('')
   const [recipeFetching, setRecipeFetching] = useState(false)
   const [recipeMsg, setRecipeMsg] = useState('')
+  const [showRecipePicker, setShowRecipePicker] = useState(false)
+  const [recipePickerList, setRecipePickerList] = useState<any[]>([])
+  const [recipePickerParty, setRecipePickerParty] = useState('')
 
   const startFinish = useCallback(async () => {
     setShowFinishForm(true)
@@ -835,60 +838,59 @@ export default function FinishStockPage() {
   }, [])
 
   const fetchFinishRecipe = useCallback(async () => {
-    // Determine party + quality from selected lots
     const firstLot = Array.from(selectedLots.values())[0]
     if (!firstLot) { setRecipeMsg('No lots selected.'); return }
     const partyName = firstLot.party
-    const qualityName = firstLot.quality
-    if (!partyName || partyName === 'Unknown' || !qualityName || qualityName === 'Unknown') {
-      setRecipeMsg('Could not determine party/quality from selected lots.')
+    if (!partyName || partyName === 'Unknown') {
+      setRecipeMsg('Could not determine party from selected lots.')
       return
     }
     setRecipeFetching(true)
     setRecipeMsg('')
     try {
-      // Look up party and quality IDs
-      const [partiesRes, qualitiesRes] = await Promise.all([
-        fetch('/api/masters/parties').then(r => r.json()),
-        fetch('/api/masters/qualities').then(r => r.json()),
-      ])
+      const partiesRes = await fetch('/api/masters/parties').then(r => r.json())
       const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, ' ')
       const party = (partiesRes as any[]).find((p: any) => norm(p.name) === norm(partyName))
-      const quality = (qualitiesRes as any[]).find((q: any) => norm(q.name) === norm(qualityName))
-      if (!party || !quality) {
-        setRecipeMsg(`No recipe found for ${partyName} / ${qualityName}`)
+      if (!party) {
+        setRecipeMsg(`No party found: ${partyName}`)
         setRecipeFetching(false)
         return
       }
-      const recipeRes = await fetch(`/api/finish/recipe?partyId=${party.id}&qualityId=${quality.id}`)
-      const recipe = await recipeRes.json()
-      if (!recipe || !recipe.id) {
-        setRecipeMsg(`No recipe found for ${partyName} / ${qualityName}`)
+      const recipesRes = await fetch(`/api/finish/recipe?partyId=${party.id}`)
+      const recipes = await recipesRes.json()
+      if (!Array.isArray(recipes) || recipes.length === 0) {
+        setRecipeMsg(`No recipes found for ${partyName}`)
         setRecipeFetching(false)
         return
       }
-      // Populate chemicals from recipe items
-      const newChemicals: FinishChemicalRow[] = recipe.items.map((item: any) => {
-        const rate = item.chemical?.currentPrice
-        const qty = item.quantity
-        const cost = rate != null && qty != null ? parseFloat((qty * rate).toFixed(2)) : null
-        return {
-          name: item.name,
-          chemicalId: item.chemicalId,
-          quantity: String(item.quantity),
-          unit: item.unit,
-          rate: rate != null ? String(rate) : '',
-          cost,
-        }
-      })
-      setFinishChemicals(newChemicals)
-      const tagNote = recipe.isTagged ? ` (using recipe from ${recipe.taggedFrom})` : ''
-      setRecipeMsg(`Loaded recipe: ${recipe.items.length} chemical(s) for ${partyName} / ${qualityName}${tagNote}`)
+      setRecipePickerList(recipes)
+      setRecipePickerParty(partyName)
+      setShowRecipePicker(true)
     } catch {
-      setRecipeMsg('Failed to fetch recipe.')
+      setRecipeMsg('Failed to fetch recipes.')
     }
     setRecipeFetching(false)
   }, [selectedLots])
+
+  const applyRecipe = useCallback((recipe: any) => {
+    const newChemicals: FinishChemicalRow[] = recipe.items.map((item: any) => {
+      const rate = item.chemical?.currentPrice
+      const qty = item.quantity
+      const cost = rate != null && qty != null ? parseFloat((qty * rate).toFixed(2)) : null
+      return {
+        name: item.name,
+        chemicalId: item.chemicalId,
+        quantity: String(item.quantity),
+        unit: item.unit,
+        rate: rate != null ? String(rate) : '',
+        cost,
+      }
+    })
+    setFinishChemicals(newChemicals)
+    setShowRecipePicker(false)
+    const variantNote = recipe.variant && recipe.variant !== 'Standard' ? ` (${recipe.variant})` : ''
+    setRecipeMsg(`Loaded: ${recipe.quality.name}${variantNote} — ${recipe.items.length} chemical(s)`)
+  }, [])
 
   const addFinishChemical = useCallback(() => {
     setFinishChemicals(prev => [...prev, { name: '', chemicalId: null, quantity: '', unit: 'kg', rate: '', cost: null }])
@@ -2570,6 +2572,51 @@ export default function FinishStockPage() {
                       </div>
                       {recipeMsg && (
                         <p className={`text-xs mb-2 ${recipeMsg.includes('Loaded') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>{recipeMsg}</p>
+                      )}
+                      {showRecipePicker && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowRecipePicker(false)}>
+                          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                              <div>
+                                <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Select Recipe</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{recipePickerParty} — {recipePickerList.length} recipe{recipePickerList.length !== 1 ? 's' : ''}</p>
+                              </div>
+                              <button onClick={() => setShowRecipePicker(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                              {recipePickerList.map(r => (
+                                <button
+                                  key={r.id}
+                                  onClick={() => applyRecipe(r)}
+                                  className="w-full text-left bg-gray-50 dark:bg-gray-700/50 hover:bg-teal-50 dark:hover:bg-teal-900/20 border border-gray-200 dark:border-gray-600 hover:border-teal-300 dark:hover:border-teal-700 rounded-xl p-4 transition"
+                                >
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{r.quality.name}</span>
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">{r.items.length} chemical{r.items.length !== 1 ? 's' : ''}</span>
+                                  </div>
+                                  {r.variant && (
+                                    <span className="inline-block text-[10px] bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded mb-1.5">{r.variant}</span>
+                                  )}
+                                  <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                                    {r.finishWidth && <span>FW: {r.finishWidth}</span>}
+                                    {r.finalWidth && <span>Final: {r.finalWidth}</span>}
+                                    {r.shortage && <span>Shortage: {r.shortage}</span>}
+                                  </div>
+                                  {r.items.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {r.items.slice(0, 6).map((item: any, i: number) => (
+                                        <span key={i} className="inline-flex items-center gap-0.5 bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 text-[10px] px-1.5 py-0.5 rounded-full">
+                                          {item.name} <span className="text-gray-400">({item.quantity}{item.unit})</span>
+                                        </span>
+                                      ))}
+                                      {r.items.length > 6 && <span className="text-[10px] text-gray-400">+{r.items.length - 6}</span>}
+                                    </div>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
                       )}
                       {finishChemicals.length > 0 && (
                         <div className="space-y-2">
