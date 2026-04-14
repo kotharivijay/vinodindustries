@@ -1055,6 +1055,8 @@ export default function FinishStockPage() {
   const [frSaving, setFrSaving] = useState(false)
   const [frEditId, setFrEditId] = useState<number | null>(null)
   const [frEditThan, setFrEditThan] = useState('')
+  const [showAddLot, setShowAddLot] = useState(false)
+  const [addLotSearch, setAddLotSearch] = useState('')
 
   async function addFoldingReceipt() {
     if (!frFormLotId || !frSlipNo || !frThan) return
@@ -1290,6 +1292,48 @@ export default function FinishStockPage() {
                           })()}
                         </div>
 
+
+                        {/* Add Lot from Stock */}
+                        {showAddLot ? (
+                          <div className="border border-indigo-200 dark:border-indigo-800 rounded-lg p-3 bg-indigo-50/50 dark:bg-indigo-900/10">
+                            <div className="flex items-center justify-between mb-2">
+                              <h3 className="text-xs font-bold text-indigo-700 dark:text-indigo-400">Add Lot from Dyeing Stock</h3>
+                              <button onClick={() => setShowAddLot(false)} className="text-gray-400 text-sm">&times;</button>
+                            </div>
+                            <input type="text" placeholder="Search lot no..." value={addLotSearch} onChange={e => setAddLotSearch(e.target.value)}
+                              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 mb-2" />
+                            <div className="max-h-40 overflow-y-auto space-y-1">
+                              {entries.filter(e => {
+                                if (!addLotSearch) return false
+                                const q = addLotSearch.toLowerCase()
+                                return e.lots.some(l => l.lotNo.toLowerCase().includes(q)) && !editLots.some(el => e.lots.some(l => l.lotNo === el.lotNo))
+                              }).slice(0, 10).map(e => (
+                                e.lots.filter(l => l.lotNo.toLowerCase().includes(addLotSearch.toLowerCase()) && !editLots.some(el => el.lotNo === l.lotNo)).map(l => (
+                                  <button key={`${e.id}-${l.lotNo}`} onClick={() => {
+                                    setEditLots(prev => [...prev, { lotNo: l.lotNo, than: String(l.than), meter: '' }])
+                                    setShowAddLot(false)
+                                    setAddLotSearch('')
+                                  }}
+                                    className="w-full text-left px-3 py-2 text-xs bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-400 flex items-center justify-between">
+                                    <div>
+                                      <span className="font-semibold text-teal-700 dark:text-teal-300">{l.lotNo}</span>
+                                      <span className="text-gray-400 ml-2">Slip {e.slipNo}</span>
+                                      {e.foldNo && <span className="text-indigo-500 ml-1">F{e.foldNo}</span>}
+                                      {e.shadeName && <span className="text-purple-500 ml-1">{e.shadeName}</span>}
+                                    </div>
+                                    <span className="font-bold text-gray-700 dark:text-gray-200">{l.than}T</span>
+                                  </button>
+                                ))
+                              ))}
+                              {addLotSearch && entries.filter(e => e.lots.some(l => l.lotNo.toLowerCase().includes(addLotSearch.toLowerCase()))).length === 0 && (
+                                <p className="text-[10px] text-gray-400 text-center py-2">No matching lots in stock</p>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <button onClick={() => setShowAddLot(true)}
+                            className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 font-medium">+ Add Lot from Stock</button>
+                        )}
 
                         {/* Finish Completion */}
                         <div className="border border-teal-200 dark:border-teal-800 rounded-lg p-3 bg-teal-50/50 dark:bg-teal-900/10">
