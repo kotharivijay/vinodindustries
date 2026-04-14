@@ -249,6 +249,7 @@ export default function FinishRecipeMasterPage() {
   const [finishWidth, setFinishWidth] = useState('')
   const [finalWidth, setFinalWidth] = useState('')
   const [shortage, setShortage] = useState('')
+  const [variantName, setVariantName] = useState('Standard')
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState<{ name: string; chemicalId: number | null; quantity: string; unit: string }[]>([])
   const [saving, setSaving] = useState(false)
@@ -441,6 +442,7 @@ export default function FinishRecipeMasterPage() {
         body: JSON.stringify({
           partyId: selectedPartyId,
           qualityId: selectedQualityId,
+          variant: variantName || 'Standard',
           finishWidth: finishWidth || null,
           finalWidth: finalWidth || null,
           shortage: shortage || null,
@@ -649,7 +651,7 @@ export default function FinishRecipeMasterPage() {
                   {recipe ? (
                     recipe.isTagged
                       ? `Recipe (tagged from ${recipe.taggedFrom})`
-                      : `Edit Recipe #${recipe.id}`
+                      : `Edit Recipe — ${recipe.variant || 'Standard'}`
                   ) : 'New Recipe'}
                 </h2>
                 <div className="flex items-center gap-3">
@@ -663,6 +665,43 @@ export default function FinishRecipeMasterPage() {
                   )}
                 </div>
               </div>
+
+              {/* Variant selector + add new variant */}
+              {recipe?.variants && recipe.variants.length > 1 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] text-gray-500">Variants:</span>
+                  {recipe.variants.map((v: any) => (
+                    <button key={v.id} onClick={() => {
+                      setVariantName(v.variant)
+                      // Reload this variant
+                      fetch(`/api/finish/recipe?partyId=${selectedPartyId}&qualityId=${selectedQualityId}&variant=${encodeURIComponent(v.variant)}`)
+                        .then(r => r.json()).then(d => { if (d?.id) setRecipe(d) })
+                    }}
+                      className={`text-[10px] px-2 py-0.5 rounded-full border font-medium ${v.variant === (recipe.variant || 'Standard')
+                        ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-700'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                      {v.variant}{v.isDefault ? ' ★' : ''}
+                    </button>
+                  ))}
+                  <button onClick={() => { setShowNewRecipe(true); setRecipe(null); setVariantName(''); setItems([{ name: '', chemicalId: null, quantity: '', unit: 'kg' }]) }}
+                    className="text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium">+ New Variant</button>
+                </div>
+              )}
+
+              {/* Variant name input for new recipe */}
+              {!recipe && showNewRecipe && (
+                <div>
+                  <label className="block text-[10px] text-gray-500 mb-0.5">Variant Name</label>
+                  <input value={variantName} onChange={e => setVariantName(e.target.value)} placeholder="e.g. Standard, Premium Soft, Extra Calender"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                </div>
+              )}
+
+              {/* Add variant button when only 1 exists */}
+              {recipe && !recipe.isTagged && (!recipe.variants || recipe.variants.length <= 1) && (
+                <button onClick={() => { setShowNewRecipe(true); setRecipe(null); setVariantName(''); setItems([{ name: '', chemicalId: null, quantity: '', unit: 'kg' }]) }}
+                  className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium">+ Add Another Variant</button>
+              )}
 
               {/* Tagged recipe info banner */}
               {recipe?.isTagged && (
@@ -849,6 +888,9 @@ export default function FinishRecipeMasterPage() {
                     <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{r.party.name}</span>
                     <span className="text-gray-300 dark:text-gray-600 mx-2">/</span>
                     <span className="text-sm text-gray-600 dark:text-gray-300">{r.quality.name}</span>
+                    {r.variant && r.variant !== 'Standard' && (
+                      <span className="ml-2 text-[10px] bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded">{r.variant}</span>
+                    )}
                   </div>
                   <span className="text-xs text-gray-400 dark:text-gray-500">{r.items.length} chemical{r.items.length !== 1 ? 's' : ''}</span>
                 </div>
