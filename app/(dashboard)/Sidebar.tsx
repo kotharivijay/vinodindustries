@@ -261,6 +261,9 @@ function SidebarContent({ pathname, onNavigate, userName, userEmail, company, ro
           <div className="flex-1 min-w-0">
             <h1 className="text-sm font-bold tracking-tight truncate">{companyName}</h1>
             <p className="text-[10px] text-[var(--sidebar-text-muted)] mt-0.5">Textile Management</p>
+            {process.env.NEXT_PUBLIC_BUILD_ID && (
+              <p className="text-[8px] text-[var(--sidebar-text-muted)] mt-0.5 opacity-50">Build: {process.env.NEXT_PUBLIC_BUILD_ID}</p>
+            )}
           </div>
           <NotificationBell />
         </div>
