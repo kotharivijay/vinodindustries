@@ -1219,9 +1219,38 @@ export default function FinishStockPage() {
                             </label>
                           </div>
                           {(() => {
-                            // Build fold → slip → lots hierarchy using enriched entry.lots
+                            // Build fold → slip → lots hierarchy using ALL dyeSlips per lot
                             const foldMap = new Map<string, Map<string, number[]>>()
+                            const lotAssigned = new Set<number>()
+                            // First pass: collect all unique fold→slip combos from dyeSlips
                             for (let li = 0; li < editLots.length; li++) {
+                              const enriched = entry.lots[li]
+                              const dyeSlips = enriched?.dyeSlips || []
+                              if (dyeSlips.length > 0) {
+                                for (const ds of dyeSlips) {
+                                  const foldNo = ds.foldNo || 'No Fold'
+                                  const slipKey = `${ds.slipNo}::${ds.shadeName || ''}::${ds.shadeDesc || ''}`
+                                  if (!foldMap.has(foldNo)) foldMap.set(foldNo, new Map())
+                                  const sMap = foldMap.get(foldNo)!
+                                  if (!sMap.has(slipKey)) sMap.set(slipKey, [])
+                                }
+                              }
+                            }
+                            // Second pass: assign each lot to its first dye slip group
+                            for (let li = 0; li < editLots.length; li++) {
+                              const enriched = entry.lots[li]
+                              const dyeSlips = enriched?.dyeSlips || []
+                              if (dyeSlips.length > 0) {
+                                const ds = dyeSlips[0]
+                                const foldNo = ds.foldNo || 'No Fold'
+                                const slipKey = `${ds.slipNo}::${ds.shadeName || ''}::${ds.shadeDesc || ''}`
+                                foldMap.get(foldNo)!.get(slipKey)!.push(li)
+                                lotAssigned.add(li)
+                              }
+                            }
+                            // Fallback: lots with no dyeSlips
+                            for (let li = 0; li < editLots.length; li++) {
+                              if (lotAssigned.has(li)) continue
                               const enriched = entry.lots[li]
                               const foldNo = enriched?.foldNo || 'No Fold'
                               const slipKey = enriched?.dyeSlipNo ? `${enriched.dyeSlipNo}::${enriched.shadeName || ''}::${enriched.shadeDesc || ''}` : 'direct'
@@ -1238,13 +1267,14 @@ export default function FinishStockPage() {
                                       <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">📁 Fold {foldNo}</span>
                                     </div>
                                     {Array.from(slipMap.entries()).map(([slipKey, indices]) => {
-                                      const enriched = entry.lots[indices[0]]
-                                      const shade = [enriched?.shadeName, enriched?.shadeDesc].filter(Boolean).join(' — ')
+                                      const [slipNoStr, shade1, shade2] = slipKey.split('::')
+                                      const shade = [shade1, shade2].filter(Boolean).join(' — ')
                                       return (
                                         <div key={slipKey} className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
-                                          {enriched?.dyeSlipNo && (
+                                          {slipKey !== 'direct' && (
                                             <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">
-                                              Slip {enriched.dyeSlipNo}{shade ? ` — ${shade}` : ''}
+                                              Slip {slipNoStr}{shade ? ` — ${shade}` : ''}
+                                              {indices.length === 0 && <span className="ml-1 text-gray-400 italic">(no lots in this FP)</span>}
                                             </p>
                                           )}
                                           <div className="space-y-1.5">
@@ -1269,6 +1299,15 @@ export default function FinishStockPage() {
                                                     <span className="text-[10px] text-gray-400">than</span>
                                                     {isCancelled && <span className="text-[10px] text-red-500 font-medium">Cancelled</span>}
                                                   </div>
+                                                  {enrichedLot?.dyeSlips?.length > 1 && (
+                                                    <div className="flex flex-wrap gap-1 mt-0.5 ml-[6.5rem]">
+                                                      {enrichedLot.dyeSlips.map((ds: any, di: number) => (
+                                                        <span key={di} className="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                                                          S{ds.slipNo}{ds.foldNo ? ` · ${ds.foldNo}` : ''}
+                                                        </span>
+                                                      ))}
+                                                    </div>
+                                                  )}
                                                   {distributedMtr > 0 && !isCancelled && (
                                                     <div className="flex items-center gap-1.5 mt-0.5 ml-[6.5rem]">
                                                       <span className="text-[9px] text-gray-400">{distributedMtr.toFixed(1)} mtr</span>

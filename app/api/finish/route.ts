@@ -35,6 +35,7 @@ export async function GET() {
   // Get dyeing info (shade, fold) for these lots
   const db2 = prisma as any
   let dyeingByLot = new Map<string, { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }>()
+  let dyeingAllByLot = new Map<string, any[]>()
   try {
     const dyeingEntries = await db2.dyeingEntry.findMany({
       where: {
@@ -55,6 +56,7 @@ export async function GET() {
         },
       },
     })
+    dyeingAllByLot = new Map<string, any[]>()
     for (const de of dyeingEntries) {
       const foldNo = de.foldBatch?.foldProgram?.foldNo || null
       const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
@@ -64,6 +66,8 @@ export async function GET() {
         if (!dyeingByLot.has(ln)) {
           dyeingByLot.set(ln, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
         }
+        if (!dyeingAllByLot.has(ln)) dyeingAllByLot.set(ln, [])
+        dyeingAllByLot.get(ln)!.push({ slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
       }
     }
   } catch {}
@@ -76,6 +80,7 @@ export async function GET() {
     const enrichedLots = lots.map((l: any) => {
       const info = lotInfoMap.get(l.lotNo.toLowerCase().trim())
       const dye = dyeingByLot.get(l.lotNo)
+      const allDyes = dyeingAllByLot.get(l.lotNo) || []
       return {
         ...l,
         party: info?.party || null,
@@ -85,6 +90,7 @@ export async function GET() {
         shadeName: dye?.shadeName || null,
         shadeDesc: dye?.shadeDesc || null,
         foldNo: dye?.foldNo || null,
+        dyeSlips: allDyes,
       }
     })
 
