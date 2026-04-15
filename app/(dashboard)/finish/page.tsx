@@ -492,6 +492,54 @@ export default function FinishStockPage() {
     setEditError('')
   }, [])
 
+  const [editRecipeLoading, setEditRecipeLoading] = useState(false)
+  const [editRecipeMsg, setEditRecipeMsg] = useState('')
+  const [showEditRecipePicker, setShowEditRecipePicker] = useState(false)
+  const [editRecipePickerList, setEditRecipePickerList] = useState<any[]>([])
+  const [editRecipePickerParty, setEditRecipePickerParty] = useState('')
+
+  const editLoadRecipe = useCallback(async (entry: any) => {
+    const partyName = entry.lots?.[0]?.party
+    if (!partyName || partyName === 'Unknown') {
+      setEditRecipeMsg('Could not determine party from lots.')
+      return
+    }
+    setEditRecipeLoading(true)
+    setEditRecipeMsg('')
+    try {
+      const partiesRes = await fetch('/api/masters/parties').then(r => r.json())
+      const norm = (s: string) => s.toLowerCase().trim().replace(/\s+/g, ' ')
+      const party = (partiesRes as any[]).find((p: any) => norm(p.name) === norm(partyName))
+      if (!party) { setEditRecipeMsg(`No party found: ${partyName}`); setEditRecipeLoading(false); return }
+      const recipesRes = await fetch(`/api/finish/recipe?partyId=${party.id}`)
+      const recipes = await recipesRes.json()
+      if (!Array.isArray(recipes) || recipes.length === 0) {
+        setEditRecipeMsg(`No recipes for ${partyName}`)
+        setEditRecipeLoading(false)
+        return
+      }
+      setEditRecipePickerList(recipes)
+      setEditRecipePickerParty(partyName)
+      setShowEditRecipePicker(true)
+    } catch {
+      setEditRecipeMsg('Failed to fetch recipes.')
+    }
+    setEditRecipeLoading(false)
+  }, [])
+
+  const applyEditRecipe = useCallback((recipe: any) => {
+    const newChemicals: FinishChemicalRow[] = recipe.items.map((item: any) => {
+      const rate = item.chemical?.currentPrice
+      const qty = item.quantity
+      const cost = rate != null && qty != null ? parseFloat((qty * rate).toFixed(2)) : null
+      return { name: item.name, chemicalId: item.chemicalId, quantity: String(item.quantity), unit: item.unit, rate: rate != null ? String(rate) : '', cost }
+    })
+    setEditChemicals(newChemicals)
+    setShowEditRecipePicker(false)
+    const variantNote = recipe.variant && recipe.variant !== 'Standard' ? ` (${recipe.variant})` : ''
+    setEditRecipeMsg(`Loaded: ${recipe.quality.name}${variantNote} — ${recipe.items.length} chemical(s)`)
+  }, [])
+
   const addEditChemical = useCallback(() => {
     setEditChemicals(prev => [...prev, { name: '', chemicalId: null, quantity: '', unit: 'kg', rate: '', cost: null }])
   }, [])
@@ -1418,12 +1466,63 @@ export default function FinishStockPage() {
                         {/* Chemicals */}
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Chemicals</label>
+                            <div className="flex items-center gap-3">
+                              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Chemicals</label>
+                              <button type="button" onClick={() => editLoadRecipe(entry)} disabled={editRecipeLoading}
+                                className="text-xs bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 px-2.5 py-1 rounded-lg font-medium disabled:opacity-50 transition border border-indigo-200 dark:border-indigo-800">
+                                {editRecipeLoading ? 'Loading...' : 'Load Recipe'}
+                              </button>
+                            </div>
                             <button type="button" onClick={addEditChemical}
                               className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium">
                               + Add Chemical
                             </button>
                           </div>
+                          {editRecipeMsg && (
+                            <p className={`text-xs mb-2 ${editRecipeMsg.includes('Loaded') ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>{editRecipeMsg}</p>
+                          )}
+                          {showEditRecipePicker && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowEditRecipePicker(false)}>
+                              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+                                  <div>
+                                    <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Select Recipe</h3>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{editRecipePickerParty} — {editRecipePickerList.length} recipe{editRecipePickerList.length !== 1 ? 's' : ''}</p>
+                                  </div>
+                                  <button onClick={() => setShowEditRecipePicker(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                  {editRecipePickerList.map(r => (
+                                    <button key={r.id} onClick={() => applyEditRecipe(r)}
+                                      className="w-full text-left bg-gray-50 dark:bg-gray-700/50 hover:bg-teal-50 dark:hover:bg-teal-900/20 border border-gray-200 dark:border-gray-600 hover:border-teal-300 dark:hover:border-teal-700 rounded-xl p-4 transition">
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{r.quality.name}</span>
+                                        <span className="text-xs text-gray-400 dark:text-gray-500">{r.items.length} chemical{r.items.length !== 1 ? 's' : ''}</span>
+                                      </div>
+                                      {r.variant && (
+                                        <span className="inline-block text-[10px] bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded mb-1.5">{r.variant}</span>
+                                      )}
+                                      <div className="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                                        {r.finishWidth && <span>FW: {r.finishWidth}</span>}
+                                        {r.finalWidth && <span>Final: {r.finalWidth}</span>}
+                                        {r.shortage && <span>Shortage: {r.shortage}</span>}
+                                      </div>
+                                      {r.items.length > 0 && (
+                                        <div className="flex flex-wrap gap-1">
+                                          {r.items.slice(0, 6).map((item: any, i: number) => (
+                                            <span key={i} className="inline-flex items-center gap-0.5 bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300 text-[10px] px-1.5 py-0.5 rounded-full">
+                                              {item.name} <span className="text-gray-400">({item.quantity}{item.unit})</span>
+                                            </span>
+                                          ))}
+                                          {r.items.length > 6 && <span className="text-[10px] text-gray-400">+{r.items.length - 6}</span>}
+                                        </div>
+                                      )}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           {editChemicals.length > 0 && (
                             <div className="space-y-2">
                               {editChemicals.map((chem, ci) => (
