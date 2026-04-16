@@ -34,8 +34,17 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
   const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set())
   const [expandedQualities, setExpandedQualities] = useState<Set<string>>(new Set())
 
+  // Restore expansion state from sessionStorage
   useEffect(() => {
     if (!open) return
+    try {
+      const p = sessionStorage.getItem('unallocated-expanded-parties')
+      const q = sessionStorage.getItem('unallocated-expanded-qualities')
+      const s = sessionStorage.getItem('unallocated-search')
+      if (p) setExpandedParties(new Set(JSON.parse(p)))
+      if (q) setExpandedQualities(new Set(JSON.parse(q)))
+      if (s) setSearch(s)
+    } catch {}
     setLoading(true)
     fetch('/api/grey/unallocated-stock', { cache: 'no-store' })
       .then(r => r.json())
@@ -43,6 +52,16 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
       .catch(() => setData(null))
       .finally(() => setLoading(false))
   }, [open])
+
+  // Persist expansion state when user interacts
+  useEffect(() => {
+    if (!open) return
+    try {
+      sessionStorage.setItem('unallocated-expanded-parties', JSON.stringify(Array.from(expandedParties)))
+      sessionStorage.setItem('unallocated-expanded-qualities', JSON.stringify(Array.from(expandedQualities)))
+      sessionStorage.setItem('unallocated-search', search)
+    } catch {}
+  }, [expandedParties, expandedQualities, search, open])
 
   const filtered = useMemo(() => {
     if (!data) return null
@@ -151,6 +170,9 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                     <Link
                                       key={l.lotNo}
                                       href={`/lot/${encodeURIComponent(l.lotNo)}`}
+                                      onClick={() => {
+                                        try { sessionStorage.setItem('unallocated-reopen', '1') } catch {}
+                                      }}
                                       className="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-teal-300 dark:hover:border-teal-700 hover:bg-teal-50/50 dark:hover:bg-teal-900/10 rounded-lg px-3 py-2 transition"
                                     >
                                       <div className="flex-1 min-w-0">

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -65,6 +65,16 @@ export default function GreyListPage() {
   const [debouncedSearch, setDebouncedSearch] = useDebounce('')
   const [showImport, setShowImport] = useState(false)
   const [showUnallocated, setShowUnallocated] = useState(false)
+
+  // Auto-reopen unallocated stock modal if user navigated away and came back
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('unallocated-reopen') === '1') {
+        sessionStorage.removeItem('unallocated-reopen')
+        setShowUnallocated(true)
+      }
+    } catch {}
+  }, [])
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [sortField, setSortField] = useState<SortField>('sn')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -527,7 +537,14 @@ export default function GreyListPage() {
         />
       )}
 
-      <UnallocatedStockModal open={showUnallocated} onClose={() => setShowUnallocated(false)} />
+      <UnallocatedStockModal open={showUnallocated} onClose={() => {
+        setShowUnallocated(false)
+        try {
+          sessionStorage.removeItem('unallocated-expanded-parties')
+          sessionStorage.removeItem('unallocated-expanded-qualities')
+          sessionStorage.removeItem('unallocated-search')
+        } catch {}
+      }} />
     </div>
   )
 }
