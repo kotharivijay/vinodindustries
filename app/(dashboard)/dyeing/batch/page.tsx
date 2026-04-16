@@ -679,7 +679,7 @@ export default function BatchDyeingPage() {
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
               <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
                 Step 2 — Batch Details
-                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-300 dark:bg-purple-400 text-white border border-white">
                   {selectedBatch.shadeName}{selectedBatch.shadeDescription && ` — ${selectedBatch.shadeDescription}`}
                 </span>
               </h2>
