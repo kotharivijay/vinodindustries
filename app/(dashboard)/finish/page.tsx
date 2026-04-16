@@ -719,6 +719,7 @@ export default function FinishStockPage() {
   const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set())
   const [expandedQualities, setExpandedQualities] = useState<Set<string>>(new Set())
   const [expandedFolds, setExpandedFolds] = useState<Set<string>>(new Set())
+  const [reportSearch, setReportSearch] = useState('')
 
   const toggleParty = (party: string) => {
     setExpandedParties(prev => {
@@ -768,6 +769,61 @@ export default function FinishStockPage() {
   }, [entries])
 
   const lotKey = (lot: SelectedLot) => `${lot.slipNo}|${lot.lotNo}`
+
+  // Report tab: filter partyGroups by search term (party / quality / lot)
+  const filteredPartyGroups = useMemo(() => {
+    const q = reportSearch.toLowerCase().trim()
+    if (!q) return partyGroups
+    const result: PartyGroup[] = []
+    for (const pg of partyGroups) {
+      const partyMatch = pg.party.toLowerCase().includes(q)
+      const keptQualities = pg.qualities.map(qg => {
+        const qualityMatch = qg.quality.toLowerCase().includes(q)
+        const keptFolds = qg.folds.map(fg => {
+          const foldSlips = fg.slips.filter(s => s.lots.some(l => l.lotNo.toLowerCase().includes(q)))
+          if (partyMatch || qualityMatch) return fg
+          if (foldSlips.length === 0) return null
+          return { ...fg, slips: foldSlips, totalThan: foldSlips.reduce((s, x) => s + x.lots.reduce((ss, l) => ss + l.than, 0), 0) }
+        }).filter(Boolean) as typeof qg.folds
+        if (partyMatch || qualityMatch || keptFolds.length > 0) {
+          return { ...qg, folds: keptFolds.length > 0 ? keptFolds : qg.folds }
+        }
+        return null
+      }).filter(Boolean) as typeof pg.qualities
+      if (partyMatch || keptQualities.length > 0) {
+        result.push({ ...pg, qualities: keptQualities.length > 0 ? keptQualities : pg.qualities })
+      }
+    }
+    return result
+  }, [partyGroups, reportSearch])
+
+  // Auto-expand matching groups when user searches
+  useEffect(() => {
+    const q = reportSearch.toLowerCase().trim()
+    if (!q) return
+    const partiesToOpen = new Set<string>()
+    const qualitiesToOpen = new Set<string>()
+    const foldsToOpen = new Set<string>()
+    for (const pg of partyGroups) {
+      const partyMatch = pg.party.toLowerCase().includes(q)
+      for (const qg of pg.qualities) {
+        const qualityMatch = qg.quality.toLowerCase().includes(q)
+        const qKey = `${pg.party}::${qg.quality}`
+        for (const fg of qg.folds) {
+          const fKey = `${pg.party}::${qg.quality}::${fg.foldNo}`
+          const lotMatch = fg.slips.some(s => s.lots.some(l => l.lotNo.toLowerCase().includes(q)))
+          if (partyMatch || qualityMatch || lotMatch) {
+            partiesToOpen.add(pg.party)
+            qualitiesToOpen.add(qKey)
+            if (lotMatch) foldsToOpen.add(fKey)
+          }
+        }
+      }
+    }
+    setExpandedParties(prev => new Set([...prev, ...partiesToOpen]))
+    setExpandedQualities(prev => new Set([...prev, ...qualitiesToOpen]))
+    setExpandedFolds(prev => new Set([...prev, ...foldsToOpen]))
+  }, [reportSearch, partyGroups])
 
   const toggleLotSelection = useCallback((lot: SelectedLot) => {
     const key = `${lot.slipNo}|${lot.lotNo}`
@@ -2337,8 +2393,28 @@ export default function FinishStockPage() {
                   )}
                 </div>
 
+                {/* Search box */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={reportSearch}
+                    onChange={e => setReportSearch(e.target.value)}
+                    placeholder="🔍 Search party, quality, or lot no..."
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  />
+                  {reportSearch && (
+                    <button
+                      onClick={() => setReportSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none"
+                    >&times;</button>
+                  )}
+                </div>
+
                 {/* Party cards */}
-                {partyGroups.map(pg => {
+                {filteredPartyGroups.length === 0 && reportSearch && (
+                  <div className="p-8 text-center text-gray-400 dark:text-gray-500">No results for &ldquo;{reportSearch}&rdquo;</div>
+                )}
+                {filteredPartyGroups.map(pg => {
                   const isOpen = expandedParties.has(pg.party)
                   const partyLots = allReportLots.filter(l => l.party === pg.party)
                   const partyAllSelected = partyLots.length > 0 && partyLots.every(l => selectedLots.has(lotKey(l)))
