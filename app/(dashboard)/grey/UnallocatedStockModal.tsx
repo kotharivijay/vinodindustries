@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import Link from 'next/link'
 
 interface Lot {
   lotNo: string
@@ -146,10 +147,14 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                               {qOpen && (
                                 <div className="px-2 pb-2 pt-1 space-y-1 border-t border-gray-50 dark:border-gray-700">
                                   {q.lots.map(l => (
-                                    <div key={l.lotNo} className="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg px-3 py-2">
+                                    <Link
+                                      key={l.lotNo}
+                                      href={`/lot/${encodeURIComponent(l.lotNo)}`}
+                                      className="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-teal-300 dark:hover:border-teal-700 hover:bg-teal-50/50 dark:hover:bg-teal-900/10 rounded-lg px-3 py-2 transition"
+                                    >
                                       <div className="flex-1 min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="text-xs font-semibold text-teal-700 dark:text-teal-400">{l.lotNo}</span>
+                                          <span className="text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline">{l.lotNo}</span>
                                           {l.isOB && (
                                             <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded-full">OB</span>
                                           )}
@@ -164,7 +169,7 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                         )}
                                       </div>
                                       <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 ml-2">{l.remaining}T</span>
-                                    </div>
+                                    </Link>
                                   ))}
                                 </div>
                               )}
