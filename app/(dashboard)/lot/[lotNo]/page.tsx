@@ -383,7 +383,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         </section>
       )}
 
-      {greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && foldEntries.length === 0 && (
+      {!openingBalance && greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && foldEntries.length === 0 && (
         <div className="text-center text-gray-400 py-16">No records found for lot <strong>{lotNo}</strong></div>
       )}
     </div>
