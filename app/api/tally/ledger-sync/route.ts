@@ -51,6 +51,58 @@ function parseLedgers(xml: string) {
   return ledgers
 }
 
+async function updateMasterSheet(ledgers: any[]) {
+  const { GoogleAuth } = await import('google-auth-library')
+  const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+  if (!keyJson) return
+  const sheetId = '1FkDEA84AWJxHBMTX7ku67TRdIo-GP1VMOzO_3ZOUVMo'
+  const sheetName = 'Master Sheet'
+  const credentials = JSON.parse(keyJson)
+  const auth = new GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets'] })
+  const client = await auth.getClient()
+  const token = (await client.getAccessToken()).token
+  if (!token) return
+
+  const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`
+
+  // Ensure "Master Sheet" tab exists
+  const metaRes = await fetch(baseUrl, { headers: { Authorization: `Bearer ${token}` } })
+  const meta = await metaRes.json()
+  const existing = meta.sheets?.find((s: any) => s.properties?.title === sheetName)
+  if (!existing) {
+    await fetch(`${baseUrl}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: sheetName } } }] }),
+    })
+  }
+
+  // Build rows: header + data
+  const header = ['Name', 'Parent Group', 'Address', 'GST No', 'PAN No', 'Mobile', 'State', 'Closing Balance', 'Tags', 'Last Synced']
+  const now = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+  const rows = [header, ...ledgers.map(l => [
+    l.name || '',
+    l.parent || '',
+    l.address || '',
+    l.gstNo || '',
+    l.panNo || '',
+    l.mobileNos || '',
+    l.state || '',
+    l.closingBalance != null ? String(l.closingBalance) : '',
+    Array.isArray(l.tags) ? l.tags.join(', ') : '',
+    now,
+  ])]
+
+  // Clear and write
+  const range = encodeURIComponent(`'${sheetName}'!A1:J${rows.length + 1}`)
+  await fetch(`${baseUrl}/values/${range}:clear`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+  await fetch(`${baseUrl}/values/${range}?valueInputOption=RAW`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: rows }),
+  })
+}
+
 async function doSync(): Promise<{ count: number; duration: number; error?: string }> {
   const start = Date.now()
   const db = prisma as any
@@ -119,6 +171,15 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
       }
     }
   }
+
+  // Update Google Sheet with all KSI ledgers (including tags from DB)
+  try {
+    const allLedgers = await db.tallyLedger.findMany({
+      where: { firmCode: 'KSI' },
+      orderBy: { name: 'asc' },
+    })
+    await updateMasterSheet(allLedgers)
+  } catch {}
 
   const duration = (Date.now() - start) / 1000
   return { count: synced, duration }
