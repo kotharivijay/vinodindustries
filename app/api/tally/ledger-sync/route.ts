@@ -51,17 +51,17 @@ function parseLedgers(xml: string) {
   return ledgers
 }
 
-async function updateMasterSheet(ledgers: any[]) {
+async function updateMasterSheet(ledgers: any[]): Promise<{ debtorCount: number } | null> {
   const { GoogleAuth } = await import('google-auth-library')
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
-  if (!keyJson) return
+  if (!keyJson) return null
   const sheetId = '1FkDEA84AWJxHBMTX7ku67TRdIo-GP1VMOzO_3ZOUVMo'
   const sheetName = 'Master Sheet'
   const credentials = JSON.parse(keyJson)
   const auth = new GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets'] })
   const client = await auth.getClient()
   const token = (await client.getAccessToken()).token
-  if (!token) return
+  if (!token) return null
 
   const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`
 
@@ -77,39 +77,55 @@ async function updateMasterSheet(ledgers: any[]) {
     })
   }
 
-  // Build rows: header + data
-  const header = ['Name', 'Parent Group', 'Address', 'GST No', 'PAN No', 'Mobile', 'State', 'Closing Balance', 'Tags', 'Last Synced']
-  const now = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
-  const rows = [header, ...ledgers.map(l => [
-    l.name || '',
-    l.parent || '',
-    l.address || '',
-    l.gstNo || '',
-    l.panNo || '',
-    l.mobileNos || '',
-    l.state || '',
-    l.closingBalance != null ? String(l.closingBalance) : '',
-    Array.isArray(l.tags) ? l.tags.join(', ') : '',
-    now,
-  ])]
+  // Filter debtors for column L source range
+  const debtors = ledgers
+    .filter((l: any) => l.parent && /sund(ry|ary|ury|ery)\s+debtors?/i.test(l.parent))
+    .map((l: any) => l.name)
+    .sort()
 
-  // Clear and write
-  const range = encodeURIComponent(`'${sheetName}'!A1:J${rows.length + 1}`)
+  // Build rows: header + data (10 cols A-J ledger data, col L = debtor names for dropdown)
+  const header = ['Name', 'Parent Group', 'Address', 'GST No', 'PAN No', 'Mobile', 'State', 'Closing Balance', 'Tags', 'Last Synced', '', 'Sundry Debtors (dropdown source)']
+  const now = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+  const maxRows = Math.max(ledgers.length, debtors.length)
+  const rows = [header]
+  for (let i = 0; i < maxRows; i++) {
+    const l = ledgers[i]
+    rows.push([
+      l?.name || '',
+      l?.parent || '',
+      l?.address || '',
+      l?.gstNo || '',
+      l?.panNo || '',
+      l?.mobileNos || '',
+      l?.state || '',
+      l?.closingBalance != null ? String(l.closingBalance) : '',
+      Array.isArray(l?.tags) ? l.tags.join(', ') : '',
+      l ? now : '',
+      '',
+      debtors[i] || '',
+    ])
+  }
+
+  // Clear and write (up to column L)
+  const range = encodeURIComponent(`'${sheetName}'!A1:L${rows.length + 1}`)
   await fetch(`${baseUrl}/values/${range}:clear`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
   await fetch(`${baseUrl}/values/${range}?valueInputOption=RAW`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values: rows }),
   })
+
+  return { debtorCount: debtors.length }
 }
 
-async function updateDebtorsDropdown(debtorNames: string[]) {
+async function updateDebtorsDropdown(debtorCount: number) {
   const { GoogleAuth } = await import('google-auth-library')
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   if (!keyJson) return
   const sheetId = (process.env.GOOGLE_SHEET_ID || '').trim()
-  const sheetName = (process.env.GOOGLE_SHEET_NAME || 'INWERD GRAY').trim()
-  if (!sheetId) return
+  const grayName = (process.env.GOOGLE_SHEET_NAME || 'INWERD GRAY').trim()
+  const masterName = 'Master Sheet'
+  if (!sheetId || debtorCount === 0) return
 
   const credentials = JSON.parse(keyJson)
   const auth = new GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets'] })
@@ -119,14 +135,17 @@ async function updateDebtorsDropdown(debtorNames: string[]) {
 
   const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`
 
-  // Find the sheet's numeric ID
+  // Find both sheets' numeric IDs
   const metaRes = await fetch(baseUrl, { headers: { Authorization: `Bearer ${token}` } })
   const meta = await metaRes.json()
-  const target = meta.sheets?.find((s: any) => s.properties?.title === sheetName)
-  if (!target) return
-  const sheetGid = target.properties.sheetId
+  const gray = meta.sheets?.find((s: any) => s.properties?.title === grayName)
+  const master = meta.sheets?.find((s: any) => s.properties?.title === masterName)
+  if (!gray || !master) return
+  const grayGid = gray.properties.sheetId
+  const masterGid = master.properties.sheetId
 
-  // Apply data validation to column E (index 4), from row 3 onwards (data rows)
+  // Use ONE_OF_RANGE pointing to Master Sheet column L — Android-compatible
+  // Master Sheet L2:L{debtorCount+1} contains the debtor names
   await fetch(`${baseUrl}:batchUpdate`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -134,16 +153,18 @@ async function updateDebtorsDropdown(debtorNames: string[]) {
       requests: [{
         setDataValidation: {
           range: {
-            sheetId: sheetGid,
+            sheetId: grayGid,
             startRowIndex: 2,     // row 3 (0-indexed)
-            endRowIndex: 10000,   // up to row 10000
+            endRowIndex: 10000,
             startColumnIndex: 4,  // column E
             endColumnIndex: 5,
           },
           rule: {
             condition: {
-              type: 'ONE_OF_LIST',
-              values: debtorNames.map(n => ({ userEnteredValue: n })),
+              type: 'ONE_OF_RANGE',
+              values: [{
+                userEnteredValue: `='${masterName}'!$L$2:$L$${debtorCount + 1}`,
+              }],
             },
             showCustomUi: true,
             strict: false,
@@ -230,16 +251,10 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
   })
   const actualCount = allLedgers.length
 
-  // Update Google Sheet with all KSI ledgers (including tags from DB)
+  // Update Google Sheet with all KSI ledgers + dropdown source range
   try {
-    await updateMasterSheet(allLedgers)
-
-    // Debtors dropdown on INWERD GRAY column E
-    const debtors = allLedgers
-      .filter((l: any) => l.parent && /sund(ry|ary|ury|ery)\s+debtors?/i.test(l.parent))
-      .map((l: any) => l.name)
-      .sort()
-    await updateDebtorsDropdown(debtors)
+    const result = await updateMasterSheet(allLedgers)
+    if (result) await updateDebtorsDropdown(result.debtorCount)
   } catch (e: any) {
     console.error('Sheet update failed:', e?.message || e)
   }
