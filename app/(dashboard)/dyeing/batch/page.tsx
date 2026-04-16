@@ -153,7 +153,10 @@ export default function BatchDyeingPage() {
       })
       const data = await res.json()
       if (res.ok) {
-        setFetchLotMsg(prev => ({ ...prev, [lotNo]: `✓ ${data.weight} (${data.source})` }))
+        const parts: string[] = []
+        if (data.updated?.weight) parts.push(`weight ${data.updated.weight}`)
+        if (data.updated?.grayMtr) parts.push(`${data.updated.grayMtr}m`)
+        setFetchLotMsg(prev => ({ ...prev, [lotNo]: `✓ ${parts.join(', ')} (${data.source})` }))
         await refetchBatches()
       } else {
         setFetchLotMsg(prev => ({ ...prev, [lotNo]: `✗ ${data.error || 'Failed'}` }))
