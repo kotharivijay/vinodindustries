@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import GreyImportModal from './GreyImportModal'
+import UnallocatedStockModal from './UnallocatedStockModal'
 import BackButton from '../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -63,6 +64,7 @@ export default function GreyListPage() {
   const [search, setSearchRaw] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useDebounce('')
   const [showImport, setShowImport] = useState(false)
+  const [showUnallocated, setShowUnallocated] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [sortField, setSortField] = useState<SortField>('sn')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -211,6 +213,9 @@ export default function GreyListPage() {
           </button>
           <button onClick={() => setShowImport(true)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
             Import from Sheet
+          </button>
+          <button onClick={() => setShowUnallocated(true)} className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700">
+            📊 Unallocated Stock
           </button>
           <Link href="/grey/weights" className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700">
             &#x2696;&#xFE0F; Update Weights
@@ -521,6 +526,8 @@ export default function GreyListPage() {
           onImported={() => { setShowImport(false); mutate() }}
         />
       )}
+
+      <UnallocatedStockModal open={showUnallocated} onClose={() => setShowUnallocated(false)} />
     </div>
   )
 }
