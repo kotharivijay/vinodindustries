@@ -103,6 +103,57 @@ async function updateMasterSheet(ledgers: any[]) {
   })
 }
 
+async function updateDebtorsDropdown(debtorNames: string[]) {
+  const { GoogleAuth } = await import('google-auth-library')
+  const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
+  if (!keyJson) return
+  const sheetId = process.env.GOOGLE_SHEET_ID
+  const sheetName = process.env.GOOGLE_SHEET_NAME ?? 'INWERD GRAY'
+  if (!sheetId) return
+
+  const credentials = JSON.parse(keyJson)
+  const auth = new GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets'] })
+  const client = await auth.getClient()
+  const token = (await client.getAccessToken()).token
+  if (!token) return
+
+  const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`
+
+  // Find the sheet's numeric ID
+  const metaRes = await fetch(baseUrl, { headers: { Authorization: `Bearer ${token}` } })
+  const meta = await metaRes.json()
+  const target = meta.sheets?.find((s: any) => s.properties?.title === sheetName)
+  if (!target) return
+  const sheetGid = target.properties.sheetId
+
+  // Apply data validation to column E (index 4), from row 3 onwards (data rows)
+  await fetch(`${baseUrl}:batchUpdate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      requests: [{
+        setDataValidation: {
+          range: {
+            sheetId: sheetGid,
+            startRowIndex: 2,     // row 3 (0-indexed)
+            endRowIndex: 10000,   // up to row 10000
+            startColumnIndex: 4,  // column E
+            endColumnIndex: 5,
+          },
+          rule: {
+            condition: {
+              type: 'ONE_OF_LIST',
+              values: debtorNames.map(n => ({ userEnteredValue: n })),
+            },
+            showCustomUi: true,
+            strict: false,
+          },
+        },
+      }],
+    }),
+  })
+}
+
 async function doSync(): Promise<{ count: number; duration: number; error?: string }> {
   const start = Date.now()
   const db = prisma as any
@@ -179,6 +230,13 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
       orderBy: { name: 'asc' },
     })
     await updateMasterSheet(allLedgers)
+
+    // Debtors dropdown on INWERD GRAY column E
+    const debtors = allLedgers
+      .filter((l: any) => l.parent && /sund(ry|ary|ury|ery)\s+debtors?/i.test(l.parent))
+      .map((l: any) => l.name)
+      .sort()
+    await updateDebtorsDropdown(debtors)
   } catch {}
 
   const duration = (Date.now() - start) / 1000
