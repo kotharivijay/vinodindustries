@@ -223,12 +223,15 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
     }
   }
 
+  // Fetch all ledgers once for sheet updates + actual count (createMany returns 0 on PgBouncer)
+  const allLedgers = await db.tallyLedger.findMany({
+    where: { firmCode: 'KSI' },
+    orderBy: { name: 'asc' },
+  })
+  const actualCount = allLedgers.length
+
   // Update Google Sheet with all KSI ledgers (including tags from DB)
   try {
-    const allLedgers = await db.tallyLedger.findMany({
-      where: { firmCode: 'KSI' },
-      orderBy: { name: 'asc' },
-    })
     await updateMasterSheet(allLedgers)
 
     // Debtors dropdown on INWERD GRAY column E
@@ -240,7 +243,7 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
   } catch {}
 
   const duration = (Date.now() - start) / 1000
-  return { count: synced, duration }
+  return { count: actualCount, duration }
 }
 
 // GET — SSE manual sync with progress
