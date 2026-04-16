@@ -107,8 +107,8 @@ async function updateDebtorsDropdown(debtorNames: string[]) {
   const { GoogleAuth } = await import('google-auth-library')
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   if (!keyJson) return
-  const sheetId = process.env.GOOGLE_SHEET_ID
-  const sheetName = process.env.GOOGLE_SHEET_NAME ?? 'INWERD GRAY'
+  const sheetId = (process.env.GOOGLE_SHEET_ID || '').trim()
+  const sheetName = (process.env.GOOGLE_SHEET_NAME || 'INWERD GRAY').trim()
   if (!sheetId) return
 
   const credentials = JSON.parse(keyJson)
@@ -240,7 +240,9 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
       .map((l: any) => l.name)
       .sort()
     await updateDebtorsDropdown(debtors)
-  } catch {}
+  } catch (e: any) {
+    console.error('Sheet update failed:', e?.message || e)
+  }
 
   const duration = (Date.now() - start) / 1000
   return { count: actualCount, duration }
