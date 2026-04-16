@@ -37,7 +37,7 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
   useEffect(() => {
     if (!open) return
     setLoading(true)
-    fetch('/api/grey/unallocated-stock')
+    fetch('/api/grey/unallocated-stock', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => setData(d))
       .catch(() => setData(null))
