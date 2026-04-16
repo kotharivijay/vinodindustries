@@ -734,12 +734,24 @@ export default function DyeingEditForm({ id }: { id: string }) {
               ))}
 
               {/* Total cost */}
-              {totalCost > 0 && (
-                <div className="flex items-center justify-between bg-purple-900/30 border border-purple-700 rounded-xl px-4 py-3">
-                  <span className="text-sm font-semibold text-white">Total Dyeing Cost</span>
-                  <span className="text-lg font-bold text-purple-300">&#8377;{totalCost.toFixed(2)}</span>
-                </div>
-              )}
+              {totalCost > 0 && (() => {
+                const totalThan = lots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)
+                const costPerThan = totalThan > 0 ? totalCost / totalThan : 0
+                return (
+                  <div className="bg-purple-900/30 border border-purple-700 rounded-xl px-4 py-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-white">Total Dyeing Cost</span>
+                      <span className="text-lg font-bold text-purple-300">&#8377;{totalCost.toFixed(2)}</span>
+                    </div>
+                    {totalThan > 0 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-purple-200">Cost per Than ({totalThan}T)</span>
+                        <span className="text-sm font-semibold text-purple-300">&#8377;{costPerThan.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           )}
         </div>
