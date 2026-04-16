@@ -13,7 +13,7 @@ export async function GET() {
   // Fetch everything we need in parallel
   const [greyEntries, obBalances, despatches, foldBatchLots] = await Promise.all([
     prisma.greyEntry.findMany({
-      select: { lotNo: true, than: true, weight: true, grayMtr: true, date: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+      select: { lotNo: true, than: true, weight: true, grayMtr: true, date: true, challanNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
     }),
     db.lotOpeningBalance.findMany({
       include: { allocations: true },
@@ -48,6 +48,7 @@ export async function GET() {
     weight: string | null
     grayMtr: number | null
     date: Date | null
+    challanNos: string
     isOB: boolean
     originalThan: number
     deducted: { despatched: number; folded: number; obAllocated: number }
@@ -56,7 +57,7 @@ export async function GET() {
   const lots: Lot[] = []
 
   // Process current-year grey entries (aggregate by lot across multiple inwards)
-  const greyByLot = new Map<string, { than: number; weight: string | null; grayMtr: number | null; date: Date; party: string; quality: string }>()
+  const greyByLot = new Map<string, { than: number; weight: string | null; grayMtr: number | null; date: Date; party: string; quality: string; challans: Set<string> }>()
   for (const g of greyEntries) {
     const k = g.lotNo.toLowerCase().trim()
     const existing = greyByLot.get(k)
@@ -64,7 +65,10 @@ export async function GET() {
       existing.than += g.than
       if (g.grayMtr) existing.grayMtr = (existing.grayMtr || 0) + g.grayMtr
       if (g.date > existing.date) existing.date = g.date
+      if (g.challanNo != null) existing.challans.add(String(g.challanNo))
     } else {
+      const challans = new Set<string>()
+      if (g.challanNo != null) challans.add(String(g.challanNo))
       greyByLot.set(k, {
         than: g.than,
         weight: g.weight,
@@ -72,6 +76,7 @@ export async function GET() {
         date: g.date,
         party: g.party?.name || 'Unknown',
         quality: g.quality?.name || 'Unknown',
+        challans,
       })
     }
   }
@@ -92,6 +97,7 @@ export async function GET() {
       weight: g.weight,
       grayMtr: g.grayMtr,
       date: g.date,
+      challanNos: Array.from(g.challans).sort().join(', '),
       isOB: false,
       originalThan: g.than,
       deducted: { despatched, folded, obAllocated: 0 },
@@ -118,6 +124,7 @@ export async function GET() {
       weight: ob.weight,
       grayMtr: ob.grayMtr,
       date: ob.greyDate,
+      challanNos: '',
       isOB: true,
       originalThan: ob.openingThan,
       deducted: { despatched, folded, obAllocated },

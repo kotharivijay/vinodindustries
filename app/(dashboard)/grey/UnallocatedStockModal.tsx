@@ -11,6 +11,7 @@ interface Lot {
   weight: string | null
   grayMtr: number | null
   date: string | null
+  challanNos: string
   isOB: boolean
   originalThan: number
   deducted: { despatched: number; folded: number; obAllocated: number }
@@ -162,6 +163,9 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                             <span className="text-[9px] text-gray-500 dark:text-gray-400">{l.weight}</span>
                                           )}
                                         </div>
+                                        {l.challanNos && (
+                                          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Challan: {l.challanNos}</p>
+                                        )}
                                         {(l.deducted.despatched > 0 || l.deducted.folded > 0 || l.deducted.obAllocated > 0) && (
                                           <p className="text-[9px] text-gray-400 mt-0.5">
                                             Of {l.originalThan}T: {l.deducted.despatched > 0 && `desp ${l.deducted.despatched}T · `}{l.deducted.folded > 0 && `folded ${l.deducted.folded}T · `}{l.deducted.obAllocated > 0 && `alloc ${l.deducted.obAllocated}T`}
