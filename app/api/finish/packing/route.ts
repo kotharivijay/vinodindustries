@@ -96,7 +96,7 @@ export async function GET() {
   }
 
   // Build enriched response
-  const stock = packingEntries.map(pe => ({
+  const stock: any[] = packingEntries.map(pe => ({
     ...pe,
     lots: pe.lots.map((l: any) => {
       const li = lotInfoMap.get(l.lotNo.toLowerCase().trim())
@@ -118,6 +118,46 @@ export async function GET() {
       }
     }),
   }))
+
+  // Inject OB allocations tagged as 'finished' (available for packing)
+  try {
+    const obFinished = await db.lotOpeningBalanceAllocation.findMany({
+      where: { stage: 'finished' },
+      include: { balance: true },
+    })
+    for (const alloc of obFinished) {
+      const b = alloc.balance
+      const mtrPerThan = b.grayMtr && b.greyThan ? b.grayMtr / b.greyThan : null
+      stock.push({
+        id: -alloc.id,
+        slipNo: 0,
+        date: b.greyDate || b.createdAt,
+        meter: mtrPerThan ? mtrPerThan * alloc.than : null,
+        mandi: null,
+        notes: alloc.notes || null,
+        finishDespSlipNo: null,
+        allFoldingComplete: false,
+        totalThan: alloc.than,
+        isFromOB: true,
+        obStage: 'finished',
+        lots: [{
+          id: -alloc.id,
+          lotNo: b.lotNo,
+          than: alloc.than,
+          meter: mtrPerThan ? mtrPerThan * alloc.than : null,
+          party: b.party,
+          quality: b.quality,
+          weight: b.weight,
+          foldNo: null,
+          shadeName: null,
+          shadeDescription: null,
+          foldingReceipts: [],
+          receivedThan: 0,
+          foldingComplete: false,
+        }],
+      })
+    }
+  } catch {}
 
   return NextResponse.json({
     stock,

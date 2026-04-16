@@ -112,6 +112,58 @@ export async function GET() {
     })
   }
 
+  // Inject OB allocations tagged as 'dyed' (available for finish)
+  try {
+    const obDyed = await db.lotOpeningBalanceAllocation.findMany({
+      where: { stage: 'dyed' },
+      include: { balance: true },
+    })
+    for (const alloc of obDyed) {
+      const b = alloc.balance
+      const key = b.lotNo.toLowerCase().trim()
+      const totalFinished = finishedThanMap.get(key) || 0
+      const alreadyDeducted = deductedMap.get(key) || 0
+      const remainingToDeduct = Math.max(0, totalFinished - alreadyDeducted)
+      const deductFromThis = Math.min(alloc.than, remainingToDeduct)
+      deductedMap.set(key, alreadyDeducted + deductFromThis)
+      const remaining = alloc.than - deductFromThis
+      if (remaining <= 0) continue
+
+      const mtrPerThan = b.grayMtr && b.greyThan ? b.grayMtr / b.greyThan : null
+      stock.push({
+        id: -alloc.id, // negative id to avoid collision with real DyeingEntry ids
+        slipNo: 0,
+        date: b.greyDate || b.createdAt,
+        dyeingDoneAt: b.greyDate || b.createdAt,
+        shadeName: null,
+        shadeDescription: null,
+        foldNo: null,
+        batchNo: null,
+        lots: [{
+          lotNo: b.lotNo,
+          than: remaining,
+          originalThan: alloc.than,
+          finishedThan: deductFromThis,
+          party: b.party,
+          quality: b.quality,
+          weight: b.weight,
+          mtrPerThan,
+        }],
+        totalThan: remaining,
+        party: b.party,
+        quality: b.quality,
+        weight: b.weight,
+        marka: b.marka,
+        isPcJob: false,
+        machineName: null,
+        operatorName: null,
+        isFromOB: true,
+        obStage: 'dyed',
+        obNotes: alloc.notes || null,
+      })
+    }
+  } catch {}
+
   return NextResponse.json({
     stock,
     totalSlips: stock.length,

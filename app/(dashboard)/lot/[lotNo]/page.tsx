@@ -6,6 +6,7 @@ import Link from 'next/link'
 import BackButton from '../../BackButton'
 import ShareDyeingPDFButton from './ShareDyeingPDFButton'
 import EditCarryForward from './EditCarryForward'
+import EditAllocations from './EditAllocations'
 
 export default async function LotTrackPage({ params }: { params: { lotNo: string } }) {
   const session = await getServerSession(authOptions)
@@ -33,7 +34,10 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
   try {
     openingBalance = await db.lotOpeningBalance.findFirst({
       where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
-      include: { despatchHistory: { orderBy: { setNo: 'asc' } } },
+      include: {
+        despatchHistory: { orderBy: { setNo: 'asc' } },
+        allocations: { orderBy: { id: 'asc' } },
+      },
     })
   } catch {}
 
@@ -194,6 +198,13 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
               {openingBalance.quality && <div><span className="text-gray-400 text-xs">Quality</span><p>{openingBalance.quality}</p></div>}
             </div>
             <EditCarryForward lotNo={lotNo} weight={openingBalance.weight} grayMtr={openingBalance.grayMtr} />
+
+            {/* Stage allocations (dyed / finished / packed) */}
+            <EditAllocations
+              balanceId={openingBalance.id}
+              openingThan={openingBalance.openingThan}
+              initialAllocations={openingBalance.allocations || []}
+            />
 
             {/* Previous year despatch history */}
             {openingBalance.despatchHistory?.length > 0 && (

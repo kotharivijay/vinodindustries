@@ -603,6 +603,17 @@ model LotOpeningBalance {
   notes           String?
   createdAt       DateTime @default(now())
   despatchHistory LotCarryForwardDespatch[]
+  allocations     LotOpeningBalanceAllocation[]
+}
+
+model LotOpeningBalanceAllocation {
+  id        Int               @id @default(autoincrement())
+  balanceId Int
+  balance   LotOpeningBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
+  stage     String            // 'dyed' | 'finished' | 'packed'
+  than      Int
+  notes     String?
+  createdAt DateTime          @default(now())
 }
 
 model LotCarryForwardDespatch {
