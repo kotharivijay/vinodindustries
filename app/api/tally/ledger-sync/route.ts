@@ -266,7 +266,7 @@ export async function GET(req: NextRequest) {
         // Log success
         await db.tallySyncLog.create({ data: { type: 'ledger', company: 'KSI', status: 'success', count: result.count, duration: result.duration } })
 
-        send({ type: 'complete', message: `✅ Sync complete — ${result.count} ledgers in ${result.duration.toFixed(1)}s`, count: result.count })
+        send({ type: 'complete', message: `✅ Sync complete — ${result.count} ledgers in ${result.duration.toFixed(1)}s`, count: result.count, totalSaved: result.count })
       } catch (err: any) {
         const msg = err?.message || 'Unknown error'
         send({ type: 'error', message: `❌ Sync failed: ${msg}` })
