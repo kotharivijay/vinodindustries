@@ -130,6 +130,40 @@ export default function BatchDyeingPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  // Weight fetch state (per-lot loading/error)
+  const [fetchingLot, setFetchingLot] = useState<string | null>(null)
+  const [fetchLotMsg, setFetchLotMsg] = useState<Record<string, string>>({})
+
+  const refetchBatches = async () => {
+    try {
+      const res = await fetch('/api/dyeing/batches')
+      const data = await res.json()
+      if (Array.isArray(data)) setBatches(data)
+    } catch {}
+  }
+
+  const fetchWeightForLot = async (lotNo: string) => {
+    setFetchingLot(lotNo)
+    setFetchLotMsg(prev => ({ ...prev, [lotNo]: '' }))
+    try {
+      const res = await fetch('/api/grey/fetch-weight-from-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lotNo }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setFetchLotMsg(prev => ({ ...prev, [lotNo]: `✓ ${data.weight} (${data.source})` }))
+        await refetchBatches()
+      } else {
+        setFetchLotMsg(prev => ({ ...prev, [lotNo]: `✗ ${data.error || 'Failed'}` }))
+      }
+    } catch (e: any) {
+      setFetchLotMsg(prev => ({ ...prev, [lotNo]: `✗ ${e?.message || 'Network error'}` }))
+    }
+    setFetchingLot(null)
+  }
+
   // Saved tab search/sort
   const [savedSearch, setSavedSearch] = useState('')
   const [savedSort, setSavedSort] = useState<'slip-desc' | 'slip-asc' | 'date-desc' | 'date-asc' | 'party' | 'lot'>('slip-desc')
@@ -659,10 +693,27 @@ export default function BatchDyeingPage() {
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{lot.weightPerThan.toFixed(2)} kg/than</p>
+                      <div className="flex items-center justify-end gap-2">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{lot.weightPerThan.toFixed(2)} kg/than</p>
+                        {lot.weightPerThan === 0 && (
+                          <button
+                            type="button"
+                            onClick={() => fetchWeightForLot(lot.lotNo)}
+                            disabled={fetchingLot === lot.lotNo}
+                            className="text-[10px] font-medium bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/50 border border-teal-200 dark:border-teal-800 px-2 py-0.5 rounded-full disabled:opacity-50"
+                          >
+                            {fetchingLot === lot.lotNo ? '...' : '📥 Fetch weight'}
+                          </button>
+                        )}
+                      </div>
                       <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
                         {(lot.weightPerThan * lot.than).toFixed(1)} kg
                       </p>
+                      {fetchLotMsg[lot.lotNo] && (
+                        <p className={`text-[10px] mt-0.5 ${fetchLotMsg[lot.lotNo].startsWith('✓') ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                          {fetchLotMsg[lot.lotNo]}
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))}
