@@ -169,6 +169,18 @@ export default function DyeingListPage() {
   const [debouncedFilterSlip, setDebouncedFilterSlip] = useDebounce()
   const [filterParty, setFilterParty] = useState('')
   const [debouncedFilterParty, setDebouncedFilterParty] = useDebounce()
+  const [hideDone, setHideDone] = useState(true)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('dyeing-hide-done')
+      if (saved !== null) setHideDone(saved === 'true')
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('dyeing-hide-done', String(hideDone)) } catch {}
+  }, [hideDone])
 
   // ─── PDF share state ─────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -583,6 +595,7 @@ export default function DyeingListPage() {
 
     return entries
       .filter(e => {
+        if (hideDone && e.dyeingDoneAt) return false
         const allLots = (e.lots?.length ? e.lots.map(l => l.lotNo) : [e.lotNo]).join(' ').toLowerCase()
         const foldStr = (e.foldBatch ? `fold ${e.foldBatch.foldProgram?.foldNo ?? ''} batch ${e.foldBatch.batchNo}` : '').toLowerCase()
         const shadeStr = (e.shadeName ?? e.foldBatch?.shade?.name ?? '').toLowerCase()
@@ -597,7 +610,9 @@ export default function DyeingListPage() {
         const cmp = av < bv ? -1 : av > bv ? 1 : 0
         return sortDir === 'asc' ? cmp : -cmp
       })
-  }, [entries, debouncedSearch, debouncedFilterLot, debouncedFilterSlip, debouncedFilterParty, sortField, sortDir])
+  }, [entries, debouncedSearch, debouncedFilterLot, debouncedFilterSlip, debouncedFilterParty, sortField, sortDir, hideDone])
+
+  const doneCount = useMemo(() => entries.filter(e => e.dyeingDoneAt).length, [entries])
 
   const totalThan = useMemo(() => entries.reduce((s, e) => s + e.than, 0), [entries])
   const fi = 'w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 mt-1'
@@ -781,6 +796,10 @@ export default function DyeingListPage() {
                   {label} {sortField === f ? (sortDir === 'asc' ? '\u2191' : '\u2193') : ''}
                 </button>
               ))}
+              <button onClick={() => setHideDone(v => !v)}
+                className={`text-xs px-2.5 py-1 rounded-full border font-medium ${hideDone ? 'bg-teal-900/40 border-teal-600 text-teal-300' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>
+                {hideDone ? `Hide Done (${doneCount})` : 'Show All'}
+              </button>
               {(filterSlipNo || filterLotNo || filterParty) && (
                 <button onClick={() => { setFilterSlipNo(''); setDebouncedFilterSlip(''); setFilterLotNo(''); setDebouncedFilterLot(''); setFilterParty(''); setDebouncedFilterParty('') }}
                   className="text-xs text-red-400 hover:text-red-300">Clear</button>
