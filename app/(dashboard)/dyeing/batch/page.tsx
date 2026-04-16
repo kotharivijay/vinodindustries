@@ -689,10 +689,15 @@ export default function BatchDyeingPage() {
                 {selectedBatch.lots.map((lot, i) => (
                   <div key={i} className="flex items-center justify-between border border-gray-200 dark:border-gray-600 rounded-xl p-3 bg-gray-50 dark:bg-gray-900">
                     <div>
-                      <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{lot.lotNo}</span>
-                      <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{lot.than} than</span>
-                      {lot.marka && (
-                        <span className="ml-2 text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">🏷️ {lot.marka}</span>
+                      <div>
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{lot.lotNo}</span>
+                        <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{lot.than} than</span>
+                        {lot.marka && (
+                          <span className="ml-2 text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">🏷️ {lot.marka}</span>
+                        )}
+                      </div>
+                      {lot.quality && (
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{lot.quality}</p>
                       )}
                     </div>
                     <div className="text-right">
