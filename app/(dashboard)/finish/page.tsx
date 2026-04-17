@@ -1179,6 +1179,8 @@ export default function FinishStockPage() {
   const [packExpandedParties, setPackExpandedParties] = useState<Set<string>>(new Set())
   const [packExpandedQualities, setPackExpandedQualities] = useState<Set<string>>(new Set())
   const [packView, setPackView] = useState<'party' | 'desp'>('party')
+  const [frSearch, setFrSearch] = useState('')
+  const [frSortDir, setFrSortDir] = useState<'asc' | 'desc'>('desc')
   const [expandedDesp, setExpandedDesp] = useState<Set<string>>(new Set())
   const [frFormLotId, setFrFormLotId] = useState<number | null>(null)
   const [frSlipNo, setFrSlipNo] = useState('')
@@ -2026,10 +2028,87 @@ export default function FinishStockPage() {
                   if (!slipMap.has(r.slipNo)) slipMap.set(r.slipNo, [])
                   slipMap.get(r.slipNo)!.push(r)
                 }
+
+                async function handleEditFR(r: any) {
+                  const newThan = prompt(`Edit FR ${r.slipNo} — ${r.lotNo}\nCurrent: ${r.than}T\n\nNew than:`, String(r.than))
+                  if (newThan === null || newThan === String(r.than)) return
+                  const newDate = prompt('Date (YYYY-MM-DD):', new Date(r.date).toISOString().split('T')[0])
+                  if (newDate === null) return
+                  try {
+                    await fetch('/api/finish/folding-receipt', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ id: r.id, than: parseInt(newThan), date: newDate }),
+                    })
+                    mutatePacking()
+                  } catch {}
+                }
+
+                async function handleDeleteFR(r: any) {
+                  if (!confirm(`Delete FR ${r.slipNo} — ${r.lotNo} (${r.than}T)?`)) return
+                  try {
+                    await fetch('/api/finish/folding-receipt', {
+                      method: 'DELETE',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ id: r.id }),
+                    })
+                    mutatePacking()
+                  } catch {}
+                }
+
+                // Filter by search
+                const q = frSearch.toLowerCase().trim()
+                const filteredReceipts = q
+                  ? allReceipts.filter(r =>
+                      r.slipNo.toLowerCase().includes(q) ||
+                      r.lotNo.toLowerCase().includes(q) ||
+                      String(r.fpSlipNo).includes(q) ||
+                      (r.despSlipNo || '').toLowerCase().includes(q)
+                    )
+                  : allReceipts
+
+                // Rebuild slipMap from filtered
+                const filteredSlipMap = new Map<string, any[]>()
+                for (const r of filteredReceipts) {
+                  if (!filteredSlipMap.has(r.slipNo)) filteredSlipMap.set(r.slipNo, [])
+                  filteredSlipMap.get(r.slipNo)!.push(r)
+                }
+
+                // Sort slip entries
+                const sortedSlips = Array.from(filteredSlipMap.entries()).sort((a, b) => {
+                  const na = parseInt(a[0]) || 0, nb = parseInt(b[0]) || 0
+                  return frSortDir === 'asc' ? na - nb : nb - na
+                })
+
                 return (
                   <div className="space-y-2">
-                    {allReceipts.length === 0 && <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-8 text-center text-gray-400">No folding receipts yet.</div>}
-                    {Array.from(slipMap.entries()).map(([slipNo, recs]) => {
+                    {/* Search + Sort bar */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input
+                        type="text"
+                        value={frSearch}
+                        onChange={e => setFrSearch(e.target.value)}
+                        placeholder="🔍 FR slip, lot, FP no..."
+                        className="flex-1 min-w-[150px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                      />
+                      <button
+                        onClick={() => setFrSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                        className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 font-medium"
+                      >
+                        FR# {frSortDir === 'asc' ? '↑' : '↓'}
+                      </button>
+                      {frSearch && (
+                        <button onClick={() => setFrSearch('')} className="text-xs text-red-400 hover:text-red-600">Clear</button>
+                      )}
+                      <span className="text-[10px] text-gray-400 ml-auto">{filteredReceipts.length} of {allReceipts.length}</span>
+                    </div>
+
+                    {filteredReceipts.length === 0 && (
+                      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-8 text-center text-gray-400">
+                        {allReceipts.length === 0 ? 'No folding receipts yet.' : `No results for "${frSearch}"`}
+                      </div>
+                    )}
+                    {sortedSlips.map(([slipNo, recs]) => {
                       const totalThan = recs.reduce((s: number, r: any) => s + r.than, 0)
                       return (
                         <div key={slipNo} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
@@ -2048,6 +2127,8 @@ export default function FinishStockPage() {
                                 <div className="flex items-center gap-2">
                                   <span className="text-gray-400">{new Date(r.date).toLocaleDateString('en-IN')}</span>
                                   <span className="font-bold text-gray-700 dark:text-gray-200">{r.than}T</span>
+                                  <button onClick={() => handleEditFR(r)} className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-[10px] font-medium">Edit</button>
+                                  <button onClick={() => handleDeleteFR(r)} className="text-red-400 hover:text-red-600 dark:hover:text-red-300 text-[10px] font-medium">Del</button>
                                 </div>
                               </div>
                             ))}
