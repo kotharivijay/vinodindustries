@@ -1391,14 +1391,14 @@ export default function FinishStockPage() {
                                     {lotThan > 0 && (
                                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                                         {distributedMtr > 0 && (
-                                          <span className="text-[9px] text-gray-500 dark:text-gray-400">{distributedMtr.toFixed(1)} mtr</span>
+                                          <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{distributedMtr.toFixed(1)} mtr</span>
                                         )}
                                         {expectedMtr > 0 && (
-                                          <span className="text-[9px] text-gray-400 dark:text-gray-500">({expectedMtr.toFixed(0)} exp)</span>
+                                          <span className="text-xs text-gray-500 dark:text-gray-400">({expectedMtr.toFixed(0)} exp)</span>
                                         )}
-                                        {mtrFlag === 'red' && <span className="text-[9px] text-red-500">🔴 {mtrDiff?.toFixed(1)}%</span>}
-                                        {mtrFlag === 'orange' && <span className="text-[9px] text-amber-500">🟠 {mtrDiff?.toFixed(1)}%</span>}
-                                        {mtrFlag === 'green' && mtrDiff !== null && mtrDiff < -1 && <span className="text-[9px] text-green-500">{mtrDiff?.toFixed(1)}%</span>}
+                                        {mtrFlag === 'red' && <span className="text-xs font-bold text-red-500">🔴 {mtrDiff?.toFixed(1)}%</span>}
+                                        {mtrFlag === 'orange' && <span className="text-xs font-bold text-amber-500">🟠 {mtrDiff?.toFixed(1)}%</span>}
+                                        {mtrFlag === 'green' && mtrDiff !== null && mtrDiff < -1 && <span className="text-xs font-medium text-green-500">{mtrDiff?.toFixed(1)}%</span>}
                                       </div>
                                     )}
                                   </div>
@@ -1780,15 +1780,15 @@ export default function FinishStockPage() {
                                     <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">&#8377;{totalCost.toFixed(0)}</span>
                                   </div>
                                   {totalThanDone > 0 && (
-                                    <div className="flex items-center justify-between border-t border-emerald-200 dark:border-emerald-800 pt-1 mt-1">
-                                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">Cost per Than ({totalThanDone}T done)</span>
-                                      <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">&#8377;{costPerThan.toFixed(2)}/than</span>
+                                    <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2 mt-2">
+                                      <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">Cost per Than ({totalThanDone}T)</span>
+                                      <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">&#8377;{costPerThan.toFixed(2)}/T</span>
                                     </div>
                                   )}
                                   {totalThanDone === 0 && totalThanAll > 0 && (
-                                    <div className="flex items-center justify-between border-t border-emerald-200 dark:border-emerald-800 pt-1 mt-1">
-                                      <span className="text-xs text-gray-500">Cost per Than (all {totalThanAll}T)</span>
-                                      <span className="text-xs text-gray-500">&#8377;{(totalThanAll > 0 ? totalCost / totalThanAll : 0).toFixed(2)}/than</span>
+                                    <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 mt-2">
+                                      <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">Cost per Than ({totalThanAll}T)</span>
+                                      <span className="text-base font-bold text-gray-600 dark:text-gray-300">&#8377;{(totalThanAll > 0 ? totalCost / totalThanAll : 0).toFixed(2)}/T</span>
                                     </div>
                                   )}
                                   {ltrPerThan > 0 && (
