@@ -50,7 +50,7 @@ export async function GET() {
       select: {
         slipNo: true,
         shadeName: true,
-        lots: { select: { lotNo: true } },
+        lots: { select: { lotNo: true, than: true } },
         foldBatch: {
           select: {
             foldProgram: { select: { foldNo: true } },
@@ -65,13 +65,14 @@ export async function GET() {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
     const shadeDesc = de.foldBatch?.shade?.description || null
-    const dLots = de.lots?.length ? de.lots.map((l: any) => l.lotNo) : []
-    for (const ln of dLots) {
+    const dLots = de.lots?.length ? de.lots : []
+    for (const lot of dLots) {
+      const ln = lot.lotNo
       if (!dyeingByLot.has(ln)) {
         dyeingByLot.set(ln, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
       }
       if (!dyeingAllByLot.has(ln)) dyeingAllByLot.set(ln, [])
-      dyeingAllByLot.get(ln)!.push({ slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
+      dyeingAllByLot.get(ln)!.push({ slipNo: de.slipNo, shadeName, shadeDesc, foldNo, dyedThan: lot.than || 0 })
     }
   }
 

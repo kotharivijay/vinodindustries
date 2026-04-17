@@ -77,7 +77,7 @@ interface FinishLot {
   shadeName: string | null
   shadeDesc: string | null
   foldNo: string | null
-  dyeSlips: { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }[]
+  dyeSlips: { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null; dyedThan: number }[]
 }
 
 interface FinishSlipChemical {
@@ -405,7 +405,7 @@ export default function FinishStockPage() {
   const [editDespSlipNo, setEditDespSlipNo] = useState('')
   const [editAdditions, setEditAdditions] = useState<FinishAdditionRow[]>([])
   const [editNotes, setEditNotes] = useState('')
-  const [editLots, setEditLots] = useState<{ lotNo: string; than: string; meter: string }[]>([])
+  const [editLots, setEditLots] = useState<{ lotNo: string; than: string; meter: string; slipThans?: { slipNo: number; than: string; shade: string }[] }[]>([])
   const [editChemicals, setEditChemicals] = useState<FinishChemicalRow[]>([])
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
@@ -463,7 +463,16 @@ export default function FinishStockPage() {
       })),
     })))
     setEditNotes(entry.notes ?? '')
-    setEditLots(entry.lots.map(l => ({ lotNo: l.lotNo, than: String(l.than), meter: l.meter != null ? String(l.meter) : '' })))
+    setEditLots(entry.lots.map(l => {
+      const slipThans = l.dyeSlips?.length
+        ? l.dyeSlips.map((ds: any) => ({
+            slipNo: ds.slipNo,
+            than: String(ds.dyedThan || 0),
+            shade: [ds.shadeName, ds.shadeDesc].filter(Boolean).join(' — '),
+          }))
+        : []
+      return { lotNo: l.lotNo, than: String(l.than), meter: l.meter != null ? String(l.meter) : '', slipThans }
+    }))
     setEditChemicals(entry.chemicals.map(c => ({
       name: c.name,
       chemicalId: c.chemicalId,
@@ -1334,124 +1343,78 @@ export default function FinishStockPage() {
                           </div>
                         </div>
 
-                        {/* Lots — grouped by Fold → Slip */}
+                        {/* Lots — grouped by Lot → Dye Slips */}
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
                               Lots ({editLots.length} · {editLots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)} than)
                             </label>
                           </div>
-                          {(() => {
-                            // Build fold → slip → lots hierarchy using ALL dyeSlips per lot
-                            const foldMap = new Map<string, Map<string, number[]>>()
-                            const lotAssigned = new Set<number>()
-                            // First pass: collect all unique fold→slip combos from dyeSlips
-                            for (let li = 0; li < editLots.length; li++) {
-                              const enriched = entry.lots[li]
-                              const dyeSlips = enriched?.dyeSlips || []
-                              if (dyeSlips.length > 0) {
-                                for (const ds of dyeSlips) {
-                                  const foldNo = ds.foldNo || 'No Fold'
-                                  const slipKey = `${ds.slipNo}::${ds.shadeName || ''}::${ds.shadeDesc || ''}`
-                                  if (!foldMap.has(foldNo)) foldMap.set(foldNo, new Map())
-                                  const sMap = foldMap.get(foldNo)!
-                                  if (!sMap.has(slipKey)) sMap.set(slipKey, [])
-                                }
-                              }
-                            }
-                            // Second pass: assign each lot to its first dye slip group
-                            for (let li = 0; li < editLots.length; li++) {
-                              const enriched = entry.lots[li]
-                              const dyeSlips = enriched?.dyeSlips || []
-                              if (dyeSlips.length > 0) {
-                                const ds = dyeSlips[0]
-                                const foldNo = ds.foldNo || 'No Fold'
-                                const slipKey = `${ds.slipNo}::${ds.shadeName || ''}::${ds.shadeDesc || ''}`
-                                foldMap.get(foldNo)!.get(slipKey)!.push(li)
-                                lotAssigned.add(li)
-                              }
-                            }
-                            // Fallback: lots with no dyeSlips
-                            for (let li = 0; li < editLots.length; li++) {
-                              if (lotAssigned.has(li)) continue
-                              const enriched = entry.lots[li]
-                              const foldNo = enriched?.foldNo || 'No Fold'
-                              const slipKey = enriched?.dyeSlipNo ? `${enriched.dyeSlipNo}::${enriched.shadeName || ''}::${enriched.shadeDesc || ''}` : 'direct'
-                              if (!foldMap.has(foldNo)) foldMap.set(foldNo, new Map())
-                              const sMap = foldMap.get(foldNo)!
-                              if (!sMap.has(slipKey)) sMap.set(slipKey, [])
-                              sMap.get(slipKey)!.push(li)
-                            }
-                            return (
-                              <div className="space-y-2">
-                                {Array.from(foldMap.entries()).map(([foldNo, slipMap]) => (
-                                  <div key={foldNo} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-                                    <div className="bg-gray-50 dark:bg-gray-700/50 px-3 py-1.5">
-                                      <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">📁 Fold {foldNo}</span>
+                          <div className="space-y-2">
+                            {editLots.map((lot, li) => {
+                              const lotThan = parseInt(lot.than) || 0
+                              const enrichedLot = entry.lots[li]
+                              const foldNo = enrichedLot?.foldNo || enrichedLot?.dyeSlips?.[0]?.foldNo || null
+                              const hasSlipThans = lot.slipThans && lot.slipThans.length > 0
+                              const slipSum = hasSlipThans ? lot.slipThans!.reduce((s, st) => s + (parseInt(st.than) || 0), 0) : 0
+
+                              return (
+                                <div key={li} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                  {/* Lot header */}
+                                  <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 px-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                      {foldNo && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">📁 {foldNo}</span>}
+                                      <span className="text-xs font-bold text-teal-700 dark:text-teal-300">{lot.lotNo}</span>
+                                      {enrichedLot?.quality && <span className="text-[10px] text-gray-500 dark:text-gray-400">{enrichedLot.quality}</span>}
                                     </div>
-                                    {Array.from(slipMap.entries()).map(([slipKey, indices]) => {
-                                      const [slipNoStr, shade1, shade2] = slipKey.split('::')
-                                      const shade = [shade1, shade2].filter(Boolean).join(' — ')
-                                      return (
-                                        <div key={slipKey} className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700">
-                                          {slipKey !== 'direct' && (
-                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">
-                                              Slip {slipNoStr}{shade ? ` — ${shade}` : ''}
-                                              {indices.length === 0 && <span className="ml-1 text-gray-400 italic">(no lots in this FP)</span>}
+                                    <div className="flex items-center gap-2">
+                                      {hasSlipThans ? (
+                                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{slipSum}T</span>
+                                      ) : (
+                                        <>
+                                          <input type="number" value={lot.than}
+                                            onChange={e => setEditLots(prev => { const u = [...prev]; u[li] = { ...u[li], than: e.target.value }; return u })}
+                                            className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400 text-center font-medium" />
+                                          <span className="text-[10px] text-gray-400">than</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Per-slip than inputs */}
+                                  {hasSlipThans && (
+                                    <div className="px-3 py-1.5 space-y-1 border-t border-gray-100 dark:border-gray-700">
+                                      {lot.slipThans!.map((st, si) => (
+                                        <div key={si} className="flex items-center justify-between rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800">
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                                              Slip {st.slipNo}{st.shade ? ` — ${st.shade}` : ''}
                                             </p>
-                                          )}
-                                          <div className="space-y-1.5">
-                                            {indices.map(li => {
-                                              const lot = editLots[li]
-                                              const isCancelled = (parseInt(lot.than) || 0) === 0
-                                              const lotThan = parseInt(lot.than) || 0
-                                              const totalEditThan = editLots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)
-                                              const finMtr = parseFloat(editFinishMtr) || 0
-                                              const distributedMtr = totalEditThan > 0 && finMtr > 0 ? (lotThan / totalEditThan) * finMtr : 0
-                                              const enrichedLot = entry.lots[li]
-                                              const expectedMtr = enrichedLot?.mtrPerThan ? enrichedLot.mtrPerThan * lotThan : 0
-                                              const mtrDiff = expectedMtr > 0 && distributedMtr > 0 ? ((distributedMtr - expectedMtr) / expectedMtr) * 100 : null
-                                              const mtrFlag = mtrDiff !== null ? (mtrDiff < -6 ? 'red' : mtrDiff < -4 ? 'orange' : 'green') : null
-                                              return (
-                                                <div key={li} className={`rounded-lg px-2 py-1.5 ${isCancelled ? 'bg-red-50 dark:bg-red-900/20 opacity-60' : 'bg-white dark:bg-gray-800'}`}>
-                                                  <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-semibold text-teal-700 dark:text-teal-300 w-24 truncate">{lot.lotNo}</span>
-                                                    <input type="number" value={lot.than}
-                                                      onChange={e => setEditLots(prev => { const u = [...prev]; u[li] = { ...u[li], than: e.target.value }; return u })}
-                                                      className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400 text-center font-medium" />
-                                                    <span className="text-[10px] text-gray-400">than</span>
-                                                    {isCancelled && <span className="text-[10px] text-red-500 font-medium">Cancelled</span>}
-                                                  </div>
-                                                  {enrichedLot?.dyeSlips?.length > 1 && (
-                                                    <div className="flex flex-wrap gap-1 mt-0.5 ml-[6.5rem]">
-                                                      {enrichedLot.dyeSlips.map((ds: any, di: number) => (
-                                                        <span key={di} className="text-[9px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
-                                                          S{ds.slipNo}{ds.foldNo ? ` · ${ds.foldNo}` : ''}
-                                                        </span>
-                                                      ))}
-                                                    </div>
-                                                  )}
-                                                  {distributedMtr > 0 && !isCancelled && (
-                                                    <div className="flex items-center gap-1.5 mt-0.5 ml-[6.5rem]">
-                                                      <span className="text-[9px] text-gray-400">{distributedMtr.toFixed(1)} mtr</span>
-                                                      {expectedMtr > 0 && <span className="text-[9px] text-gray-300">({expectedMtr.toFixed(0)} exp)</span>}
-                                                      {mtrFlag === 'red' && <span className="text-[9px] text-red-500">🔴 {mtrDiff?.toFixed(1)}%</span>}
-                                                      {mtrFlag === 'orange' && <span className="text-[9px] text-amber-500">🟠 {mtrDiff?.toFixed(1)}%</span>}
-                                                      {mtrFlag === 'green' && mtrDiff !== null && mtrDiff < -1 && <span className="text-[9px] text-green-500">{mtrDiff?.toFixed(1)}%</span>}
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              )
-                                            })}
+                                          </div>
+                                          <div className="flex items-center gap-1.5 ml-2">
+                                            <input type="number" value={st.than}
+                                              onChange={e => {
+                                                const newVal = e.target.value
+                                                setEditLots(prev => {
+                                                  const u = [...prev]
+                                                  const newSlipThans = [...(u[li].slipThans || [])]
+                                                  newSlipThans[si] = { ...newSlipThans[si], than: newVal }
+                                                  const newTotal = newSlipThans.reduce((s, x) => s + (parseInt(x.than) || 0), 0)
+                                                  u[li] = { ...u[li], slipThans: newSlipThans, than: String(newTotal) }
+                                                  return u
+                                                })
+                                              }}
+                                              className="w-14 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400 text-center font-medium" />
+                                            <span className="text-[10px] text-gray-400">T</span>
                                           </div>
                                         </div>
-                                      )
-                                    })}
-                                  </div>
-                                ))}
-                              </div>
-                            )
-                          })()}
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
                         </div>
 
 
