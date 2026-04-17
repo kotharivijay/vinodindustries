@@ -1183,6 +1183,9 @@ export default function FinishStockPage() {
   const [frSortDir, setFrSortDir] = useState<'asc' | 'desc'>('desc')
   const [expandedDesp, setExpandedDesp] = useState<Set<string>>(new Set())
   const [frFormLotId, setFrFormLotId] = useState<number | null>(null)
+  const [frFormLotNo, setFrFormLotNo] = useState('')
+  const [frFormFpNo, setFrFormFpNo] = useState<number | null>(null)
+  const [frFormMaxThan, setFrFormMaxThan] = useState(0)
   const [frSlipNo, setFrSlipNo] = useState('')
   const [frDate, setFrDate] = useState(new Date().toISOString().split('T')[0])
   const [frThan, setFrThan] = useState('')
@@ -1199,7 +1202,7 @@ export default function FinishStockPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lotEntryId: frFormLotId, slipNo: frSlipNo, date: frDate, than: frThan }),
     })
-    setFrSaving(false); setFrFormLotId(null); setFrThan('')
+    setFrSaving(false); setFrFormLotId(null); setFrFormLotNo(''); setFrFormFpNo(null); setFrFormMaxThan(0); setFrThan(''); setFrSlipNo('')
     mutatePacking()
   }
 
@@ -1993,6 +1996,48 @@ export default function FinishStockPage() {
                 </div>
               </div>
             )}
+
+                {/* FR Add Popup Modal */}
+                {frFormLotId && (
+                  <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 bg-black/40" onClick={() => setFrFormLotId(null)}>
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+                        <div>
+                          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">Add Folding Receipt</h3>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">FP {frFormFpNo} · {frFormLotNo} · {frFormMaxThan}T remaining</p>
+                        </div>
+                        <button onClick={() => setFrFormLotId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
+                      </div>
+                      <div className="p-5 space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">FR Slip No</label>
+                            <input type="text" value={frSlipNo} onChange={e => setFrSlipNo(e.target.value)} placeholder="e.g. 45" autoFocus
+                              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date</label>
+                            <input type="date" value={frDate} onChange={e => setFrDate(e.target.value)}
+                              className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Than</label>
+                          <input type="number" value={frThan} onChange={e => setFrThan(e.target.value)} placeholder="Than"
+                            className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                        </div>
+                        <div className="flex items-center justify-end gap-3 pt-1">
+                          <button onClick={() => setFrFormLotId(null)}
+                            className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 font-medium">Cancel</button>
+                          <button onClick={addFoldingReceipt} disabled={frSaving || !frSlipNo || !frThan}
+                            className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                            {frSaving ? 'Saving...' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
         </>
       )}
 
@@ -3058,21 +3103,16 @@ export default function FinishStockPage() {
                                               </div>
                                             )}
                                             {!complete && (
-                                              frFormLotId === l.id ? (
-                                                <div className="flex items-center gap-1.5 mt-1">
-                                                  <input type="text" placeholder="FR No" value={frSlipNo} onChange={e => setFrSlipNo(e.target.value)}
-                                                    className="w-16 text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 bg-white dark:bg-gray-700 dark:text-gray-100" />
-                                                  <input type="date" value={frDate} onChange={e => setFrDate(e.target.value)}
-                                                    className="text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 bg-white dark:bg-gray-700 dark:text-gray-100" />
-                                                  <input type="number" placeholder="Than" value={frThan} onChange={e => setFrThan(e.target.value)}
-                                                    className="w-12 text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 text-center bg-white dark:bg-gray-700 dark:text-gray-100" />
-                                                  <button onClick={addFoldingReceipt} disabled={frSaving} className="text-[9px] bg-teal-600 text-white px-2 py-0.5 rounded font-medium disabled:opacity-50">Add</button>
-                                                  <button onClick={() => setFrFormLotId(null)} className="text-[9px] text-gray-400">✕</button>
-                                                </div>
-                                              ) : (
-                                                <button onClick={() => { setFrFormLotId(l.id); setFrSlipNo(''); setFrThan(String(l.than - received)); setFrDate(new Date().toISOString().split('T')[0]) }}
-                                                  className="text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium mt-1">+ Add Folding Receipt</button>
-                                              )
+                                              <button onClick={() => {
+                                                setFrFormLotId(l.id)
+                                                setFrFormLotNo(l.lotNo)
+                                                setFrFormFpNo(pe.slipNo)
+                                                setFrFormMaxThan(l.than - received)
+                                                setFrSlipNo('')
+                                                setFrThan(String(l.than - received))
+                                                setFrDate(new Date().toISOString().split('T')[0])
+                                              }}
+                                                className="text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium mt-1">+ Add Folding Receipt</button>
                                             )}
                                           </div>
                                         )
