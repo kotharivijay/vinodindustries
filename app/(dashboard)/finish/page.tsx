@@ -1357,28 +1357,50 @@ export default function FinishStockPage() {
                               const foldNo = enrichedLot?.foldNo || enrichedLot?.dyeSlips?.[0]?.foldNo || null
                               const hasSlipThans = lot.slipThans && lot.slipThans.length > 0
                               const slipSum = hasSlipThans ? lot.slipThans!.reduce((s, st) => s + (parseInt(st.than) || 0), 0) : 0
+                              const totalEditThan = editLots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)
+                              const finMtr = parseFloat(editFinishMtr) || 0
+                              const distributedMtr = totalEditThan > 0 && finMtr > 0 ? (lotThan / totalEditThan) * finMtr : 0
+                              const expectedMtr = enrichedLot?.mtrPerThan ? enrichedLot.mtrPerThan * lotThan : 0
+                              const mtrDiff = expectedMtr > 0 && distributedMtr > 0 ? ((distributedMtr - expectedMtr) / expectedMtr) * 100 : null
+                              const mtrFlag = mtrDiff !== null ? (mtrDiff < -6 ? 'red' : mtrDiff < -4 ? 'orange' : 'green') : null
 
                               return (
                                 <div key={li} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                                   {/* Lot header */}
-                                  <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 px-3 py-2">
-                                    <div className="flex items-center gap-2">
-                                      {foldNo && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">📁 {foldNo}</span>}
-                                      <span className="text-xs font-bold text-teal-700 dark:text-teal-300">{lot.lotNo}</span>
-                                      {enrichedLot?.quality && <span className="text-[10px] text-gray-500 dark:text-gray-400">{enrichedLot.quality}</span>}
+                                  <div className="bg-gray-50 dark:bg-gray-700/50 px-3 py-2">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        {foldNo && <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">📁 {foldNo}</span>}
+                                        <span className="text-xs font-bold text-teal-700 dark:text-teal-300">{lot.lotNo}</span>
+                                        {enrichedLot?.quality && <span className="text-[10px] text-gray-500 dark:text-gray-400">{enrichedLot.quality}</span>}
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {hasSlipThans ? (
+                                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{slipSum}T</span>
+                                        ) : (
+                                          <>
+                                            <input type="number" value={lot.than}
+                                              onChange={e => setEditLots(prev => { const u = [...prev]; u[li] = { ...u[li], than: e.target.value }; return u })}
+                                              className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400 text-center font-medium" />
+                                            <span className="text-[10px] text-gray-400">than</span>
+                                          </>
+                                        )}
+                                      </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      {hasSlipThans ? (
-                                        <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{slipSum}T</span>
-                                      ) : (
-                                        <>
-                                          <input type="number" value={lot.than}
-                                            onChange={e => setEditLots(prev => { const u = [...prev]; u[li] = { ...u[li], than: e.target.value }; return u })}
-                                            className="w-16 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400 text-center font-medium" />
-                                          <span className="text-[10px] text-gray-400">than</span>
-                                        </>
-                                      )}
-                                    </div>
+                                    {/* Auto meter + shortage */}
+                                    {lotThan > 0 && (
+                                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                        {distributedMtr > 0 && (
+                                          <span className="text-[9px] text-gray-500 dark:text-gray-400">{distributedMtr.toFixed(1)} mtr</span>
+                                        )}
+                                        {expectedMtr > 0 && (
+                                          <span className="text-[9px] text-gray-400 dark:text-gray-500">({expectedMtr.toFixed(0)} exp)</span>
+                                        )}
+                                        {mtrFlag === 'red' && <span className="text-[9px] text-red-500">🔴 {mtrDiff?.toFixed(1)}%</span>}
+                                        {mtrFlag === 'orange' && <span className="text-[9px] text-amber-500">🟠 {mtrDiff?.toFixed(1)}%</span>}
+                                        {mtrFlag === 'green' && mtrDiff !== null && mtrDiff < -1 && <span className="text-[9px] text-green-500">{mtrDiff?.toFixed(1)}%</span>}
+                                      </div>
+                                    )}
                                   </div>
 
                                   {/* Per-slip than inputs */}
