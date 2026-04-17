@@ -161,7 +161,7 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <h2 className="text-lg font-bold text-gray-800">Import Despatch from Google Sheet</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
@@ -192,7 +192,7 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
             <>
               {/* Summary cards */}
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-4">
-                <div className="border rounded-lg p-3 text-center bg-gray-50 border-gray-200">
+                <div className="border rounded-lg p-3 text-center bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600">
                   <div className="text-2xl font-bold text-gray-700">{summary.total}</div>
                   <div className="text-xs text-gray-500 mt-0.5">Total Rows</div>
                 </div>
@@ -208,7 +208,7 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                   <div className="text-2xl font-bold text-red-700">{summary.missing_lot}</div>
                   <div className="text-xs text-red-600 mt-0.5">Missing Lot</div>
                 </div>
-                <div className="border rounded-lg p-3 text-center bg-gray-50 border-gray-200">
+                <div className="border rounded-lg p-3 text-center bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600">
                   <div className="text-2xl font-bold text-gray-500">{summary.duplicate}</div>
                   <div className="text-xs text-gray-400 mt-0.5">Duplicate</div>
                 </div>
@@ -272,7 +272,7 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
 
               <div className="overflow-auto border rounded-lg">
                 <table className="w-full text-xs">
-                  <thead className="bg-gray-50 border-b sticky top-0">
+                  <thead className="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600 sticky top-0">
                     <tr>
                       <th className="px-3 py-2 text-left w-8">
                         <input type="checkbox"
@@ -328,7 +328,7 @@ export default function DespatchImportModal({ onClose, onImported }: { onClose: 
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-50 border-t">
+                  <tfoot className="bg-gray-50 dark:bg-gray-700 border-t dark:border-gray-600">
                     <tr>
                       <td colSpan={7} className="px-3 py-2 text-xs font-semibold text-gray-500">
                         {readySelected} rows selected

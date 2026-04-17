@@ -249,7 +249,7 @@ export default function DespatchListPage() {
         <div className="flex items-center gap-3">
           <BackButton />
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Despatch</h1>
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Despatch</h1>
             <p className="text-sm text-gray-500 mt-1">{entries.length} entries · {stockSummary.length} lots</p>
           </div>
         </div>
@@ -291,16 +291,16 @@ export default function DespatchListPage() {
       {tab === 'stock' && (
         <div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Lots</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{stockSummary.length}</p>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total Lots</p>
+              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100 mt-1">{stockSummary.length}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Despatched (Than)</p>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total Despatched (Than)</p>
               <p className="text-2xl font-bold text-orange-600 mt-1">{totalThan}</p>
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Total Value (P.Total)</p>
+            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total Value (P.Total)</p>
               <p className="text-2xl font-bold text-indigo-600 mt-1">₹{totalValue.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</p>
             </div>
           </div>
@@ -309,13 +309,13 @@ export default function DespatchListPage() {
             <input
               type="text"
               placeholder="Search lot no, party, quality..."
-              className="w-full max-w-sm border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="w-full max-w-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               value={stockSearch}
               onChange={e => { setStockSearch(e.target.value); setDebouncedStockSearch(e.target.value) }}
             />
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {loading ? (
               <div className="p-12 text-center text-gray-400">Loading...</div>
             ) : filteredStock.length === 0 ? (
@@ -323,7 +323,7 @@ export default function DespatchListPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
+                  <thead className="bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Lot No</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Party</th>
@@ -336,7 +336,7 @@ export default function DespatchListPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {filteredStock.map(r => (
-                      <tr key={r.lotNo} className="hover:bg-gray-50 transition">
+                      <tr key={r.lotNo} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
                         <td className="px-4 py-3 font-semibold text-indigo-700">
                           <Link href={`/lot/${encodeURIComponent(r.lotNo)}`} className="hover:underline">{r.lotNo}</Link>
                         </td>
@@ -351,7 +351,7 @@ export default function DespatchListPage() {
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                  <tfoot className="bg-gray-50 dark:bg-gray-700/50 border-t-2 border-gray-200 dark:border-gray-600">
                     <tr>
                       <td colSpan={5} className="px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Total ({filteredStock.length} lots)</td>
                       <td className="px-4 py-3 text-right font-bold text-orange-600">{filteredStock.reduce((s, r) => s + r.totalThan, 0)}</td>
@@ -386,7 +386,7 @@ export default function DespatchListPage() {
             <span className="text-xs text-gray-400 ml-auto">{filtered.length} of {entries.length}</span>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {loading ? (
               <div className="p-12 text-center text-gray-400">Loading...</div>
             ) : filtered.length === 0 ? (
@@ -470,7 +470,7 @@ export default function DespatchListPage() {
                 {/* ── Desktop table ── */}
                 <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700">
                       <tr>
                         <SortTh field="date" label="Date" />
                         <SortTh field="challanNo" label="Challan" />
@@ -577,7 +577,7 @@ export default function DespatchListPage() {
 
       {showReset && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-4">
               <span className="text-3xl">⚠️</span>
               <div>

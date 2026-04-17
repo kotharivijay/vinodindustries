@@ -54,33 +54,33 @@ export default function DespatchDetailView({ id }: { id: string }) {
   return (
     <div className="p-4 md:p-8 max-w-2xl">
       <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-2 text-sm font-medium transition">
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg px-4 py-2 text-sm font-medium transition">
           &larr; Back
         </button>
         <h1 className="text-xl font-bold text-gray-800">Challan #{first.challanNo}</h1>
       </div>
 
       {/* Challan Info */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-4">
         <h2 className="text-sm font-semibold text-gray-700 mb-3">Challan Details</h2>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="text-xs text-gray-400">Date</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Date</p>
             <p className="font-medium">{new Date(first.date).toLocaleDateString('en-IN')}</p>
           </div>
           <div>
-            <p className="text-xs text-gray-400">Party</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Party</p>
             <p className="font-medium">{first.party.name}</p>
           </div>
           {first.grayInwDate && (
             <div>
-              <p className="text-xs text-gray-400">Grey Inward Date</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Grey Inward Date</p>
               <p>{new Date(first.grayInwDate).toLocaleDateString('en-IN')}</p>
             </div>
           )}
           {first.jobDelivery && (
             <div>
-              <p className="text-xs text-gray-400">Job Delivery</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Job Delivery</p>
               <p>{first.jobDelivery}</p>
             </div>
           )}
@@ -88,14 +88,14 @@ export default function DespatchDetailView({ id }: { id: string }) {
       </div>
 
       {/* Lot entries */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-gray-700">Lots in this Challan</h2>
-          <span className="text-xs text-gray-400">{entries.length} lot{entries.length !== 1 ? 's' : ''}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">{entries.length} lot{entries.length !== 1 ? 's' : ''}</span>
         </div>
         <div className="space-y-3">
           {entries.map(e => (
-            <div key={e.id} className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+            <div key={e.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-gray-50 dark:bg-gray-700/50">
               <div className="flex items-center justify-between mb-2">
                 <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="text-sm font-semibold text-indigo-700 hover:underline">
                   {e.lotNo}
@@ -137,7 +137,7 @@ export default function DespatchDetailView({ id }: { id: string }) {
 
         {/* Totals */}
         {entries.length > 1 && (
-          <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between text-sm">
+          <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between text-sm">
             <span className="font-semibold text-gray-700">Total</span>
             <div className="flex gap-4">
               <span className="font-bold text-gray-800">{totalThan} than</span>
@@ -149,7 +149,7 @@ export default function DespatchDetailView({ id }: { id: string }) {
 
       {/* Change History */}
       {allChangeLogs.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 mb-4">
           <h2 className="text-sm font-semibold text-gray-700 mb-3">Change History</h2>
           <div className="space-y-2">
             {allChangeLogs.map(c => (

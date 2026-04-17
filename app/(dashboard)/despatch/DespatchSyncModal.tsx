@@ -106,7 +106,7 @@ export default function DespatchSyncModal({ onClose, onDone }: { onClose: () => 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <h2 className="text-lg font-bold text-gray-800">🔄 Sync Despatch with Google Sheet</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
@@ -153,7 +153,7 @@ export default function DespatchSyncModal({ onClose, onDone }: { onClose: () => 
             <>
               {/* Summary cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+                <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 text-center">
                   <div className="text-xl font-bold text-gray-700">{summary.sheetTotal}</div>
                   <div className="text-xs text-gray-500 mt-0.5">Sheet Rows</div>
                 </div>
@@ -199,7 +199,7 @@ export default function DespatchSyncModal({ onClose, onDone }: { onClose: () => 
                 ) : (
                   <div className="overflow-auto border rounded-lg">
                     <table className="w-full text-xs">
-                      <thead className="bg-gray-50 border-b sticky top-0">
+                      <thead className="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600 sticky top-0">
                         <tr>
                           <th className="px-3 py-2 w-8">
                             <input type="checkbox"
@@ -264,8 +264,8 @@ export default function DespatchSyncModal({ onClose, onDone }: { onClose: () => 
                         <div className="bg-gray-50 px-4 py-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs">
                           <span className="font-semibold text-gray-700">Ch {group.challanNo}</span>
                           <span className="text-indigo-700 font-medium">Lot {group.lotNo}</span>
-                          <span className="text-gray-600">{group.partyName}</span>
-                          <span className="text-gray-500">{group.qualityName}</span>
+                          <span className="text-gray-600 dark:text-gray-300">{group.partyName}</span>
+                          <span className="text-gray-500 dark:text-gray-400">{group.qualityName}</span>
                           <span className="ml-auto text-red-500 font-medium">{group.entries.length} copies</span>
                         </div>
                         <table className="w-full text-xs">
