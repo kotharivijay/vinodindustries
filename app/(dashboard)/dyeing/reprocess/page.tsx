@@ -1,0 +1,319 @@
+'use client'
+
+import { useState, useMemo } from 'react'
+import useSWR from 'swr'
+import BackButton from '../../BackButton'
+
+const fetcher = (url: string) => fetch(url).then(r => r.json())
+
+interface Source {
+  id: number
+  originalLotNo: string
+  than: number
+  party: string | null
+  reason: string | null
+  sourceDyeSlip: number | null
+}
+
+interface ReProLot {
+  id: number
+  reproNo: string
+  quality: string
+  weight: string | null
+  grayMtr: number | null
+  totalThan: number
+  reason: string
+  notes: string | null
+  status: string
+  mergedAt: string | null
+  createdAt: string
+  sources: Source[]
+}
+
+const REASONS = [
+  { value: 'patchy', label: 'Patchy' },
+  { value: 'daagi', label: 'Daagi' },
+  { value: 'shade_mismatch', label: 'Shade Mismatch' },
+  { value: 'other', label: 'Other' },
+]
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
+  'in-dyeing': 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
+  finished: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300',
+  merged: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
+}
+
+export default function ReProcessPage() {
+  const { data: lots, mutate } = useSWR<ReProLot[]>('/api/dyeing/reprocess', fetcher)
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [showCreate, setShowCreate] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
+
+  // Create form state
+  const [reason, setReason] = useState('patchy')
+  const [notes, setNotes] = useState('')
+  const [sourceLots, setSourceLots] = useState<{ lotNo: string; than: string; reason: string }[]>([
+    { lotNo: '', than: '', reason: 'patchy' },
+  ])
+
+  const toggle = (id: number) => {
+    setExpanded(prev => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id); else n.add(id)
+      return n
+    })
+  }
+
+  const addSourceRow = () => setSourceLots(prev => [...prev, { lotNo: '', than: '', reason }])
+  const removeSourceRow = (i: number) => setSourceLots(prev => prev.filter((_, idx) => idx !== i))
+  const updateSource = (i: number, field: string, val: string) => {
+    setSourceLots(prev => { const u = [...prev]; u[i] = { ...u[i], [field]: val }; return u })
+  }
+
+  async function handleCreate() {
+    const validSources = sourceLots.filter(s => s.lotNo.trim() && s.than.trim())
+    if (validSources.length === 0) { setCreateError('Add at least one lot'); return }
+    setCreating(true)
+    setCreateError('')
+    try {
+      const res = await fetch('/api/dyeing/reprocess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reason,
+          notes: notes || null,
+          sources: validSources.map(s => ({ lotNo: s.lotNo.trim(), than: parseInt(s.than), reason: s.reason })),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setCreateError(data.error || 'Failed'); setCreating(false); return }
+      setShowCreate(false)
+      setSourceLots([{ lotNo: '', than: '', reason: 'patchy' }])
+      setNotes('')
+      mutate()
+    } catch {
+      setCreateError('Network error')
+    }
+    setCreating(false)
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm('Delete this RE-PRO lot?')) return
+    await fetch('/api/dyeing/reprocess', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    mutate()
+  }
+
+  async function handleStatusChange(id: number, status: string) {
+    await fetch('/api/dyeing/reprocess', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status }),
+    })
+    mutate()
+  }
+
+  const summary = useMemo(() => {
+    if (!lots) return { total: 0, pending: 0, inDyeing: 0, finished: 0, merged: 0, totalThan: 0 }
+    return {
+      total: lots.length,
+      pending: lots.filter(l => l.status === 'pending').length,
+      inDyeing: lots.filter(l => l.status === 'in-dyeing').length,
+      finished: lots.filter(l => l.status === 'finished').length,
+      merged: lots.filter(l => l.status === 'merged').length,
+      totalThan: lots.reduce((s, l) => s + l.totalThan, 0),
+    }
+  }, [lots])
+
+  return (
+    <div className="p-4 md:p-8 max-w-4xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <BackButton />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Re-Process Ledger</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              {summary.total} lots · {summary.totalThan}T · {summary.pending} pending · {summary.finished} finished
+            </p>
+          </div>
+        </div>
+        <button onClick={() => setShowCreate(true)}
+          className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          + New RE-PRO
+        </button>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        {[
+          { label: 'Pending', count: summary.pending, color: 'text-amber-600' },
+          { label: 'In Dyeing', count: summary.inDyeing, color: 'text-blue-600' },
+          { label: 'Finished', count: summary.finished, color: 'text-green-600' },
+          { label: 'Merged', count: summary.merged, color: 'text-purple-600' },
+        ].map(s => (
+          <div key={s.label} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-3 text-center">
+            <p className="text-[10px] text-gray-500 dark:text-gray-400 uppercase">{s.label}</p>
+            <p className={`text-xl font-bold ${s.color} mt-0.5`}>{s.count}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Create modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-6 bg-black/40 p-4" onClick={() => setShowCreate(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Create RE-PRO Lot</h3>
+              <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">&times;</button>
+            </div>
+            <div className="p-5 space-y-4">
+              {createError && (
+                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm rounded-lg px-4 py-2">{createError}</div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Reason</label>
+                  <select value={reason} onChange={e => setReason(e.target.value)}
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
+                  <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Source Lots (same quality)</label>
+                  <button onClick={addSourceRow} className="text-xs text-purple-600 dark:text-purple-400 font-medium">+ Add Lot</button>
+                </div>
+                <div className="space-y-2">
+                  {sourceLots.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input type="text" value={s.lotNo} onChange={e => updateSource(i, 'lotNo', e.target.value)}
+                        placeholder="Lot No" className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      <input type="number" value={s.than} onChange={e => updateSource(i, 'than', e.target.value)}
+                        placeholder="Than" className="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-center" />
+                      <select value={s.reason} onChange={e => updateSource(i, 'reason', e.target.value)}
+                        className="w-28 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-2 text-xs bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                      </select>
+                      {sourceLots.length > 1 && (
+                        <button onClick={() => removeSourceRow(i)} className="text-red-400 hover:text-red-600 text-lg">&times;</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 font-medium">Cancel</button>
+                <button onClick={handleCreate} disabled={creating}
+                  className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                  {creating ? 'Creating...' : 'Create RE-PRO'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RE-PRO lot cards */}
+      {!lots ? (
+        <div className="p-12 text-center text-gray-400">Loading...</div>
+      ) : lots.length === 0 ? (
+        <div className="p-12 text-center text-gray-400">No re-process lots yet.</div>
+      ) : (
+        <div className="space-y-3">
+          {lots.map(lot => {
+            const isOpen = expanded.has(lot.id)
+            return (
+              <div key={lot.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+                <button onClick={() => toggle(lot.id)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+                  <div className="text-left">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-purple-700 dark:text-purple-400">{lot.reproNo}</span>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${STATUS_COLORS[lot.status] || 'bg-gray-100 text-gray-600'}`}>{lot.status}</span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400">{lot.reason}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {lot.quality} · {lot.sources.length} lot{lot.sources.length !== 1 ? 's' : ''} · {new Date(lot.createdAt).toLocaleDateString('en-IN')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{lot.totalThan}T</span>
+                    <span className={`text-gray-400 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                  </div>
+                </button>
+
+                {isOpen && (
+                  <div className="border-t border-gray-100 dark:border-gray-700 px-4 pb-4 pt-3 space-y-3">
+                    {/* Source lots */}
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Source Lots</p>
+                      {lot.sources.map(s => (
+                        <div key={s.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-xs">
+                          <div>
+                            <span className="font-medium text-teal-700 dark:text-teal-400">{s.originalLotNo}</span>
+                            {s.party && <span className="text-gray-500 dark:text-gray-400 ml-2">{s.party}</span>}
+                            {s.reason && <span className="text-gray-400 ml-2">({s.reason})</span>}
+                            {s.sourceDyeSlip && <span className="text-gray-400 ml-1">Slip {s.sourceDyeSlip}</span>}
+                          </div>
+                          <span className="font-bold text-gray-700 dark:text-gray-200">{s.than}T</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
+                      {lot.weight && <span>Weight: {lot.weight}</span>}
+                      {lot.grayMtr && <span>Meter: {lot.grayMtr.toFixed(0)}m</span>}
+                      {lot.notes && <span>Notes: {lot.notes}</span>}
+                      {lot.mergedAt && <span>Merged: {new Date(lot.mergedAt).toLocaleDateString('en-IN')}</span>}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 pt-1">
+                      {lot.status === 'pending' && (
+                        <>
+                          <button onClick={() => handleStatusChange(lot.id, 'in-dyeing')}
+                            className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-3 py-1 rounded-lg font-medium">
+                            Start Dyeing
+                          </button>
+                          <button onClick={() => handleDelete(lot.id)}
+                            className="text-xs text-red-400 hover:text-red-600 ml-auto">Delete</button>
+                        </>
+                      )}
+                      {lot.status === 'in-dyeing' && (
+                        <button onClick={() => handleStatusChange(lot.id, 'finished')}
+                          className="text-xs bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 px-3 py-1 rounded-lg font-medium">
+                          Mark Finished
+                        </button>
+                      )}
+                      {lot.status === 'finished' && (
+                        <button onClick={() => handleStatusChange(lot.id, 'merged')}
+                          className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-3 py-1 rounded-lg font-medium">
+                          Merge Back to Original
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

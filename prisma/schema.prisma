@@ -196,6 +196,36 @@ model DyeingAdditionItem {
   cost          Float?
 }
 
+// ─── Re-Process Lots ──────────────────────────────────────────────────────────
+
+model ReProcessLot {
+  id        Int                @id @default(autoincrement())
+  reproNo   String             @unique   // "RE-PRO-1", "RE-PRO-2"
+  quality   String                       // shared quality from source lots
+  weight    String?                      // from originals
+  grayMtr   Float?                       // sum of source meters
+  totalThan Int                          // sum of all source thans
+  reason    String                       // "patchy" | "daagi" | "shade_mismatch" | "other"
+  notes     String?
+  status    String             @default("pending") // pending | in-dyeing | finished | merged
+  mergedAt  DateTime?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  sources   ReProcessSource[]
+}
+
+model ReProcessSource {
+  id            Int            @id @default(autoincrement())
+  reprocessId   Int
+  reprocess     ReProcessLot   @relation(fields: [reprocessId], references: [id], onDelete: Cascade)
+  originalLotNo String
+  than          Int
+  party         String?
+  reason        String?
+  sourceDyeSlip Int?
+  createdAt     DateTime       @default(now())
+}
+
 // ─── Chemical Master ───────────────────────────────────────────────────────────
 
 model Chemical {

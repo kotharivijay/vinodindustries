@@ -47,5 +47,23 @@ export async function buildLotInfoMap(lotNos: string[]): Promise<Map<string, Lot
     } catch {}
   }
 
+  // 3. ReProcessLot fallback for RE-PRO-* lots
+  const reproLots = lotNos.filter(l => l.toUpperCase().startsWith('RE-PRO-') && !map.has(l.toLowerCase().trim()))
+  if (reproLots.length > 0) {
+    try {
+      const reproEntries = await db.reProcessLot.findMany({
+        where: { reproNo: { in: reproLots, mode: 'insensitive' } },
+        select: { reproNo: true, quality: true, weight: true, grayMtr: true, totalThan: true },
+      })
+      for (const r of reproEntries) {
+        const key = r.reproNo.toLowerCase().trim()
+        if (!map.has(key)) {
+          const mtrPerThan = r.grayMtr && r.totalThan ? r.grayMtr / r.totalThan : null
+          map.set(key, { party: 'Re-Process', quality: r.quality || null, weight: r.weight || null, marka: null, mtrPerThan })
+        }
+      }
+    } catch {}
+  }
+
   return map
 }
