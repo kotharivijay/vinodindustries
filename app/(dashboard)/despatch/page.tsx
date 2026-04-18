@@ -153,7 +153,8 @@ export default function DespatchListPage() {
         if (new Date(date) > new Date(existing.lastDate)) existing.lastDate = date
       }
     }
-    for (const e of entries) {
+    const src = hideOB ? entries.filter(e => !e.isLastYear) : entries
+    for (const e of src) {
       if (e.despatchLots && e.despatchLots.length > 0) {
         for (const l of e.despatchLots) {
           addToMap(l.lotNo, e.party.name, l.quality?.name ?? e.quality.name, l.than, l.amount ?? 0, e.date)
@@ -163,7 +164,7 @@ export default function DespatchListPage() {
       }
     }
     return Array.from(map.values()).sort((a, b) => a.lotNo.localeCompare(b.lotNo))
-  }, [entries])
+  }, [entries, hideOB])
 
   const filteredStock = useMemo(() =>
     stockSummary.filter(r => {
@@ -320,14 +321,20 @@ export default function DespatchListPage() {
             </div>
           </div>
 
-          <div className="mb-4">
+          <div className="mb-4 flex items-center gap-3">
             <input
               type="text"
               placeholder="Search lot no, party, quality..."
-              className="w-full max-w-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="flex-1 max-w-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               value={stockSearch}
               onChange={e => { setStockSearch(e.target.value); setDebouncedStockSearch(e.target.value) }}
             />
+            {obCount > 0 && (
+              <button onClick={() => setHideOB(v => !v)}
+                className={`text-xs px-2.5 py-1 rounded-full border font-medium ${hideOB ? 'bg-purple-100 dark:bg-purple-900/40 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300' : 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+                {hideOB ? `Hide OB (${obCount})` : 'Show All'}
+              </button>
+            )}
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
