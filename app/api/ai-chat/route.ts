@@ -733,8 +733,8 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     }
     if (t === 'folding' || t === 'fr' || t === 'folding receipt') {
       const entries = await db.foldingReceipt.findMany({ select: { slipNo: true }, orderBy: { slipNo: 'asc' } })
-      const nums = entries.map((e: any) => parseInt(e.slipNo)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b)
-      const unique = [...new Set(nums)]
+      const nums: number[] = entries.map((e: any) => parseInt(e.slipNo)).filter((n: number) => !isNaN(n)).sort((a, b) => a - b)
+      const unique: number[] = [...new Set(nums)]
       if (unique.length === 0) return { type: 'folding receipt', missing: [], message: 'No folding receipts found' }
       const set = new Set(unique)
       const max = Math.max(...unique)
@@ -745,8 +745,8 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
 
     if (t === 'fold' || t === 'fold program') {
       const entries = await db.foldProgram.findMany({ select: { foldNo: true }, orderBy: { foldNo: 'asc' } })
-      const nums = entries.map((e: any) => parseInt(e.foldNo)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b)
-      const unique = [...new Set(nums)]
+      const nums: number[] = entries.map((e: any) => parseInt(e.foldNo)).filter((n: number) => !isNaN(n)).sort((a, b) => a - b)
+      const unique: number[] = [...new Set(nums)]
       if (unique.length === 0) return { type: 'fold program', missing: [], message: 'No fold programs found' }
       const set = new Set(unique)
       const max = Math.max(...unique)
