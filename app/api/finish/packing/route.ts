@@ -120,13 +120,20 @@ export async function GET() {
   }))
 
   // Inject OB allocations tagged as 'finished' (available for packing)
+  // Skip OB lots that already have a real FinishEntryLot (auto-created when FR was saved)
   try {
+    const realLotNos = new Set<string>()
+    for (const pe of packingEntries) {
+      for (const l of pe.lots) realLotNos.add(l.lotNo.toLowerCase().trim())
+    }
+
     const obFinished = await db.lotOpeningBalanceAllocation.findMany({
       where: { stage: 'finished' },
       include: { balance: true },
     })
     for (const alloc of obFinished) {
       const b = alloc.balance
+      if (realLotNos.has(b.lotNo.toLowerCase().trim())) continue
       const mtrPerThan = b.grayMtr && b.greyThan ? b.grayMtr / b.greyThan : null
       stock.push({
         id: -alloc.id,
