@@ -220,6 +220,8 @@ interface PackingEntry {
   allFoldingComplete?: boolean
   lots: PackingLot[]
   totalThan: number
+  isFromOB?: boolean
+  obStage?: string
 }
 
 interface PackingPartyGroup {
