@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -117,6 +117,18 @@ export default function DespatchListPage() {
   const [stockSearch, setStockSearch] = useState('')
   const [debouncedStockSearch, setDebouncedStockSearch] = useDebounce('')
   const [filters, setFilters] = useState({ party: '', quality: '', lotNo: '', lrNo: '' })
+  const [hideOB, setHideOB] = useState(true)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('despatch-hide-ob')
+      if (saved !== null) setHideOB(saved === 'true')
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try { localStorage.setItem('despatch-hide-ob', String(hideOB)) } catch {}
+  }, [hideOB])
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const toggleExpand = (id: number) => setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
 
@@ -192,9 +204,12 @@ export default function DespatchListPage() {
   const isDup = (e: DespatchEntry) => dupMap.has(e.id)
   const getDupReason = (e: DespatchEntry) => dupMap.get(e.id) ?? ''
 
+  const obCount = useMemo(() => entries.filter(e => e.isLastYear).length, [entries])
+
   const filtered = useMemo(() =>
     entries
       .filter((e) => {
+        if (hideOB && e.isLastYear) return false
         const q = debouncedSearch.toLowerCase()
         const matchSearch = !q || (
           e.party.name.toLowerCase().includes(q) ||
@@ -215,7 +230,7 @@ export default function DespatchListPage() {
         const cmp = av < bv ? -1 : av > bv ? 1 : 0
         return sortDir === 'asc' ? cmp : -cmp
       }),
-  [entries, debouncedSearch, filters, sortField, sortDir])
+  [entries, debouncedSearch, filters, sortField, sortDir, hideOB])
 
   function SortTh({ field, label, right }: { field: SortField; label: string; right?: boolean }) {
     const active = sortField === field
@@ -378,6 +393,12 @@ export default function DespatchListPage() {
               value={search}
               onChange={(e) => { setSearchRaw(e.target.value); setDebouncedSearch(e.target.value) }}
             />
+            {obCount > 0 && (
+              <button onClick={() => setHideOB(v => !v)}
+                className={`text-xs px-2.5 py-1 rounded-full border font-medium ${hideOB ? 'bg-purple-100 dark:bg-purple-900/40 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300' : 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'}`}>
+                {hideOB ? `Hide OB (${obCount})` : 'Show All'}
+              </button>
+            )}
             {(search || filters.party || filters.quality || filters.lotNo || filters.lrNo) && (
               <button onClick={() => { setSearchRaw(''); setDebouncedSearch(''); setFilters({ party: '', quality: '', lotNo: '', lrNo: '' }) }} className="text-xs text-gray-400 hover:text-red-500">
                 Clear filters
