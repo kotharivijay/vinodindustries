@@ -39,7 +39,7 @@ export default function ComboSelect({ options, value, onChange, onAddNew, placeh
     <div className="relative" ref={ref}>
       <input
         type="text"
-        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100"
+        className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100 dark:disabled:bg-gray-800"
         value={open ? search : (selected?.name ?? '')}
         onChange={(e) => { setSearch(e.target.value); setOpen(true) }}
         onFocus={() => { setSearch(''); setOpen(true) }}
@@ -48,14 +48,14 @@ export default function ComboSelect({ options, value, onChange, onAddNew, placeh
         autoComplete="off"
       />
       {open && (
-        <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-52 overflow-auto">
+        <div className="absolute z-20 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg mt-1 max-h-52 overflow-auto">
           {filtered.length === 0 && !canAddNew && (
-            <div className="px-3 py-2 text-gray-400 text-sm">No results</div>
+            <div className="px-3 py-2 text-gray-400 dark:text-gray-500 text-sm">No results</div>
           )}
           {filtered.map((o) => (
             <div
               key={o.id}
-              className={`px-3 py-2 cursor-pointer text-sm hover:bg-indigo-50 ${value === o.id ? 'bg-indigo-50 font-medium text-indigo-700' : ''}`}
+              className={`px-3 py-2 cursor-pointer text-sm text-gray-800 dark:text-gray-100 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 ${value === o.id ? 'bg-indigo-50 dark:bg-indigo-900/30 font-medium text-indigo-700 dark:text-indigo-400' : ''}`}
               onMouseDown={() => { onChange(o.id); setOpen(false) }}
             >
               {o.name}
@@ -63,7 +63,7 @@ export default function ComboSelect({ options, value, onChange, onAddNew, placeh
           ))}
           {canAddNew && (
             <div
-              className="px-3 py-2 text-indigo-600 hover:bg-indigo-50 cursor-pointer text-sm font-medium border-t flex items-center gap-2"
+              className="px-3 py-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 cursor-pointer text-sm font-medium border-t border-gray-200 dark:border-gray-700 flex items-center gap-2"
               onMouseDown={async () => {
                 setLoading(true)
                 try {
