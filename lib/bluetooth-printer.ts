@@ -17,11 +17,16 @@ const COMMANDS = {
   FONT_DOUBLE_WIDTH: new Uint8Array([GS, 0x21, 0x10]),
   FONT_DOUBLE: new Uint8Array([GS, 0x21, 0x11]),
   FONT_LARGE: new Uint8Array([GS, 0x21, 0x11]),
+  FONT_A: new Uint8Array([ESC, 0x4d, 0x00]),        // 12×24 standard
+  FONT_B: new Uint8Array([ESC, 0x4d, 0x01]),        // 9×17 smaller, more chars/line
+  REVERSE_ON: new Uint8Array([GS, 0x42, 0x01]),     // White on black
+  REVERSE_OFF: new Uint8Array([GS, 0x42, 0x00]),
   LINE_FEED: new Uint8Array([LF]),
   CUT: new Uint8Array([GS, 0x56, 0x00]),
   PARTIAL_CUT: new Uint8Array([GS, 0x56, 0x01]),
   UNDERLINE_ON: new Uint8Array([ESC, 0x2d, 0x01]),
   UNDERLINE_OFF: new Uint8Array([ESC, 0x2d, 0x00]),
+  UNDERLINE_THICK: new Uint8Array([ESC, 0x2d, 0x02]),
   FEED_LINES: (n: number) => new Uint8Array([ESC, 0x64, n]),
 }
 
@@ -254,6 +259,71 @@ class BluetoothPrinter {
     const padding = width - key.length - value.length
     const line = key + ' '.repeat(Math.max(1, padding)) + value
     await this.printText(line)
+  }
+
+  async setFontB() {
+    await this.sendCommand(COMMANDS.FONT_B)
+  }
+
+  async setFontA() {
+    await this.sendCommand(COMMANDS.FONT_A)
+  }
+
+  async reverseOn() {
+    await this.sendCommand(COMMANDS.REVERSE_ON)
+  }
+
+  async reverseOff() {
+    await this.sendCommand(COMMANDS.REVERSE_OFF)
+  }
+
+  async underlineOn(thick = false) {
+    await this.sendCommand(thick ? COMMANDS.UNDERLINE_THICK : COMMANDS.UNDERLINE_ON)
+  }
+
+  async underlineOff() {
+    await this.sendCommand(COMMANDS.UNDERLINE_OFF)
+  }
+
+  async printReverse(text: string, bold = false, size: 'normal' | 'large' | 'double-height' = 'normal') {
+    await this.sendCommand(COMMANDS.REVERSE_ON)
+    await this.printLine(` ${text} `, bold, size)
+    await this.sendCommand(COMMANDS.REVERSE_OFF)
+  }
+
+  async printReverseCentered(text: string, bold = false, size: 'normal' | 'large' | 'double-height' = 'normal') {
+    await this.sendCommand(COMMANDS.ALIGN_CENTER)
+    await this.sendCommand(COMMANDS.REVERSE_ON)
+    await this.printLine(` ${text} `, bold, size)
+    await this.sendCommand(COMMANDS.REVERSE_OFF)
+    await this.sendCommand(COMMANDS.ALIGN_LEFT)
+  }
+
+  async printUnderlined(text: string, bold = false) {
+    await this.sendCommand(COMMANDS.UNDERLINE_ON)
+    if (bold) await this.sendCommand(COMMANDS.BOLD_ON)
+    await this.sendBytes(encoder.encode(text))
+    await this.sendCommand(COMMANDS.LINE_FEED)
+    if (bold) await this.sendCommand(COMMANDS.BOLD_OFF)
+    await this.sendCommand(COMMANDS.UNDERLINE_OFF)
+  }
+
+  async printQRCode(content: string, size = 6) {
+    // QR Code: GS ( k - Model 2
+    const data = encoder.encode(content)
+    const len = data.length + 3
+
+    // Select model 2
+    await this.sendBytes(new Uint8Array([GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]))
+    // Set size (1-16)
+    await this.sendBytes(new Uint8Array([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, size]))
+    // Set error correction level (L)
+    await this.sendBytes(new Uint8Array([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x30]))
+    // Store data
+    const storeCmd = new Uint8Array([GS, 0x28, 0x6b, len & 0xff, (len >> 8) & 0xff, 0x31, 0x50, 0x30, ...data])
+    await this.sendBytes(storeCmd)
+    // Print QR code
+    await this.sendBytes(new Uint8Array([GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30]))
   }
 
   async feedLines(n = 3) {

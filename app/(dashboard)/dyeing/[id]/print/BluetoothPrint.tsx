@@ -294,19 +294,17 @@ export default function BluetoothPrint({ data, autoMode }: { data: SlipData; aut
       const W = paperW === 58 ? 32 : 48
       const dot = dotLeaders ? '.' : ' '
 
-      // Header
-      await printer.printCentered('================================', false, 'normal')
-      await printer.printCentered('KOTHARI SYNTHETIC', true, toEscSize(headerSize))
-      await printer.printCentered('INDUSTRIES', true, toEscSize(headerSize))
+      // Header — reverse (white on black)
+      await printer.printReverseCentered(' KOTHARI SYNTHETIC INDUSTRIES ', true, toEscSize(headerSize))
       const showRound = data.roundParam
       const showingSpecific = typeof showRound === 'number' && showRound > 1
       const specificAdd = showingSpecific ? data.additions.find(a => a.roundNo === showRound) : null
-      const subtitle = showingSpecific ? `Re-Dye (Round ${showRound})` : showRound === 'all' ? 'All Rounds' : 'Dyeing Slip'
-      await printer.printCentered(subtitle, false, 'normal')
+      const subtitle = showingSpecific ? `Re-Dye (Round ${showRound})` : showRound === 'all' ? 'All Rounds' : data.isPcJob ? 'PC Dyeing Slip' : 'Dyeing Slip'
+      await printer.printCentered(subtitle, true, 'normal')
       if (data.isReDyed && !showingSpecific && showRound !== 'all') {
         await printer.printCentered(`RE-DYED (${data.totalRounds}x)`, true, 'normal')
       }
-      await printer.printCentered('================================', false, 'normal')
+      await printer.printDivider('=', W)
 
       // Info
       await printer.printKeyValue(`Slip: ${data.slipNo}`, `${data.date}`, W)
@@ -327,7 +325,7 @@ export default function BluetoothPrint({ data, autoMode }: { data: SlipData; aut
       // Lots
       const lotEsc = toEscSize(lotSize)
       const lotW = lotEsc === 'large' ? Math.floor(W / 2) : W
-      await printer.printLine('LOTS:', true, lotEsc)
+      await printer.printReverse(' LOTS ', true, 'normal')
       for (const l of data.lots) {
         const lotLabel = l.marka ? `${l.lotNo} [${l.marka}]` : l.lotNo
         const thanStr = `${l.than} than`
@@ -335,9 +333,11 @@ export default function BluetoothPrint({ data, autoMode }: { data: SlipData; aut
         await printer.printLine(`  ${lotLabel}${' '.repeat(lotPad)}${thanStr}`, boldLotNo, lotEsc)
       }
       if (data.lots.length > 1) {
+        await printer.underlineOn(true)
         const totalStr = `${data.totalThan} than`
         const totalPad = Math.max(1, lotW - 2 - 6 - totalStr.length)
-        await printer.printLine(`  Total:${' '.repeat(totalPad)}${totalStr}`, boldLotNo, lotEsc)
+        await printer.printLine(`  Total:${' '.repeat(totalPad)}${totalStr}`, true, lotEsc)
+        await printer.underlineOff()
       }
       await printer.printDivider('-', W)
 
@@ -354,6 +354,9 @@ export default function BluetoothPrint({ data, autoMode }: { data: SlipData; aut
         return a.localeCompare(b)
       })
 
+      // Use Font B for chemicals (smaller, fits more per line — 56 chars on 80mm)
+      const chemW = 56
+
       const printChem = async (c: { name: string; quantity: number | null; unit: string }, isDye: boolean) => {
         let qty = '---'
         if (c.quantity != null) {
@@ -364,27 +367,23 @@ export default function BluetoothPrint({ data, autoMode }: { data: SlipData; aut
           }
         }
 
-        // Print name and qty on same line using normal size for alignment
-        // Then the font size only affects visual weight, not layout
-        const escSize = toEscSize(chemSize)
-        const isWide = escSize === 'large' // large = 2x width, halves chars per line
-        const effectiveW = isWide ? Math.floor(W / 2) : escSize === 'double-height' ? W : W
-
-        const maxName = effectiveW - 2 - qty.length - 1
+        const maxName = chemW - 2 - qty.length - 1
         const nameStr = c.name.length > maxName ? c.name.slice(0, maxName) : c.name
-        const pad = Math.max(1, effectiveW - 2 - nameStr.length - qty.length)
+        const pad = Math.max(1, chemW - 2 - nameStr.length - qty.length)
         const line = '  ' + nameStr + dot.repeat(pad) + qty
 
-        await printer.printLine(line, boldChemName || boldQuantity, escSize)
+        await printer.setFontB()
+        await printer.printLine(line, boldChemName || boldQuantity, 'normal')
+        await printer.setFontA()
       }
 
       // Round 1
       if (showRound === 1 || showRound === 'all') {
-        if (showRound === 'all') await printer.printLine('ROUND 1 (Original)', true, toEscSize(chemSize))
+        if (showRound === 'all') await printer.printReverse(' ROUND 1 (Original) ', true, 'normal')
         for (const tag of tagOrder) {
           const isDye = tag === 'shade'
-          const label = isDye ? 'DYES (grams)' : tag === '_other' ? 'OTHER (kg)' : tag.toUpperCase() + ' (kg)'
-          await printer.printLine(label, true, toEscSize(chemSize))
+          const label = isDye ? ' DYES (grams) ' : tag === '_other' ? ' OTHER (kg) ' : ` ${tag.toUpperCase()} (kg) `
+          await printer.printReverse(label, true, 'normal')
           for (const c of grouped[tag]) await printChem(c, isDye)
           await printer.printDivider('-', W)
         }
@@ -392,7 +391,7 @@ export default function BluetoothPrint({ data, autoMode }: { data: SlipData; aut
 
       // Specific round
       if (showingSpecific && specificAdd) {
-        await printer.printLine(`RE-DYE (Round ${showRound})`, true, toEscSize(chemSize))
+        await printer.printReverse(` RE-DYE (Round ${showRound}) `, true, 'normal')
         for (const c of specificAdd.chemicals) await printChem(c, true)
         await printer.printDivider('-', W)
       }
@@ -407,7 +406,24 @@ export default function BluetoothPrint({ data, autoMode }: { data: SlipData; aut
         }
       }
 
-      await printer.printCentered('================================')
+      await printer.printDivider('=', W)
+      await printer.feedLines(1)
+      await printer.printText('Operator: ____________')
+      await printer.printText('')
+      await printer.printText('Supervisor: ____________')
+      await printer.feedLines(1)
+
+      // QR Code — link to first lot's tracking page
+      if (data.lots.length > 0) {
+        await printer.sendCommand(COMMANDS.ALIGN_CENTER)
+        const lotUrl = `https://vinodindustries.vercel.app/lot/${encodeURIComponent(data.lots[0].lotNo)}`
+        await printer.printQRCode(lotUrl, 5)
+        await printer.setFontB()
+        await printer.printText(`Scan: ${data.lots[0].lotNo}`)
+        await printer.setFontA()
+        await printer.sendCommand(COMMANDS.ALIGN_LEFT)
+      }
+
       await printer.feedLines(1)
       await printer.cut()
 
