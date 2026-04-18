@@ -904,16 +904,31 @@ export default function AIChatBubble() {
               >
                 {msg.content}
                 {msg.role === 'assistant' && msg.content && (
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(msg.content)
-                      setCopiedIdx(i)
-                      setTimeout(() => setCopiedIdx(null), 1500)
-                    }}
-                    className="absolute -bottom-5 right-0 text-[9px] text-gray-500 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition"
-                  >
-                    {copiedIdx === i ? '✅ Copied' : '📋 Copy'}
-                  </button>
+                  <div className="absolute -bottom-5 right-0 flex gap-2 opacity-0 group-hover:opacity-100 transition">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg.content)
+                        setCopiedIdx(i)
+                        setTimeout(() => setCopiedIdx(null), 1500)
+                      }}
+                      className="text-[9px] text-gray-500 hover:text-gray-300"
+                    >
+                      {copiedIdx === i ? '✅' : '📋'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const text = encodeURIComponent(msg.content)
+                        if (navigator.share) {
+                          navigator.share({ text: msg.content }).catch(() => {})
+                        } else {
+                          window.open(`https://wa.me/?text=${text}`, '_blank')
+                        }
+                      }}
+                      className="text-[9px] text-green-500 hover:text-green-300"
+                    >
+                      📤
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
