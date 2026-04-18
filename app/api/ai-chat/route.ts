@@ -954,7 +954,7 @@ Available functions to query data:
 - finish_stock(party?): Get lots available for finish (dyed but not yet finished)
 - folding_receipts(lotNo?, fpNo?): Get folding receipt entries
 - packing_stock(party?): Get packing stock — lots done in finish, with folding receipt status
-- missing_slips(type): Find missing slip/challan numbers in a series. type = "dyeing", "finish", "fold", "folding" (folding receipts), or "despatch"
+- missing_slips(type): Find GAPS/MISSING numbers in a slip series. type = "dyeing" (missing dyeing slip nos), "finish" (missing FP nos), "fold" (missing fold program nos), "folding" or "fr" (missing folding receipt nos), or "despatch" (missing challan nos). Use this when user asks about "missing", "gaps", "skipped" numbers. Do NOT confuse with folding_receipts which LISTS all receipts.
 
 FOLD CREATION RULES:
 - When user wants to create a fold, call fold_available_lots first with the party name they mention
