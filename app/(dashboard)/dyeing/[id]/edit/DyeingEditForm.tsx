@@ -62,13 +62,70 @@ export default function DyeingEditForm({ id }: { id: string }) {
   const [selectedMachineId, setSelectedMachineId] = useState<number | null>(null)
   const [selectedOperatorId, setSelectedOperatorId] = useState<number | null>(null)
   const [shadeName, setShadeName] = useState('')
+  const [allShades, setAllShades] = useState<any[]>([])
+  const [shadeSearch, setShadeSearch] = useState('')
+  const [showShadePicker, setShowShadePicker] = useState(false)
 
-  // Load chemical master + machines + operators
+  // Load chemical master + machines + operators + shades
   useEffect(() => {
     fetch('/api/chemicals').then(r => r.json()).then(d => setMasterChemicals(Array.isArray(d) ? d : [])).catch(() => {})
     fetch('/api/dyeing/machines').then(r => r.json()).then(d => setMachines(Array.isArray(d) ? d.filter((m: any) => m.isActive) : [])).catch(() => {})
     fetch('/api/dyeing/operators?active=true').then(r => r.json()).then(d => setOperators(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch('/api/shades').then(r => r.json()).then(d => setAllShades(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
+
+  function applyShadeRecipe(shade: any) {
+    const totalThan = lots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)
+    // Fetch weight per lot for batch weight calculation
+    const lotNos = lots.map(l => l.lotNo).filter(Boolean).join(',')
+    fetch(`/api/grey/lot-weight?lots=${encodeURIComponent(lotNos)}`)
+      .then(r => r.json())
+      .then((weights: any[]) => {
+        let batchWeight = 0
+        for (const l of lots) {
+          const w = weights.find((wt: any) => wt.lotNo.toLowerCase() === l.lotNo.toLowerCase())
+          batchWeight += (w?.weightPerThan || 0) * (parseInt(l.than) || 0)
+        }
+        if (batchWeight <= 0) batchWeight = totalThan * 30 // fallback ~30 kg/than
+
+        const newChems: ChemicalRow[] = (shade.recipeItems || []).map((item: any) => {
+          const qtyPer100 = item.quantity || 0
+          const calc = (qtyPer100 / 100) * batchWeight
+          const rate = item.chemical?.currentPrice ?? masterChemicals.find(m => m.id === item.chemicalId)?.currentPrice ?? null
+          return {
+            name: item.chemical?.name || item.name || '',
+            chemicalId: item.chemicalId,
+            quantity: calc.toFixed(3),
+            unit: item.chemical?.unit || 'kg',
+            rate: rate != null ? String(rate) : '',
+            cost: rate != null ? Math.round(calc * rate * 1000) / 1000 : null,
+            matched: true,
+            processTag: 'shade',
+          }
+        })
+        setChemicals(newChems)
+        setShadeName(shade.name + (shade.description ? ' — ' + shade.description : ''))
+        setShowShadePicker(false)
+        setShadeSearch('')
+      })
+      .catch(() => {
+        // Fallback: just set chemicals without weight calc
+        const newChems: ChemicalRow[] = (shade.recipeItems || []).map((item: any) => ({
+          name: item.chemical?.name || '',
+          chemicalId: item.chemicalId,
+          quantity: String(item.quantity || 0),
+          unit: item.chemical?.unit || 'kg',
+          rate: '',
+          cost: null,
+          matched: true,
+          processTag: 'shade',
+        }))
+        setChemicals(newChems)
+        setShadeName(shade.name + (shade.description ? ' — ' + shade.description : ''))
+        setShowShadePicker(false)
+        setShadeSearch('')
+      })
+  }
 
   // Load available lots on mount
   useEffect(() => {
@@ -447,7 +504,13 @@ export default function DyeingEditForm({ id }: { id: string }) {
               </select>
             </Field>
             <Field label="Shade Name">
-              <input type="text" className={inp} value={shadeName} onChange={e => setShadeName(e.target.value)} placeholder="Shade name" />
+              <div className="flex items-center gap-2">
+                <input type="text" className={`${inp} flex-1`} value={shadeName} onChange={e => setShadeName(e.target.value)} placeholder="Shade name" />
+                <button type="button" onClick={() => setShowShadePicker(true)}
+                  className="text-[10px] font-medium bg-indigo-900/40 text-indigo-300 hover:bg-indigo-900/60 border border-indigo-700 px-2.5 py-1.5 rounded-lg whitespace-nowrap">
+                  Change Shade
+                </button>
+              </div>
             </Field>
             <Field label="Notes">
               <input type="text" className={inp} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Any remarks" />
@@ -764,6 +827,71 @@ export default function DyeingEditForm({ id }: { id: string }) {
           </button>
         </div>
       </form>
+
+      {/* Shade Picker Modal */}
+      {showShadePicker && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 bg-black/50 p-4" onClick={() => setShowShadePicker(false)}>
+          <div className="bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col border border-gray-700" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+              <div>
+                <h3 className="text-base font-bold text-white">Change Shade</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Select shade — chemicals will be replaced with recipe</p>
+              </div>
+              <button onClick={() => setShowShadePicker(false)} className="text-gray-400 hover:text-gray-200 text-xl leading-none">&times;</button>
+            </div>
+            <div className="px-5 py-3 border-b border-gray-700">
+              <input
+                type="text"
+                value={shadeSearch}
+                onChange={e => setShadeSearch(e.target.value)}
+                placeholder="Search shade name..."
+                autoFocus
+                className="w-full bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-1.5">
+              {allShades
+                .filter(s => {
+                  const q = shadeSearch.toLowerCase().trim()
+                  return !q || s.name.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q)
+                })
+                .map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      if (chemicals.length > 0 && !confirm(`Replace all ${chemicals.length} chemicals with "${s.name}" recipe (${s.recipeItems?.length || 0} items)?`)) return
+                      applyShadeRecipe(s)
+                    }}
+                    className="w-full text-left bg-gray-700/50 hover:bg-purple-900/30 border border-gray-600 hover:border-purple-600 rounded-xl p-3 transition"
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-sm font-semibold text-white">{s.name}</span>
+                      <span className="text-[10px] text-gray-400">{s.recipeItems?.length || 0} items</span>
+                    </div>
+                    {s.description && <p className="text-xs text-gray-400">{s.description}</p>}
+                    {s.recipeItems?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {s.recipeItems.slice(0, 5).map((item: any, i: number) => (
+                          <span key={i} className="text-[9px] px-1.5 py-0.5 rounded bg-gray-600 text-gray-300">
+                            {item.chemical?.name || 'Unknown'} ({item.quantity})
+                          </span>
+                        ))}
+                        {s.recipeItems.length > 5 && <span className="text-[9px] text-gray-500">+{s.recipeItems.length - 5}</span>}
+                      </div>
+                    )}
+                  </button>
+                ))
+              }
+              {allShades.filter(s => {
+                const q = shadeSearch.toLowerCase().trim()
+                return !q || s.name.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q)
+              }).length === 0 && (
+                <div className="text-center text-gray-500 py-8">No shades found</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
