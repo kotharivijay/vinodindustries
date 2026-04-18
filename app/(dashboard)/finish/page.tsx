@@ -1187,6 +1187,54 @@ export default function FinishStockPage() {
   const [frSearch, setFrSearch] = useState('')
   const [frSortDir, setFrSortDir] = useState<'asc' | 'desc'>('desc')
   const [expandedDesp, setExpandedDesp] = useState<Set<string>>(new Set())
+  const [selectedDesps, setSelectedDesps] = useState<Set<string>>(new Set())
+
+  function toggleDespSelect(despNo: string) {
+    setSelectedDesps(prev => { const n = new Set(prev); if (n.has(despNo)) n.delete(despNo); else n.add(despNo); return n })
+  }
+
+  function shareDespSlips() {
+    const despMap = new Map<string, typeof packingEntries>()
+    for (const pe of packingEntries) {
+      const key = pe.finishDespSlipNo || 'No Desp Slip'
+      if (!selectedDesps.has(key)) continue
+      if (!despMap.has(key)) despMap.set(key, [])
+      despMap.get(key)!.push(pe)
+    }
+    let text = '📋 *Finish Despatch Report*\n━━━━━━━━━━━━━━━━━━━━\n'
+    for (const [despNo, entries] of despMap) {
+      const totalThan = entries.reduce((s, e) => s + e.totalThan, 0)
+      text += `\n📦 *Desp Slip: ${despNo}*\n┌──────────────────────\n`
+      for (const pe of entries) {
+        const foldNos = [...new Set(pe.lots.map((l: any) => l.foldNo).filter(Boolean))]
+        text += `│ *FP ${pe.slipNo}* · ${new Date(pe.date).toLocaleDateString('en-IN')}\n`
+        if (foldNos.length > 0) text += `│ Fold ${foldNos.join(', ')}\n│\n`
+        for (const l of pe.lots) {
+          const recs = (l as any).foldingReceipts || []
+          const received = recs.reduce((s: number, r: any) => s + r.than, 0)
+          const frStatus = received >= l.than ? '✅' : `⏳ ${received}/${l.than}T`
+          const shade = [l.shadeName, l.shadeDescription].filter(Boolean).join(' — ')
+          if (shade) text += `│ Slip · ${shade}\n`
+          text += `│   🏷️ ${l.lotNo} · ${l.than}T · ${frStatus}\n`
+        }
+        const parties = [...new Set(pe.lots.map((l: any) => l.party).filter(Boolean))]
+        const qualities = [...new Set(pe.lots.map((l: any) => l.quality).filter(Boolean))]
+        if (parties.length > 0) text += `│\n│ Party: ${parties.join(', ')}\n`
+        if (qualities.length > 0) text += `│ Quality: ${qualities.join(', ')}\n`
+        const totalReceived = pe.lots.reduce((s: number, l: any) => s + ((l.foldingReceipts || []).reduce((s2: number, r: any) => s2 + r.than, 0)), 0)
+        text += `│ Total: ${pe.totalThan}T · FR: ${totalReceived}/${pe.totalThan}T\n`
+      }
+      text += `└──────────────────────\n`
+    }
+    const grandTotal = Array.from(despMap.values()).flat().reduce((s, e) => s + e.totalThan, 0)
+    text += `\n*Total: ${selectedDesps.size} slips · ${grandTotal}T*`
+
+    if (navigator.share) {
+      navigator.share({ text }).catch(() => {})
+    } else {
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+    }
+  }
   const [frFormLotId, setFrFormLotId] = useState<number | null>(null)
   const [frFormLotNo, setFrFormLotNo] = useState('')
   const [frFormFpNo, setFrFormFpNo] = useState<number | null>(null)
@@ -3018,6 +3066,13 @@ export default function FinishStockPage() {
                 {/* Desp Slip view */}
                 {packView === 'desp' && (
                   <div className="space-y-2">
+                    {selectedDesps.size > 0 && (
+                      <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-4 py-2">
+                        <span className="text-xs text-green-700 dark:text-green-300 font-medium">{selectedDesps.size} selected</span>
+                        <button onClick={shareDespSlips} className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg font-medium">📤 Share</button>
+                        <button onClick={() => setSelectedDesps(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-auto">Clear</button>
+                      </div>
+                    )}
                     {(() => {
                       const despMap = new Map<string, { slipNo: string; entries: typeof packingEntries }>()
                       for (const pe of packingEntries) {
@@ -3028,21 +3083,28 @@ export default function FinishStockPage() {
                       return Array.from(despMap.entries()).map(([despNo, group]) => {
                         const isOpen = expandedDesp.has(despNo)
                         const totalThan = group.entries.reduce((s, e) => s + e.totalThan, 0)
+                        const isSelected = selectedDesps.has(despNo)
                         return (
-                          <div key={despNo} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
-                            <button onClick={() => setExpandedDesp(prev => { const n = new Set(prev); if (n.has(despNo)) n.delete(despNo); else n.add(despNo); return n })}
-                              className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
-                              <div className="text-left">
-                                <span className={`text-sm font-bold ${despNo !== 'No Desp Slip' ? 'text-purple-700 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                                  {despNo !== 'No Desp Slip' ? `Desp: ${despNo}` : 'No Desp Slip'}
-                                </span>
-                                <span className="text-[10px] text-gray-400 ml-2">{group.entries.length} FP{group.entries.length !== 1 ? 's' : ''}</span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThan}T</span>
-                                <span className={`text-gray-400 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
-                              </div>
-                            </button>
+                          <div key={despNo} className={`bg-white dark:bg-gray-800 rounded-xl border shadow-sm overflow-hidden ${isSelected ? 'border-green-300 dark:border-green-700' : 'border-gray-100 dark:border-gray-700'}`}>
+                            <div className="flex items-center">
+                              <label className="flex items-center pl-4 cursor-pointer" onClick={e => e.stopPropagation()}>
+                                <input type="checkbox" checked={isSelected} onChange={() => toggleDespSelect(despNo)}
+                                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-green-600 focus:ring-green-500 dark:bg-gray-700" />
+                              </label>
+                              <button onClick={() => setExpandedDesp(prev => { const n = new Set(prev); if (n.has(despNo)) n.delete(despNo); else n.add(despNo); return n })}
+                                className="flex-1 flex items-center justify-between px-3 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+                                <div className="text-left">
+                                  <span className={`text-sm font-bold ${despNo !== 'No Desp Slip' ? 'text-purple-700 dark:text-purple-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                                    {despNo !== 'No Desp Slip' ? `Desp: ${despNo}` : 'No Desp Slip'}
+                                  </span>
+                                  <span className="text-[10px] text-gray-400 ml-2">{group.entries.length} FP{group.entries.length !== 1 ? 's' : ''}</span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThan}T</span>
+                                  <span className={`text-gray-400 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                                </div>
+                              </button>
+                            </div>
                             {isOpen && (
                               <div className="border-t border-gray-100 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700">
                                 {group.entries.map(pe => (
