@@ -1853,17 +1853,31 @@ export default function FinishStockPage() {
                   return (
                     <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
                       {/* FP Header — clickable to expand */}
-                      <button onClick={() => toggleFP(entry.id)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
-                        <div className="flex items-center gap-2 text-left">
-                          <span className="text-sm font-bold text-teal-600 dark:text-teal-400">FP {entry.slipNo}</span>
-                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusBadge.cls}`}>{statusBadge.label}</span>
-                          <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(entry.date).toLocaleDateString('en-IN')}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThanEntry}T</span>
-                          <span className={`text-gray-400 dark:text-gray-500 transition-transform text-xs ${fpOpen ? 'rotate-90' : ''}`}>&#9654;</span>
-                        </div>
-                      </button>
+                      {(() => {
+                        const fpParties = [...new Set(entry.lots.map(l => l.party).filter(Boolean))]
+                        const fpQualities = [...new Set(entry.lots.map(l => l.quality).filter(Boolean))]
+                        const fpFolds = [...new Set(entry.lots.flatMap(l => l.dyeSlips?.map(ds => ds.foldNo) || [l.foldNo]).filter(Boolean))]
+                        return (
+                          <button onClick={() => toggleFP(entry.id)} className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-teal-600 dark:text-teal-400">FP {entry.slipNo}</span>
+                                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusBadge.cls}`}>{statusBadge.label}</span>
+                                <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(entry.date).toLocaleDateString('en-IN')}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThanEntry}T</span>
+                                <span className={`text-gray-400 dark:text-gray-500 transition-transform text-xs ${fpOpen ? 'rotate-90' : ''}`}>&#9654;</span>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+                              {fpParties.length > 0 && <span className="text-[10px] text-gray-600 dark:text-gray-300 font-medium">{fpParties.join(', ')}</span>}
+                              {fpQualities.length > 0 && <span className="text-[10px] text-gray-500 dark:text-gray-400">· {fpQualities.join(', ')}</span>}
+                              {fpFolds.length > 0 && <span className="text-[10px] text-indigo-500 dark:text-indigo-400">· F{fpFolds.join(', F')}</span>}
+                            </div>
+                          </button>
+                        )
+                      })()}
 
                       {/* Expanded content */}
                       {fpOpen && (
@@ -2566,16 +2580,21 @@ export default function FinishStockPage() {
                                         <div key={fKey} className="border border-gray-100 dark:border-gray-600 rounded-lg overflow-hidden">
                                           <button
                                             onClick={() => toggleFold(fKey)}
-                                            className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
+                                            className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
                                           >
-                                            <div className="flex items-center gap-2">
-                                              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Fold {fg.foldNo}</span>
-                                              <span className="text-[10px] text-gray-400 dark:text-gray-500">{fg.slips.length} slip{fg.slips.length !== 1 ? 's' : ''}</span>
+                                            <div className="flex items-center justify-between">
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Fold {fg.foldNo}</span>
+                                                <span className="text-[10px] text-gray-400 dark:text-gray-500">{fg.slips.length} slip{fg.slips.length !== 1 ? 's' : ''}</span>
+                                              </div>
+                                              <div className="flex items-center gap-3">
+                                                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{fg.totalThan} than</span>
+                                                <span className={`text-gray-400 dark:text-gray-500 text-[10px] transition-transform ${fOpen ? 'rotate-90' : ''}`}>&#9654;</span>
+                                              </div>
                                             </div>
-                                            <div className="flex items-center gap-3">
-                                              <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{fg.totalThan} than</span>
-                                              <span className={`text-gray-400 dark:text-gray-500 text-[10px] transition-transform ${fOpen ? 'rotate-90' : ''}`}>&#9654;</span>
-                                            </div>
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                              {pg.party} · {qg.quality}
+                                            </p>
                                           </button>
 
                                           {/* Level 4: Slip details inside fold */}
