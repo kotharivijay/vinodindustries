@@ -473,7 +473,10 @@ export default function FinishStockPage() {
             shade: [ds.shadeName, ds.shadeDesc].filter(Boolean).join(' — '),
           }))
         : []
-      return { lotNo: l.lotNo, than: String(l.than), meter: l.meter != null ? String(l.meter) : '', slipThans }
+      // Use sum of slipThans if available (fixes mismatch when DB value is stale)
+      const slipSum = slipThans.length > 0 ? slipThans.reduce((s, st) => s + (parseInt(st.than) || 0), 0) : 0
+      const than = slipSum > 0 ? String(slipSum) : String(l.than)
+      return { lotNo: l.lotNo, than, meter: l.meter != null ? String(l.meter) : '', slipThans }
     }))
     setEditChemicals(entry.chemicals.map(c => ({
       name: c.name,
