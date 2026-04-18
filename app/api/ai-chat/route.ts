@@ -731,6 +731,37 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
       const entries = await db.finishEntry.findMany({ select: { slipNo: true }, orderBy: { slipNo: 'asc' } })
       slips = entries.map((e: any) => e.slipNo)
     }
+    if (t === 'folding' || t === 'fr' || t === 'folding receipt') {
+      const entries = await db.foldingReceipt.findMany({ select: { slipNo: true }, orderBy: { slipNo: 'asc' } })
+      const nums = entries.map((e: any) => parseInt(e.slipNo)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b)
+      const unique = [...new Set(nums)]
+      if (unique.length === 0) return { type: 'folding receipt', missing: [], message: 'No folding receipts found' }
+      const set = new Set(unique)
+      const max = Math.max(...unique)
+      const missing: number[] = []
+      for (let i = 1; i <= max; i++) { if (!set.has(i)) missing.push(i) }
+      return { type: 'folding receipt', range: `1-${max}`, totalEntries: unique.length, missingCount: missing.length, missing }
+    }
+
+    if (t === 'fold' || t === 'fold program') {
+      const entries = await db.foldProgram.findMany({ select: { foldNo: true }, orderBy: { foldNo: 'asc' } })
+      const nums = entries.map((e: any) => parseInt(e.foldNo)).filter((n: number) => !isNaN(n)).sort((a: number, b: number) => a - b)
+      const unique = [...new Set(nums)]
+      if (unique.length === 0) return { type: 'fold program', missing: [], message: 'No fold programs found' }
+      const set = new Set(unique)
+      const max = Math.max(...unique)
+      const missing: number[] = []
+      for (let i = 1; i <= max; i++) { if (!set.has(i)) missing.push(i) }
+      return { type: 'fold program', range: `1-${max}`, totalEntries: unique.length, missingCount: missing.length, missing }
+    }
+
+    if (t === 'despatch') {
+      const entries = await prisma.despatchEntry.findMany({ select: { challanNo: true }, orderBy: { challanNo: 'asc' } })
+      slips = [...new Set(entries.map((e: any) => e.challanNo))].sort((a, b) => a - b)
+    } else if (slips.length === 0) {
+      return { type: t, missing: [], message: `Unknown type "${t}". Use: dyeing, finish, fold, folding, despatch` }
+    }
+
     if (slips.length === 0) return { type: t, missing: [], message: 'No entries found' }
     const set = new Set(slips)
     const max = Math.max(...slips)
@@ -923,7 +954,7 @@ Available functions to query data:
 - finish_stock(party?): Get lots available for finish (dyed but not yet finished)
 - folding_receipts(lotNo?, fpNo?): Get folding receipt entries
 - packing_stock(party?): Get packing stock — lots done in finish, with folding receipt status
-- missing_slips(type): Find missing slip numbers in a series. type = "dyeing" or "finish"
+- missing_slips(type): Find missing slip/challan numbers in a series. type = "dyeing", "finish", "fold", "folding" (folding receipts), or "despatch"
 
 FOLD CREATION RULES:
 - When user wants to create a fold, call fold_available_lots first with the party name they mention
