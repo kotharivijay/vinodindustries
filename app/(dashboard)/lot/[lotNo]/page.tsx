@@ -123,11 +123,26 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
     // fallback if FinishEntryLot table doesn't exist yet
   }
 
+  // Find re-process entries (as source lot OR as RE-PRO lot)
+  let reproEntries: any[] = []
+  try {
+    const asSrc = await db.reProcessSource.findMany({
+      where: { originalLotNo: { equals: lotNo, mode: 'insensitive' } },
+      include: { reprocess: true },
+    })
+    const asRepro = await db.reProcessLot.findMany({
+      where: { reproNo: { equals: lotNo, mode: 'insensitive' } },
+      include: { sources: true },
+    })
+    reproEntries = [...asSrc.map((s: any) => ({ type: 'source', ...s })), ...asRepro.map((r: any) => ({ type: 'repro', ...r }))]
+  } catch {}
+
   const greyThan = greyEntries.reduce((s, e) => s + e.than, 0)
   const despatchThan = despatchEntries.reduce((s, e) => s + e.than, 0)
   const dyeingThan = dyeingEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
   const finishThan = finishEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
   const foldThan = foldEntries.reduce((s: number, e: any) => s + (e.than ?? 0), 0)
+  const reproThan = reproEntries.filter((r: any) => r.type === 'source').reduce((s: number, r: any) => s + (r.than ?? 0), 0)
   const stock = obThan + greyThan - despatchThan
 
   const fmt = (d: Date) => new Date(d).toLocaleDateString('en-IN')
@@ -383,7 +398,42 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         </section>
       )}
 
-      {!openingBalance && greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && foldEntries.length === 0 && (
+      {/* Re-Process history */}
+      {reproEntries.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">🔄 Re-Process</h2>
+          <div className="space-y-2">
+            {reproEntries.map((r: any, i: number) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl border border-purple-200 dark:border-purple-800 shadow-sm p-4">
+                {r.type === 'source' ? (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-purple-700 dark:text-purple-400">{r.reprocess?.reproNo}</span>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${r.reprocess?.status === 'merged' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{r.reprocess?.status}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Sent <strong>{r.than}T</strong> for re-process ({r.reason || r.reprocess?.reason}) · Quality: {r.reprocess?.quality}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-purple-700 dark:text-purple-400">{r.reproNo}</span>
+                      <span className="text-sm font-bold text-emerald-600">{r.totalThan}T</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{r.quality} · {r.reason} · {r.sources?.length} source lot{r.sources?.length !== 1 ? 's' : ''}</p>
+                    {r.sources?.map((s: any) => (
+                      <p key={s.id} className="text-xs text-gray-500 ml-2">← {s.originalLotNo} ({s.than}T) {s.party}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!openingBalance && greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && foldEntries.length === 0 && reproEntries.length === 0 && (
         <div className="text-center text-gray-400 py-16">No records found for lot <strong>{lotNo}</strong></div>
       )}
     </div>

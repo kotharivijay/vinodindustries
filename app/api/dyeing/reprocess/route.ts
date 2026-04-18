@@ -139,7 +139,81 @@ export async function PATCH(req: NextRequest) {
   // Update status
   if (status) {
     const data: any = { status }
-    if (status === 'merged') data.mergedAt = new Date()
+    if (status === 'merged') {
+      data.mergedAt = new Date()
+
+      // Merge back: update all pipeline records from RE-PRO-{n} to original lots
+      // For each source, find its proportional share of the RE-PRO lot
+      const reproNo = existing.reproNo
+      const sources = existing.sources
+
+      // Update DyeingEntryLot: split RE-PRO lot back to originals
+      const dyeLots = await db.dyeingEntryLot.findMany({ where: { lotNo: { equals: reproNo, mode: 'insensitive' } } })
+      if (dyeLots.length > 0 && sources.length > 0) {
+        // Delete the RE-PRO lot entries and create originals
+        for (const dl of dyeLots) {
+          let remaining = dl.than
+          for (let i = 0; i < sources.length; i++) {
+            const s = sources[i]
+            const allocThan = i === sources.length - 1 ? remaining : Math.min(s.than, remaining)
+            if (allocThan <= 0) continue
+            await db.dyeingEntryLot.create({
+              data: { entryId: dl.entryId, lotNo: s.originalLotNo, than: allocThan },
+            })
+            remaining -= allocThan
+          }
+          await db.dyeingEntryLot.delete({ where: { id: dl.id } })
+        }
+      }
+
+      // Update FinishEntryLot
+      const finLots = await db.finishEntryLot.findMany({ where: { lotNo: { equals: reproNo, mode: 'insensitive' } } })
+      if (finLots.length > 0 && sources.length > 0) {
+        for (const fl of finLots) {
+          let remaining = fl.than
+          for (let i = 0; i < sources.length; i++) {
+            const s = sources[i]
+            const allocThan = i === sources.length - 1 ? remaining : Math.min(s.than, remaining)
+            if (allocThan <= 0) continue
+            await db.finishEntryLot.create({
+              data: { entryId: fl.entryId, lotNo: s.originalLotNo, than: allocThan, meter: fl.meter, status: fl.status, doneThan: fl.doneThan },
+            })
+            remaining -= allocThan
+          }
+          await db.finishEntryLot.delete({ where: { id: fl.id } })
+        }
+      }
+
+      // Update FoldBatchLot
+      const foldLots = await db.foldBatchLot.findMany({ where: { lotNo: { equals: reproNo, mode: 'insensitive' } } })
+      if (foldLots.length > 0 && sources.length > 0) {
+        for (const fbl of foldLots) {
+          let remaining = fbl.than
+          for (let i = 0; i < sources.length; i++) {
+            const s = sources[i]
+            const allocThan = i === sources.length - 1 ? remaining : Math.min(s.than, remaining)
+            if (allocThan <= 0) continue
+            await db.foldBatchLot.create({
+              data: { foldBatchId: fbl.foldBatchId, lotNo: s.originalLotNo, than: allocThan },
+            })
+            remaining -= allocThan
+          }
+          await db.foldBatchLot.delete({ where: { id: fbl.id } })
+        }
+      }
+
+      // Update DyeingEntry.lotNo header field
+      await db.dyeingEntry.updateMany({
+        where: { lotNo: { equals: reproNo, mode: 'insensitive' } },
+        data: { lotNo: sources[0].originalLotNo },
+      })
+
+      // Update FinishEntry.lotNo header field
+      await db.finishEntry.updateMany({
+        where: { lotNo: { equals: reproNo, mode: 'insensitive' } },
+        data: { lotNo: sources[0].originalLotNo },
+      })
+    }
     await db.reProcessLot.update({ where: { id: existing.id }, data })
   }
 

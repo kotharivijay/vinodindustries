@@ -86,6 +86,22 @@ export async function GET() {
       if (o.quality && !qualityMap.has(o.lotNo)) qualityMap.set(o.lotNo, o.quality)
     }
 
+    // Fetch RE-PRO lots for weight calc
+    const reproMap = new Map<string, { weight: string | null; grayMtr: number | null; totalThan: number; quality: string }>()
+    try {
+      const reproLotNos = Array.from(allLotNos).filter(l => l.toUpperCase().startsWith('RE-PRO-'))
+      if (reproLotNos.length > 0) {
+        const reproEntries = await db.reProcessLot.findMany({
+          where: { reproNo: { in: reproLotNos, mode: 'insensitive' } },
+          select: { reproNo: true, weight: true, grayMtr: true, totalThan: true, quality: true },
+        })
+        for (const r of reproEntries) {
+          reproMap.set(r.reproNo, { weight: r.weight, grayMtr: r.grayMtr, totalThan: r.totalThan, quality: r.quality })
+          if (!qualityMap.has(r.reproNo)) qualityMap.set(r.reproNo, r.quality)
+        }
+      }
+    } catch {}
+
     // Calculate weight per than for a lot
     function calcWeightPerThan(lotNo: string): number {
       // Try grey entries first
@@ -104,6 +120,14 @@ export async function GET() {
         const kgPerMtr = parseWeightKgPerMtr(ob.weight)
         if (kgPerMtr > 0 && ob.grayMtr > 0 && ob.than > 0) {
           return kgPerMtr * ob.grayMtr / ob.than
+        }
+      }
+      // Fallback: RE-PRO lot
+      const repro = reproMap.get(lotNo)
+      if (repro) {
+        const kgPerMtr = parseWeightKgPerMtr(repro.weight)
+        if (kgPerMtr > 0 && repro.grayMtr && repro.totalThan > 0) {
+          return kgPerMtr * repro.grayMtr / repro.totalThan
         }
       }
       return 0
