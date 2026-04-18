@@ -191,6 +191,19 @@ export default function DyeingListPage() {
   const btPrinterRef = useRef<any>(null)
 
   async function inlineBtPrint(entry: DyeingEntry, hydro = false) {
+    // Check Bluetooth availability
+    if (!('bluetooth' in navigator)) {
+      alert('Bluetooth is not supported on this browser. Use Chrome on Android.')
+      return
+    }
+    try {
+      const available = await navigator.bluetooth.getAvailability()
+      if (!available) {
+        alert('Please turn ON Bluetooth on your phone and try again.')
+        return
+      }
+    } catch {}
+
     setBtPrintingId(entry.id)
     try {
       const { BluetoothPrinter } = await import('@/lib/bluetooth-printer')
