@@ -590,6 +590,155 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     }))
   },
 
+  finish_entries: async ({ party, lotNo, dateFrom, dateTo }: any) => {
+    const where: any = {}
+    if (lotNo) where.lotNo = { contains: lotNo, mode: 'insensitive' }
+    if (dateFrom || dateTo) {
+      where.date = {}
+      if (dateFrom) where.date.gte = new Date(dateFrom)
+      if (dateTo) { const d = new Date(dateTo); d.setHours(23, 59, 59, 999); where.date.lte = d }
+    }
+
+    const entries = await db.finishEntry.findMany({
+      where,
+      include: { lots: true, chemicals: { include: { chemical: true } } },
+      orderBy: { date: 'desc' },
+      take: 50,
+    })
+
+    // Filter by party if specified
+    let filtered = entries
+    if (party) {
+      const { buildLotInfoMap } = await import('@/lib/lot-info')
+      const allLotNos = new Set<string>()
+      for (const e of entries) { e.lots?.forEach((l: any) => allLotNos.add(l.lotNo)) }
+      const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
+      const pLower = party.toLowerCase()
+      filtered = entries.filter((e: any) => e.lots?.some((l: any) => (lotInfoMap.get(l.lotNo.toLowerCase())?.party || '').toLowerCase().includes(pLower)))
+    }
+
+    return filtered.map((e: any) => {
+      const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than, status: 'pending' }]
+      const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
+      const allDone = lots.every((l: any) => l.status === 'done')
+      const anyDone = lots.some((l: any) => l.status === 'done' || l.status === 'partial')
+      return {
+        fpNo: e.slipNo, date: e.date, lotNos: lots.map((l: any) => l.lotNo).join(', '),
+        totalThan, status: allDone ? 'finished' : anyDone ? 'partial' : 'pending',
+        chemCount: e.chemicals?.length || 0,
+        lots: lots.map((l: any) => ({ lotNo: l.lotNo, than: l.than, status: l.status })),
+      }
+    })
+  },
+
+  finish_summary: async () => {
+    const entries = await db.finishEntry.findMany({ include: { lots: true } })
+    let totalFP = entries.length
+    let totalThan = 0
+    let finished = 0, partial = 0, pending = 0
+
+    for (const e of entries) {
+      const lots = e.lots?.length ? e.lots : [{ than: e.than, status: 'pending' }]
+      totalThan += lots.reduce((s: number, l: any) => s + l.than, 0)
+      const allDone = lots.every((l: any) => l.status === 'done')
+      const anyDone = lots.some((l: any) => l.status === 'done' || l.status === 'partial')
+      if (allDone) finished++; else if (anyDone) partial++; else pending++
+    }
+    return { totalFP, totalThan, finished, partial, pending }
+  },
+
+  finish_stock: async ({ party }: any) => {
+    const doneSlips = await db.dyeingEntry.findMany({
+      where: { dyeingDoneAt: { not: null } },
+      select: { id: true, slipNo: true, lots: { select: { lotNo: true, than: true } }, lotNo: true, than: true },
+    })
+    const finishLots = await db.finishEntryLot.findMany({ select: { lotNo: true, than: true } })
+    const finishedMap = new Map<string, number>()
+    for (const fl of finishLots) { const k = fl.lotNo.toLowerCase(); finishedMap.set(k, (finishedMap.get(k) || 0) + fl.than) }
+
+    const { buildLotInfoMap } = await import('@/lib/lot-info')
+    const allLotNos = new Set<string>()
+    for (const d of doneSlips) { const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo }]; lots.forEach((l: any) => allLotNos.add(l.lotNo)) }
+    const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
+
+    const lotStock = new Map<string, { lotNo: string; dyed: number; finished: number; available: number; party: string; quality: string }>()
+    for (const d of doneSlips) {
+      const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
+      for (const l of lots) {
+        const k = l.lotNo.toLowerCase()
+        if (!lotStock.has(k)) {
+          const info = lotInfoMap.get(k)
+          lotStock.set(k, { lotNo: l.lotNo, dyed: 0, finished: 0, available: 0, party: info?.party || 'Unknown', quality: info?.quality || '-' })
+        }
+        lotStock.get(k)!.dyed += l.than
+      }
+    }
+    for (const [k, v] of lotStock) { v.finished = finishedMap.get(k) || 0; v.available = Math.max(0, v.dyed - v.finished) }
+
+    let results = Array.from(lotStock.values()).filter(l => l.available > 0)
+    if (party) { const p = party.toLowerCase(); results = results.filter(l => l.party.toLowerCase().includes(p)) }
+    return { totalAvailable: results.reduce((s, l) => s + l.available, 0), lotCount: results.length, lots: results.sort((a, b) => a.lotNo.localeCompare(b.lotNo)) }
+  },
+
+  folding_receipts: async ({ lotNo, fpNo }: any) => {
+    const where: any = {}
+    if (fpNo) where.lotEntry = { entry: { slipNo: parseInt(fpNo) } }
+    const receipts = await db.foldingReceipt.findMany({
+      where,
+      include: { lotEntry: { include: { entry: { select: { slipNo: true } } } } },
+      orderBy: { date: 'desc' },
+      take: 50,
+    })
+    let filtered = receipts
+    if (lotNo) { const l = lotNo.toLowerCase(); filtered = receipts.filter((r: any) => r.lotEntry?.lotNo?.toLowerCase().includes(l)) }
+    return filtered.map((r: any) => ({
+      frNo: r.slipNo, date: r.date, than: r.than, lotNo: r.lotEntry?.lotNo, fpNo: r.lotEntry?.entry?.slipNo,
+    }))
+  },
+
+  packing_stock: async ({ party }: any) => {
+    const entries = await db.finishEntry.findMany({
+      include: { lots: { include: { foldingReceipts: true } } },
+      orderBy: { date: 'desc' },
+    })
+    const { buildLotInfoMap } = await import('@/lib/lot-info')
+    const allLotNos = new Set<string>()
+    for (const e of entries) { e.lots?.forEach((l: any) => allLotNos.add(l.lotNo)) }
+    const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
+
+    const results: any[] = []
+    for (const e of entries) {
+      const doneLots = (e.lots || []).filter((l: any) => l.status === 'done' || l.status === 'partial')
+      if (doneLots.length === 0) continue
+      for (const l of doneLots) {
+        const info = lotInfoMap.get(l.lotNo.toLowerCase())
+        const received = (l.foldingReceipts || []).reduce((s: number, r: any) => s + r.than, 0)
+        results.push({ fpNo: e.slipNo, lotNo: l.lotNo, than: l.status === 'done' ? l.than : l.doneThan, party: info?.party || 'Unknown', quality: info?.quality || '-', receivedThan: received, complete: received >= (l.status === 'done' ? l.than : l.doneThan) })
+      }
+    }
+    let filtered = results
+    if (party) { const p = party.toLowerCase(); filtered = results.filter(r => r.party.toLowerCase().includes(p)) }
+    return { total: filtered.reduce((s, r) => s + r.than, 0), entries: filtered }
+  },
+
+  missing_slips: async ({ type }: any) => {
+    const t = (type || 'dyeing').toLowerCase()
+    let slips: number[] = []
+    if (t === 'dyeing' || t === 'dye') {
+      const entries = await db.dyeingEntry.findMany({ select: { slipNo: true }, orderBy: { slipNo: 'asc' } })
+      slips = entries.map((e: any) => e.slipNo)
+    } else if (t === 'finish' || t === 'fp') {
+      const entries = await db.finishEntry.findMany({ select: { slipNo: true }, orderBy: { slipNo: 'asc' } })
+      slips = entries.map((e: any) => e.slipNo)
+    }
+    if (slips.length === 0) return { type: t, missing: [], message: 'No entries found' }
+    const set = new Set(slips)
+    const max = Math.max(...slips)
+    const missing: number[] = []
+    for (let i = 1; i <= max; i++) { if (!set.has(i)) missing.push(i) }
+    return { type: t, range: `1-${max}`, totalEntries: slips.length, missingCount: missing.length, missing }
+  },
+
   dyeing_cost_report: async ({ party }: any) => {
     if (!party) return { error: 'Party name required' }
 
@@ -769,6 +918,12 @@ Available functions to query data:
 - create_fold(foldNo, date, batches): Create a new fold program
 - sales_data(party?, dateFrom?, dateTo?): Tally sales data
 - dyeing_cost_report(party): Dyeing cost report for a party — overall avg, fold-wise with batch details, shade-wise cost. When user asks about dyeing cost, respond with: { "function": "dyeing_cost_report", "args": { "party": "..." } } AND also add "action": "open_cost_report" to tell the UI to open the cost report page.
+- finish_entries(party?, lotNo?, dateFrom?, dateTo?): Get finish program entries with lot status
+- finish_summary(): Get finish summary — total FPs, than, finished/partial/pending counts
+- finish_stock(party?): Get lots available for finish (dyed but not yet finished)
+- folding_receipts(lotNo?, fpNo?): Get folding receipt entries
+- packing_stock(party?): Get packing stock — lots done in finish, with folding receipt status
+- missing_slips(type): Find missing slip numbers in a series. type = "dyeing" or "finish"
 
 FOLD CREATION RULES:
 - When user wants to create a fold, call fold_available_lots first with the party name they mention
@@ -975,6 +1130,59 @@ function formatResult(fn: string, args: any, data: any): string {
         r += `\n  ${fmtDate(s.date)} | ${s.party} | ${s.item || '-'} | ${fmtINR(s.amount || 0)}`
       }
       if (data.length > 10) r += `\n  ...and ${data.length - 10} more`
+      return r
+    }
+
+    case 'finish_entries': {
+      if (!Array.isArray(data) || data.length === 0) return 'No finish entries found.'
+      let r = `Finish Programs: ${data.length} found\n`
+      for (const e of data.slice(0, 15)) {
+        r += `\n  FP ${e.fpNo} | ${fmtDate(e.date)} | ${e.lotNos} | ${e.totalThan}T | ${e.status}`
+      }
+      if (data.length > 15) r += `\n  ...and ${data.length - 15} more`
+      return r
+    }
+
+    case 'finish_summary': {
+      return `Finish Summary\n\nTotal FPs: ${data.totalFP}\nTotal Than: ${fmt(data.totalThan)}\nFinished: ${data.finished} | Partial: ${data.partial} | Pending: ${data.pending}`
+    }
+
+    case 'finish_stock': {
+      if (!data.lots || data.lots.length === 0) return `No finish stock available${args.party ? ` for "${args.party}"` : ''}.`
+      let r = `Finish Stock: ${data.lotCount} lots, ${fmt(data.totalAvailable)} than available\n`
+      for (const l of data.lots.slice(0, 20)) {
+        r += `\n  ${l.lotNo} | ${l.party} | ${l.quality} | Dyed: ${l.dyed}T | Finished: ${l.finished}T | Available: ${l.available}T`
+      }
+      if (data.lots.length > 20) r += `\n  ...and ${data.lots.length - 20} more`
+      return r
+    }
+
+    case 'folding_receipts': {
+      if (!Array.isArray(data) || data.length === 0) return 'No folding receipts found.'
+      let r = `Folding Receipts: ${data.length} found\n`
+      for (const f of data.slice(0, 15)) {
+        r += `\n  FR ${f.frNo} | ${fmtDate(f.date)} | ${f.lotNo} | ${f.than}T | FP ${f.fpNo}`
+      }
+      if (data.length > 15) r += `\n  ...and ${data.length - 15} more`
+      return r
+    }
+
+    case 'packing_stock': {
+      if (!data.entries || data.entries.length === 0) return `No packing stock found${args.party ? ` for "${args.party}"` : ''}.`
+      let r = `Packing Stock: ${fmt(data.total)} than\n`
+      for (const e of data.entries.slice(0, 15)) {
+        const status = e.complete ? '✅' : `⏳ ${e.receivedThan}/${e.than}T`
+        r += `\n  FP ${e.fpNo} | ${e.lotNo} | ${e.party} | ${e.than}T | FR: ${status}`
+      }
+      if (data.entries.length > 15) r += `\n  ...and ${data.entries.length - 15} more`
+      return r
+    }
+
+    case 'missing_slips': {
+      if (data.message) return data.message
+      let r = `Missing ${data.type} slips\nRange: ${data.range} (${data.totalEntries} entries)\n`
+      if (data.missingCount === 0) return r + 'No missing slips!'
+      r += `Missing: ${data.missingCount} slips\n${data.missing.join(', ')}`
       return r
     }
 
