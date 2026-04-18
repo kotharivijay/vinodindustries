@@ -181,7 +181,7 @@ function buildHydroReceipt(data: SlipData, width = 32): string {
 
 type PrintState = 'idle' | 'printing' | 'done' | 'error'
 
-export default function BluetoothPrint({ data, autoHydro }: { data: SlipData; autoHydro?: boolean }) {
+export default function BluetoothPrint({ data, autoMode }: { data: SlipData; autoMode?: string }) {
   const [state, setState] = useState<PrintState>('idle')
   const [error, setError] = useState('')
   const [hydroMode, setHydroMode] = useState(false)
@@ -513,13 +513,16 @@ export default function BluetoothPrint({ data, autoHydro }: { data: SlipData; au
     }
   }, [data])
 
-  // Auto-trigger hydro print when ?hydro=1
+  // Auto-trigger BT or Hydro print when ?auto=bt or ?auto=hydro
   useEffect(() => {
-    if (autoHydro && !autoTriggered.current && btAvailable !== false) {
-      autoTriggered.current = true
+    if (!autoMode || autoTriggered.current || btAvailable === false) return
+    autoTriggered.current = true
+    if (autoMode === 'hydro') {
       setTimeout(() => printHydroViaBluetooth(), 500)
+    } else if (autoMode === 'bt') {
+      setTimeout(() => printViaBluetooth(), 500)
     }
-  }, [autoHydro, btAvailable, printHydroViaBluetooth])
+  }, [autoMode, btAvailable, printHydroViaBluetooth, printViaBluetooth])
 
   if (state === 'done') {
     return (
