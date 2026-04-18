@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 
 interface SlipLot { lotNo: string; than: number; marka?: string | null }
 interface SlipChemical { name: string; quantity: number | null; unit: string; processTag: string | null }
@@ -181,10 +181,11 @@ function buildHydroReceipt(data: SlipData, width = 32): string {
 
 type PrintState = 'idle' | 'printing' | 'done' | 'error'
 
-export default function BluetoothPrint({ data }: { data: SlipData }) {
+export default function BluetoothPrint({ data, autoHydro }: { data: SlipData; autoHydro?: boolean }) {
   const [state, setState] = useState<PrintState>('idle')
   const [error, setError] = useState('')
   const [hydroMode, setHydroMode] = useState(false)
+  const autoTriggered = useRef(false)
 
   // Method 1: RawBT intent (most reliable for Android)
   const printViaRawBT = useCallback((hydro = false) => {
@@ -506,6 +507,14 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
     }
   }, [data])
 
+  // Auto-trigger hydro print when ?hydro=1
+  useEffect(() => {
+    if (autoHydro && !autoTriggered.current && btAvailable !== false) {
+      autoTriggered.current = true
+      setTimeout(() => printHydroViaBluetooth(), 500)
+    }
+  }, [autoHydro, btAvailable, printHydroViaBluetooth])
+
   if (state === 'done') {
     return (
       <div className="inline-flex flex-col items-center">
@@ -557,30 +566,12 @@ export default function BluetoothPrint({ data }: { data: SlipData }) {
         </button>
       )}
 
-      {/* Fallback: RawBT */}
-      <button
-        onClick={() => printViaRawBT(false)}
-        className="bg-green-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-2"
-      >
-        <span>🖨️</span>
-        <span>RawBT Print</span>
-      </button>
-
-      {/* Hydro via RawBT */}
-      <button
-        onClick={() => printViaRawBT(true)}
-        className="bg-teal-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 flex items-center gap-2"
-      >
-        <span>💧</span>
-        <span>RawBT Hydro</span>
-      </button>
-
-      {/* Share/Copy */}
+      {/* Share/Copy fallback */}
       <button
         onClick={() => printViaShare(false)}
         className="text-[10px] text-gray-400 hover:text-gray-300 underline"
       >
-        {typeof navigator !== 'undefined' && 'share' in navigator ? 'Share' : 'Copy Text'}
+        {typeof navigator !== 'undefined' && 'share' in navigator ? 'Share Text' : 'Copy Text'}
       </button>
 
       {btAvailable === false && (

@@ -930,7 +930,12 @@ export default function DyeingListPage() {
                             </div>
                           )}
                           <DyeingStatus e={e} />
-                          <Link href={`/dyeing/${e.id}/print`} target="_blank" className="mt-1 inline-flex items-center gap-1 text-[10px] text-gray-400 hover:text-purple-300">Print Slip</Link>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <Link href={`/dyeing/${e.id}/print`} target="_blank"
+                              className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-800 px-2.5 py-1 rounded-lg font-medium">📡 BT Print</Link>
+                            <Link href={`/dyeing/${e.id}/print?hydro=1`} target="_blank"
+                              className="text-[10px] bg-cyan-900/30 text-cyan-400 border border-cyan-800 px-2.5 py-1 rounded-lg font-medium">💧 Hydro</Link>
+                          </div>
                         </div>
                       )
                     })}

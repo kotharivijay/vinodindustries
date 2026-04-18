@@ -6,9 +6,9 @@ import BluetoothPrint from './BluetoothPrint'
 import ReceiptPrint from './ReceiptPrint'
 import SharePDFButton from './SharePDFButton'
 
-export default async function DyeingPrintPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ round?: string }> }) {
+export default async function DyeingPrintPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ round?: string; hydro?: string }> }) {
   const { id } = await params
-  const { round: roundParam } = await searchParams
+  const { round: roundParam, hydro: hydroParam } = await searchParams
   const db = prisma as any
 
   const entry = await db.dyeingEntry.findUnique({
@@ -410,7 +410,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           })),
           roundParam: showRound,
         }} />
-        <BluetoothPrint data={{
+        <BluetoothPrint autoHydro={hydroParam === '1'} data={{
           slipNo: entry.slipNo,
           date: new Date(entry.date).toLocaleDateString('en-IN'),
           partyName,
