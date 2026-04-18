@@ -186,6 +186,76 @@ export default function DyeingListPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [sharingPDF, setSharingPDF] = useState(false)
 
+  // ─── Inline BT Print ──────────────────────────────────────────────────────────
+  const [btPrintingId, setBtPrintingId] = useState<number | null>(null)
+  const btPrinterRef = useRef<any>(null)
+
+  async function inlineBtPrint(entry: DyeingEntry, hydro = false) {
+    setBtPrintingId(entry.id)
+    try {
+      const { BluetoothPrinter } = await import('@/lib/bluetooth-printer')
+      if (!btPrinterRef.current) btPrinterRef.current = new BluetoothPrinter()
+      const printer = btPrinterRef.current
+
+      const savedId = (() => { try { return localStorage.getItem('bt-printer-id') || undefined } catch { return undefined } })()
+      await printer.smartConnect(savedId)
+      const deviceId = printer.getDeviceId()
+      const deviceName = printer.getDeviceName()
+      if (deviceId) try { localStorage.setItem('bt-printer-id', deviceId) } catch {}
+      if (deviceName) try { localStorage.setItem('bt-printer-name', deviceName) } catch {}
+
+      await printer.init()
+      printer.startBatch()
+
+      const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo, than: entry.than }]
+      const totalThan = lots.reduce((s, l) => s + l.than, 0)
+      const W = 48
+
+      await printer.printCentered('================================', false, 'normal')
+      await printer.printCentered('KOTHARI SYNTHETIC', true, 'double-height')
+      await printer.printCentered('INDUSTRIES', true, 'double-height')
+      await printer.printCentered(hydro ? 'HYDRO SLIP' : 'Dyeing Slip', true, 'normal')
+      await printer.printCentered('================================', false, 'normal')
+
+      const date = new Date(entry.date).toLocaleDateString('en-IN')
+      await printer.printKeyValue(`Slip: ${entry.slipNo}`, date, W)
+      if (entry.partyName) await printer.printText(`Party: ${entry.partyName}`)
+      if (entry.shadeName) await printer.printText(`Shade: ${entry.shadeName}`)
+      if (entry.machine?.name) await printer.printText(`Machine: ${entry.machine.name}`)
+      await printer.printDivider('-', W)
+
+      await printer.printLine('LOTS:', true, 'normal')
+      for (const l of lots) {
+        const pad = Math.max(1, W - 2 - l.lotNo.length - String(l.than).length - 5)
+        await printer.printLine(`  ${l.lotNo}${' '.repeat(pad)}${l.than} than`, true, 'normal')
+      }
+      if (lots.length > 1) await printer.printKeyValue('  Total:', `${totalThan} than`, W)
+      await printer.printDivider('-', W)
+
+      if (!hydro && entry.chemicals?.length) {
+        await printer.printLine('CHEMICALS:', true, 'normal')
+        for (const c of entry.chemicals) {
+          const qty = c.quantity != null ? `${c.quantity.toFixed(1)} ${c.unit}` : '---'
+          const pad = Math.max(1, W - 2 - c.name.length - qty.length)
+          await printer.printLine(`  ${c.name}${'.'.repeat(pad)}${qty}`, false, 'normal')
+        }
+        await printer.printDivider('-', W)
+      }
+
+      await printer.printCentered('================================')
+      await printer.feedLines(1)
+      await printer.cut()
+      await printer.flushBatch()
+      await printer.disconnect()
+    } catch (err: any) {
+      if (err.message?.includes('cancel')) { setBtPrintingId(null); return }
+      try { localStorage.removeItem('bt-printer-id') } catch {}
+      btPrinterRef.current = null
+      alert('BT Print failed: ' + (err.message || 'Unknown error'))
+    }
+    setBtPrintingId(null)
+  }
+
   function toggleSelect(id: number) {
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -931,10 +1001,16 @@ export default function DyeingListPage() {
                           )}
                           <DyeingStatus e={e} />
                           <div className="flex items-center gap-2 mt-1.5">
+                            <button onClick={() => inlineBtPrint(e, false)} disabled={btPrintingId === e.id}
+                              className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-800 px-2.5 py-1 rounded-lg font-medium disabled:opacity-50">
+                              {btPrintingId === e.id ? '...' : '📡 BT Print'}
+                            </button>
+                            <button onClick={() => inlineBtPrint(e, true)} disabled={btPrintingId === e.id}
+                              className="text-[10px] bg-cyan-900/30 text-cyan-400 border border-cyan-800 px-2.5 py-1 rounded-lg font-medium disabled:opacity-50">
+                              {btPrintingId === e.id ? '...' : '💧 Hydro'}
+                            </button>
                             <Link href={`/dyeing/${e.id}/print`} target="_blank"
-                              className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-800 px-2.5 py-1 rounded-lg font-medium">📡 BT Print</Link>
-                            <Link href={`/dyeing/${e.id}/print?hydro=1`} target="_blank"
-                              className="text-[10px] bg-cyan-900/30 text-cyan-400 border border-cyan-800 px-2.5 py-1 rounded-lg font-medium">💧 Hydro</Link>
+                              className="text-[10px] text-gray-500 hover:text-purple-400">🖨️</Link>
                           </div>
                         </div>
                       )
