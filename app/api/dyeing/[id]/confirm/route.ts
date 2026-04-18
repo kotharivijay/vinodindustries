@@ -72,14 +72,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (drive && folderId) {
       try {
-        // Create subfolder: Dyeing Photos/{date}
-        const dyeingPhotosFolder = await findOrCreateFolder(drive, folderId, 'Dyeing Photos')
-        const dateFolder = await findOrCreateFolder(drive, dyeingPhotosFolder, date || new Date().toISOString().slice(0, 10))
+        // Create subfolder: Confirm Shade/{date}
+        const confirmShadeFolder = await findOrCreateFolder(drive, folderId, 'Confirm Shade')
+        const dateFolder = await findOrCreateFolder(drive, confirmShadeFolder, date || new Date().toISOString().slice(0, 10))
+
+        // Delete old photo if exists
+        if (entry.dyeingDriveId) {
+          try { await drive.files.delete({ fileId: entry.dyeingDriveId }) } catch {}
+        }
 
         const buffer = Buffer.from(imageBase64, 'base64')
         const stream = Readable.from(buffer)
         const ext = mediaType === 'image/png' ? 'png' : 'jpg'
-        const fileName = `dyeing-${entryId}-slip${entry.slipNo}-${Date.now()}.${ext}`
+        const fileName = `Slip-${entry.slipNo}.${ext}`
 
         const fileRes = await drive.files.create({
           requestBody: {
@@ -96,6 +101,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
         dyeingDriveId = fileRes.data.id ?? null
         dyeingPhotoUrl = fileRes.data.webViewLink ?? null
+
+        // Make file viewable by anyone with link
+        if (dyeingDriveId) {
+          try {
+            await drive.permissions.create({
+              fileId: dyeingDriveId,
+              requestBody: { role: 'reader', type: 'anyone' },
+            })
+          } catch {}
+        }
       } catch (e) {
         console.error('Drive upload failed for dyeing confirm:', e)
       }
