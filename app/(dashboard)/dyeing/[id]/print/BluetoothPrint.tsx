@@ -415,13 +415,12 @@ export default function BluetoothPrint({ data, autoMode }: { data: SlipData; aut
 
       // QR Code — link to first lot's tracking page
       if (data.lots.length > 0) {
-        await printer.sendCommand(COMMANDS.ALIGN_CENTER)
         const lotUrl = `https://vinodindustries.vercel.app/lot/${encodeURIComponent(data.lots[0].lotNo)}`
+        await printer.printCentered('', false, 'normal')
         await printer.printQRCode(lotUrl, 5)
         await printer.setFontB()
-        await printer.printText(`Scan: ${data.lots[0].lotNo}`)
+        await printer.printCentered(`Scan: ${data.lots[0].lotNo}`, false, 'normal')
         await printer.setFontA()
-        await printer.sendCommand(COMMANDS.ALIGN_LEFT)
       }
 
       await printer.feedLines(1)
