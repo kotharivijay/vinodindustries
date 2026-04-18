@@ -739,7 +739,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
       const set = new Set(unique)
       const max = Math.max(...unique)
       const missing: number[] = []
-      for (let i = 1; i <= max; i++) { if (!set.has(i)) missing.push(i) }
+      const min2 = Math.min(...unique); for (let i = min2; i <= max; i++) { if (!set.has(i)) missing.push(i) }
       return { type: 'folding receipt', range: `1-${max}`, totalEntries: unique.length, missingCount: missing.length, missing }
     }
 
@@ -751,7 +751,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
       const set = new Set(unique)
       const max = Math.max(...unique)
       const missing: number[] = []
-      for (let i = 1; i <= max; i++) { if (!set.has(i)) missing.push(i) }
+      const min2 = Math.min(...unique); for (let i = min2; i <= max; i++) { if (!set.has(i)) missing.push(i) }
       return { type: 'fold program', range: `1-${max}`, totalEntries: unique.length, missingCount: missing.length, missing }
     }
 
@@ -764,10 +764,11 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
 
     if (slips.length === 0) return { type: t, missing: [], message: 'No entries found' }
     const set = new Set(slips)
+    const min = Math.min(...slips)
     const max = Math.max(...slips)
     const missing: number[] = []
-    for (let i = 1; i <= max; i++) { if (!set.has(i)) missing.push(i) }
-    return { type: t, range: `1-${max}`, totalEntries: slips.length, missingCount: missing.length, missing }
+    for (let i = min; i <= max; i++) { if (!set.has(i)) missing.push(i) }
+    return { type: t, range: `${min}-${max}`, totalEntries: slips.length, missingCount: missing.length, missing }
   },
 
   dyeing_cost_report: async ({ party }: any) => {
