@@ -1,8 +1,12 @@
 export const dynamic = 'force-dynamic'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const apiKey = req.headers.get('x-api-key')
+  if (!apiKey || apiKey !== process.env.PRINT_API_KEY) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
   let entries: any[]
   try {
     const db = prisma as any
