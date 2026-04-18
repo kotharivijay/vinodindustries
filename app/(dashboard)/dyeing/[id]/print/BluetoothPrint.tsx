@@ -265,6 +265,7 @@ export default function BluetoothPrint({ data, autoHydro }: { data: SlipData; au
       if (deviceName) try { localStorage.setItem('bt-printer-name', deviceName) } catch {}
 
       await printer.init()
+      printer.startBatch()
 
       // Read all print settings
       let headerSize = 18, lotSize = 14, chemSize = 12, labelSize = 13
@@ -409,6 +410,9 @@ export default function BluetoothPrint({ data, autoHydro }: { data: SlipData; au
       await printer.printCentered('================================')
       await printer.feedLines(1)
       await printer.cut()
+
+      // Flush all batched data in one fast transfer
+      await printer.flushBatch()
       await printer.disconnect()
 
       setState('done')
@@ -416,7 +420,6 @@ export default function BluetoothPrint({ data, autoHydro }: { data: SlipData; au
       setTimeout(() => setState('idle'), 3000)
     } catch (err: any) {
       if (err.message?.includes('cancel')) { setState('idle'); return }
-      // Clear saved device on error so next time shows picker
       try { localStorage.removeItem('bt-printer-id') } catch {}
       printerRef.current = null
       setError(err.message || 'Bluetooth error')
@@ -442,6 +445,7 @@ export default function BluetoothPrint({ data, autoHydro }: { data: SlipData; au
       if (deviceName) try { localStorage.setItem('bt-printer-name', deviceName) } catch {}
 
       await printer.init()
+      printer.startBatch()
 
       let lotSize = 14
       let boldLotNo = true
@@ -492,6 +496,8 @@ export default function BluetoothPrint({ data, autoHydro }: { data: SlipData; au
       await printer.printCentered('================================')
       await printer.feedLines(1)
       await printer.cut()
+
+      await printer.flushBatch()
       await printer.disconnect()
 
       setState('done')
