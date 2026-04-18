@@ -182,7 +182,6 @@ class BluetoothPrinter {
 
   async flushBatch() {
     if (!this.characteristic) throw new Error('Not connected')
-    // Merge all buffered data into one array
     const totalLen = this.buffer.reduce((s, b) => s + b.length, 0)
     const merged = new Uint8Array(totalLen)
     let offset = 0
@@ -193,8 +192,8 @@ class BluetoothPrinter {
     this.buffer = []
     this.buffering = false
 
-    // Send in larger chunks for speed
-    const CHUNK = 512
+    // XP-P501A BLE: send in safe chunks with delay
+    const CHUNK = 100
     for (let i = 0; i < merged.length; i += CHUNK) {
       const chunk = merged.slice(i, i + CHUNK)
       if (this.characteristic.properties.writeWithoutResponse) {
@@ -202,15 +201,14 @@ class BluetoothPrinter {
       } else {
         await this.characteristic.writeValueWithResponse(chunk)
       }
-      // Smaller delay for larger chunks
-      if (i + CHUNK < merged.length) await new Promise(r => setTimeout(r, 10))
+      await new Promise(r => setTimeout(r, 20))
     }
   }
 
   private async sendBytes(data: Uint8Array) {
     if (this.buffering) { this.addToBuffer(data); return }
     if (!this.characteristic) throw new Error('Not connected')
-    const CHUNK = 512
+    const CHUNK = 100
     for (let i = 0; i < data.length; i += CHUNK) {
       const chunk = data.slice(i, i + CHUNK)
       if (this.characteristic.properties.writeWithoutResponse) {
@@ -218,7 +216,7 @@ class BluetoothPrinter {
       } else {
         await this.characteristic.writeValueWithResponse(chunk)
       }
-      if (i + CHUNK < data.length) await new Promise(r => setTimeout(r, 10))
+      await new Promise(r => setTimeout(r, 20))
     }
   }
 
