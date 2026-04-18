@@ -1203,23 +1203,16 @@ export default function FinishStockPage() {
     }
     let text = '📋 *Finish Despatch Report*\n━━━━━━━━━━━━━━━━━━━━\n'
     for (const [despNo, entries] of despMap) {
-      const totalThan = entries.reduce((s, e) => s + e.totalThan, 0)
       text += `\n📦 *Desp Slip: ${despNo}*\n┌──────────────────────\n`
       for (const pe of entries) {
-        const foldNos = [...new Set(pe.lots.map((l: any) => l.foldNo).filter(Boolean))]
-        text += `│ *FP ${pe.slipNo}* · ${new Date(pe.date).toLocaleDateString('en-IN')}\n`
-        if (foldNos.length > 0) text += `│ Fold ${foldNos.join(', ')}\n│\n`
+        text += `│ *FP ${pe.slipNo}* · ${new Date(pe.date).toLocaleDateString('en-IN')}\n│\n`
         for (const l of pe.lots) {
           const recs = (l as any).foldingReceipts || []
           const received = recs.reduce((s: number, r: any) => s + r.than, 0)
           const frStatus = received >= l.than ? '✅' : `⏳ ${received}/${l.than}T`
-          const shade = [l.shadeName, l.shadeDescription].filter(Boolean).join(' — ')
-          if (shade) text += `│ Slip · ${shade}\n`
           text += `│   🏷️ ${l.lotNo} · ${l.than}T · ${frStatus}\n`
         }
-        const parties = [...new Set(pe.lots.map((l: any) => l.party).filter(Boolean))]
         const qualities = [...new Set(pe.lots.map((l: any) => l.quality).filter(Boolean))]
-        if (parties.length > 0) text += `│\n│ Party: ${parties.join(', ')}\n`
         if (qualities.length > 0) text += `│ Quality: ${qualities.join(', ')}\n`
         const totalReceived = pe.lots.reduce((s: number, l: any) => s + ((l.foldingReceipts || []).reduce((s2: number, r: any) => s2 + r.than, 0)), 0)
         text += `│ Total: ${pe.totalThan}T · FR: ${totalReceived}/${pe.totalThan}T\n`
