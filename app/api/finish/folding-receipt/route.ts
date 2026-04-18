@@ -21,12 +21,49 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { lotEntryId, slipNo, date, than, notes } = await req.json()
-  if (!lotEntryId || !slipNo || !than) return NextResponse.json({ error: 'lotEntryId, slipNo, than required' }, { status: 400 })
+  const { lotEntryId, slipNo, date, than, notes, obLotNo, obThan } = await req.json()
+  if (!slipNo || !than) return NextResponse.json({ error: 'slipNo and than required' }, { status: 400 })
+
+  let resolvedLotEntryId = lotEntryId ? parseInt(lotEntryId) : null
+
+  // For OB lots: auto-create FinishEntry + FinishEntryLot
+  if (!resolvedLotEntryId && obLotNo) {
+    // Check if a "OB" finish entry already exists for this lot
+    const existing = await db.finishEntryLot.findFirst({
+      where: { lotNo: obLotNo },
+      include: { entry: true },
+    })
+    if (existing) {
+      resolvedLotEntryId = existing.id
+    } else {
+      // Create a new FinishEntry with slipNo=0 for OB
+      const entry = await db.finishEntry.create({
+        data: {
+          date: date ? new Date(date) : new Date(),
+          slipNo: 0,
+          lotNo: obLotNo,
+          than: parseInt(obThan) || parseInt(than),
+          notes: 'Auto-created from OB allocation',
+          lots: {
+            create: {
+              lotNo: obLotNo,
+              than: parseInt(obThan) || parseInt(than),
+              status: 'done',
+              doneThan: parseInt(obThan) || parseInt(than),
+            },
+          },
+        },
+        include: { lots: true },
+      })
+      resolvedLotEntryId = entry.lots[0].id
+    }
+  }
+
+  if (!resolvedLotEntryId) return NextResponse.json({ error: 'lotEntryId or obLotNo required' }, { status: 400 })
 
   const receipt = await db.foldingReceipt.create({
     data: {
-      lotEntryId: parseInt(lotEntryId),
+      lotEntryId: resolvedLotEntryId,
       slipNo,
       date: date ? new Date(date) : new Date(),
       than: parseInt(than),

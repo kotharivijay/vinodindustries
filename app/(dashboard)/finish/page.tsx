@@ -1198,9 +1198,16 @@ export default function FinishStockPage() {
   async function addFoldingReceipt() {
     if (!frFormLotId || !frSlipNo || !frThan) return
     setFrSaving(true)
+    const body: any = { slipNo: frSlipNo, date: frDate, than: frThan }
+    if (frFormLotId > 0) {
+      body.lotEntryId = frFormLotId
+    } else {
+      body.obLotNo = frFormLotNo
+      body.obThan = frFormMaxThan + (parseInt(frThan) || 0)
+    }
     await fetch('/api/finish/folding-receipt', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lotEntryId: frFormLotId, slipNo: frSlipNo, date: frDate, than: frThan }),
+      body: JSON.stringify(body),
     })
     setFrSaving(false); setFrFormLotId(null); setFrFormLotNo(''); setFrFormFpNo(null); setFrFormMaxThan(0); setFrThan(''); setFrSlipNo('')
     mutatePacking()
@@ -3019,6 +3026,7 @@ export default function FinishStockPage() {
                                     <div className="flex items-center justify-between mb-1">
                                       <div className="flex items-center gap-2 text-xs">
                                         <span className="font-medium text-teal-600 dark:text-teal-400">FP {pe.slipNo}</span>
+                                        {pe.isFromOB && <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded-full">OB</span>}
                                         <span className="text-gray-400">{new Date(pe.date).toLocaleDateString('en-IN')}</span>
                                       </div>
                                       <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{pe.totalThan}T</span>
