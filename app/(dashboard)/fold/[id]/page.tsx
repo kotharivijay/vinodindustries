@@ -295,7 +295,7 @@ export default function FoldDetailPage() {
   }
 
   // Fetch stock data for lot picker
-  const { data: stockData } = useSWR<{ parties: { party: string; lots: StockLot[] }[] }>('/api/stock', fetcher)
+  const { data: stockData, mutate: mutateStock } = useSWR<{ parties: { party: string; lots: StockLot[] }[] }>('/api/stock', fetcher)
   const allStockLots = useMemo<StockLot[]>(() => {
     if (!stockData?.parties) return []
     return stockData.parties.flatMap(p => p.lots)
@@ -308,6 +308,7 @@ export default function FoldDetailPage() {
       body: JSON.stringify({ action: 'update-lot', lotId, lotNo, than }),
     })
     mutate()
+    mutateStock()
   }
 
   async function updateBatchShade(batchId: number, shadeId: number | null, shadeName: string | null, shadeDescription: string | null) {
