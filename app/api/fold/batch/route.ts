@@ -13,13 +13,16 @@ export async function PATCH(req: NextRequest) {
 
   // Update lot in a batch
   if (body.action === 'update-lot' && body.lotId) {
+    const db = prisma as any
+    const oldLot = await db.foldBatchLot.findUnique({ where: { id: body.lotId }, select: { lotNo: true, than: true, foldBatchId: true } })
+
     // Look up party + quality from grey entry for this lot
     const greyEntry = await prisma.greyEntry.findFirst({
       where: { lotNo: body.lotNo },
       select: { partyId: true, qualityId: true },
     })
 
-    const lot = await (prisma as any).foldBatchLot.update({
+    const lot = await db.foldBatchLot.update({
       where: { id: body.lotId },
       data: {
         lotNo: body.lotNo,
@@ -28,6 +31,24 @@ export async function PATCH(req: NextRequest) {
         qualityId: greyEntry?.qualityId ?? null,
       },
     })
+
+    // Cascade: update linked DyeingEntryLot if a DyeingEntry is linked to this fold batch
+    if (oldLot?.foldBatchId) {
+      try {
+        const dyeEntry = await db.dyeingEntry.findFirst({
+          where: { foldBatchId: oldLot.foldBatchId },
+          select: { id: true },
+        })
+        if (dyeEntry) {
+          // Update the matching DyeingEntryLot (same old lotNo)
+          await db.dyeingEntryLot.updateMany({
+            where: { entryId: dyeEntry.id, lotNo: oldLot.lotNo },
+            data: { lotNo: body.lotNo, than: parseInt(body.than) || 0 },
+          })
+        }
+      } catch {}
+    }
+
     return NextResponse.json(lot)
   }
 
