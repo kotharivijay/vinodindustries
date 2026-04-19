@@ -18,7 +18,6 @@ interface ROI { x: number; y: number; w: number; h: number } // percentages 0-10
 
 export default function CameraPage() {
   const [imgSrc, setImgSrc] = useState<string | null>(null)
-  const [prevImgData, setPrevImgData] = useState<ImageData | null>(null)
   const [liveStatus, setLiveStatus] = useState<'loading' | 'running' | 'stopped' | 'idle' | 'error'>('loading')
   const [movement, setMovement] = useState(0)
   const [lastUpdate, setLastUpdate] = useState('')
@@ -27,6 +26,8 @@ export default function CameraPage() {
   const [checking, setChecking] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const prevImgDataRef = useRef<ImageData | null>(null)
+  const imgSrcRef = useRef<string | null>(null)
 
   // ROI state
   const [roi, setRoi] = useState<ROI | null>(() => {
@@ -48,6 +49,9 @@ export default function CameraPage() {
   })
   const machineStatus = statusData?.[0]
 
+  const roiRef = useRef<ROI | null>(roi)
+  useEffect(() => { roiRef.current = roi }, [roi])
+
   const fetchSnapshot = useCallback(async () => {
     try {
       const res = await fetch(`/api/camera?channel=7&t=${Date.now()}`)
@@ -65,13 +69,14 @@ export default function CameraPage() {
           if (ctx) {
             ctx.drawImage(img, 0, 0)
             const currentData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+            const prev = prevImgDataRef.current
+            const currentRoi = roiRef.current
 
-            if (prevImgData && prevImgData.width === currentData.width) {
-              // Compare only within ROI if defined
+            if (prev && prev.width === currentData.width) {
               const w = canvas.width, h = canvas.height
-              const roiRect = roi ? {
-                x1: Math.floor(w * roi.x / 100), y1: Math.floor(h * roi.y / 100),
-                x2: Math.floor(w * (roi.x + roi.w) / 100), y2: Math.floor(h * (roi.y + roi.h) / 100),
+              const roiRect = currentRoi ? {
+                x1: Math.floor(w * currentRoi.x / 100), y1: Math.floor(h * currentRoi.y / 100),
+                x2: Math.floor(w * (currentRoi.x + currentRoi.w) / 100), y2: Math.floor(h * (currentRoi.y + currentRoi.h) / 100),
               } : { x1: 0, y1: 0, x2: w, y2: h }
 
               let diffCount = 0, totalSampled = 0
@@ -80,9 +85,9 @@ export default function CameraPage() {
                 for (let px = roiRect.x1; px < roiRect.x2; px += sampleStep) {
                   const i = (py * w + px) * 4
                   if (i + 2 >= currentData.data.length) continue
-                  const dr = Math.abs(currentData.data[i] - prevImgData.data[i])
-                  const dg = Math.abs(currentData.data[i + 1] - prevImgData.data[i + 1])
-                  const db = Math.abs(currentData.data[i + 2] - prevImgData.data[i + 2])
+                  const dr = Math.abs(currentData.data[i] - prev.data[i])
+                  const dg = Math.abs(currentData.data[i + 1] - prev.data[i + 1])
+                  const db = Math.abs(currentData.data[i + 2] - prev.data[i + 2])
                   if (dr + dg + db > 30) diffCount++
                   totalSampled++
                 }
@@ -95,10 +100,11 @@ export default function CameraPage() {
             } else {
               setLiveStatus('running')
             }
-            setPrevImgData(currentData)
+            prevImgDataRef.current = currentData
           }
         }
-        if (imgSrc) URL.revokeObjectURL(imgSrc)
+        if (imgSrcRef.current) URL.revokeObjectURL(imgSrcRef.current)
+        imgSrcRef.current = url
         setImgSrc(url)
         setLastUpdate(new Date().toLocaleTimeString('en-IN'))
       }
@@ -106,13 +112,13 @@ export default function CameraPage() {
     } catch {
       setLiveStatus('error')
     }
-  }, [prevImgData, imgSrc, roi])
+  }, [])
 
   useEffect(() => {
     fetchSnapshot()
     intervalRef.current = setInterval(fetchSnapshot, refreshRate * 1000)
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [refreshRate]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshRate, fetchSnapshot])
 
   // Manual server-side check
   async function runCheck() {
