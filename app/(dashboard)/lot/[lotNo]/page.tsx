@@ -123,6 +123,37 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
     // fallback if FinishEntryLot table doesn't exist yet
   }
 
+  // Find folding receipts via FoldingReceipt -> FinishEntryLot
+  let foldingReceipts: any[] = []
+  try {
+    const lotEntriesForFR = await db.finishEntryLot.findMany({
+      where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+      select: { id: true },
+    })
+    if (lotEntriesForFR.length > 0) {
+      foldingReceipts = await db.foldingReceipt.findMany({
+        where: { lotEntryId: { in: lotEntriesForFR.map((le: any) => le.id) } },
+        orderBy: { date: 'asc' },
+      })
+    }
+  } catch {}
+
+  // Find packing entries via PackingLot
+  let packingEntries: any[] = []
+  try {
+    const packingLots = await db.packingLot.findMany({
+      where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+      include: {
+        packingEntry: true,
+      },
+    })
+    packingEntries = packingLots.map((pl: any) => ({
+      ...pl.packingEntry,
+      _lotThan: pl.than,
+      _lotBoxes: pl.boxes,
+    }))
+  } catch {}
+
   // Find re-process entries (as source lot OR as RE-PRO lot)
   let reproEntries: any[] = []
   try {
@@ -142,6 +173,8 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
   const dyeingThan = dyeingEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
   const finishThan = finishEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
   const foldThan = foldEntries.reduce((s: number, e: any) => s + (e.than ?? 0), 0)
+  const frThan = foldingReceipts.reduce((s: number, e: any) => s + (e.than ?? 0), 0)
+  const packingThan = packingEntries.reduce((s: number, e: any) => s + (e._lotThan ?? 0), 0)
   const reproThan = reproEntries.filter((r: any) => r.type === 'source').reduce((s: number, r: any) => s + (r.than ?? 0), 0)
   const stock = obThan + greyThan - despatchThan
 
@@ -158,7 +191,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
       </div>
 
       {/* Summary cards */}
-      <div className={`grid grid-cols-2 ${obThan > 0 ? 'sm:grid-cols-7' : 'sm:grid-cols-6'} gap-3 mb-8`}>
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-8">
         {obThan > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Opening Bal</p>
@@ -186,6 +219,20 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
           <p className="text-2xl font-bold text-teal-600 mt-1">{finishThan}</p>
           <p className="text-xs text-gray-400">{finishEntries.length} entries</p>
         </div>
+        {foldingReceipts.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Folding Rec</p>
+            <p className="text-2xl font-bold text-amber-600 mt-1">{frThan}</p>
+            <p className="text-xs text-gray-400">{foldingReceipts.length} FR</p>
+          </div>
+        )}
+        {packingEntries.length > 0 && (
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Packing</p>
+            <p className="text-2xl font-bold text-pink-600 mt-1">{packingThan}</p>
+            <p className="text-xs text-gray-400">{packingEntries.length} entries</p>
+          </div>
+        )}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Despatched</p>
           <p className="text-2xl font-bold text-orange-600 mt-1">{despatchThan}</p>
@@ -379,6 +426,46 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         </section>
       )}
 
+      {/* Folding Receipts */}
+      {foldingReceipts.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">📋 Folding Receipt ({foldingReceipts.length})</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700">
+            {foldingReceipts.map((e: any) => (
+              <div key={e.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
+                <span className="text-amber-600 font-medium">FR {e.slipNo}</span>
+                <span className="font-semibold text-amber-700 dark:text-amber-300">Than: {e.than}</span>
+                {e.notes && <span className="text-xs text-gray-400">{e.notes}</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Packing entries */}
+      {packingEntries.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">📦 Packing ({packingEntries.length})</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700">
+            {packingEntries.map((e: any) => (
+              <div key={e.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
+                <span className="text-pink-600 font-medium">{e.packingNo}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                  e.status === 'confirmed'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                }`}>{e.status}</span>
+                <span className="font-semibold text-pink-700 dark:text-pink-300">Than: {e._lotThan}</span>
+                {e._lotBoxes != null && e._lotBoxes > 0 && <span className="text-xs text-gray-500">Boxes: {e._lotBoxes}</span>}
+                {e.notes && <span className="text-xs text-gray-400">{e.notes}</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Despatch entries */}
       {despatchEntries.length > 0 && (
         <section className="mb-6">
@@ -433,7 +520,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         </section>
       )}
 
-      {!openingBalance && greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && foldEntries.length === 0 && reproEntries.length === 0 && (
+      {!openingBalance && greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && foldEntries.length === 0 && foldingReceipts.length === 0 && packingEntries.length === 0 && reproEntries.length === 0 && (
         <div className="text-center text-gray-400 py-16">No records found for lot <strong>{lotNo}</strong></div>
       )}
     </div>
