@@ -88,14 +88,14 @@ export default function CameraPage() {
                   const dr = Math.abs(currentData.data[i] - prev.data[i])
                   const dg = Math.abs(currentData.data[i + 1] - prev.data[i + 1])
                   const db = Math.abs(currentData.data[i + 2] - prev.data[i + 2])
-                  if (dr + dg + db > 30) diffCount++
+                  if (dr + dg + db > 60) diffCount++
                   totalSampled++
                 }
               }
               const diffPercent = totalSampled > 0 ? (diffCount / totalSampled) * 100 : 0
               setMovement(Math.round(diffPercent * 10) / 10)
-              if (diffPercent > 5) setLiveStatus('running')
-              else if (diffPercent > 1) setLiveStatus('idle')
+              if (diffPercent > 25) setLiveStatus('running')
+              else if (diffPercent > 10) setLiveStatus('idle')
               else setLiveStatus('stopped')
             } else {
               setLiveStatus('running')
@@ -321,8 +321,8 @@ export default function CameraPage() {
           <span className="text-xs text-gray-500">{movement}%</span>
         </div>
         <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-500 ${movement > 5 ? 'bg-green-500' : movement > 1 ? 'bg-yellow-500' : 'bg-red-500'}`}
-            style={{ width: `${Math.min(100, movement * 2)}%` }} />
+          <div className={`h-full rounded-full transition-all duration-500 ${movement > 25 ? 'bg-green-500' : movement > 10 ? 'bg-yellow-500' : 'bg-red-500'}`}
+            style={{ width: `${Math.min(100, movement)}%` }} />
         </div>
         <div className="flex justify-between mt-1 text-[9px] text-gray-400">
           <span>🔴 Stopped</span><span>🟡 Idle</span><span>🟢 Running</span>
