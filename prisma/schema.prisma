@@ -1040,3 +1040,23 @@ model TallySyncLog {
   error     String?
   createdAt DateTime @default(now())
 }
+
+// ─── Machine Monitoring ──────────────────────────────────────────────────────
+
+model MachineStatus {
+  id        Int      @id @default(autoincrement())
+  channel   Int      @unique
+  name      String
+  status    String   @default("unknown") // running | stopped | idle | unknown
+  movement  Float    @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model MachineActivityLog {
+  id        Int      @id @default(autoincrement())
+  channel   Int
+  event     String   // started | stopped
+  timestamp DateTime @default(now())
+  duration  Int?     // seconds since last opposite event
+  movement  Float?
+}
