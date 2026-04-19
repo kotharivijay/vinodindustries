@@ -14,6 +14,8 @@ function formatDuration(seconds: number): string {
   return `${h}h ${m}m`
 }
 
+interface ROI { x: number; y: number; w: number; h: number } // percentages 0-100
+
 export default function CameraPage() {
   const [imgSrc, setImgSrc] = useState<string | null>(null)
   const [prevImgData, setPrevImgData] = useState<ImageData | null>(null)
@@ -25,6 +27,19 @@ export default function CameraPage() {
   const [checking, setChecking] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // ROI state
+  const [roi, setRoi] = useState<ROI | null>(() => {
+    if (typeof window !== 'undefined') {
+      try { const s = localStorage.getItem('camera-roi'); return s ? JSON.parse(s) : null } catch { return null }
+    }
+    return null
+  })
+  const [editingRoi, setEditingRoi] = useState(false)
+  const [drawingRoi, setDrawingRoi] = useState(false)
+  const [roiStart, setRoiStart] = useState<{ x: number; y: number } | null>(null)
+  const [roiDraft, setRoiDraft] = useState<ROI | null>(null)
+  const imgContainerRef = useRef<HTMLDivElement>(null)
 
   // Server status + activity log
   const { data: statusData, mutate: mutateStatus } = useSWR('/api/camera/status', fetcher, {
@@ -52,16 +67,27 @@ export default function CameraPage() {
             const currentData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
             if (prevImgData && prevImgData.width === currentData.width) {
-              let diffCount = 0
-              const totalPixels = currentData.data.length / 4
+              // Compare only within ROI if defined
+              const w = canvas.width, h = canvas.height
+              const roiRect = roi ? {
+                x1: Math.floor(w * roi.x / 100), y1: Math.floor(h * roi.y / 100),
+                x2: Math.floor(w * (roi.x + roi.w) / 100), y2: Math.floor(h * (roi.y + roi.h) / 100),
+              } : { x1: 0, y1: 0, x2: w, y2: h }
+
+              let diffCount = 0, totalSampled = 0
               const sampleStep = 4
-              for (let i = 0; i < currentData.data.length; i += 4 * sampleStep) {
-                const dr = Math.abs(currentData.data[i] - prevImgData.data[i])
-                const dg = Math.abs(currentData.data[i + 1] - prevImgData.data[i + 1])
-                const db = Math.abs(currentData.data[i + 2] - prevImgData.data[i + 2])
-                if (dr + dg + db > 30) diffCount++
+              for (let py = roiRect.y1; py < roiRect.y2; py += sampleStep) {
+                for (let px = roiRect.x1; px < roiRect.x2; px += sampleStep) {
+                  const i = (py * w + px) * 4
+                  if (i + 2 >= currentData.data.length) continue
+                  const dr = Math.abs(currentData.data[i] - prevImgData.data[i])
+                  const dg = Math.abs(currentData.data[i + 1] - prevImgData.data[i + 1])
+                  const db = Math.abs(currentData.data[i + 2] - prevImgData.data[i + 2])
+                  if (dr + dg + db > 30) diffCount++
+                  totalSampled++
+                }
               }
-              const diffPercent = (diffCount / (totalPixels / sampleStep)) * 100
+              const diffPercent = totalSampled > 0 ? (diffCount / totalSampled) * 100 : 0
               setMovement(Math.round(diffPercent * 10) / 10)
               if (diffPercent > 5) setLiveStatus('running')
               else if (diffPercent > 1) setLiveStatus('idle')
@@ -80,7 +106,7 @@ export default function CameraPage() {
     } catch {
       setLiveStatus('error')
     }
-  }, [prevImgData, imgSrc])
+  }, [prevImgData, imgSrc, roi])
 
   useEffect(() => {
     fetchSnapshot()
@@ -169,14 +195,107 @@ export default function CameraPage() {
         )}
       </div>
 
+      {/* ROI Edit button */}
+      <div className="flex items-center gap-2 mb-2">
+        <button onClick={() => { setEditingRoi(!editingRoi); setRoiDraft(roi); setDrawingRoi(false) }}
+          className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${editingRoi ? 'bg-orange-100 dark:bg-orange-900/30 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'}`}>
+          {editingRoi ? '🔧 Drawing ROI...' : '🎯 Set Machine Area'}
+        </button>
+        {editingRoi && (
+          <>
+            <button onClick={() => {
+              if (roiDraft) {
+                setRoi(roiDraft)
+                try { localStorage.setItem('camera-roi', JSON.stringify(roiDraft)) } catch {}
+              }
+              setEditingRoi(false); setDrawingRoi(false)
+            }} className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg font-medium">✓ Save ROI</button>
+            <button onClick={() => {
+              setRoi(null); setRoiDraft(null)
+              try { localStorage.removeItem('camera-roi') } catch {}
+              setEditingRoi(false); setDrawingRoi(false)
+            }} className="text-xs text-red-400 hover:text-red-600 px-2 py-1.5">Reset</button>
+            <span className="text-[10px] text-gray-400 ml-auto">
+              {roiDraft ? `ROI: ${roiDraft.x.toFixed(0)}%, ${roiDraft.y.toFixed(0)}% — ${roiDraft.w.toFixed(0)}%×${roiDraft.h.toFixed(0)}%` : 'Drag on image to draw'}
+            </span>
+          </>
+        )}
+        {!editingRoi && roi && (
+          <span className="text-[10px] text-teal-500">ROI active: {roi.w.toFixed(0)}%×{roi.h.toFixed(0)}%</span>
+        )}
+      </div>
+
       {/* Live view */}
-      <div className={`relative bg-black rounded-xl overflow-hidden cursor-pointer ${fullscreen ? 'fixed inset-0 z-50 rounded-none' : ''}`}
-        onClick={() => setFullscreen(!fullscreen)}>
+      <div ref={imgContainerRef}
+        className={`relative bg-black rounded-xl overflow-hidden ${editingRoi ? 'cursor-crosshair' : 'cursor-pointer'} ${fullscreen ? 'fixed inset-0 z-50 rounded-none' : ''}`}
+        onClick={() => { if (!editingRoi) setFullscreen(!fullscreen) }}
+        onMouseDown={e => {
+          if (!editingRoi || !imgContainerRef.current) return
+          const rect = imgContainerRef.current.getBoundingClientRect()
+          const x = ((e.clientX - rect.left) / rect.width) * 100
+          const y = ((e.clientY - rect.top) / rect.height) * 100
+          setRoiStart({ x, y }); setDrawingRoi(true)
+        }}
+        onMouseMove={e => {
+          if (!drawingRoi || !roiStart || !imgContainerRef.current) return
+          const rect = imgContainerRef.current.getBoundingClientRect()
+          const x2 = ((e.clientX - rect.left) / rect.width) * 100
+          const y2 = ((e.clientY - rect.top) / rect.height) * 100
+          setRoiDraft({
+            x: Math.min(roiStart.x, x2), y: Math.min(roiStart.y, y2),
+            w: Math.abs(x2 - roiStart.x), h: Math.abs(y2 - roiStart.y),
+          })
+        }}
+        onMouseUp={() => { setDrawingRoi(false); setRoiStart(null) }}
+        onTouchStart={e => {
+          if (!editingRoi || !imgContainerRef.current) return
+          const touch = e.touches[0]
+          const rect = imgContainerRef.current.getBoundingClientRect()
+          const x = ((touch.clientX - rect.left) / rect.width) * 100
+          const y = ((touch.clientY - rect.top) / rect.height) * 100
+          setRoiStart({ x, y }); setDrawingRoi(true)
+        }}
+        onTouchMove={e => {
+          if (!drawingRoi || !roiStart || !imgContainerRef.current) return
+          const touch = e.touches[0]
+          const rect = imgContainerRef.current.getBoundingClientRect()
+          const x2 = ((touch.clientX - rect.left) / rect.width) * 100
+          const y2 = ((touch.clientY - rect.top) / rect.height) * 100
+          setRoiDraft({
+            x: Math.min(roiStart.x, x2), y: Math.min(roiStart.y, y2),
+            w: Math.abs(x2 - roiStart.x), h: Math.abs(y2 - roiStart.y),
+          })
+        }}
+        onTouchEnd={() => { setDrawingRoi(false); setRoiStart(null) }}
+      >
         {imgSrc ? (
-          <img src={imgSrc} alt="Farmatex Machine" className="w-full h-auto" />
+          <img src={imgSrc} alt="Farmatex Machine" className="w-full h-auto select-none" draggable={false} />
         ) : (
           <div className="w-full aspect-video flex items-center justify-center text-gray-500">Loading...</div>
         )}
+
+        {/* ROI overlay */}
+        {(roiDraft || roi) && (() => {
+          const r = editingRoi ? roiDraft : roi
+          if (!r) return null
+          return (
+            <>
+              {/* Dimmed area outside ROI */}
+              <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                <div className="absolute border-2 border-green-400 bg-transparent"
+                  style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%`, boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)' }} />
+              </div>
+              {/* ROI border */}
+              <div className="absolute border-2 border-dashed border-green-400 pointer-events-none"
+                style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%` }}>
+                <span className="absolute -top-5 left-0 text-[9px] text-green-400 bg-black/70 px-1 rounded">
+                  Machine Area
+                </span>
+              </div>
+            </>
+          )
+        })()}
+
         <div className="absolute top-3 left-3 flex items-center gap-2">
           <span className={`w-3 h-3 rounded-full ${st.bg} animate-pulse`} />
           <span className="text-xs text-white bg-black/60 px-2 py-0.5 rounded">Farmatex Machine</span>
