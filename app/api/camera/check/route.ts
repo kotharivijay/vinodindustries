@@ -6,8 +6,7 @@ import { createHash } from 'crypto'
 const NVR_BASE = 'https://nvr3.vinodindustries.co.in'
 const NVR_USER = 'admin'
 const NVR_PASS = 'admin1234'
-const MOVEMENT_THRESHOLD_RUNNING = 5
-const MOVEMENT_THRESHOLD_IDLE = 1
+const MOVEMENT_THRESHOLD_RUNNING = 23
 
 async function fetchSnapshot(channel: number): Promise<Buffer | null> {
   const url = `${NVR_BASE}/cgi-bin/snapshot.cgi?channel=${channel}`
@@ -83,8 +82,7 @@ export async function POST(req: NextRequest) {
 
   // Compare
   const movement = Math.round(compareBuffers(snap1, snap2) * 10) / 10
-  const newStatus = movement > MOVEMENT_THRESHOLD_RUNNING ? 'running'
-    : movement > MOVEMENT_THRESHOLD_IDLE ? 'idle' : 'stopped'
+  const newStatus = movement > MOVEMENT_THRESHOLD_RUNNING ? 'running' : 'stopped'
 
   // Get current status from DB
   let currentStatus = await db.machineStatus.findUnique({ where: { channel } })
@@ -98,8 +96,8 @@ export async function POST(req: NextRequest) {
   })
 
   // Log event if status changed (running <-> stopped)
-  const wasRunning = oldStatus === 'running' || oldStatus === 'idle'
-  const isRunning = newStatus === 'running' || newStatus === 'idle'
+  const wasRunning = oldStatus === 'running'
+  const isRunning = newStatus === 'running'
 
   if (wasRunning !== isRunning && oldStatus !== 'unknown') {
     // Find last opposite event to calculate duration
