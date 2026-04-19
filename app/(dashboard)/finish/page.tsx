@@ -1188,6 +1188,7 @@ export default function FinishStockPage() {
   const [frSortDir, setFrSortDir] = useState<'asc' | 'desc'>('desc')
   const [expandedDesp, setExpandedDesp] = useState<Set<string>>(new Set())
   const [selectedDesps, setSelectedDesps] = useState<Set<string>>(new Set())
+  const [despSearch, setDespSearch] = useState('')
 
   function toggleDespSelect(despNo: string) {
     setSelectedDesps(prev => { const n = new Set(prev); if (n.has(despNo)) n.delete(despNo); else n.add(despNo); return n })
@@ -3059,6 +3060,9 @@ export default function FinishStockPage() {
                 {/* Desp Slip view */}
                 {packView === 'desp' && (
                   <div className="space-y-2">
+                    <input type="text" value={despSearch} onChange={e => setDespSearch(e.target.value)}
+                      placeholder="Search lot no, party..."
+                      className="w-full text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 placeholder-gray-400" />
                     {selectedDesps.size > 0 && (
                       <div className="flex items-center gap-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-4 py-2">
                         <span className="text-xs text-green-700 dark:text-green-300 font-medium">{selectedDesps.size} selected</span>
@@ -3067,8 +3071,15 @@ export default function FinishStockPage() {
                       </div>
                     )}
                     {(() => {
+                      const dq = despSearch.toLowerCase().trim()
+                      const filteredPacking = dq ? packingEntries.filter(pe =>
+                        pe.lots.some((l: any) =>
+                          l.lotNo.toLowerCase().includes(dq) ||
+                          (l.party || '').toLowerCase().includes(dq)
+                        )
+                      ) : packingEntries
                       const despMap = new Map<string, { slipNo: string; entries: typeof packingEntries }>()
-                      for (const pe of packingEntries) {
+                      for (const pe of filteredPacking) {
                         const key = pe.finishDespSlipNo || 'No Desp Slip'
                         if (!despMap.has(key)) despMap.set(key, { slipNo: key, entries: [] })
                         despMap.get(key)!.entries.push(pe)
@@ -3119,7 +3130,7 @@ export default function FinishStockPage() {
                                           <div key={li} className={`rounded-lg p-2.5 border ${complete ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'}`}>
                                             <div className="flex items-center justify-between mb-1">
                                               <div className="flex items-center gap-2">
-                                                <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">{l.lotNo}</span>
+                                                <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{l.lotNo}</Link>
                                                 {l.foldNo && <span className="text-[9px] text-indigo-500">F{l.foldNo}</span>}
                                               </div>
                                               <span className="text-xs font-medium">{received}/{l.than}T {complete ? '✅' : '⏳'}</span>
