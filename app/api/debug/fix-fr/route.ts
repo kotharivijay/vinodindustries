@@ -4,16 +4,46 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
-// POST /api/debug/fix-fr — move misplaced FRs from real FP to OB entry
+// POST /api/debug/fix-fr — fix misplaced FRs or wrong than values
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const db = prisma as any
-  const { lotNo, frSlipNo, obThan } = await req.json()
+  const body = await req.json()
+
+  // Action: fix FinishEntryLot than + doneThan + parent FinishEntry than
+  if (body.action === 'fix-than') {
+    const { lotEntryId, correctThan } = body
+    if (!lotEntryId || !correctThan) return NextResponse.json({ error: 'lotEntryId and correctThan required' }, { status: 400 })
+
+    const lotEntry = await db.finishEntryLot.findUnique({
+      where: { id: parseInt(lotEntryId) },
+      include: { entry: true },
+    })
+    if (!lotEntry) return NextResponse.json({ error: 'FinishEntryLot not found' }, { status: 404 })
+
+    const oldThan = lotEntry.than
+    await db.finishEntryLot.update({
+      where: { id: parseInt(lotEntryId) },
+      data: { than: parseInt(correctThan), doneThan: parseInt(correctThan) },
+    })
+    await db.finishEntry.update({
+      where: { id: lotEntry.entryId },
+      data: { than: parseInt(correctThan) },
+    })
+
+    return NextResponse.json({
+      message: `Fixed FinishEntryLot ${lotEntryId}: than ${oldThan} → ${correctThan}`,
+      entryId: lotEntry.entryId,
+      slipNo: lotEntry.entry.slipNo,
+    })
+  }
+
+  // Action: move FR from real FP to OB entry
+  const { lotNo, frSlipNo, obThan } = body
   if (!lotNo || !frSlipNo || !obThan) return NextResponse.json({ error: 'lotNo, frSlipNo, obThan required' }, { status: 400 })
 
-  // Find the misplaced FR
   const fr = await db.foldingReceipt.findFirst({
     where: { slipNo: frSlipNo, lotEntry: { lotNo: { equals: lotNo, mode: 'insensitive' } } },
     include: { lotEntry: { include: { entry: true } } },
@@ -24,13 +54,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'FR already on OB entry, no fix needed', fr })
   }
 
-  // Check if OB finish entry (slipNo=0) exists
   let obLotEntry = await db.finishEntryLot.findFirst({
     where: { lotNo: { equals: lotNo, mode: 'insensitive' }, entry: { slipNo: 0 } },
   })
 
   if (!obLotEntry) {
-    // Create OB FinishEntry + FinishEntryLot
     const entry = await db.finishEntry.create({
       data: {
         date: fr.date,
@@ -52,7 +80,6 @@ export async function POST(req: NextRequest) {
     obLotEntry = entry.lots[0]
   }
 
-  // Move FR to the OB lot entry
   const oldEntryId = fr.lotEntryId
   const updated = await db.foldingReceipt.update({
     where: { id: fr.id },
