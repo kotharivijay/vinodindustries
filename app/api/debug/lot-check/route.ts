@@ -38,6 +38,18 @@ export async function GET(req: Request) {
     orderBy: { date: 'asc' },
   })
 
+  // Check party match
+  let partyMatch = null
+  const partyName = ob?.party || null
+  if (partyName) {
+    partyMatch = await prisma.party.findFirst({ where: { name: { equals: partyName, mode: 'insensitive' } }, select: { id: true, name: true } })
+  }
+  // Check grey entry
+  const greyEntry = await prisma.greyEntry.findFirst({
+    where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+    select: { id: true, lotNo: true, partyId: true, party: { select: { name: true } } },
+  })
+
   return NextResponse.json({
     lotNo,
     openingBalance: ob,
@@ -45,5 +57,8 @@ export async function GET(req: Request) {
     finishEntryLots,
     finishEntries,
     foldingReceipts,
+    partyInOB: partyName,
+    partyMatch,
+    greyEntry,
   })
 }
