@@ -120,13 +120,22 @@ export async function GET() {
   }))
 
   // Inject OB allocations tagged as 'finished' (available for packing)
+  // Skip if a real slipNo=0 entry already exists (OB converted to real entry via FR)
   try {
+    const obEntryLotNos = new Set<string>()
+    for (const pe of packingEntries) {
+      if (pe.slipNo === 0) {
+        for (const l of pe.lots) obEntryLotNos.add(l.lotNo.toLowerCase().trim())
+      }
+    }
+
     const obFinished = await db.lotOpeningBalanceAllocation.findMany({
       where: { stage: 'finished' },
       include: { balance: true },
     })
     for (const alloc of obFinished) {
       const b = alloc.balance
+      if (obEntryLotNos.has(b.lotNo.toLowerCase().trim())) continue
       const mtrPerThan = b.grayMtr && b.greyThan ? b.grayMtr / b.greyThan : null
       stock.push({
         id: -alloc.id,
