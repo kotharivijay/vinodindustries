@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   ])
 
   const foldingReceipts = await db.foldingReceipt.findMany({
-    where: { lotEntry: { lotNo: { equals: lot, mode: 'insensitive' } } },
+    where: { lotEntry: { lotNo: { equals: lotNo, mode: 'insensitive' } } },
     include: { lotEntry: { select: { id: true, lotNo: true, entryId: true, entry: { select: { slipNo: true } } } } },
     orderBy: { date: 'asc' },
   })
