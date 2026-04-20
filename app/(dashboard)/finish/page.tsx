@@ -1250,7 +1250,7 @@ export default function FinishStockPage() {
       body.lotEntryId = frFormLotId
     } else {
       body.obLotNo = frFormLotNo
-      body.obThan = frFormMaxThan + (parseInt(frThan) || 0)
+      body.obThan = frFormMaxThan
     }
     await fetch('/api/finish/folding-receipt', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
