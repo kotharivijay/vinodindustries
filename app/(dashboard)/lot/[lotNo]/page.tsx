@@ -168,8 +168,10 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
     reproEntries = [...asSrc.map((s: any) => ({ type: 'source', ...s })), ...asRepro.map((r: any) => ({ type: 'repro', ...r }))]
   } catch {}
 
-  // Inject OB allocations as synthetic entries in their respective pipeline sections
+  // Inject OB allocations as synthetic entries — skip if a real slipNo=0 entry exists
   const obAllocations = openingBalance?.allocations || []
+  const hasRealOBFinish = finishEntries.some((e: any) => e.slipNo === 0)
+  const hasRealOBPacking = packingEntries.some((e: any) => e.packingNo === 'OB' || false)
   for (const alloc of obAllocations) {
     if (alloc.stage === 'dyed') {
       dyeingEntries.push({
@@ -181,7 +183,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         lots: [],
         _isOB: true,
       })
-    } else if (alloc.stage === 'finished') {
+    } else if (alloc.stage === 'finished' && !hasRealOBFinish) {
       finishEntries.push({
         id: -alloc.id,
         slipNo: 'OB',
@@ -444,11 +446,11 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                 <div key={e.id} className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
-                    {e._isOB ? (
+                    {e._isOB || e.slipNo === 0 ? (
                       <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">OB Carry-Forward</span>
                     ) : (
                       <Link href={`/finish/${e.id}`} className="text-teal-600 font-medium hover:underline">
-                        Slip {e.slipNo}
+                        FP {e.slipNo}
                       </Link>
                     )}
                     <span className="font-semibold text-teal-700">Than: {lotThan}</span>
