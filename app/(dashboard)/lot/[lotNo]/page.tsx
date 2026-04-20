@@ -168,6 +168,44 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
     reproEntries = [...asSrc.map((s: any) => ({ type: 'source', ...s })), ...asRepro.map((r: any) => ({ type: 'repro', ...r }))]
   } catch {}
 
+  // Inject OB allocations as synthetic entries in their respective pipeline sections
+  const obAllocations = openingBalance?.allocations || []
+  for (const alloc of obAllocations) {
+    if (alloc.stage === 'dyed') {
+      dyeingEntries.push({
+        id: -alloc.id,
+        slipNo: 'OB',
+        date: openingBalance.greyDate || openingBalance.createdAt,
+        _lotThan: alloc.than,
+        chemicals: [],
+        lots: [],
+        _isOB: true,
+      })
+    } else if (alloc.stage === 'finished') {
+      finishEntries.push({
+        id: -alloc.id,
+        slipNo: 'OB',
+        date: openingBalance.greyDate || openingBalance.createdAt,
+        _lotThan: alloc.than,
+        _lotMeter: null,
+        chemicals: [],
+        lots: [],
+        _isOB: true,
+      })
+    } else if (alloc.stage === 'packed') {
+      packingEntries.push({
+        id: -alloc.id,
+        packingNo: 'OB',
+        date: openingBalance.greyDate || openingBalance.createdAt,
+        status: 'confirmed',
+        notes: null,
+        _lotThan: alloc.than,
+        _lotBoxes: null,
+        _isOB: true,
+      })
+    }
+  }
+
   const greyThan = greyEntries.reduce((s, e) => s + e.than, 0)
   const despatchThan = despatchEntries.reduce((s, e) => s + e.than, 0)
   const dyeingThan = dyeingEntries.reduce((s: number, e: any) => s + (e._lotThan ?? e.than), 0)
@@ -346,7 +384,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         <section className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">🎨 Dyeing Slip ({dyeingEntries.length})</h2>
-            <ShareDyeingPDFButton lotNo={lotNo} slips={dyeingEntries.map((e: any) => ({
+            <ShareDyeingPDFButton lotNo={lotNo} slips={dyeingEntries.filter((e: any) => !e._isOB).map((e: any) => ({
               slipNo: e.slipNo,
               date: e.date?.toISOString ? e.date.toISOString() : e.date,
               shadeName: e.shadeName || null,
@@ -367,14 +405,17 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                 <div key={e.id} className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
-                    <Link href={`/dyeing/${e.id}`} className="text-purple-600 font-medium hover:underline">
-                      Slip {e.slipNo}
-                    </Link>
+                    {e._isOB ? (
+                      <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">OB Carry-Forward</span>
+                    ) : (
+                      <Link href={`/dyeing/${e.id}`} className="text-purple-600 font-medium hover:underline">
+                        Slip {e.slipNo}
+                      </Link>
+                    )}
                     <span className="font-semibold text-purple-700">Than: {lotThan}</span>
                     {totalCost > 0 && <span className="text-xs text-gray-500">Cost: ₹{totalCost.toFixed(0)}</span>}
                   </div>
-                  {/* Show other lots in this slip */}
-                  {e.lots?.length > 1 && (
+                  {!e._isOB && e.lots?.length > 1 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {e.lots.filter((l: any) => l.lotNo.toLowerCase() !== lotNo.toLowerCase()).map((l: any, i: number) => (
                         <span key={i} className="text-[10px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
@@ -403,14 +444,18 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                 <div key={e.id} className="px-4 py-3">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
-                    <Link href={`/finish/${e.id}`} className="text-teal-600 font-medium hover:underline">
-                      Slip {e.slipNo}
-                    </Link>
+                    {e._isOB ? (
+                      <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">OB Carry-Forward</span>
+                    ) : (
+                      <Link href={`/finish/${e.id}`} className="text-teal-600 font-medium hover:underline">
+                        Slip {e.slipNo}
+                      </Link>
+                    )}
                     <span className="font-semibold text-teal-700">Than: {lotThan}</span>
                     {lotMeter != null && lotMeter > 0 && <span className="text-xs text-gray-500">Meter: {lotMeter}</span>}
                     {totalCost > 0 && <span className="text-xs text-gray-500">Cost: &#8377;{totalCost.toFixed(0)}</span>}
                   </div>
-                  {e.lots?.length > 1 && (
+                  {!e._isOB && e.lots?.length > 1 && (
                     <div className="flex flex-wrap gap-1 mt-1">
                       {e.lots.filter((l: any) => l.lotNo.toLowerCase() !== lotNo.toLowerCase()).map((l: any, i: number) => (
                         <span key={i} className="text-[10px] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
@@ -451,12 +496,18 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
             {packingEntries.map((e: any) => (
               <div key={e.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                 <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
-                <span className="text-pink-600 font-medium">{e.packingNo}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                  e.status === 'confirmed'
-                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                }`}>{e.status}</span>
+                {e._isOB ? (
+                  <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">OB Carry-Forward</span>
+                ) : (
+                  <>
+                    <span className="text-pink-600 font-medium">{e.packingNo}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                      e.status === 'confirmed'
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                    }`}>{e.status}</span>
+                  </>
+                )}
                 <span className="font-semibold text-pink-700 dark:text-pink-300">Than: {e._lotThan}</span>
                 {e._lotBoxes != null && e._lotBoxes > 0 && <span className="text-xs text-gray-500">Boxes: {e._lotBoxes}</span>}
                 {e.notes && <span className="text-xs text-gray-400">{e.notes}</span>}
