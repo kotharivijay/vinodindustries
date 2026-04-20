@@ -28,9 +28,9 @@ export async function POST(req: NextRequest) {
 
   // For OB lots: auto-create FinishEntry + FinishEntryLot
   if (!resolvedLotEntryId && obLotNo) {
-    // Check if a "OB" finish entry already exists for this lot
+    // Check if a "OB" finish entry (slipNo=0) already exists for this lot
     const existing = await db.finishEntryLot.findFirst({
-      where: { lotNo: obLotNo },
+      where: { lotNo: obLotNo, entry: { slipNo: 0 } },
       include: { entry: true },
     })
     if (existing) {
