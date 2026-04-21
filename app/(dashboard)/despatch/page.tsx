@@ -455,12 +455,12 @@ export default function DespatchListPage() {
                               </Link>
                               <span className="text-gray-600 dark:text-gray-400">({l.than}T)</span>
                               {l.description && <span className="text-gray-500 dark:text-gray-400 italic">{l.description}</span>}
-                              {l.amount != null && l.amount > 0 && <span className="font-semibold text-gray-700 dark:text-gray-300">Rs.{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
+                              {l.amount != null && l.amount > 0 && <span className="font-semibold text-gray-700 dark:text-gray-300">{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
                             </div>
                           ))}
                           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                             Total: {lots.reduce((s, l) => s + l.than, 0)} than
-                            {e.pTotal != null && e.pTotal > 0 && <span> · Rs.{e.pTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
+                            {e.pTotal != null && e.pTotal > 0 && <span> · {e.pTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
                           </div>
                         </div>
                       ) : (
@@ -473,7 +473,7 @@ export default function DespatchListPage() {
                             </Link>
                             <span className="text-xs text-gray-600 dark:text-gray-400">Than: <strong>{e.than}</strong></span>
                             {e.pTotal != null && (
-                              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Rs.{e.pTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{e.pTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
                             )}
                           </div>
                         </>
@@ -553,7 +553,7 @@ export default function DespatchListPage() {
                                     <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="font-medium text-indigo-700 dark:text-indigo-400 hover:underline">{l.lotNo}</Link>
                                     <span className="text-gray-500 dark:text-gray-400">({l.than}T)</span>
                                     {l.description && <span className="text-gray-400 dark:text-gray-500 italic">{l.description}</span>}
-                                    {l.amount != null && l.amount > 0 && <span className="text-gray-600 dark:text-gray-300 font-medium">Rs.{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
+                                    {l.amount != null && l.amount > 0 && <span className="text-gray-600 dark:text-gray-300 font-medium">{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
                                   </div>
                                 ))}
                               </div>
@@ -569,7 +569,7 @@ export default function DespatchListPage() {
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.billNo || '—'}</td>
                           <td className="px-3 py-2.5 text-right text-gray-600 dark:text-gray-400">{e.rate ?? '—'}</td>
                           <td className="px-3 py-2.5 text-right font-medium text-gray-800 dark:text-gray-200">
-                            {e.pTotal != null ? `Rs.${e.pTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                            {e.pTotal != null ? `${e.pTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                           </td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.lrNo || '—'}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.transport?.name ?? '—'}</td>
