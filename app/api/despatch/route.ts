@@ -26,7 +26,7 @@ export async function GET() {
         if (!d.than || d.than <= 0) continue
         lastYearDesp.push({
           id: -d.id,
-          date: d.date ?? ob.createdAt,
+          date: d.date ?? new Date('2024-03-31'),
           challanNo: parseInt(d.challanNo) || 0,
           party: { id: 0, name: ob.party || '-' },
           quality: { id: 0, name: ob.quality || '-' },
