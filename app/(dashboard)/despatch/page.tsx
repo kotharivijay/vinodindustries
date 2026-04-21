@@ -457,7 +457,6 @@ export default function DespatchListPage() {
                               <span className="text-gray-600 dark:text-gray-400">({l.than}T)</span>
                               {lotQuality && <span className="text-gray-700 dark:text-gray-300 font-medium">{lotQuality}</span>}
                               {l.description && <span className="text-gray-500 dark:text-gray-400 italic">{l.description}</span>}
-                              {l.amount != null && l.amount > 0 && <span className="font-semibold text-gray-700 dark:text-gray-300">{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
                             </div>
                             )
                           })}
@@ -559,7 +558,6 @@ export default function DespatchListPage() {
                                     <span className="text-gray-500 dark:text-gray-400">({l.than}T)</span>
                                     {lotQuality && <span className="text-gray-600 dark:text-gray-300">{lotQuality}</span>}
                                     {l.description && <span className="text-gray-400 dark:text-gray-500 italic">{l.description}</span>}
-                                    {l.amount != null && l.amount > 0 && <span className="text-gray-600 dark:text-gray-300 font-medium">{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
                                   </div>
                                   )
                                 })}
