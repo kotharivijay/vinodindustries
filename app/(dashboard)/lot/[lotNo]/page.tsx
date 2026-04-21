@@ -16,18 +16,44 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
 
   const db = prisma as any
 
-  const [greyEntries, despatchEntries] = await Promise.all([
+  const [greyEntries, despatchLotRows, despatchParentOnly] = await Promise.all([
     prisma.greyEntry.findMany({
       where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
       include: { party: true, quality: true, transport: true, weaver: true },
       orderBy: { date: 'asc' },
     }),
-    prisma.despatchEntry.findMany({
+    // Multi-lot despatches: this lot appears as a row under DespatchEntryLot
+    prisma.despatchEntryLot.findMany({
       where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+      include: { entry: { include: { party: true, quality: true, transport: true } } },
+      orderBy: { entry: { date: 'asc' } },
+    }),
+    // Legacy single-lot despatches (no DespatchEntryLot rows) where parent lotNo = this lot
+    prisma.despatchEntry.findMany({
+      where: { lotNo: { equals: lotNo, mode: 'insensitive' }, despatchLots: { none: {} } },
       include: { party: true, quality: true, transport: true },
       orderBy: { date: 'asc' },
     }),
   ])
+
+  // Flatten: for multi-lot rows use row.than (per-lot); for legacy entries use entry.than.
+  const despatchEntries = [
+    ...despatchLotRows.map(r => ({
+      id: `l${r.id}`,
+      date: r.entry.date,
+      challanNo: r.entry.challanNo,
+      party: r.entry.party,
+      quality: r.entry.quality,
+      transport: r.entry.transport,
+      than: r.than,
+      pTotal: r.amount ?? (r.rate != null ? r.than * r.rate : null),
+    })),
+    ...despatchParentOnly.map(e => ({
+      id: e.id, date: e.date, challanNo: e.challanNo,
+      party: e.party, quality: e.quality, transport: e.transport,
+      than: e.than, pTotal: e.pTotal,
+    })),
+  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
   // Fetch opening balance (carry-forward from last year)
   let openingBalance: any = null
