@@ -98,6 +98,27 @@ export async function POST(req: NextRequest) {
   const weaverMap = new Map(weavers.map((w) => [norm(w.name), w]))
   const transportMap = new Map(transports.map((t) => [norm(t.name), t]))
 
+  // Auto-create any missing weaver masters up front. Weavers are free-form
+  // labels in the source sheet and there's no business value in blocking
+  // the import flow for a new one. Pali-PC rows store the label under marka
+  // instead of a weaver, so those are excluded.
+  const sheetWeaverNames = new Set<string>()
+  for (const row of dataRows) {
+    const partyName = row[COL.PARTY]?.trim() ?? ''
+    const party = partyMap.get(norm(partyName))
+    const isPaliPc = party?.tag?.toLowerCase().includes('pali pc job') ?? false
+    if (isPaliPc) continue
+    const w = row[COL.WEAVER]?.trim() ?? ''
+    if (w && !weaverMap.has(norm(w))) sheetWeaverNames.add(w)
+  }
+  if (sheetWeaverNames.size > 0) {
+    await Promise.all([...sheetWeaverNames].map(name =>
+      prisma.weaver.create({ data: { name } })
+        .then(created => { weaverMap.set(norm(created.name), created) })
+        .catch(() => {})
+    ))
+  }
+
   // Build existing duplicate keys from DB
   const existing = await prisma.greyEntry.findMany({
     select: { sn: true, challanNo: true, lotNo: true, than: true, date: true, partyId: true, party: { select: { name: true } } },
