@@ -246,13 +246,24 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
 
   const fmt = (d: Date) => new Date(d).toLocaleDateString('en-IN')
 
+  // Resolve lot's owner party + quality. Grey entry wins; OB is fallback for carry-forward lots.
+  const lotParty = greyEntries[0]?.party?.name ?? openingBalance?.party ?? null
+  const lotQuality = greyEntries[0]?.quality?.name ?? openingBalance?.quality ?? null
+
   return (
     <div className="p-4 md:p-8 max-w-3xl dark:text-gray-100">
       <div className="flex items-center gap-4 mb-6">
         <BackButton />
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Lot Track: <span className="text-indigo-600">{lotNo}</span></h1>
-          <p className="text-sm text-gray-500 mt-0.5">Full process history for this lot</p>
+          {(lotParty || lotQuality) && (
+            <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">
+              {lotParty && <span className="font-medium">{lotParty}</span>}
+              {lotParty && lotQuality && <span className="text-gray-400 mx-1.5">·</span>}
+              {lotQuality && <span>{lotQuality}</span>}
+            </p>
+          )}
+          <p className="text-xs text-gray-400 mt-0.5">Full process history for this lot</p>
         </div>
       </div>
 
