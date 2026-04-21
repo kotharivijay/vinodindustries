@@ -2,6 +2,9 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import Link from 'next/link'
+import { LotLink, useLotBackHighlight, persistViewState, readViewState } from '@/lib/viewStatePersist'
+
+const FINISH_VIEW_KEY = 'finish-view-state'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../BackButton'
@@ -307,7 +310,7 @@ export default function FinishStockPage() {
     return m
   }, [allRecipes])
 
-  const [tab, setTab] = useState<Tab>('report')
+  const [tab, setTab] = useState<Tab>(() => (readViewState(FINISH_VIEW_KEY).tab as Tab) || 'report')
 
   /* ── Stock Register state ─────────────────────────────────────── */
   const [filterSlip, setFilterSlipRaw] = useState('')
@@ -1183,11 +1186,24 @@ export default function FinishStockPage() {
   /* ── Packing expand state ──────────────────────────────────────── */
   const [packExpandedParties, setPackExpandedParties] = useState<Set<string>>(new Set())
   const [packExpandedQualities, setPackExpandedQualities] = useState<Set<string>>(new Set())
-  const [packView, setPackView] = useState<'party' | 'desp'>('party')
+  const [packView, setPackView] = useState<'party' | 'desp'>(
+    () => (readViewState(FINISH_VIEW_KEY).packView === 'desp' ? 'desp' : 'party')
+  )
   const [frSearch, setFrSearch] = useState('')
   const [frSortDir, setFrSortDir] = useState<'asc' | 'desc'>('desc')
-  const [expandedDesp, setExpandedDesp] = useState<Set<string>>(new Set())
+  const [expandedDesp, setExpandedDesp] = useState<Set<string>>(() => {
+    const arr = readViewState(FINISH_VIEW_KEY).expandedDesp
+    return new Set(Array.isArray(arr) ? arr : [])
+  })
   const [selectedDesps, setSelectedDesps] = useState<Set<string>>(new Set())
+
+  // Persist collapse/tab state so it survives a nav to /lot/[id] and back.
+  useEffect(() => {
+    persistViewState(FINISH_VIEW_KEY, { tab, packView, expandedDesp: [...expandedDesp] })
+  }, [tab, packView, expandedDesp])
+
+  // Restore scroll + ring-highlight the clicked lot card after back-nav.
+  useLotBackHighlight(FINISH_VIEW_KEY, tab === 'packing' && packView === 'desp')
   const [despSearch, setDespSearch] = useState('')
 
   function toggleDespSelect(despNo: string) {
@@ -3127,10 +3143,15 @@ export default function FinishStockPage() {
                                         const received = recs.reduce((s: number, r: any) => s + r.than, 0)
                                         const complete = received >= l.than
                                         return (
-                                          <div key={li} className={`rounded-lg p-2.5 border ${complete ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'}`}>
+                                          <div key={li} data-lot-card={l.lotNo} className={`rounded-lg p-2.5 border transition-shadow ${complete ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'}`}>
                                             <div className="flex items-center justify-between mb-1">
                                               <div className="flex items-center gap-2">
-                                                <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{l.lotNo}</Link>
+                                                <LotLink
+                                                  lotNo={l.lotNo}
+                                                  storageKey={FINISH_VIEW_KEY}
+                                                  extra={{ lastClickedDesp: despNo }}
+                                                  className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline"
+                                                >{l.lotNo}</LotLink>
                                                 {l.foldNo && <span className="text-[9px] text-indigo-500">F{l.foldNo}</span>}
                                               </div>
                                               <span className="text-xs font-medium">{received}/{l.than}T {complete ? '✅' : '⏳'}</span>
