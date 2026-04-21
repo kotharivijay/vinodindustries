@@ -272,18 +272,9 @@ export default function DespatchListPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => setShowSync(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">
-            🔄 Sync with Sheet
-          </button>
-          <button onClick={() => { setShowReset(true); setResetConfirmText('') }} className="flex items-center gap-2 bg-red-100 text-red-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-200 border border-red-200">
-            🗑 Reset All
-          </button>
-          <button onClick={() => setShowImport(true)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
-            📊 Import from Sheet
-          </button>
           <button
             onClick={async () => {
-              if (!confirm('Sync new despatches from the FY25-26 sheet? Unsynced rows will be imported and their record IDs written back to column T.')) return
+              if (!confirm('Sync new despatches from the FY 26-27 sheet? Unsynced rows will be imported and their record IDs written back to column T.')) return
               setNewSheetSyncing(true)
               try {
                 const res = await fetch('/api/despatch/sync-new-sheet', { method: 'POST' })
