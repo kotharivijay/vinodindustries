@@ -460,16 +460,20 @@ export default function DespatchListPage() {
                       </div>
                       {lots ? (
                         <div className="mt-1.5 space-y-1">
-                          {lots.map((l, li) => (
+                          {lots.map((l, li) => {
+                            const lotQuality = l.quality?.name ?? e.quality?.name ?? null
+                            return (
                             <div key={li} className="flex flex-wrap items-center gap-1.5 text-xs">
                               <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="inline-flex items-center bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50">
                                 {l.lotNo}
                               </Link>
                               <span className="text-gray-600 dark:text-gray-400">({l.than}T)</span>
+                              {lotQuality && <span className="text-gray-700 dark:text-gray-300 font-medium">{lotQuality}</span>}
                               {l.description && <span className="text-gray-500 dark:text-gray-400 italic">{l.description}</span>}
                               {l.amount != null && l.amount > 0 && <span className="font-semibold text-gray-700 dark:text-gray-300">{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
                             </div>
-                          ))}
+                            )
+                          })}
                           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                             Total: {lots.reduce((s, l) => s + l.than, 0)} than
                             {e.pTotal != null && e.pTotal > 0 && <span> · {e.pTotal.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
@@ -560,14 +564,18 @@ export default function DespatchListPage() {
                           <td className="px-3 py-2.5">
                             {lots ? (
                               <div className="space-y-0.5">
-                                {lots.map((l, li) => (
+                                {lots.map((l, li) => {
+                                  const lotQuality = l.quality?.name ?? e.quality?.name ?? null
+                                  return (
                                   <div key={li} className="flex items-center gap-1.5 text-xs">
                                     <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="font-medium text-indigo-700 dark:text-indigo-400 hover:underline">{l.lotNo}</Link>
                                     <span className="text-gray-500 dark:text-gray-400">({l.than}T)</span>
+                                    {lotQuality && <span className="text-gray-600 dark:text-gray-300">{lotQuality}</span>}
                                     {l.description && <span className="text-gray-400 dark:text-gray-500 italic">{l.description}</span>}
                                     {l.amount != null && l.amount > 0 && <span className="text-gray-600 dark:text-gray-300 font-medium">{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
                                   </div>
-                                ))}
+                                  )
+                                })}
                               </div>
                             ) : (
                               <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="font-medium text-indigo-700 dark:text-indigo-400 hover:underline">{e.lotNo}</Link>
