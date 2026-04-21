@@ -61,6 +61,10 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  let body: any = {}
+  try { body = await req.json() } catch {}
+  const mode: 'preview' | 'apply' = body?.mode === 'apply' ? 'apply' : 'preview'
+
   const token = await getSheetsToken()
   const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}`
 
@@ -181,6 +185,32 @@ export async function POST(req: NextRequest) {
     const key = `${p.challan}|${p.date.toISOString().slice(0, 10)}`
     if (!groupMap.has(key)) groupMap.set(key, { key, challan: p.challan, date: p.date, rows: [] })
     groupMap.get(key)!.rows.push(p)
+  }
+
+  if (mode === 'preview') {
+    const groups = Array.from(groupMap.values()).map(g => ({
+      challan: g.challan,
+      date: g.date.toISOString().slice(0, 10),
+      party: g.rows[0].lotInfo.partyName,
+      quality: g.rows[0].lotInfo.qualityName,
+      totalThan: g.rows.reduce((s, r) => s + r.than, 0),
+      lots: g.rows.map(r => ({
+        sheetLot: r.sheetLot,
+        resolvedLot: r.resolvedLot,
+        than: r.than,
+        rate: r.rate,
+        description: r.description,
+        quality: r.lotInfo.qualityName,
+      })),
+    }))
+    return NextResponse.json({
+      mode: 'preview',
+      sheetRows: rows.length,
+      parsedRows: parsed.length,
+      skipped: skipped.length,
+      skippedSamples: skipped.slice(0, 50),
+      groups,
+    })
   }
 
   // Insert

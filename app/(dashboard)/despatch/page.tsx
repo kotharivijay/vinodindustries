@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import DespatchImportModal from './DespatchImportModal'
 import DespatchSyncModal from './DespatchSyncModal'
+import NewSheetSyncModal from './NewSheetSyncModal'
 import BackButton from '../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -93,7 +94,7 @@ export default function DespatchListPage() {
   const [debouncedSearch, setDebouncedSearch] = useDebounce('')
   const [showImport, setShowImport] = useState(false)
   const [showSync, setShowSync] = useState(false)
-  const [newSheetSyncing, setNewSheetSyncing] = useState(false)
+  const [showNewSheetSync, setShowNewSheetSync] = useState(false)
   const [showReset, setShowReset] = useState(false)
   const [resetConfirmText, setResetConfirmText] = useState('')
   const [resetting, setResetting] = useState(false)
@@ -273,24 +274,10 @@ export default function DespatchListPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={async () => {
-              if (!confirm('Sync new despatches from the FY 26-27 sheet? Unsynced rows will be imported and their record IDs written back to column T.')) return
-              setNewSheetSyncing(true)
-              try {
-                const res = await fetch('/api/despatch/sync-new-sheet', { method: 'POST' })
-                const data = await res.json()
-                if (!res.ok) { alert(`Sync failed: ${data.error ?? res.statusText}`); return }
-                let msg = `✓ Synced ${data.entriesCreated} challans / ${data.lotsCreated} lots`
-                if (data.skipped > 0) msg += `\nSkipped ${data.skipped} rows. First: ${(data.skippedSamples || []).slice(0, 3).map((s: any) => `row ${s.row}: ${s.reason}`).join('; ')}`
-                alert(msg)
-                mutate()
-              } catch (e: any) { alert(`Sync error: ${e.message ?? e}`) }
-              finally { setNewSheetSyncing(false) }
-            }}
-            disabled={newSheetSyncing}
-            className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700 disabled:opacity-50"
+            onClick={() => setShowNewSheetSync(true)}
+            className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700"
           >
-            {newSheetSyncing ? 'Syncing…' : '🔄 Sync New Despatch'}
+            🔄 Sync New Despatch
           </button>
           <Link href="/despatch/new" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
             + New Entry
@@ -623,6 +610,11 @@ export default function DespatchListPage() {
           onDone={() => { mutate() }}
         />
       )}
+      <NewSheetSyncModal
+        open={showNewSheetSync}
+        onClose={() => setShowNewSheetSync(false)}
+        onImported={mutate}
+      />
 
       {showReset && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
