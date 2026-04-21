@@ -15,7 +15,24 @@ const DEFAULT_TAGS = [
   'Employee',
   'Customer',
   'Pali PC Job',
+  'Job Party',
 ]
+
+// Tags that should also create/update a Party row in the web app's Party master.
+const PARTY_TAGS = new Set(['Pali PC Job', 'Job Party', 'Local', 'Direct', 'Commission'])
+
+async function upsertPartyForLedger(ledgerId: number, tag: string) {
+  if (!PARTY_TAGS.has(tag)) return
+  const ledger = await db.tallyLedger.findUnique({ where: { id: ledgerId }, select: { name: true } })
+  if (!ledger?.name) return
+  const existing = await db.party.findUnique({ where: { name: ledger.name }, select: { id: true, tag: true } })
+  if (!existing) {
+    await db.party.create({ data: { name: ledger.name, tag } })
+  } else if (!existing.tag) {
+    await db.party.update({ where: { id: existing.id }, data: { tag } })
+  }
+  // If party exists with a different tag, leave it alone.
+}
 
 // GET — list ledgers with tags, or get all unique tags
 export async function GET(req: NextRequest) {
@@ -83,6 +100,7 @@ export async function POST(req: NextRequest) {
           data: { tags: [...ledger.tags, tag] },
         })
       }
+      await upsertPartyForLedger(parseInt(id), tag)
     }
     return NextResponse.json({ ok: true, count: ledgerIds.length })
   }

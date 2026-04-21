@@ -314,11 +314,13 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                 <p className="text-xs font-medium text-gray-500 mb-2">Previous Year Despatch</p>
                 <div className="space-y-1">
                   {openingBalance.despatchHistory.map((d: any) => (
-                    <div key={d.id} className="flex items-center gap-4 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                    <div key={d.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
+                      {d.date && <span className="text-gray-500">{fmt(d.date)}</span>}
                       <span>Ch: {d.challanNo}</span>
                       <span className="font-semibold">{d.than} than</span>
                       {d.billNo && <span>Bill: {d.billNo}</span>}
                       {d.rate && <span>@ &#8377;{d.rate}</span>}
+                      {d.than && d.rate && <span className="text-gray-500">= &#8377;{(d.than * d.rate).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>}
                     </div>
                   ))}
                 </div>

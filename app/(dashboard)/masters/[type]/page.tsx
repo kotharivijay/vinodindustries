@@ -11,7 +11,7 @@ const LABELS: Record<string, string> = {
   transports: 'Transports',
 }
 
-const PREDEFINED_TAGS = ['Pali PC Job', 'Local', 'Direct', 'Commission']
+const PREDEFINED_TAGS = ['Pali PC Job', 'Job Party', 'Local', 'Direct', 'Commission']
 
 interface Item { id: number; name: string; tag?: string | null; createdAt: string }
 interface Suggestion { id: number; name: string; score: number }

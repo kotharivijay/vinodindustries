@@ -655,6 +655,7 @@ model LotCarryForwardDespatch {
   billNo    String?
   rate      Float?
   setNo     Int               // 1, 2, 3, or 4
+  date      DateTime?
 }
 
 // ─── Tally Integration ──────────────────────────────────────────────────────

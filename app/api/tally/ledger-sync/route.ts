@@ -51,7 +51,7 @@ function parseLedgers(xml: string) {
   return ledgers
 }
 
-async function updateMasterSheet(ledgers: any[]): Promise<{ debtorCount: number } | null> {
+async function updateMasterSheet(ledgers: any[]): Promise<{ debtors: string[] } | null> {
   const { GoogleAuth } = await import('google-auth-library')
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   if (!keyJson) return null
@@ -115,17 +115,16 @@ async function updateMasterSheet(ledgers: any[]): Promise<{ debtorCount: number 
     body: JSON.stringify({ values: rows }),
   })
 
-  return { debtorCount: debtors.length }
+  return { debtors }
 }
 
-async function updateDebtorsDropdown(debtorCount: number) {
+async function updateDebtorsDropdown(debtors: string[]) {
   const { GoogleAuth } = await import('google-auth-library')
   const keyJson = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   if (!keyJson) return
   const sheetId = (process.env.GOOGLE_SHEET_ID || '').trim()
   const grayName = (process.env.GOOGLE_SHEET_NAME || 'INWERD GRAY').trim()
-  const masterName = 'Master Sheet'
-  if (!sheetId || debtorCount === 0) return
+  if (!sheetId || debtors.length === 0) return
 
   const credentials = JSON.parse(keyJson)
   const auth = new GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets'] })
@@ -135,17 +134,15 @@ async function updateDebtorsDropdown(debtorCount: number) {
 
   const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`
 
-  // Find both sheets' numeric IDs
+  // Find sheet numeric ID
   const metaRes = await fetch(baseUrl, { headers: { Authorization: `Bearer ${token}` } })
   const meta = await metaRes.json()
   const gray = meta.sheets?.find((s: any) => s.properties?.title === grayName)
-  const master = meta.sheets?.find((s: any) => s.properties?.title === masterName)
-  if (!gray || !master) return
+  if (!gray) return
   const grayGid = gray.properties.sheetId
-  const masterGid = master.properties.sheetId
 
-  // Use ONE_OF_RANGE pointing to Master Sheet column L — Android-compatible
-  // Master Sheet L2:L{debtorCount+1} contains the debtor names
+  // Use ONE_OF_LIST with inline values — renders as CHIP-style dropdown,
+  // which is searchable in the Google Sheets Android/iOS app (unlike ONE_OF_RANGE).
   await fetch(`${baseUrl}:batchUpdate`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -161,10 +158,8 @@ async function updateDebtorsDropdown(debtorCount: number) {
           },
           rule: {
             condition: {
-              type: 'ONE_OF_RANGE',
-              values: [{
-                userEnteredValue: `='${masterName}'!$L$2:$L$${debtorCount + 1}`,
-              }],
+              type: 'ONE_OF_LIST',
+              values: debtors.map(name => ({ userEnteredValue: name })),
             },
             showCustomUi: true,
             strict: false,
@@ -254,7 +249,7 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
   // Update Google Sheet with all KSI ledgers + dropdown source range
   try {
     const result = await updateMasterSheet(allLedgers)
-    if (result) await updateDebtorsDropdown(result.debtorCount)
+    if (result) await updateDebtorsDropdown(result.debtors)
   } catch (e: any) {
     console.error('Sheet update failed:', e?.message || e)
   }

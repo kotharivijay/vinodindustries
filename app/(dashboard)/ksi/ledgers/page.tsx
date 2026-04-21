@@ -55,7 +55,7 @@ export default function KSILedgerMasterPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkTagging, setBulkTagging] = useState(false)
 
-  const DEFAULT_TAGS = ['Dyes & Auxiliary', 'Machinery', 'Packing Material', 'Fuel', 'Transport', 'Employee', 'Customer', 'Pali PC Job']
+  const DEFAULT_TAGS = ['Dyes & Auxiliary', 'Machinery', 'Packing Material', 'Fuel', 'Transport', 'Employee', 'Customer', 'Pali PC Job', 'Job Party']
 
   function toggleSelect(id: number) {
     setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -126,7 +126,7 @@ export default function KSILedgerMasterPage() {
     setSyncLog(['▶ Syncing ledgers from Tally...'])
     setShowSyncLog(true)
     try {
-      const res = await fetch(`/api/tally/sync-stream?firm=${FIRM}`)
+      const res = await fetch(`/api/tally/ledger-sync`)
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
       if (!reader) throw new Error('No stream')
