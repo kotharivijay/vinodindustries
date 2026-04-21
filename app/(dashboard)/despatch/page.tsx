@@ -7,6 +7,7 @@ import useSWR from 'swr'
 import DespatchImportModal from './DespatchImportModal'
 import DespatchSyncModal from './DespatchSyncModal'
 import NewSheetSyncModal from './NewSheetSyncModal'
+import UpdateFromSheetModal from './UpdateFromSheetModal'
 import BackButton from '../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -95,6 +96,7 @@ export default function DespatchListPage() {
   const [showImport, setShowImport] = useState(false)
   const [showSync, setShowSync] = useState(false)
   const [showNewSheetSync, setShowNewSheetSync] = useState(false)
+  const [showUpdateFromSheet, setShowUpdateFromSheet] = useState(false)
   const [showReset, setShowReset] = useState(false)
   const [resetConfirmText, setResetConfirmText] = useState('')
   const [resetting, setResetting] = useState(false)
@@ -278,6 +280,12 @@ export default function DespatchListPage() {
             className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700"
           >
             🔄 Sync New Despatch
+          </button>
+          <button
+            onClick={() => setShowUpdateFromSheet(true)}
+            className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700"
+          >
+            📝 Update from Sheet
           </button>
           <Link href="/despatch/new" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
             + New Entry
@@ -612,6 +620,11 @@ export default function DespatchListPage() {
         open={showNewSheetSync}
         onClose={() => setShowNewSheetSync(false)}
         onImported={mutate}
+      />
+      <UpdateFromSheetModal
+        open={showUpdateFromSheet}
+        onClose={() => setShowUpdateFromSheet(false)}
+        onApplied={mutate}
       />
 
       {showReset && (
