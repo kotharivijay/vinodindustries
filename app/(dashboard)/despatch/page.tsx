@@ -63,12 +63,13 @@ interface StockSummaryRow {
   lastDate: string
 }
 
-type SortField = 'date' | 'challanNo' | 'party' | 'quality' | 'lotNo' | 'than' | 'rate' | 'pTotal' | 'lrNo'
+type SortField = 'id' | 'date' | 'challanNo' | 'party' | 'quality' | 'lotNo' | 'than' | 'rate' | 'pTotal' | 'lrNo'
 type SortDir = 'asc' | 'desc'
 type Tab = 'entries' | 'stock'
 
 function getValue(e: DespatchEntry, field: SortField): string | number {
   switch (field) {
+    case 'id': return e.id
     case 'date': return new Date(e.date).getTime()
     case 'challanNo': return e.challanNo
     case 'party': return e.party.name.toLowerCase()
@@ -111,7 +112,7 @@ export default function DespatchListPage() {
     else alert(data.error ?? 'Reset failed')
   }
   const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [sortField, setSortField] = useState<SortField>('date')
+  const [sortField, setSortField] = useState<SortField>('id')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [tab, setTab] = useState<Tab>('entries')
   const [stockSearch, setStockSearch] = useState('')
