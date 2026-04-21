@@ -403,7 +403,24 @@ export default function GreyListPage() {
             ) : (
               <>
                 {/* ── Mobile card view ── */}
-                <div className="block sm:hidden divide-y divide-gray-100">
+                <div className="block sm:hidden">
+                  <div className="flex items-center gap-1.5 px-3 py-2 text-xs bg-gray-50 dark:bg-gray-700/40 border-b border-gray-100 dark:border-gray-700">
+                    <span className="text-gray-500 dark:text-gray-400">Sort:</span>
+                    {([
+                      { field: 'date' as SortField, label: 'Date' },
+                      { field: 'lotNo' as SortField, label: 'Lot' },
+                      { field: 'party' as SortField, label: 'Party' },
+                    ]).map(({ field, label }) => (
+                      <button
+                        key={field}
+                        onClick={() => toggleSort(field)}
+                        className={`px-2 py-1 rounded font-medium transition ${sortField === field ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300' : 'text-gray-500 dark:text-gray-400'}`}
+                      >
+                        {label}{sortField === field ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {filtered.map((e) => (
                     <div key={e.id} className="p-4">
                       <div className="flex items-start justify-between mb-1.5">
@@ -448,6 +465,7 @@ export default function GreyListPage() {
                       )}
                     </div>
                   ))}
+                  </div>
                 </div>
 
                 {/* ── Desktop table ── */}
