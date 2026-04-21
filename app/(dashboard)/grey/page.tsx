@@ -407,6 +407,7 @@ export default function GreyListPage() {
                   <div className="flex items-center gap-1.5 px-3 py-2 text-xs bg-gray-50 dark:bg-gray-700/40 border-b border-gray-100 dark:border-gray-700">
                     <span className="text-gray-500 dark:text-gray-400">Sort:</span>
                     {([
+                      { field: 'sn' as SortField, label: 'SN' },
                       { field: 'date' as SortField, label: 'Date' },
                       { field: 'lotNo' as SortField, label: 'Lot' },
                       { field: 'party' as SortField, label: 'Party' },
