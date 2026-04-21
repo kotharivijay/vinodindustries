@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 
 interface VaultNotification {
@@ -23,7 +24,16 @@ interface DespatchNotification {
   type: 'despatch'
 }
 
-type AppNotification = VaultNotification | DespatchNotification
+interface OverflowNotification {
+  type: 'overflow'
+  lotNo: string
+  stock: number
+  grey: number
+  ob: number
+  overflow: { stage: string; than: number; excess: number }[]
+}
+
+type AppNotification = VaultNotification | DespatchNotification | OverflowNotification
 
 const ENTITY_ICONS: Record<string, string> = {
   company: '\u{1F3E2}',
@@ -39,14 +49,17 @@ export default function NotificationBell() {
 
   const fetchNotifications = async () => {
     try {
-      const [vaultRes, despatchRes] = await Promise.all([
+      const [vaultRes, despatchRes, overflowRes] = await Promise.all([
         fetch('/api/vault/notifications'),
         fetch('/api/despatch/notifications'),
+        fetch('/api/debug/stage-overflow'),
       ])
       const vaultData = vaultRes.ok ? await vaultRes.json() : []
       const despatchData = despatchRes.ok ? await despatchRes.json() : []
+      const overflowData = overflowRes.ok ? await overflowRes.json() : []
 
       const all: AppNotification[] = [
+        ...(Array.isArray(overflowData) ? overflowData.map((n: any) => ({ ...n, type: 'overflow' as const })) : []),
         ...(Array.isArray(vaultData) ? vaultData.map((n: any) => ({ ...n, type: 'vault' as const })) : []),
         ...(Array.isArray(despatchData) ? despatchData.map((n: any) => ({ ...n, type: 'despatch' as const })) : []),
       ]
@@ -72,12 +85,15 @@ export default function NotificationBell() {
   }, [])
 
   async function dismiss(n: AppNotification) {
+    if (n.type === 'overflow') return // anomalies are live-computed, can't dismiss
     if (n.type === 'vault') {
       await fetch(`/api/vault/notifications/${n.id}`, { method: 'PATCH' })
     } else {
       await fetch(`/api/despatch/notifications/${n.id}`, { method: 'PATCH' })
     }
-    setNotifications(prev => prev.filter(x => !(x.id === n.id && x.type === n.type)))
+    setNotifications(prev => prev.filter(x =>
+      !(x.type !== 'overflow' && (x as any).id === (n as any).id && x.type === n.type)
+    ))
   }
 
   function formatDate(dateStr: string): string {
@@ -125,6 +141,30 @@ export default function NotificationBell() {
           ) : (
             <div className="divide-y divide-gray-100">
               {notifications.map(n => {
+                if (n.type === 'overflow') {
+                  const ov = n as OverflowNotification
+                  const stages = ov.overflow.map(o => `${o.stage}=${o.than}`).join(', ')
+                  const maxExcess = Math.max(...ov.overflow.map(o => o.excess))
+                  return (
+                    <Link
+                      key={`overflow-${ov.lotNo}`}
+                      href={`/lot/${encodeURIComponent(ov.lotNo)}`}
+                      onClick={() => setOpen(false)}
+                      className="block p-3 hover:bg-gray-50 transition"
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg shrink-0 mt-0.5">{'\u26A0\uFE0F'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-red-700 truncate">{ov.lotNo} <span className="text-xs font-normal text-gray-400">stock {ov.stock}</span></p>
+                          <p className="text-xs text-gray-600 truncate">{stages}</p>
+                          <span className="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded font-semibold bg-red-50 text-red-600">
+                            +{maxExcess} excess
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  )
+                }
                 if (n.type === 'vault') {
                   const vn = n as VaultNotification
                   const icon = ENTITY_ICONS[vn.entityType] || '\u{1F4C4}'
