@@ -29,11 +29,11 @@ interface ImportRow {
 interface Summary { total: number; ready: number; missing_masters: number; missing_lot: number; duplicate: number; skipped: number }
 
 const STATUS_STYLE: Record<RowStatus, string> = {
-  ready: 'bg-green-100 text-green-700',
-  missing_masters: 'bg-yellow-100 text-yellow-700',
-  missing_lot: 'bg-red-100 text-red-700',
-  duplicate: 'bg-gray-100 text-gray-500',
-  skipped: 'bg-orange-100 text-orange-600',
+  ready: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  missing_masters: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+  missing_lot: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  duplicate: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
+  skipped: 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300',
 }
 const STATUS_LABEL: Record<RowStatus, string> = {
   ready: 'Ready',
@@ -174,12 +174,12 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b">
-          <h2 className="text-lg font-bold text-gray-800">Import from Google Sheet</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">Import from Google Sheet</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none">&times;</button>
         </div>
 
         <div className="flex-1 overflow-auto px-6 py-4">
@@ -188,13 +188,13 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
           {step === 'idle' && (
             <div className="text-center py-12">
               <div className="text-5xl mb-4">📊</div>
-              <p className="text-gray-600 mb-2">Fetch data from <strong>Inwerd Gray 2026-27</strong></p>
-              <p className="text-gray-400 text-sm mb-6">New rows will be previewed before import</p>
+              <p className="text-gray-600 dark:text-gray-300 mb-2">Fetch data from <strong>Inwerd Gray 2026-27</strong></p>
+              <p className="text-gray-400 dark:text-gray-500 text-sm mb-6">New rows will be previewed before import</p>
               <button onClick={fetchSheet} className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-indigo-700">
                 Fetch Sheet Data
               </button>
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 mt-4 text-sm text-left">
+                <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 rounded-lg p-3 mt-4 text-sm text-left">
                   {error}
                 </div>
               )}
@@ -203,7 +203,7 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
 
           {/* Loading */}
           {step === 'loading' && (
-            <div className="text-center py-12 text-gray-500">
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               <div className="animate-spin text-4xl mb-4">⟳</div>
               Fetching data from Google Sheets...
             </div>
@@ -215,11 +215,11 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
               {/* Summary bar */}
               <div className="grid grid-cols-5 gap-3 mb-4">
                 {[
-                  { label: 'Ready to Import', value: summary.ready, color: 'bg-green-50 text-green-700 border-green-200' },
-                  { label: 'Missing Masters', value: summary.missing_masters, color: 'bg-yellow-50 text-yellow-700 border-yellow-200' },
-                  { label: 'Missing Lot No', value: summary.missing_lot, color: 'bg-red-50 text-red-700 border-red-200' },
-                  { label: 'Duplicate (skip)', value: summary.duplicate, color: 'bg-gray-50 text-gray-500 border-gray-200' },
-                  { label: 'Skipped (reason)', value: summary.skipped, color: 'bg-orange-50 text-orange-600 border-orange-200' },
+                  { label: 'Ready to Import', value: summary.ready, color: 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800' },
+                  { label: 'Missing Masters', value: summary.missing_masters, color: 'bg-yellow-50 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800' },
+                  { label: 'Missing Lot No', value: summary.missing_lot, color: 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800' },
+                  { label: 'Duplicate (skip)', value: summary.duplicate, color: 'bg-gray-50 dark:bg-gray-700/40 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700' },
+                  { label: 'Skipped (reason)', value: summary.skipped, color: 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-300 border-orange-200 dark:border-orange-800' },
                 ].map((s) => (
                   <div key={s.label} className={`border rounded-lg p-3 text-center ${s.color}`}>
                     <div className="text-2xl font-bold">{s.value}</div>
@@ -230,10 +230,10 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
 
               {/* Auto-create button */}
               {summary.missing_masters > 0 && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
+                <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-yellow-800">⚠ {summary.missing_masters} rows have missing masters (Party / Quality / Weaver / Transport)</p>
-                    <p className="text-xs text-yellow-600 mt-0.5">Click to auto-create all missing entries in master tables</p>
+                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">⚠ {summary.missing_masters} rows have missing masters (Party / Quality / Weaver / Transport)</p>
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-0.5">Click to auto-create all missing entries in master tables</p>
                   </div>
                   <button onClick={autoCreateMasters} className="bg-yellow-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-yellow-600 whitespace-nowrap ml-4">
                     Auto-create Masters
@@ -253,9 +253,9 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
 
               {/* Missing lot notification */}
               {summary.missing_lot > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4">
-                  <p className="text-sm font-medium text-red-800">🔴 {summary.missing_lot} rows have no Lot No — these cannot be imported.</p>
-                  <p className="text-xs text-red-600 mt-0.5">Update the Google Sheet with Lot Nos, then re-fetch.</p>
+                <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg px-4 py-3 mb-4">
+                  <p className="text-sm font-medium text-red-800 dark:text-red-200">🔴 {summary.missing_lot} rows have no Lot No — these cannot be imported.</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">Update the Google Sheet with Lot Nos, then re-fetch.</p>
                 </div>
               )}
 
@@ -265,8 +265,8 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                 const allHidden = ALL_STATUSES.every(s => hideStatus.has(s))
                 return (
                   <div className="flex flex-wrap gap-3 mb-3">
-                    <span className="text-xs text-gray-500 font-medium self-center">Hide:</span>
-                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-600">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 font-medium self-center">Hide:</span>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-gray-600 dark:text-gray-300">
                       <input
                         type="checkbox"
                         checked={allHidden}
@@ -274,7 +274,7 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                       />
                       All
                     </label>
-                    <span className="text-gray-300 self-center">|</span>
+                    <span className="text-gray-300 dark:text-gray-600 self-center">|</span>
                     {ALL_STATUSES.map((s) => (
                       <label key={s} className="flex items-center gap-1.5 cursor-pointer text-xs">
                         <input
@@ -290,9 +290,9 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
               })()}
 
               {/* Preview table */}
-              <div className="overflow-auto border rounded-lg">
+              <div className="overflow-auto border border-gray-200 dark:border-gray-700 rounded-lg">
                 <table className="w-full text-xs">
-                  <thead className="bg-gray-50 border-b sticky top-0">
+                  <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700 sticky top-0 text-gray-600 dark:text-gray-300">
                     <tr>
                       <th className="px-3 py-2 text-left w-8">
                         <input type="checkbox"
@@ -319,7 +319,7 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                       .sort(([,a],[,b]) => (a.status === 'skipped' ? 1 : 0) - (b.status === 'skipped' ? 1 : 0))
                       .filter(([,row]) => !hideStatus.has(row.status))
                       .map(([i, row]) => (
-                      <tr key={i} className={`border-b last:border-0 ${row.status === 'duplicate' || row.status === 'skipped' ? 'opacity-40' : ''}`}>
+                      <tr key={i} className={`border-b last:border-0 border-gray-100 dark:border-gray-700 text-gray-700 dark:text-gray-200 ${row.status === 'duplicate' || row.status === 'skipped' ? 'opacity-40' : ''}`}>
                         <td className="px-3 py-1.5">
                           <input
                             type="checkbox"
@@ -333,17 +333,17 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
                             {STATUS_LABEL[row.status]}
                           </span>
                         </td>
-                        <td className="px-3 py-1.5 text-gray-600">{row.sn ?? '—'}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{row.date || '—'}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{row.challanNo ?? '—'}</td>
+                        <td className="px-3 py-1.5 text-gray-600 dark:text-gray-400">{row.sn ?? '—'}</td>
+                        <td className="px-3 py-1.5 text-gray-600 dark:text-gray-400">{row.date || '—'}</td>
+                        <td className="px-3 py-1.5 text-gray-600 dark:text-gray-400">{row.challanNo ?? '—'}</td>
                         <td className="px-3 py-1.5 font-medium">{row.partyName || '—'}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{row.qualityName || '—'}</td>
+                        <td className="px-3 py-1.5 text-gray-600 dark:text-gray-400">{row.qualityName || '—'}</td>
                         <td className="px-3 py-1.5 text-right font-medium">{row.than || '—'}</td>
-                        <td className="px-3 py-1.5 text-gray-600">{row.lotNo || <span className="text-red-500">—</span>}</td>
+                        <td className="px-3 py-1.5 text-gray-600 dark:text-gray-400">{row.lotNo || <span className="text-red-500">—</span>}</td>
                         <td className="px-3 py-1.5">
                           {row.status === 'skipped'
-                            ? <span className="text-orange-600 font-medium">{row.skipReason}</span>
-                            : <span className="text-yellow-700">{row.missingMasters.join(', ')}</span>
+                            ? <span className="text-orange-600 dark:text-orange-400 font-medium">{row.skipReason}</span>
+                            : <span className="text-yellow-700 dark:text-yellow-300">{row.missingMasters.join(', ')}</span>
                           }
                         </td>
                       </tr>
@@ -356,7 +356,7 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
 
           {/* Importing */}
           {step === 'importing' && (
-            <div className="text-center py-12 text-gray-500">
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               <div className="animate-spin text-4xl mb-4">⟳</div>
               Importing {readySelected} rows...
             </div>
@@ -367,14 +367,14 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
             <div className="py-8">
               <div className="text-center mb-4">
                 <div className="text-5xl mb-3">{result.imported > 0 ? '✅' : '⚠️'}</div>
-                <p className="text-2xl font-bold text-gray-800">{result.imported} rows imported</p>
+                <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{result.imported} rows imported</p>
               </div>
               {result.errors.length > 0 && (
-                <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-red-700 mb-2">{result.errors.length} rows failed:</p>
+                <div className="mt-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-300 mb-2">{result.errors.length} rows failed:</p>
                   <div className="max-h-48 overflow-auto space-y-1">
                     {result.errors.map((e: any, i: number) => (
-                      <p key={i} className="text-xs text-red-600">SN {e.sn ?? '?'}: {e.error}</p>
+                      <p key={i} className="text-xs text-red-600 dark:text-red-400">SN {e.sn ?? '?'}: {e.error}</p>
                     ))}
                   </div>
                 </div>
@@ -384,8 +384,8 @@ export default function GreyImportModal({ onClose, onImported }: { onClose: () =
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t flex justify-between items-center">
-          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+          <button onClick={onClose} className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
             {step === 'done' ? 'Close' : 'Cancel'}
           </button>
           {step === 'preview' && (
