@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { logDelete } from '@/lib/deleteLog'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -146,6 +147,17 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       folding: rows.map((r: any) => ({ slipNo: r.slipNo, than: r.than, lotNo: r.lotEntry?.lotNo })),
     }, { status: 409 })
   }
+
+  const fe = await db.finishEntry.findUnique({
+    where: { id: entryId },
+    select: { slipNo: true, lotNo: true, than: true, lots: { select: { lotNo: true, than: true } } },
+  })
+  const lotList = fe?.lots?.length ? fe.lots.map((l: any) => l.lotNo).join(', ') : (fe?.lotNo ?? null)
+  await logDelete({
+    module: 'finish', slipType: 'FP',
+    slipNo: fe?.slipNo ?? null, lotNo: lotList, than: fe?.than ?? null, recordId: entryId,
+    details: { lots: fe?.lots ?? null, cascadedFoldingReceipts: linkedFRs, force },
+  })
 
   try {
     await db.finishEntry.delete({ where: { id: entryId } })

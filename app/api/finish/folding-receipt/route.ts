@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { logDelete } from '@/lib/deleteLog'
 
 const db = prisma as any
 
@@ -95,6 +96,16 @@ export async function DELETE(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await req.json()
-  await db.foldingReceipt.delete({ where: { id: parseInt(id) } })
+  const recId = parseInt(id)
+  const fr = await db.foldingReceipt.findUnique({
+    where: { id: recId },
+    select: { slipNo: true, than: true, lotEntry: { select: { lotNo: true, entry: { select: { slipNo: true } } } } },
+  })
+  await logDelete({
+    module: 'folding-receipt', slipType: 'FR',
+    slipNo: fr?.slipNo ?? null, lotNo: fr?.lotEntry?.lotNo ?? null, than: fr?.than ?? null, recordId: recId,
+    details: { fpSlipNo: fr?.lotEntry?.entry?.slipNo ?? null },
+  })
+  await db.foldingReceipt.delete({ where: { id: recId } })
   return NextResponse.json({ ok: true })
 }

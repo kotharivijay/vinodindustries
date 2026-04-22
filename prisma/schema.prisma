@@ -658,6 +658,24 @@ model LotCarryForwardDespatch {
   date      DateTime?
 }
 
+// ─── Delete audit log ────────────────────────────────────────────────────────
+
+model DeleteLog {
+  id         Int      @id @default(autoincrement())
+  module     String   // 'grey' | 'despatch' | 'finish' | 'dyeing' | 'fold' | 'folding-receipt' | 'packing' | 'reprocess'
+  slipType   String?  // 'FP' | 'FR' | 'Fold' | 'Dye' | 'Grey' | 'Despatch' | 'Packing'
+  slipNo     String?  // challan / FP / FR / fold number etc.
+  lotNo      String?  // primary lot (or comma-joined list)
+  than       Int?     // primary than if applicable
+  recordId   Int?     // the deleted row's primary id
+  userEmail  String
+  details    Json?    // extra context (e.g. full lot list, child FRs etc.)
+  deletedAt  DateTime @default(now())
+
+  @@index([module, deletedAt])
+  @@index([lotNo])
+}
+
 // ─── Tally Integration ──────────────────────────────────────────────────────
 
 model TallyLedger {

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { logDelete } from '@/lib/deleteLog'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -108,6 +109,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
-  await prisma.dyeingEntry.delete({ where: { id: parseInt(id) } })
+  const entryId = parseInt(id)
+  const db = prisma as any
+  const dye = await db.dyeingEntry.findUnique({
+    where: { id: entryId },
+    select: { slipNo: true, lotNo: true, than: true, lots: { select: { lotNo: true, than: true } } },
+  })
+  const lotList = dye?.lots?.length ? dye.lots.map((l: any) => l.lotNo).join(', ') : (dye?.lotNo ?? null)
+  await logDelete({
+    module: 'dyeing', slipType: 'Dye',
+    slipNo: dye?.slipNo ?? null, lotNo: lotList, than: dye?.than ?? null, recordId: entryId,
+    details: { lots: dye?.lots ?? null },
+  })
+  await prisma.dyeingEntry.delete({ where: { id: entryId } })
   return NextResponse.json({ ok: true })
 }

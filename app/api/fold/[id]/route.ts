@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { logDelete } from '@/lib/deleteLog'
 
 // GET /api/fold/[id]
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -152,6 +153,19 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     return NextResponse.json({ error: `Cannot delete — ${dyedBatches.length} batch(es) have dyeing entries: ${details}` }, { status: 400 })
   }
 
+  const fp = await db.foldProgram.findUnique({
+    where: { id },
+    select: { foldNo: true, date: true, batches: { select: { batchNo: true, lots: { select: { lotNo: true, than: true } } } } },
+  })
+  const allLots = (fp?.batches ?? []).flatMap((b: any) => b.lots)
+  const totalThan = allLots.reduce((s: number, l: any) => s + (l.than || 0), 0)
+  await logDelete({
+    module: 'fold', slipType: 'Fold',
+    slipNo: fp?.foldNo ?? null,
+    lotNo: allLots.map((l: any) => l.lotNo).join(', ') || null,
+    than: totalThan || null, recordId: id,
+    details: { batches: fp?.batches ?? null },
+  })
   await db.foldProgram.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

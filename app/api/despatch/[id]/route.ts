@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { logDelete } from '@/lib/deleteLog'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -133,6 +134,18 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
-  await prisma.despatchEntry.delete({ where: { id: parseInt(id) } })
+  const entryId = parseInt(id)
+  const db = prisma as any
+  const entry = await db.despatchEntry.findUnique({
+    where: { id: entryId },
+    select: { challanNo: true, lotNo: true, than: true, despatchLots: { select: { lotNo: true, than: true } } },
+  })
+  const lotList = entry?.despatchLots?.length ? entry.despatchLots.map((l: any) => l.lotNo).join(', ') : (entry?.lotNo ?? null)
+  await logDelete({
+    module: 'despatch', slipType: 'Despatch',
+    slipNo: entry?.challanNo ?? null, lotNo: lotList, than: entry?.than ?? null, recordId: entryId,
+    details: { lots: entry?.despatchLots ?? null },
+  })
+  await prisma.despatchEntry.delete({ where: { id: entryId } })
   return NextResponse.json({ ok: true })
 }

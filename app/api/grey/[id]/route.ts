@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { logDelete } from '@/lib/deleteLog'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -55,6 +56,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
-  await prisma.greyEntry.delete({ where: { id: parseInt(id) } })
+  const entryId = parseInt(id)
+  const entry = await prisma.greyEntry.findUnique({ where: { id: entryId }, select: { challanNo: true, lotNo: true, than: true } })
+  await logDelete({
+    module: 'grey', slipType: 'Grey', slipNo: entry?.challanNo ?? null,
+    lotNo: entry?.lotNo ?? null, than: entry?.than ?? null, recordId: entryId,
+  })
+  await prisma.greyEntry.delete({ where: { id: entryId } })
   return NextResponse.json({ ok: true })
 }
