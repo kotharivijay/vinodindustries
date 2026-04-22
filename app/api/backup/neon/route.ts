@@ -11,26 +11,46 @@ export const maxDuration = 120
 // createMany can't write the `tags` array on TallyLedger and some other fields
 // unsupported across Prisma 5 — production-flow tables only here.
 const TABLES: [string, string][] = [
+  // Masters (no FKs)
   ['party', 'Party'],
   ['quality', 'Quality'],
   ['transport', 'Transport'],
   ['weaver', 'Weaver'],
+  ['dyeingMachine', 'DyeingMachine'],
+  ['dyeingOperator', 'DyeingOperator'],
+  ['shade', 'Shade'],
+
+  // Opening balance hierarchy
   ['lotOpeningBalance', 'LotOpeningBalance'],
   ['lotOpeningBalanceAllocation', 'LotOpeningBalanceAllocation'],
   ['lotCarryForwardDespatch', 'LotCarryForwardDespatch'],
+
+  // Grey (refs Party/Quality/Transport/Weaver)
   ['greyEntry', 'GreyEntry'],
+
+  // Despatch
   ['despatchEntry', 'DespatchEntry'],
   ['despatchEntryLot', 'DespatchEntryLot'],
-  ['dyeingEntry', 'DyeingEntry'],
-  ['dyeingEntryLot', 'DyeingEntryLot'],
+
+  // Fold MUST be before Dyeing — DyeingEntry.foldBatchId → FoldBatch
   ['foldProgram', 'FoldProgram'],
   ['foldBatch', 'FoldBatch'],
   ['foldBatchLot', 'FoldBatchLot'],
+
+  // Dyeing (refs FoldBatch + DyeingMachine + DyeingOperator)
+  ['dyeingEntry', 'DyeingEntry'],
+  ['dyeingEntryLot', 'DyeingEntryLot'],
+
+  // Finish + folding receipts
   ['finishEntry', 'FinishEntry'],
   ['finishEntryLot', 'FinishEntryLot'],
   ['foldingReceipt', 'FoldingReceipt'],
+
+  // Packing
   ['packingEntry', 'PackingEntry'],
   ['packingLot', 'PackingLot'],
+
+  // Audit
   ['deleteLog', 'DeleteLog'],
 ]
 
