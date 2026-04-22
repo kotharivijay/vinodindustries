@@ -122,13 +122,35 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
+  const entryId = parseInt(id)
   const db = prisma as any
+
+  const force = req.nextUrl.searchParams.get('force') === '1'
+
+  // Block delete if this FP has any FoldingReceipts attached (protects against
+  // orphaning folding receipts — FP 190 / FR 6918 incident).
+  const linkedFRs = await db.foldingReceipt.count({ where: { lotEntry: { entryId } } })
+  if (linkedFRs > 0 && !force) {
+    const rows = await db.foldingReceipt.findMany({
+      where: { lotEntry: { entryId } },
+      select: { slipNo: true, than: true, lotEntry: { select: { lotNo: true } } },
+      take: 20,
+    })
+    return NextResponse.json({
+      error: 'FP_HAS_FOLDING_RECEIPTS',
+      message: `Cannot delete — ${linkedFRs} folding receipt(s) are linked to this FP. Delete those first, or pass ?force=1 to cascade.`,
+      folding: rows.map((r: any) => ({ slipNo: r.slipNo, than: r.than, lotNo: r.lotEntry?.lotNo })),
+    }, { status: 409 })
+  }
+
   try {
-    await db.finishEntry.delete({ where: { id: parseInt(id) } })
-  } catch {}
-  return NextResponse.json({ ok: true })
+    await db.finishEntry.delete({ where: { id: entryId } })
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || 'Delete failed' }, { status: 500 })
+  }
+  return NextResponse.json({ ok: true, cascadedFoldingReceipts: linkedFRs })
 }
