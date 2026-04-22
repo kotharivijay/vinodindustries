@@ -469,17 +469,25 @@ export default function FinishStockPage() {
     })))
     setEditNotes(entry.notes ?? '')
     setEditLots(entry.lots.map(l => {
-      const slipThans = l.dyeSlips?.length
+      const dyeSlips = l.dyeSlips?.length
         ? l.dyeSlips.map((ds: any) => ({
             slipNo: ds.slipNo,
             than: String(ds.dyedThan || 0),
             shade: [ds.shadeName, ds.shadeDesc].filter(Boolean).join(' — '),
           }))
         : []
-      // Use sum of slipThans if available (fixes mismatch when DB value is stale)
-      const slipSum = slipThans.length > 0 ? slipThans.reduce((s, st) => s + (parseInt(st.than) || 0), 0) : 0
-      const than = slipSum > 0 ? String(slipSum) : String(l.than)
-      return { lotNo: l.lotNo, than, meter: l.meter != null ? String(l.meter) : '', slipThans }
+      const savedThan = l.than ?? 0
+      const dyeSum = dyeSlips.reduce((s, st) => s + (parseInt(st.than) || 0), 0)
+      // Only show per-slip breakdown when it still matches the saved total.
+      // Otherwise the user has deliberately set a different value — trust the
+      // DB, hide the (now outdated) breakdown so it doesn't re-override on save.
+      const useBreakdown = dyeSlips.length > 0 && dyeSum === savedThan
+      return {
+        lotNo: l.lotNo,
+        than: String(savedThan),
+        meter: l.meter != null ? String(l.meter) : '',
+        slipThans: useBreakdown ? dyeSlips : [],
+      }
     }))
     setEditChemicals(entry.chemicals.map(c => ({
       name: c.name,
