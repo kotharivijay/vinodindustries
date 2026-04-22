@@ -59,11 +59,36 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     })
 
-    await db.finishEntryLot.deleteMany({ where: { entryId } })
-    if (lots.length > 0) {
-      await db.finishEntryLot.createMany({
-        data: lots.map((l: any) => ({ entryId, lotNo: l.lotNo, than: l.than, meter: l.meter })),
-      })
+    // Reconcile lots without cascading FoldingReceipts.
+    // Match existing FELs to incoming lots by lotNo (case-insensitive):
+    //   - existing + incoming → UPDATE in place (preserves id, keeps FRs)
+    //   - existing but not incoming → DELETE (cascade allowed, user removed lot)
+    //   - incoming but not existing → CREATE new FEL
+    const existingFels = await db.finishEntryLot.findMany({ where: { entryId } })
+    const existingByLot = new Map<string, any>()
+    for (const fel of existingFels) existingByLot.set(fel.lotNo.toLowerCase().trim(), fel)
+
+    const incomingKeys = new Set<string>()
+    for (const l of lots) {
+      const key = l.lotNo.toLowerCase().trim()
+      incomingKeys.add(key)
+      const match = existingByLot.get(key)
+      if (match) {
+        await db.finishEntryLot.update({
+          where: { id: match.id },
+          data: { lotNo: l.lotNo, than: l.than, meter: l.meter },
+        })
+      } else {
+        await db.finishEntryLot.create({
+          data: { entryId, lotNo: l.lotNo, than: l.than, meter: l.meter },
+        })
+      }
+    }
+    // Delete FELs whose lotNo is no longer in the payload.
+    for (const fel of existingFels) {
+      if (!incomingKeys.has(fel.lotNo.toLowerCase().trim())) {
+        await db.finishEntryLot.delete({ where: { id: fel.id } })
+      }
     }
 
     await db.finishSlipChemical.deleteMany({ where: { entryId } })
