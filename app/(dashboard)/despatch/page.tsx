@@ -449,9 +449,12 @@ export default function DespatchListPage() {
                           <button onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="text-red-400 text-xs font-medium">{deletingId === e.id ? '...' : 'Del'}</button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{e.party?.name ?? '-'}</p>
-                        {e.isLastYear && <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded font-medium">Last Year</span>}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{e.party?.name ?? '-'}</p>
+                          {e.isLastYear && <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded font-medium">Last Year</span>}
+                        </div>
+                        <span className="text-xs font-bold text-orange-700 dark:text-orange-400 shrink-0">{lots ? lots.reduce((s, l) => s + l.than, 0) : e.than}T</span>
                       </div>
                       {lots ? (
                         <div className="mt-1.5 space-y-1">
