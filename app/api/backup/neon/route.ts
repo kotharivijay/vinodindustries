@@ -31,6 +31,8 @@ const TABLES: [string, string][] = [
   // Despatch
   ['despatchEntry', 'DespatchEntry'],
   ['despatchEntryLot', 'DespatchEntryLot'],
+  ['despatchChangeLog', 'DespatchChangeLog'],
+  ['despatchNotification', 'DespatchNotification'],
 
   // Fold MUST be before Dyeing — DyeingEntry.foldBatchId → FoldBatch
   ['foldProgram', 'FoldProgram'],
