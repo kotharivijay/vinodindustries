@@ -11,14 +11,20 @@ export async function GET() {
   const db = prisma as any
 
   // Fetch everything we need in parallel
-  const [greyEntries, obBalances, despatches, foldBatchLots] = await Promise.all([
+  const [greyEntries, obBalances, despatchesParent, despatchLotRows, foldBatchLots] = await Promise.all([
     prisma.greyEntry.findMany({
       select: { lotNo: true, than: true, weight: true, grayMtr: true, date: true, challanNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
     }),
     db.lotOpeningBalance.findMany({
       include: { allocations: true },
     }),
+    // Legacy single-lot despatches (no children) — use parent.lotNo + parent.than
     prisma.despatchEntry.findMany({
+      where: { despatchLots: { none: {} } },
+      select: { lotNo: true, than: true },
+    }),
+    // Multi-lot despatches — child rows hold the per-lot than
+    prisma.despatchEntryLot.findMany({
       select: { lotNo: true, than: true },
     }),
     db.foldBatchLot.findMany({
@@ -26,9 +32,13 @@ export async function GET() {
     }),
   ])
 
-  // Sum despatched than per lot (lowercase key)
+  // Sum despatched than per lot (lowercase key) — combine legacy parents + child lot rows
   const despatchedMap = new Map<string, number>()
-  for (const d of despatches) {
+  for (const d of despatchesParent) {
+    const k = d.lotNo.toLowerCase().trim()
+    despatchedMap.set(k, (despatchedMap.get(k) || 0) + (d.than || 0))
+  }
+  for (const d of despatchLotRows) {
     const k = d.lotNo.toLowerCase().trim()
     despatchedMap.set(k, (despatchedMap.get(k) || 0) + (d.than || 0))
   }
