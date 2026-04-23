@@ -41,10 +41,25 @@ export function decodePetpoojaJwt(token: string): { iat?: number; exp?: number; 
   return JSON.parse(decoded)
 }
 
-export function attnHeaders(auth: PetpoojaAuth): Record<string, string> {
+/**
+ * payroll.petpooja.com/api/* uses Authorization: Bearer <token>
+ */
+export function payrollHeaders(auth: PetpoojaAuth): Record<string, string> {
   return {
+    'Accept': 'application/json, text/plain, */*',
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${auth.token}`,
-    'x-access-token': auth.token,
+  }
+}
+
+/**
+ * attendanceinfo.petpooja.com/* uses a plain `token: <value>` header
+ * (NOT Bearer). Confirmed from the live JS bundle.
+ */
+export function attnHeaders(auth: PetpoojaAuth): Record<string, string> {
+  return {
+    'Accept': 'application/json, text/plain, */*',
+    'Content-Type': 'application/json',
+    'token': auth.token,
   }
 }
