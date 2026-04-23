@@ -591,7 +591,7 @@ export default function FinishStockPage() {
 
   const handleEditSubmit = useCallback(async () => {
     if (!editingSlipId) return
-    if (!editSlipNo.trim()) { setEditError('FP No is required.'); return }
+    if (!editSlipNo.trim()) { setEditError('Finish_Prg No is required.'); return }
     setEditSaving(true)
     setEditError('')
 
@@ -1063,7 +1063,7 @@ export default function FinishStockPage() {
 
   const handleFinishSubmit = useCallback(async () => {
     if (selectedLots.size === 0) return
-    if (!finishSlipNo.trim()) { setFinishError('FP No is required.'); return }
+    if (!finishSlipNo.trim()) { setFinishError('Finish_Prg No is required.'); return }
     setFinishSaving(true)
     setFinishError('')
 
@@ -1230,7 +1230,7 @@ export default function FinishStockPage() {
     for (const [despNo, entries] of despMap) {
       text += `\n📦 *Desp Slip: ${despNo}*\n┌──────────────────────\n`
       for (const pe of entries) {
-        text += `│ *FP ${pe.slipNo}* · ${new Date(pe.date).toLocaleDateString('en-IN')}\n│\n`
+        text += `│ *Finish_Prg ${pe.slipNo}* · ${new Date(pe.date).toLocaleDateString('en-IN')}\n│\n`
         for (const l of pe.lots) {
           const recs = (l as any).foldingReceipts || []
           const received = recs.reduce((s: number, r: any) => s + r.than, 0)
@@ -1331,7 +1331,7 @@ export default function FinishStockPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-gray-200 dark:border-gray-700">
-        {([['report', 'Stock Report'], ['slips', 'Finish Prg'], ['packing', 'Folding Stock'], ['folding', 'Packing Stock'], ['register', 'Stock Register']] as [Tab, string][]).map(([key, label]) => (
+        {([['report', 'Stock Report'], ['slips', 'Finish_Prg'], ['packing', 'Folding Stock'], ['folding', 'Packing Stock'], ['register', 'Stock Register']] as [Tab, string][]).map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === key ? 'border-teal-600 text-teal-600 dark:text-teal-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
             {label}
@@ -1346,7 +1346,7 @@ export default function FinishStockPage() {
           <div className="mb-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div>
-                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">FP No</label>
+                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Finish_Prg No</label>
                 <input type="text" placeholder="Filter..."
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-400"
                   value={slipFilterSlip}
@@ -1369,7 +1369,7 @@ export default function FinishStockPage() {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] text-gray-400 dark:text-gray-500">Sort:</span>
-              {([['date', 'Date'], ['slipNo', 'FP'], ['lotNo', 'Lot'], ['party', 'Party'], ['than', 'Than']] as [SlipSortField, string][]).map(([f, label]) => (
+              {([['date', 'Date'], ['slipNo', 'Finish_Prg'], ['lotNo', 'Lot'], ['party', 'Party'], ['than', 'Than']] as [SlipSortField, string][]).map(([f, label]) => (
                 <button key={f} onClick={() => toggleSlipSort(f)}
                   className={`text-xs px-2 py-1 rounded border ${slipSortField === f ? 'bg-teal-100 dark:bg-teal-900/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300 font-medium' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/40'}`}>
                   {label} {slipSortField === f ? (slipSortDir === 'asc' ? '\u2191' : '\u2193') : ''}
@@ -1403,7 +1403,7 @@ export default function FinishStockPage() {
                       <div key={entry.id} className="bg-white dark:bg-gray-800 rounded-xl border-2 border-teal-300 dark:border-teal-700 shadow-lg overflow-hidden">
                         {/* FP Header */}
                         <div className="flex items-center justify-between px-4 py-3 bg-teal-50 dark:bg-teal-900/20 border-b border-teal-200 dark:border-teal-800">
-                          <span className="text-sm font-bold text-teal-600 dark:text-teal-400">Edit FP {entry.slipNo}</span>
+                          <span className="text-sm font-bold text-teal-600 dark:text-teal-400">Edit Finish_Prg {entry.slipNo}</span>
                           <button onClick={cancelEdit} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
                         </div>
                         <div className="p-5 space-y-4">
@@ -1420,7 +1420,7 @@ export default function FinishStockPage() {
                               className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">FP No</label>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Finish_Prg No</label>
                             <input type="number" value={editSlipNo} onChange={e => setEditSlipNo(e.target.value)}
                               className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                           </div>
@@ -1930,7 +1930,7 @@ export default function FinishStockPage() {
                           <button onClick={() => toggleFP(entry.id)} className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-teal-600 dark:text-teal-400">FP {entry.slipNo}</span>
+                                <span className="text-sm font-bold text-teal-600 dark:text-teal-400">Finish_Prg {entry.slipNo}</span>
                                 <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${statusBadge.cls}`}>{statusBadge.label}</span>
                                 <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(entry.date).toLocaleDateString('en-IN')}</span>
                               </div>
@@ -2126,7 +2126,7 @@ export default function FinishStockPage() {
                 }
 
                 async function handleEditFR(r: any) {
-                  const newThan = prompt(`Edit FR ${r.slipNo} — ${r.lotNo}\nCurrent: ${r.than}T\n\nNew than:`, String(r.than))
+                  const newThan = prompt(`Edit Folding_recpt ${r.slipNo} — ${r.lotNo}\nCurrent: ${r.than}T\n\nNew than:`, String(r.than))
                   if (newThan === null || newThan === String(r.than)) return
                   const newDate = prompt('Date (YYYY-MM-DD):', new Date(r.date).toISOString().split('T')[0])
                   if (newDate === null) return
@@ -2141,7 +2141,7 @@ export default function FinishStockPage() {
                 }
 
                 async function handleDeleteFR(r: any) {
-                  if (!confirm(`Delete FR ${r.slipNo} — ${r.lotNo} (${r.than}T)?`)) return
+                  if (!confirm(`Delete Folding_recpt ${r.slipNo} — ${r.lotNo} (${r.than}T)?`)) return
                   try {
                     await fetch('/api/finish/folding-receipt', {
                       method: 'DELETE',
@@ -2184,7 +2184,7 @@ export default function FinishStockPage() {
                         type="text"
                         value={frSearch}
                         onChange={e => setFrSearch(e.target.value)}
-                        placeholder="🔍 FR slip, lot, FP no..."
+                        placeholder="🔍 Folding_recpt slip, lot, Finish_Prg no..."
                         className="flex-1 min-w-[150px] border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400"
                       />
                       <button
@@ -2209,7 +2209,7 @@ export default function FinishStockPage() {
                       return (
                         <div key={slipNo} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
                           <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">FR {slipNo}</span>
+                            <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">Folding_recpt {slipNo}</span>
                             <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThan}T</span>
                           </div>
                           <div className="space-y-1">
@@ -2217,7 +2217,7 @@ export default function FinishStockPage() {
                               <div key={i} className="flex items-center justify-between text-xs bg-gray-50 dark:bg-gray-900 rounded-lg px-3 py-1.5">
                                 <div>
                                   <span className="font-medium text-gray-700 dark:text-gray-200">{r.lotNo}</span>
-                                  <span className="text-gray-400 ml-2">FP {r.fpSlipNo}</span>
+                                  <span className="text-gray-400 ml-2">Finish_Prg {r.fpSlipNo}</span>
                                   {r.despSlipNo && <span className="text-purple-500 ml-1">Desp: {r.despSlipNo}</span>}
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -2317,7 +2317,7 @@ export default function FinishStockPage() {
                                                                   <div className="space-y-0.5">
                                                                     {recs.map((r: any) => (
                                                                       <div key={r.id} className="flex items-center justify-between text-[10px] text-gray-500">
-                                                                        <span>FR {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
+                                                                        <span>Folding_recpt {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
                                                                         <span className="font-medium">{r.than}T</span>
                                                                       </div>
                                                                     ))}
@@ -2360,7 +2360,7 @@ export default function FinishStockPage() {
           <div className="mb-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div>
-                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">FP No</label>
+                <label className="block text-[10px] text-gray-400 dark:text-gray-500 mb-0.5">Finish_Prg No</label>
                 <input type="text" placeholder="Filter..."
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-teal-400"
                   value={filterSlip}
@@ -2431,7 +2431,7 @@ export default function FinishStockPage() {
                             <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                               <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                               <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                              <span className="text-teal-600 dark:text-teal-400 font-medium">FP {e.slipNo}</span>
+                              <span className="text-teal-600 dark:text-teal-400 font-medium">Finish_Prg {e.slipNo}</span>
                             </div>
                             <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{e.totalThan}T</span>
                           </div>
@@ -2461,7 +2461,7 @@ export default function FinishStockPage() {
                       <thead className="bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700">
                         <tr>
                           <ThSort field="date" label="Date" active={sortField} dir={sortDir} toggle={toggleSort} />
-                          <ThSort field="slipNo" label="FP" active={sortField} dir={sortDir} toggle={toggleSort} />
+                          <ThSort field="slipNo" label="Finish_Prg" active={sortField} dir={sortDir} toggle={toggleSort} />
                           <ThSort field="lotNo" label="Lot No (Than)" active={sortField} dir={sortDir} toggle={toggleSort} />
                           <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Shade</th>
                           <ThSort field="party" label="Party" active={sortField} dir={sortDir} toggle={toggleSort} />
@@ -2778,7 +2778,7 @@ export default function FinishStockPage() {
                           className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">FP No</label>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Finish_Prg No</label>
                         <input type="number" value={finishSlipNo} onChange={e => setFinishSlipNo(e.target.value)}
                           className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                       </div>
@@ -3139,7 +3139,7 @@ export default function FinishStockPage() {
                                   <div key={pe.id} className="px-4 py-2.5">
                                     <div className="flex items-center justify-between mb-1">
                                       <div className="flex items-center gap-2 text-xs">
-                                        <span className="font-medium text-teal-600 dark:text-teal-400">FP {pe.slipNo}</span>
+                                        <span className="font-medium text-teal-600 dark:text-teal-400">Finish_Prg {pe.slipNo}</span>
                                         {pe.isFromOB && <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded-full">OB</span>}
                                         <span className="text-gray-400">{new Date(pe.date).toLocaleDateString('en-IN')}</span>
                                       </div>
@@ -3168,7 +3168,7 @@ export default function FinishStockPage() {
                                               <div className="space-y-0.5 mb-1">
                                                 {recs.map((r: any) => (
                                                   <div key={r.id} className="flex items-center justify-between text-[10px]">
-                                                    <span className="text-gray-500">FR {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
+                                                    <span className="text-gray-500">Folding_recpt {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
                                                     <div className="flex items-center gap-1">
                                                       {frEditId === r.id ? (
                                                         <>
@@ -3278,7 +3278,7 @@ export default function FinishStockPage() {
                                               {slip.finishDespSlipNo && (
                                                 <span className="font-bold text-white bg-purple-600 dark:bg-purple-500 px-2 py-0.5 rounded text-[10px]">Desp: {slip.finishDespSlipNo}</span>
                                               )}
-                                              <span className="font-medium text-teal-600 dark:text-teal-400">FP {slip.slipNo}</span>
+                                              <span className="font-medium text-teal-600 dark:text-teal-400">Finish_Prg {slip.slipNo}</span>
                                               <span className="text-gray-300 dark:text-gray-600">&middot;</span>
                                               <span>{new Date(slip.date).toLocaleDateString('en-IN')}</span>
                                               {slip.meter != null && (
@@ -3330,14 +3330,14 @@ export default function FinishStockPage() {
             <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
               <div>
                 <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">+ Folding Receipt</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">FP {frFormFpNo} · {frFormLotNo} · {frFormMaxThan}T remaining</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Finish_Prg {frFormFpNo} · {frFormLotNo} · {frFormMaxThan}T remaining</p>
               </div>
               <button onClick={() => setFrFormLotId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
             </div>
             <div className="p-5 space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">FR Slip No</label>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Folding_recpt Slip No</label>
                   <input type="text" value={frSlipNo} onChange={e => setFrSlipNo(e.target.value)} placeholder="e.g. 45" autoFocus
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-teal-400" />
                 </div>

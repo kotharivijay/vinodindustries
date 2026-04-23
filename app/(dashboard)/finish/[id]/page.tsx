@@ -108,7 +108,7 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
       <div className="flex items-center gap-4 mb-6">
         <BackButton />
         <div>
-          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">FP #{entry.slipNo}</h1>
+          <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Finish_Prg #{entry.slipNo}</h1>
           <p className="text-sm text-gray-500 mt-0.5">{dateStr}</p>
         </div>
         <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ml-auto ${statusCls}`}>{fpStatus}</span>
