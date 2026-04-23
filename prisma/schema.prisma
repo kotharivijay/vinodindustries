@@ -677,6 +677,22 @@ model DeleteLog {
   @@index([lotNo])
 }
 
+// ─── Petpooja Payroll Integration ─────────────────────────────────────────────
+
+model PetpoojaToken {
+  id         Int      @id @default(autoincrement())
+  token      String   // JWT from Petpooja's authUser
+  userId     Int
+  userEmail  String?
+  hoId       Int
+  orgId      Int
+  orgName    String?
+  uniqueCode String?  // e.g. "d4zkshb9"
+  expiresAt  DateTime // decoded from JWT exp
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 // ─── Tally Integration ──────────────────────────────────────────────────────
 
 model TallyLedger {

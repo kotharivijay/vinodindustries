@@ -96,6 +96,7 @@ const ksiNavGroups = [
   {
     label: 'Admin',
     links: [
+      { href: '/attendance', label: 'Attendance', icon: '🕒' },
       { href: '/backup', label: 'DB Backup (Neon)', icon: '💾' },
       { href: '/delete-log', label: 'Delete Log', icon: '🗑️' },
     ],
