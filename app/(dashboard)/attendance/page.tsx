@@ -93,13 +93,35 @@ export default function AttendancePage() {
   function buildShareText() {
     const lines: string[] = []
     lines.push(`📋 *Attendance — ${fmtDate(date)}*\n`)
+    let grandTotal = 0, grandPunched = 0, grandNoPunch = 0
     for (const g of visibleGroups) {
-      lines.push(`*${g.department}* | Total ${g.total} · Present ${g.present} · HD ${g.halfDay} · Absent ${g.absent} (${g.attendancePct}%)`)
-      for (const r of g.rows) {
-        lines.push(`  ${String(r.id).padEnd(3)} ${r.name} · ${r.status}`)
+      const punched = g.rows.filter(r => r.punchIn && r.punchIn !== '-')
+      const noPunch = g.rows.filter(r => !r.punchIn || r.punchIn === '-')
+      grandTotal += g.rows.length
+      grandPunched += punched.length
+      grandNoPunch += noPunch.length
+
+      lines.push(`*${g.department}* | ${g.total} total · ${punched.length} punched · ${noPunch.length} no punch\n`)
+
+      if (punched.length > 0) {
+        lines.push(`✅ Punched (${punched.length}):`)
+        for (const r of punched) {
+          const out = r.punchOut && r.punchOut !== '-' ? r.punchOut : '-'
+          const hrs = r.workingHrs && r.workingHrs !== '-' ? r.workingHrs : '-'
+          lines.push(`  ${String(r.id).padEnd(3)} ${r.name} · ${r.punchIn}→${out} · ${hrs}`)
+        }
+        lines.push('')
       }
-      lines.push('')
+
+      if (noPunch.length > 0) {
+        lines.push(`❌ No Punch (${noPunch.length}):`)
+        for (const r of noPunch) {
+          lines.push(`  ${String(r.id).padEnd(3)} ${r.name}`)
+        }
+        lines.push('')
+      }
     }
+    lines.push(`Grand: ${grandTotal} · Punched ${grandPunched} · No Punch ${grandNoPunch}`)
     return lines.join('\n').trim()
   }
 
