@@ -278,7 +278,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         )}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Grey Inward</p>
-          <p className="text-2xl font-bold text-gray-800 mt-1">{greyThan}</p>
+          <p className="text-2xl font-bold text-gray-800 dark:text-gray-100 mt-1">{greyThan}</p>
           <p className="text-xs text-gray-400">{greyEntries.length} entries</p>
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-center">
