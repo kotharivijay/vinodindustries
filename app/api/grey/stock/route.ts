@@ -13,6 +13,30 @@ export async function GET(req: NextRequest) {
   const lotNo = req.nextUrl.searchParams.get('lotNo')?.trim()
   if (!lotNo) return NextResponse.json({ exists: false, stock: 0 })
 
+  // RE-PRO lot? Treat its totalThan as the grey supply, despatch as
+  // outflow. Drops out automatically once status flips to 'merged'.
+  if (/^RE-PRO-/i.test(lotNo)) {
+    try {
+      const db = prisma as any
+      const r = await db.reProcessLot.findFirst({
+        where: { reproNo: { equals: lotNo, mode: 'insensitive' }, status: { in: ['pending', 'in-dyeing', 'finished'] } },
+      })
+      if (r) {
+        const despAggR = await prisma.despatchEntryLot.aggregate({
+          where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
+          _sum: { than: true },
+        })
+        const despParentR = await prisma.despatchEntry.aggregate({
+          where: { lotNo: { equals: lotNo, mode: 'insensitive' }, despatchLots: { none: {} } },
+          _sum: { than: true },
+        })
+        const desp = (despAggR._sum.than ?? 0) + (despParentR._sum.than ?? 0)
+        const stock = r.totalThan - desp
+        return NextResponse.json({ exists: true, stock, greyThan: r.totalThan, despatchThan: desp, openingBalance: 0, obAllocated: 0, openingGrey: 0, isReProcess: true })
+      }
+    } catch {}
+  }
+
   // Sum grey than for this lot
   const greyAgg = await prisma.greyEntry.aggregate({
     where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
@@ -42,13 +66,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ exists: false, stock: 0, greyThan: 0, despatchThan: 0, openingBalance: 0, obAllocated })
   }
 
-  // Sum despatch than for this lot
-  const despatchAgg = await prisma.despatchEntry.aggregate({
+  // Sum despatch than for this lot — multi-lot aware
+  const despParent = await prisma.despatchEntry.aggregate({
+    where: { lotNo: { equals: lotNo, mode: 'insensitive' }, despatchLots: { none: {} } },
+    _sum: { than: true },
+  })
+  const despChildren = await prisma.despatchEntryLot.aggregate({
     where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
     _sum: { than: true },
   })
 
-  const despatchThan = despatchAgg._sum.than ?? 0
+  const despatchThan = (despParent._sum.than ?? 0) + (despChildren._sum.than ?? 0)
   const stock = openingGrey + greyThan - despatchThan
 
   return NextResponse.json({ exists: true, stock, greyThan, despatchThan, openingBalance, obAllocated, openingGrey })

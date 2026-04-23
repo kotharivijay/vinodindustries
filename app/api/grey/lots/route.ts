@@ -22,13 +22,17 @@ export async function GET() {
   })
   const qualityMap = new Map(qualityEntries.map(e => [e.lotNo, e.quality?.name ?? '']))
 
-  // Get all despatch entries grouped by lotNo
-  const despatchEntries = await prisma.despatchEntry.groupBy({
-    by: ['lotNo'],
-    _sum: { than: true },
+  // Despatch totals per lot — combine legacy parents (no children) +
+  // multi-lot DespatchEntryLot rows so multi-lot challans don't get
+  // attributed entirely to the parent's first lot.
+  const despParent = await prisma.despatchEntry.groupBy({
+    where: { despatchLots: { none: {} } },
+    by: ['lotNo'], _sum: { than: true },
   })
-
-  const despatchMap = new Map(despatchEntries.map(d => [d.lotNo, d._sum.than ?? 0]))
+  const despChildren = await prisma.despatchEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } })
+  const despatchMap = new Map<string, number>()
+  for (const d of despParent) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
+  for (const d of despChildren) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
 
   // Fetch opening balances (carry-forward from last year)
   let obMap = new Map<string, number>()
@@ -56,6 +60,28 @@ export async function GET() {
       if (stock > 0) lots.push({ lotNo, greyThan: 0, despatchThan: despThan, stock, openingBalance: ob, quality: qualityMap.get(lotNo) ?? '' })
     }
   }
+
+  // Active RE-PRO lots — surface till they're merged so dyeing/fold pickers
+  // can use them as input lots.
+  try {
+    const db = prisma as any
+    const repros = await db.reProcessLot.findMany({
+      where: { status: { in: ['pending', 'in-dyeing', 'finished'] } },
+    })
+    for (const r of repros) {
+      const despThan = despatchMap.get(r.reproNo) ?? 0
+      const stock = r.totalThan - despThan
+      if (stock <= 0) continue
+      lots.push({
+        lotNo: r.reproNo,
+        greyThan: r.totalThan,
+        despatchThan: despThan,
+        stock,
+        openingBalance: 0,
+        quality: r.quality || '',
+      })
+    }
+  } catch {}
 
   lots.sort((a, b) => a.lotNo.localeCompare(b.lotNo))
 

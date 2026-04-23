@@ -54,75 +54,24 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 }
 
 // PATCH /api/fold/[id] — update status or notes
+//
+// RE-PRO lots intentionally stay as RE-PRO-N through dyeing AND fold. The
+// merge back to source lots is done manually from the Re-Process module
+// ("Merge Back to Original" on status='finished'), not automatically here.
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const id = parseInt(params.id)
   const { status, notes } = await req.json()
-  const db = prisma as any
 
-  const program = await db.foldProgram.update({
+  const program = await (prisma as any).foldProgram.update({
     where: { id },
     data: {
       ...(status && { status }),
       ...(notes !== undefined && { notes }),
     },
   })
-
-  // When the fold program is confirmed, automatically merge any RE-PRO lots
-  // back to their original lot identities — split FoldBatchLot rows and
-  // mark the ReProcessLot as merged. From this point onward all downstream
-  // pipeline rows reference the original source lots, not RE-PRO-N.
-  if (status === 'confirmed') {
-    try {
-      const foldLots = await db.foldBatchLot.findMany({
-        where: { lotNo: { startsWith: 'RE-PRO-' }, foldBatch: { foldProgramId: id } },
-      })
-      const reproByName = new Map<string, any>()
-      for (const fl of foldLots) {
-        if (!reproByName.has(fl.lotNo)) {
-          const r = await db.reProcessLot.findFirst({ where: { reproNo: fl.lotNo }, include: { sources: true } })
-          if (r) reproByName.set(fl.lotNo, r)
-        }
-      }
-      for (const fl of foldLots) {
-        const repro = reproByName.get(fl.lotNo)
-        if (!repro || repro.sources.length === 0) continue
-        // Split this fold lot row pro-rata across source lots.
-        let remaining = fl.than
-        const totalSourceThan = repro.sources.reduce((s: number, x: any) => s + (x.than || 0), 0) || 1
-        for (let i = 0; i < repro.sources.length; i++) {
-          const src = repro.sources[i]
-          const allocThan = i === repro.sources.length - 1
-            ? remaining
-            : Math.min(Math.round(fl.than * (src.than / totalSourceThan)), remaining)
-          if (allocThan <= 0) continue
-          await db.foldBatchLot.create({
-            data: {
-              foldBatchId: fl.foldBatchId,
-              lotNo: src.originalLotNo,
-              than: allocThan,
-              partyId: fl.partyId,
-              qualityId: fl.qualityId,
-            },
-          })
-          remaining -= allocThan
-        }
-        await db.foldBatchLot.delete({ where: { id: fl.id } })
-      }
-      // Mark the affected RE-PRO lots as merged so they drop out of stock.
-      for (const r of reproByName.values()) {
-        if (r.status !== 'merged') {
-          await db.reProcessLot.update({ where: { id: r.id }, data: { status: 'merged', mergedAt: new Date() } })
-        }
-      }
-    } catch (e) {
-      // Non-fatal — confirmation already happened. Log for diagnosis.
-      console.error('RE-PRO auto-merge on fold confirm failed:', e)
-    }
-  }
-
   return NextResponse.json(program)
 }
 
