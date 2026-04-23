@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getPetpoojaAuth, payrollHeaders, PETPOOJA_PAYROLL_BASE } from '@/lib/petpooja'
@@ -43,6 +44,11 @@ export async function GET(req: NextRequest) {
 
   const rows: any[] = Array.isArray(payload?.data) ? payload.data : []
 
+  // Mark employees who have left the job (stored in AttendanceEmployee)
+  const db = prisma as any
+  const left = await db.attendanceEmployee.findMany({ where: { status: 'left' }, select: { petpoojaEmpId: true } })
+  const leftSet = new Set(left.map((e: any) => Number(e.petpoojaEmpId)))
+
   // Group by department (matches the "Vinod Industries" / "Vi Folding" sections)
   const byDept = new Map<string, any[]>()
   for (const r of rows) {
@@ -68,6 +74,7 @@ export async function GET(req: NextRequest) {
       attendancePct: list.length ? Math.round((fd / list.length) * 100) : 0,
       rows: list.map(r => ({
         id: r.code ?? r.employee_id ?? r.device_employee_id ?? '—',
+        petpoojaEmpId: Number(r.employee_id) || null,
         name: r.name || '—',
         designation: r.designation || '—',
         punchIn: r.first_punch || '-',
@@ -75,6 +82,7 @@ export async function GET(req: NextRequest) {
         workingHrs: r.working_hrs || '-',
         break: r.break_hrs || '-',
         status: r.status || '—',
+        isLeft: leftSet.has(Number(r.employee_id)),
         leaveName: r.leave_name,
         holidayName: r.holiday_name,
         _raw: r,

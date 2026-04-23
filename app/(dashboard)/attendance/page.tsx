@@ -8,6 +8,7 @@ const fetcher = (u: string) => fetch(u).then(r => r.json())
 
 interface AttendanceRow {
   id: string | number
+  petpoojaEmpId: number | null
   name: string
   designation: string
   punchIn: string
@@ -15,6 +16,7 @@ interface AttendanceRow {
   workingHrs: string
   break: string
   status: string
+  isLeft?: boolean
   leaveName?: string | null
   holidayName?: string | null
 }
@@ -95,13 +97,15 @@ export default function AttendancePage() {
     lines.push(`📋 *Attendance — ${fmtDate(date)}*\n`)
     let grandTotal = 0, grandPunched = 0, grandNoPunch = 0
     for (const g of visibleGroups) {
-      const punched = g.rows.filter(r => r.punchIn && r.punchIn !== '-')
-      const noPunch = g.rows.filter(r => !r.punchIn || r.punchIn === '-')
-      grandTotal += g.rows.length
+      // Exclude employees tagged "left the job" from both lists.
+      const active = g.rows.filter(r => !r.isLeft)
+      const punched = active.filter(r => r.punchIn && r.punchIn !== '-')
+      const noPunch = active.filter(r => !r.punchIn || r.punchIn === '-')
+      grandTotal += active.length
       grandPunched += punched.length
       grandNoPunch += noPunch.length
 
-      lines.push(`*${g.department}* | ${g.total} total · ${punched.length} punched · ${noPunch.length} no punch\n`)
+      lines.push(`*${g.department}* | ${active.length} total · ${punched.length} punched · ${noPunch.length} no punch\n`)
 
       if (punched.length > 0) {
         lines.push(`✅ Punched (${punched.length}):`)
@@ -142,10 +146,11 @@ export default function AttendancePage() {
     <div className="p-4 md:p-8 max-w-6xl">
       <div className="flex items-center gap-3 mb-5">
         <BackButton />
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Attendance</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">Petpooja Payroll · {tokenInfo?.orgName || daily?.orgName || '—'}</p>
         </div>
+        <a href="/attendance/employees" className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600">👥 Employees</a>
       </div>
 
       {!tokenInfo?.present && (
@@ -218,16 +223,21 @@ export default function AttendancePage() {
       ) : (
         <div id="attendance-print-root" className="space-y-4">
           {visibleGroups.length === 0 && <div className="p-10 text-center text-gray-400">No departments selected.</div>}
-          {visibleGroups.map(g => (
+          {visibleGroups.map(g => {
+            const active = g.rows.filter(r => !r.isLeft)
+            const leftCount = g.rows.length - active.length
+            const punched = active.filter(r => r.punchIn && r.punchIn !== '-').length
+            const noPunch = active.length - punched
+            return (
             <div key={g.department} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div className="bg-emerald-700 text-white px-4 py-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                 <span className="font-bold">{g.department}</span>
                 <span>|</span>
-                <span>Total: {g.total}</span>
-                <span>Present: {g.present}</span>
-                <span>Half-Day: {g.halfDay}</span>
-                <span>Absent: {g.absent}</span>
-                <span className="ml-auto text-xs opacity-90">({g.attendancePct}% attendance)</span>
+                <span>Total: {active.length}</span>
+                <span>Punched: {punched}</span>
+                <span>No Punch: {noPunch}</span>
+                {leftCount > 0 && <span className="text-xs opacity-75">({leftCount} left)</span>}
+                <span className="ml-auto text-xs opacity-90">({active.length ? Math.round((punched / active.length) * 100) : 0}%)</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
@@ -244,7 +254,7 @@ export default function AttendancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {g.rows.map((r, i) => (
+                    {active.map((r, i) => (
                       <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                         <td className="px-2 py-1 text-gray-500">{r.id}</td>
                         <td className="px-2 py-1 font-medium text-gray-800 dark:text-gray-100">{r.name}</td>
@@ -258,12 +268,12 @@ export default function AttendancePage() {
                         </td>
                       </tr>
                     ))}
-                    {g.rows.length === 0 && <tr><td colSpan={8} className="px-2 py-4 text-center text-gray-400">No rows</td></tr>}
+                    {active.length === 0 && <tr><td colSpan={8} className="px-2 py-4 text-center text-gray-400">No active rows</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
     </div>

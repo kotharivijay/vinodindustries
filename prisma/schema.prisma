@@ -693,6 +693,22 @@ model PetpoojaToken {
   updatedAt  DateTime @updatedAt
 }
 
+model AttendanceEmployee {
+  id            Int      @id @default(autoincrement())
+  petpoojaEmpId Int      @unique // Petpooja's employee_id (stable across code changes)
+  code          String?  // human-readable ID like "27"
+  name          String
+  department    String?
+  designation   String?
+  status        String   @default("active") // 'active' | 'left'
+  leftDate      DateTime?
+  notes         String?
+  updatedAt     DateTime @updatedAt
+
+  @@index([status])
+  @@index([department])
+}
+
 // ─── Tally Integration ──────────────────────────────────────────────────────
 
 model TallyLedger {
