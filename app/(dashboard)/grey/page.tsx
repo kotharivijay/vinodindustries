@@ -7,6 +7,9 @@ import useSWR from 'swr'
 import GreyImportModal from './GreyImportModal'
 import UnallocatedStockModal from './UnallocatedStockModal'
 import BackButton from '../BackButton'
+import { LotLink, useLotBackHighlight } from '@/lib/viewStatePersist'
+
+const GREY_VIEW_KEY = 'grey-view-state'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -87,6 +90,9 @@ export default function GreyListPage() {
   const [cfImporting, setCfImporting] = useState(false)
   const [cfResult, setCfResult] = useState<{ imported: number; totalThan: number } | null>(null)
   const toggleExpand = (id: number) => setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+
+  // Restore scroll + highlight the clicked lot card after returning from /lot/[id]
+  useLotBackHighlight(GREY_VIEW_KEY, true)
 
   async function handleDelete(id: number) {
     if (!confirm('Delete this entry? This cannot be undone.')) return
@@ -341,7 +347,7 @@ export default function GreyListPage() {
                     {filteredStock.map(r => (
                       <tr key={r.lotNo} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
                         <td className="px-4 py-3 font-semibold text-indigo-700 dark:text-indigo-400">
-                          <Link href={`/lot/${encodeURIComponent(r.lotNo)}`} className="hover:underline">{r.lotNo}</Link>
+                          <LotLink lotNo={r.lotNo} storageKey={GREY_VIEW_KEY} className="hover:underline">{r.lotNo}</LotLink>
                           {r.openingBalance > 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
                         </td>
                         <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{r.party}</td>
@@ -423,7 +429,7 @@ export default function GreyListPage() {
                   </div>
                   <div className="divide-y divide-gray-100 dark:divide-gray-700">
                   {filtered.map((e) => (
-                    <div key={e.id} className="p-4">
+                    <div key={e.id} data-lot-card={e.lotNo} className="p-4 transition-shadow rounded-lg">
                       <div className="flex items-start justify-between mb-1.5">
                         <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                           <span className="text-gray-400 font-medium">SN {e.sn != null ? (e.sn < 0 ? `O${Math.abs(e.sn)}` : e.sn) : e.id}</span>
@@ -440,9 +446,9 @@ export default function GreyListPage() {
                       <p className="text-sm font-semibold text-gray-800">{e.party.name}</p>
                       <p className="text-xs text-gray-500 mb-2">{e.quality.name}</p>
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-indigo-100 active:bg-indigo-200">
+                        <LotLink lotNo={e.lotNo} storageKey={GREY_VIEW_KEY} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-indigo-100 active:bg-indigo-200">
                           🔖 {e.lotNo}
-                        </Link>
+                        </LotLink>
                         <span className="text-xs text-gray-600">Than: <strong>{e.than}</strong></span>
                         <span className={`text-xs font-semibold ${e.stock > 0 ? 'text-green-600' : e.stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>
                           Stock: {e.stock}
@@ -508,7 +514,7 @@ export default function GreyListPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
                       {filtered.map((e) => (
-                        <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                        <tr key={e.id} data-lot-card={e.lotNo} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.sn != null ? (e.sn < 0 ? `O${Math.abs(e.sn)}` : e.sn) : e.id}</td>
                           <td className="px-3 py-2.5 whitespace-nowrap dark:text-gray-300">{new Date(e.date).toLocaleDateString('en-IN')}</td>
                           <td className="px-3 py-2.5 dark:text-gray-300">{e.challanNo}</td>
@@ -518,7 +524,7 @@ export default function GreyListPage() {
                           <td className="px-3 py-2.5 font-semibold dark:text-gray-100">{e.than}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.grayMtr ?? '—'}</td>
                           <td className="px-3 py-2.5 font-medium text-indigo-700 dark:text-indigo-400">
-                            <Link href={`/lot/${encodeURIComponent(e.lotNo)}`} className="hover:underline">{e.lotNo}</Link>
+                            <LotLink lotNo={e.lotNo} storageKey={GREY_VIEW_KEY} className="hover:underline">{e.lotNo}</LotLink>
                           </td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.transport.name}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.lrNo ?? e.transportLrNo ?? '—'}</td>
