@@ -144,13 +144,24 @@ export default function AttendancePage() {
 
   return (
     <div className="p-4 md:p-8 max-w-6xl">
-      <div className="flex items-center gap-3 mb-5">
-        <BackButton />
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Attendance</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Petpooja Payroll · {tokenInfo?.orgName || daily?.orgName || '—'}</p>
+      <div className="mb-5">
+        <div className="flex items-start gap-3">
+          <BackButton />
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Attendance</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">Petpooja Payroll · {tokenInfo?.orgName || daily?.orgName || '—'}</p>
+          </div>
         </div>
-        <a href="/attendance/employees" className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600">👥 Employees</a>
+        <div className="flex flex-wrap gap-2 mt-3">
+          <a href="/attendance/employees"
+            className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-sm">
+            👥 Employees (tag left)
+          </a>
+          <a href="/attendance/token"
+            className="inline-flex items-center gap-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded-lg text-xs font-semibold">
+            🔑 Token
+          </a>
+        </div>
       </div>
 
       {!tokenInfo?.present && (
