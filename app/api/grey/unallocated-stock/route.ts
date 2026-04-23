@@ -143,11 +143,6 @@ export async function GET() {
     qMap.get(l.quality)!.push(l)
   }
 
-  // Look up party tags so we can apply tag-based exclusions.
-  const allParties = await prisma.party.findMany({ select: { name: true, tag: true } })
-  const partyTag = new Map<string, string | null>()
-  for (const p of allParties) partyTag.set(p.name, p.tag)
-
   const parties: PartyGroup[] = []
   for (const [party, qMap] of partyMap) {
     const qualities: QualityGroup[] = []
@@ -160,10 +155,6 @@ export async function GET() {
       partyThan += qTotal
       partyLots += qLots.length
     }
-    // Pali PC Job parties are job-workers/processors — material sent to
-    // them is allocated to the processor, not "unallocated stock". Hide
-    // them from this view entirely, regardless of remaining balance.
-    if ((partyTag.get(party) || '').toLowerCase() === 'pali pc job') continue
     qualities.sort((a, b) => a.quality.localeCompare(b.quality))
     parties.push({ party, totalThan: partyThan, totalLots: partyLots, qualities })
   }
