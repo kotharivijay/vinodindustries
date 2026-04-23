@@ -92,7 +92,46 @@ export async function GET() {
     }
   } catch {}
 
-  return NextResponse.json([...enriched, ...obOnlyLots])
+  // Add active RE-PRO lots (status not yet merged) as synthetic entries
+  let reproLots: any[] = []
+  try {
+    const db = prisma as any
+    const repros = await db.reProcessLot.findMany({
+      where: { status: { in: ['pending', 'in-dyeing', 'finished'] } },
+    })
+    for (const r of repros) {
+      const despThan = despatchMap.get(r.reproNo) ?? 0
+      const stock = r.totalThan - despThan
+      if (stock <= 0) continue
+      reproLots.push({
+        id: -10000 - r.id,
+        sn: null,
+        date: r.createdAt,
+        challanNo: 0,
+        party: { id: 0, name: 'Re-Process' },
+        quality: { id: 0, name: r.quality || '-' },
+        transport: { id: 0, name: '-' },
+        weaver: { id: 0, name: '-' },
+        weight: r.weight,
+        than: r.totalThan,
+        grayMtr: r.grayMtr,
+        transportLrNo: null,
+        bale: null,
+        baleNo: null,
+        echBaleThan: null,
+        viverNameBill: null,
+        lrNo: null,
+        lotNo: r.reproNo,
+        tDesp: despThan,
+        stock,
+        openingBalance: 0,
+        isReProcess: true,
+        reproStatus: r.status,
+      })
+    }
+  } catch {}
+
+  return NextResponse.json([...enriched, ...obOnlyLots, ...reproLots])
 }
 
 export async function POST(req: NextRequest) {

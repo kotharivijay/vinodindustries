@@ -267,6 +267,32 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         </div>
       </div>
 
+      {/* RE-PRO banner — when this lot IS a re-process lot */}
+      {(() => {
+        const reproSelf = reproEntries.find((r: any) => r.type === 'repro')
+        if (!reproSelf) return null
+        return (
+          <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl px-4 py-3 mb-5">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-base">🔄</span>
+              <span className="text-sm font-bold text-purple-700 dark:text-purple-300">Re-Process Lot</span>
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${reproSelf.status === 'merged' ? 'bg-purple-200 text-purple-800 dark:bg-purple-800/40 dark:text-purple-200' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'}`}>{reproSelf.status}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400 ml-auto">{reproSelf.totalThan} total · {reproSelf.quality}</span>
+            </div>
+            <p className="text-xs text-gray-600 dark:text-gray-400 mb-1.5">{reproSelf.reason}{reproSelf.notes ? ` — ${reproSelf.notes}` : ''}</p>
+            <div className="flex flex-wrap gap-1.5">
+              <span className="text-[10px] uppercase text-gray-400 self-center mr-1">Sources:</span>
+              {(reproSelf.sources || []).map((s: any) => (
+                <Link key={s.id} href={`/lot/${encodeURIComponent(s.originalLotNo)}`}
+                  className="inline-flex items-center gap-1 bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-700 text-purple-700 dark:text-purple-300 text-xs font-medium px-2 py-0.5 rounded-full hover:bg-purple-100 dark:hover:bg-purple-900/30">
+                  {s.originalLotNo} <span className="text-gray-400">{s.than}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-8">
         {obThan > 0 && (

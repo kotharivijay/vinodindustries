@@ -54,16 +54,33 @@ export async function POST(req: NextRequest) {
     }, { status: 200 })
   }
 
-  // Aggregate weight + meter once we have a final quality decision.
-  let totalWeight: string | null = null
+  // Aggregate meter + than, and compute a than-weighted average weight
+  // (weights look like "110g", "98g" — strip non-digits, average, format).
   let totalMtr = 0
   let totalThan = 0
+  let weightSum = 0     // sum of (numeric weight × than)
+  let weightThan = 0    // total than for which a weight was available
+  let weightSuffix = ''
   for (const s of sources) {
     const info = lotInfoMap.get(s.lotNo.toLowerCase().trim())
-    if (info?.weight && !totalWeight) totalWeight = info.weight
-    if (info?.mtrPerThan) totalMtr += info.mtrPerThan * (parseInt(s.than) || 0)
-    totalThan += parseInt(s.than) || 0
+    const than = parseInt(s.than) || 0
+    if (info?.mtrPerThan) totalMtr += info.mtrPerThan * than
+    totalThan += than
+    if (info?.weight) {
+      const m = String(info.weight).match(/(\d+(?:\.\d+)?)\s*([a-zA-Z]*)/)
+      if (m) {
+        const num = parseFloat(m[1])
+        if (Number.isFinite(num) && than > 0) {
+          weightSum += num * than
+          weightThan += than
+          if (!weightSuffix && m[2]) weightSuffix = m[2]
+        }
+      }
+    }
   }
+  const totalWeight: string | null = weightThan > 0
+    ? `${Math.round(weightSum / weightThan)}${weightSuffix || 'g'}`
+    : null
 
   // Pick a representative quality. If user accepted mixed, use the most
   // common one; otherwise the single value.

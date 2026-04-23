@@ -155,6 +155,35 @@ export async function GET() {
     })
   }
 
+  // Active RE-PRO lots — show as "Re-Process" party until merged.
+  try {
+    const repros = await db.reProcessLot.findMany({
+      where: { status: { in: ['pending', 'in-dyeing', 'finished'] } },
+    })
+    for (const r of repros) {
+      const k = r.reproNo.toLowerCase().trim()
+      const despatched = despatchedMap.get(k) || 0
+      const folded = foldedMap.get(k) || 0
+      const remaining = r.totalThan - despatched - folded
+      if (remaining <= 0) continue
+      lots.push({
+        lotNo: r.reproNo,
+        remaining,
+        party: 'Re-Process',
+        partyTag: null,
+        quality: r.quality || 'Unknown',
+        weight: r.weight,
+        marka: null,
+        grayMtr: r.grayMtr,
+        date: r.createdAt,
+        challanNos: '',
+        isOB: false,
+        originalThan: r.totalThan,
+        deducted: { despatched, folded, obAllocated: 0 },
+      })
+    }
+  } catch {}
+
   // Group into hierarchy: party -> quality -> lots
   type QualityGroup = { quality: string; totalThan: number; lots: Lot[] }
   type PartyGroup = { party: string; totalThan: number; totalLots: number; qualities: QualityGroup[] }
