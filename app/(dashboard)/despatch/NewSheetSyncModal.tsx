@@ -125,7 +125,7 @@ export default function NewSheetSyncModal({ open, onClose, onImported }: Props) 
                         <span className="text-gray-500 dark:text-gray-400">{new Date(g.date).toLocaleDateString('en-IN')}</span>
                         <span className="font-medium text-gray-800 dark:text-gray-100">{g.party}</span>
                         <span className="text-gray-500 dark:text-gray-400">{g.quality}</span>
-                        <span className="ml-auto font-semibold text-indigo-600 dark:text-indigo-400">{g.totalThan}T</span>
+                        <span className="ml-auto font-semibold text-indigo-600 dark:text-indigo-400">{g.totalThan}</span>
                       </div>
                       <table className="w-full text-xs">
                         <tbody>
@@ -133,7 +133,7 @@ export default function NewSheetSyncModal({ open, onClose, onImported }: Props) 
                             <tr key={li} className="border-t border-gray-100 dark:border-gray-700">
                               <td className="px-3 py-1.5 text-gray-500 dark:text-gray-400">{l.sheetLot}{l.resolvedLot !== l.sheetLot && <span className="text-gray-400"> → {l.resolvedLot}</span>}</td>
                               <td className="px-3 py-1.5 text-gray-600 dark:text-gray-300">{l.quality}</td>
-                              <td className="px-3 py-1.5 text-right font-medium text-gray-700 dark:text-gray-200">{l.than}T</td>
+                              <td className="px-3 py-1.5 text-right font-medium text-gray-700 dark:text-gray-200">{l.than}</td>
                               <td className="px-3 py-1.5 text-right text-gray-500 dark:text-gray-400">{l.rate != null ? `₹${l.rate}` : '—'}</td>
                               <td className="px-3 py-1.5 text-gray-400 italic max-w-[20rem] truncate">{l.description ?? ''}</td>
                             </tr>

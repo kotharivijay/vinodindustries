@@ -166,7 +166,7 @@ export default function ProductionReportPage() {
                             <span className="text-[9px] text-white font-bold">{m.batches}</span>
                           </div>
                         </div>
-                        <span className="text-[10px] text-gray-400 w-14 text-right">{m.than}T</span>
+                        <span className="text-[10px] text-gray-400 w-14 text-right">{m.than}</span>
                       </div>
                     )
                   })}
@@ -176,7 +176,7 @@ export default function ProductionReportPage() {
                 <div key={m.name} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm px-4 py-3 flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{m.name}</span>
                   <div className="text-right">
-                    <span className="text-xs text-gray-500">{m.batches} batches · {m.than}T</span>
+                    <span className="text-xs text-gray-500">{m.batches} batches · {m.than}</span>
                     <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(m.cost)}</span>
                   </div>
                 </div>
@@ -191,7 +191,7 @@ export default function ProductionReportPage() {
                 <div key={o.name} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm px-4 py-3 flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{o.name}</span>
                   <div className="text-right">
-                    <span className="text-xs text-gray-500">{o.batches} batches · {o.than}T</span>
+                    <span className="text-xs text-gray-500">{o.batches} batches · {o.than}</span>
                     <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(o.cost)}</span>
                   </div>
                 </div>
@@ -206,7 +206,7 @@ export default function ProductionReportPage() {
                 <div key={q.name} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm px-4 py-3 flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{q.name}</span>
                   <div className="text-right">
-                    <span className="text-xs text-gray-500">{q.batches} batches · {q.than}T</span>
+                    <span className="text-xs text-gray-500">{q.batches} batches · {q.than}</span>
                     <span className="text-xs font-medium text-teal-600 dark:text-teal-400 ml-2">{q.cost > 0 ? fmtINR(Math.round(q.cost / q.than)) + '/T' : ''}</span>
                   </div>
                 </div>
@@ -221,7 +221,7 @@ export default function ProductionReportPage() {
                 <div key={d.date} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm px-4 py-3 flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{fmtDate(d.date)}</span>
                   <div className="text-right">
-                    <span className="text-xs text-gray-500">{d.batches} batches · {d.than}T</span>
+                    <span className="text-xs text-gray-500">{d.batches} batches · {d.than}</span>
                     <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(d.cost)}</span>
                   </div>
                 </div>
@@ -253,7 +253,7 @@ export default function ProductionReportPage() {
                       </div>
                       <div className="text-right flex items-center gap-2">
                         <div>
-                          <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{e.than}T</p>
+                          <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{e.than}</p>
                           <p className="text-[10px] text-emerald-600 dark:text-emerald-400">{fmtINR(e.totalCost)}</p>
                         </div>
                         <span className={`text-gray-400 text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
@@ -274,7 +274,7 @@ export default function ProductionReportPage() {
                         <div className="flex flex-wrap gap-1.5">
                           {e.lots.map((l: any, li: number) => (
                             <span key={li} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-full font-medium">
-                              {l.lotNo}{l.marka ? ` [${l.marka}]` : ''} ({l.than}T)
+                              {l.lotNo}{l.marka ? ` [${l.marka}]` : ''} ({l.than})
                             </span>
                           ))}
                         </div>

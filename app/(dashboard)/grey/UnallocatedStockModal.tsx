@@ -143,7 +143,7 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                         <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{p.qualities.length} quality · {p.totalLots} lots</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{p.totalThan}T</span>
+                        <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{p.totalThan}</span>
                         <span className={`text-gray-400 text-xs transition-transform ${pOpen ? 'rotate-90' : ''}`}>▶</span>
                       </div>
                     </button>
@@ -161,7 +161,7 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                               >
                                 <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{q.quality}</span>
                                 <div className="flex items-center gap-2">
-                                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{q.totalThan}T</span>
+                                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{q.totalThan}</span>
                                   <span className={`text-gray-400 text-[10px] transition-transform ${qOpen ? 'rotate-90' : ''}`}>▶</span>
                                 </div>
                               </button>
@@ -200,11 +200,11 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                         })()}
                                         {(l.deducted.despatched > 0 || l.deducted.folded > 0 || l.deducted.obAllocated > 0) && (
                                           <p className="text-[9px] text-gray-400 mt-0.5">
-                                            Of {l.originalThan}T: {l.deducted.despatched > 0 && `desp ${l.deducted.despatched}T · `}{l.deducted.folded > 0 && `folded ${l.deducted.folded}T · `}{l.deducted.obAllocated > 0 && `alloc ${l.deducted.obAllocated}T`}
+                                            Of {l.originalThan}: {l.deducted.despatched > 0 && `desp ${l.deducted.despatched} · `}{l.deducted.folded > 0 && `folded ${l.deducted.folded} · `}{l.deducted.obAllocated > 0 && `alloc ${l.deducted.obAllocated}`}
                                           </p>
                                         )}
                                       </div>
-                                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 ml-2">{l.remaining}T</span>
+                                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 ml-2">{l.remaining}</span>
                                     </Link>
                                   ))}
                                 </div>

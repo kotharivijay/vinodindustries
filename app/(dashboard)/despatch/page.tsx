@@ -472,7 +472,7 @@ export default function DespatchListPage() {
                           <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{e.party?.name ?? '-'}</p>
                           {e.isLastYear && <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-1.5 py-0.5 rounded font-medium">Last Year</span>}
                         </div>
-                        <span className="text-xs font-bold text-orange-700 dark:text-orange-400 shrink-0">{lots ? lots.reduce((s, l) => s + l.than, 0) : e.than}T</span>
+                        <span className="text-xs font-bold text-orange-700 dark:text-orange-400 shrink-0">{lots ? lots.reduce((s, l) => s + l.than, 0) : e.than}</span>
                       </div>
                       {lots ? (
                         <div className="mt-1.5 space-y-1">
@@ -483,7 +483,7 @@ export default function DespatchListPage() {
                               <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="inline-flex items-center bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50">
                                 {l.lotNo}
                               </Link>
-                              <span className="text-gray-600 dark:text-gray-400">({l.than}T)</span>
+                              <span className="text-gray-600 dark:text-gray-400">({l.than})</span>
                               {lotQuality && <span className="text-gray-700 dark:text-gray-300 font-medium">{lotQuality}</span>}
                               {l.description && <span className="text-gray-500 dark:text-gray-400 italic">{l.description}</span>}
                             </div>
@@ -585,7 +585,7 @@ export default function DespatchListPage() {
                                   return (
                                   <div key={li} className="flex items-center gap-1.5 text-xs">
                                     <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="font-medium text-indigo-700 dark:text-indigo-400 hover:underline">{l.lotNo}</Link>
-                                    <span className="text-gray-500 dark:text-gray-400">({l.than}T)</span>
+                                    <span className="text-gray-500 dark:text-gray-400">({l.than})</span>
                                     {lotQuality && <span className="text-gray-600 dark:text-gray-300">{lotQuality}</span>}
                                     {l.description && <span className="text-gray-400 dark:text-gray-500 italic">{l.description}</span>}
                                   </div>

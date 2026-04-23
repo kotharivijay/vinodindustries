@@ -591,18 +591,18 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${r.reprocess?.status === 'merged' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{r.reprocess?.status}</span>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Sent <strong>{r.than}T</strong> for re-process ({r.reason || r.reprocess?.reason}) · Quality: {r.reprocess?.quality}
+                      Sent <strong>{r.than}</strong> for re-process ({r.reason || r.reprocess?.reason}) · Quality: {r.reprocess?.quality}
                     </p>
                   </div>
                 ) : (
                   <div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-bold text-purple-700 dark:text-purple-400">{r.reproNo}</span>
-                      <span className="text-sm font-bold text-emerald-600">{r.totalThan}T</span>
+                      <span className="text-sm font-bold text-emerald-600">{r.totalThan}</span>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{r.quality} · {r.reason} · {r.sources?.length} source lot{r.sources?.length !== 1 ? 's' : ''}</p>
                     {r.sources?.map((s: any) => (
-                      <p key={s.id} className="text-xs text-gray-500 ml-2">← {s.originalLotNo} ({s.than}T) {s.party}</p>
+                      <p key={s.id} className="text-xs text-gray-500 ml-2">← {s.originalLotNo} ({s.than}) {s.party}</p>
                     ))}
                   </div>
                 )}

@@ -203,7 +203,7 @@ function LotBottomSheet({ availableLots, currentLotNo, onSelect, onClose }: {
                 <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
                 <span className="text-xs text-gray-400 ml-2">{l.party} &middot; {l.quality}</span>
               </div>
-              <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{l.foldAvailable}T</span>
+              <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{l.foldAvailable}</span>
             </button>
           ))}
           {filtered.length === 0 && query && (

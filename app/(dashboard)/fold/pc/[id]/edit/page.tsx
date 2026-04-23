@@ -462,7 +462,7 @@ export default function EditPcFoldPage() {
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-purple-700 dark:text-purple-400">{markaName}</span>
                           <span className="text-xs text-gray-400">{markaLots.length} lots</span>
-                          <span className="text-xs font-semibold text-purple-600 dark:text-purple-300">{markaTotalThan}T</span>
+                          <span className="text-xs font-semibold text-purple-600 dark:text-purple-300">{markaTotalThan}</span>
                         </div>
                       </div>
 

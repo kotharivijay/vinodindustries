@@ -52,7 +52,7 @@ export default function EditAllocations({ balanceId, openingThan, initialAllocat
   }
 
   async function save() {
-    if (overAllocated) { setError(`Over-allocated by ${totalAllocated - openingThan}T`); return }
+    if (overAllocated) { setError(`Over-allocated by ${totalAllocated - openingThan}`); return }
     setSaving(true)
     setError('')
     try {
@@ -77,7 +77,7 @@ export default function EditAllocations({ balanceId, openingThan, initialAllocat
 
   if (!editing) {
     const summary = initialAllocations.length > 0
-      ? initialAllocations.map(a => `${a.than}T ${a.stage}`).join(' · ')
+      ? initialAllocations.map(a => `${a.than} ${a.stage}`).join(' · ')
       : 'No allocations (all as grey)'
     return (
       <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
@@ -98,7 +98,7 @@ export default function EditAllocations({ balanceId, openingThan, initialAllocat
     <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
       <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-purple-700 dark:text-purple-400 uppercase tracking-wide">Allocate {openingThan}T to stages</span>
+          <span className="text-xs font-semibold text-purple-700 dark:text-purple-400 uppercase tracking-wide">Allocate {openingThan} to stages</span>
           <button onClick={() => { setEditing(false); setError('') }} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Cancel</button>
         </div>
 
@@ -151,9 +151,9 @@ export default function EditAllocations({ balanceId, openingThan, initialAllocat
 
         <div className={`text-xs flex items-center justify-between pt-2 border-t border-purple-200 dark:border-purple-800 ${overAllocated ? 'text-red-600' : 'text-gray-600 dark:text-gray-400'}`}>
           <span>
-            Allocated: <strong>{totalAllocated}T</strong> / {openingThan}T
-            {remaining > 0 && <span className="ml-2 text-gray-400">(remaining {remaining}T = grey)</span>}
-            {overAllocated && <span className="ml-2 text-red-600">(OVER by {-remaining}T)</span>}
+            Allocated: <strong>{totalAllocated}</strong> / {openingThan}
+            {remaining > 0 && <span className="ml-2 text-gray-400">(remaining {remaining} = grey)</span>}
+            {overAllocated && <span className="ml-2 text-red-600">(OVER by {-remaining})</span>}
           </span>
           <button
             onClick={save}

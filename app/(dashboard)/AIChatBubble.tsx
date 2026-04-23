@@ -773,7 +773,7 @@ export default function AIChatBubble() {
                               <span className="text-xs text-gray-400">{lot.quality}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-green-400">{currentThan}T</span>
+                              <span className="text-sm font-bold text-green-400">{currentThan}</span>
                               <button onClick={() => unlockLot(batchIdx, lot.lotNo)} className="text-[10px] text-gray-400 hover:text-gray-200 underline">Edit</button>
                             </div>
                           </div>

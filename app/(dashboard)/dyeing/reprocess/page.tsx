@@ -138,7 +138,7 @@ export default function ReProcessPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Re-Process Ledger</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {summary.total} lots · {summary.totalThan}T · {summary.pending} pending · {summary.finished} finished
+              {summary.total} lots · {summary.totalThan} · {summary.pending} pending · {summary.finished} finished
             </p>
           </div>
         </div>
@@ -251,7 +251,7 @@ export default function ReProcessPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{lot.totalThan}T</span>
+                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{lot.totalThan}</span>
                     <span className={`text-gray-400 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
                   </div>
                 </button>
@@ -269,7 +269,7 @@ export default function ReProcessPage() {
                             {s.reason && <span className="text-gray-400 ml-2">({s.reason})</span>}
                             {s.sourceDyeSlip && <span className="text-gray-400 ml-1">Slip {s.sourceDyeSlip}</span>}
                           </div>
-                          <span className="font-bold text-gray-700 dark:text-gray-200">{s.than}T</span>
+                          <span className="font-bold text-gray-700 dark:text-gray-200">{s.than}</span>
                         </div>
                       ))}
                     </div>

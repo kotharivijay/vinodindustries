@@ -150,9 +150,9 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
                     return (
                       <div key={lot.id} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${bg}`}>
                         <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{lot.lotNo}</Link>
-                        <span className="text-xs text-gray-600 dark:text-gray-400">{lot.than}T</span>
+                        <span className="text-xs text-gray-600 dark:text-gray-400">{lot.than}</span>
                         {lot.status === 'done' && <span className="text-[10px] text-green-600 dark:text-green-400 ml-auto">✅ Done</span>}
-                        {lot.status === 'partial' && <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-auto">🟡 {lot.doneThan}T done</span>}
+                        {lot.status === 'partial' && <span className="text-[10px] text-amber-600 dark:text-amber-400 ml-auto">🟡 {lot.doneThan} done</span>}
                         {lot.status === 'pending' && <span className="text-[10px] text-gray-400 ml-auto">⏳ Pending</span>}
                       </div>
                     )
@@ -291,7 +291,7 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
               <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-3 text-center">
                 <p className="text-[10px] text-gray-500 uppercase">Cost / Than</p>
                 <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">₹{costPerThan.toFixed(2)}</p>
-                <p className="text-[10px] text-gray-400">{thanForCalc}T</p>
+                <p className="text-[10px] text-gray-400">{thanForCalc}</p>
               </div>
             )}
             {costPerMtr > 0 && (

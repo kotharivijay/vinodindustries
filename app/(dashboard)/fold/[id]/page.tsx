@@ -85,7 +85,7 @@ function LotPicker({ currentLotNo, currentThan, lotId, stockLots, onSave }: {
                     <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
                     <span className="text-[10px] text-gray-400 ml-2">{l.party} · {l.quality}</span>
                   </div>
-                  <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{l.foldAvailable}T</span>
+                  <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{l.foldAvailable}</span>
                 </button>
               ))}
               {filtered.length === 0 && (
@@ -457,7 +457,7 @@ export default function FoldDetailPage() {
                     <span>{l.type === 'not_found' ? '❌' : '⚠️'}</span>
                     <span className="font-medium text-gray-700 dark:text-gray-200">{l.lotNo}</span>
                     <span className="text-gray-400">
-                      {l.type === 'not_found' ? 'not found in stock' : `needs ${l.needed}T, available ${l.available}T (stock: ${l.stock}T)`}
+                      {l.type === 'not_found' ? 'not found in stock' : `needs ${l.needed}, available ${l.available} (stock: ${l.stock})`}
                     </span>
                   </div>
                 </div>
@@ -517,7 +517,7 @@ export default function FoldDetailPage() {
                           <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">🏷️ {lot.marka}</span>
                         )}
                       </div>
-                      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{lot.than}T</span>
+                      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{lot.than}</span>
                     </div>
                     <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
                       <span>{lot.party?.name ?? '-'}</span>

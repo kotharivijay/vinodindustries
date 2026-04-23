@@ -213,7 +213,7 @@ export default function DyeingProgramPage() {
                         {e.status === 'patchy' && <span className="text-[10px] text-red-400">Patchy</span>}
                         {e.status === 're-dyeing' && <span className="text-[10px] text-amber-400">Re-dye</span>}
                       </div>
-                      <span className="text-sm font-bold text-purple-600 dark:text-purple-400">{slipThan}T</span>
+                      <span className="text-sm font-bold text-purple-600 dark:text-purple-400">{slipThan}</span>
                     </div>
 
                     {/* Fold + Shade */}

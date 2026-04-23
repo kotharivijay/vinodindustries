@@ -75,7 +75,7 @@ export async function PUT(req: NextRequest) {
   }
   if (total > balance.openingThan) {
     return NextResponse.json({
-      error: `Total allocated (${total}T) exceeds opening balance (${balance.openingThan}T)`,
+      error: `Total allocated (${total}) exceeds opening balance (${balance.openingThan})`,
     }, { status: 400 })
   }
 

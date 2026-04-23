@@ -1055,7 +1055,7 @@ function formatResult(fn: string, args: any, data: any): string {
       if (!Array.isArray(data) || data.length === 0) return 'No dyeing slips found for this filter.'
       let r = `Dyeing Slips: ${data.length} found\n`
       for (const e of data.slice(0, 15)) {
-        r += `\n  Slip ${e.slipNo} | ${fmtDate(e.date)} | ${e.lotNo} | ${e.than}T`
+        r += `\n  Slip ${e.slipNo} | ${fmtDate(e.date)} | ${e.lotNo} | ${e.than}`
         if (e.shade) r += ` | ${e.shade}`
         if (e.status && e.status !== 'pending') r += ` | ${e.status}`
       }
@@ -1068,7 +1068,7 @@ function formatResult(fn: string, args: any, data: any): string {
       const total = data.reduce((s: number, e: any) => s + e.than, 0)
       let r = `Grey Entries: ${data.length} found, ${fmt(total)} than total\n`
       for (const e of data.slice(0, 15)) {
-        r += `\n  ${fmtDate(e.date)} | Ch.${e.challanNo} | ${e.party} | ${e.lotNo} | ${e.than}T | ${e.quality}`
+        r += `\n  ${fmtDate(e.date)} | Ch.${e.challanNo} | ${e.party} | ${e.lotNo} | ${e.than} | ${e.quality}`
       }
       if (data.length > 15) r += `\n  ...and ${data.length - 15} more`
       return r
@@ -1079,7 +1079,7 @@ function formatResult(fn: string, args: any, data: any): string {
       const total = data.reduce((s: number, e: any) => s + e.than, 0)
       let r = `Despatch: ${data.length} entries, ${fmt(total)} than total\n`
       for (const e of data.slice(0, 15)) {
-        r += `\n  ${fmtDate(e.date)} | Ch.${e.challanNo} | ${e.party} | ${e.lotNo} | ${e.than}T`
+        r += `\n  ${fmtDate(e.date)} | Ch.${e.challanNo} | ${e.party} | ${e.lotNo} | ${e.than}`
         if (e.billNo) r += ` | Bill: ${e.billNo}`
       }
       if (data.length > 15) r += `\n  ...and ${data.length - 15} more`
@@ -1169,7 +1169,7 @@ function formatResult(fn: string, args: any, data: any): string {
       if (!Array.isArray(data) || data.length === 0) return 'No finish entries found.'
       let r = `Finish Programs: ${data.length} found\n`
       for (const e of data.slice(0, 15)) {
-        r += `\n  FP ${e.fpNo} | ${fmtDate(e.date)} | ${e.lotNos} | ${e.totalThan}T | ${e.status}`
+        r += `\n  FP ${e.fpNo} | ${fmtDate(e.date)} | ${e.lotNos} | ${e.totalThan} | ${e.status}`
       }
       if (data.length > 15) r += `\n  ...and ${data.length - 15} more`
       return r
@@ -1183,7 +1183,7 @@ function formatResult(fn: string, args: any, data: any): string {
       if (!data.lots || data.lots.length === 0) return `No finish stock available${args.party ? ` for "${args.party}"` : ''}.`
       let r = `Finish Stock: ${data.lotCount} lots, ${fmt(data.totalAvailable)} than available\n`
       for (const l of data.lots.slice(0, 20)) {
-        r += `\n  ${l.lotNo} | ${l.party} | ${l.quality} | Dyed: ${l.dyed}T | Finished: ${l.finished}T | Available: ${l.available}T`
+        r += `\n  ${l.lotNo} | ${l.party} | ${l.quality} | Dyed: ${l.dyed} | Finished: ${l.finished} | Available: ${l.available}`
       }
       if (data.lots.length > 20) r += `\n  ...and ${data.lots.length - 20} more`
       return r
@@ -1193,7 +1193,7 @@ function formatResult(fn: string, args: any, data: any): string {
       if (!Array.isArray(data) || data.length === 0) return 'No folding receipts found.'
       let r = `Folding Receipts: ${data.length} found\n`
       for (const f of data.slice(0, 15)) {
-        r += `\n  FR ${f.frNo} | ${fmtDate(f.date)} | ${f.lotNo} | ${f.than}T | FP ${f.fpNo}`
+        r += `\n  FR ${f.frNo} | ${fmtDate(f.date)} | ${f.lotNo} | ${f.than} | FP ${f.fpNo}`
       }
       if (data.length > 15) r += `\n  ...and ${data.length - 15} more`
       return r
@@ -1203,8 +1203,8 @@ function formatResult(fn: string, args: any, data: any): string {
       if (!data.entries || data.entries.length === 0) return `No packing stock found${args.party ? ` for "${args.party}"` : ''}.`
       let r = `Packing Stock: ${fmt(data.total)} than\n`
       for (const e of data.entries.slice(0, 15)) {
-        const status = e.complete ? '✅' : `⏳ ${e.receivedThan}/${e.than}T`
-        r += `\n  FP ${e.fpNo} | ${e.lotNo} | ${e.party} | ${e.than}T | FR: ${status}`
+        const status = e.complete ? '✅' : `⏳ ${e.receivedThan}/${e.than}`
+        r += `\n  FP ${e.fpNo} | ${e.lotNo} | ${e.party} | ${e.than} | FR: ${status}`
       }
       if (data.entries.length > 15) r += `\n  ...and ${data.entries.length - 15} more`
       return r
@@ -1231,10 +1231,10 @@ function formatResult(fn: string, args: any, data: any): string {
       if (data.folds?.length > 0) {
         r += `\nFold-wise:\n`
         for (const f of data.folds) {
-          r += `\n📁 Fold ${f.foldNo} — ${f.slips} slips, ${fmt(f.than)}T, ${fmtINR(f.cost)}, Avg: ${fmtINR(f.avgPerThan)}/T\n`
+          r += `\n📁 Fold ${f.foldNo} — ${f.slips} slips, ${fmt(f.than)}, ${fmtINR(f.cost)}, Avg: ${fmtINR(f.avgPerThan)}/T\n`
           for (const b of f.batches) {
             const bLabel = b.batchNo ? `B${b.batchNo}` : `Slip ${b.slipNo}`
-            r += `  ${bLabel} | ${b.shade} | ${b.than}T | ${fmtINR(b.cost)} | ${fmtINR(b.costPerThan)}/T\n`
+            r += `  ${bLabel} | ${b.shade} | ${b.than} | ${fmtINR(b.cost)} | ${fmtINR(b.costPerThan)}/T\n`
           }
         }
       }
@@ -1242,7 +1242,7 @@ function formatResult(fn: string, args: any, data: any): string {
       if (data.shades?.length > 0) {
         r += `\nShade-wise Cost:\n`
         for (const s of data.shades.slice(0, 15)) {
-          r += `  ${s.shade} — ${s.than}T, ${fmtINR(s.cost)}, Avg: ${fmtINR(s.avgPerThan)}/T\n`
+          r += `  ${s.shade} — ${s.than}, ${fmtINR(s.cost)}, Avg: ${fmtINR(s.avgPerThan)}/T\n`
         }
         if (data.shades.length > 15) r += `  ...and ${data.shades.length - 15} more shades\n`
       }

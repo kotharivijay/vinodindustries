@@ -584,7 +584,7 @@ export default function BatchDyeingPage() {
                   </button>
                 </div>
                 <p className="text-xs text-green-600 dark:text-green-500 mt-1">
-                  {selectedBatch.lots.map(l => `${l.lotNo} (${l.than}T)`).join(', ')} · {selectedBatch.totalWeight.toFixed(1)} kg
+                  {selectedBatch.lots.map(l => `${l.lotNo} (${l.than})`).join(', ')} · {selectedBatch.totalWeight.toFixed(1)} kg
                 </p>
               </div>
             )}
@@ -656,7 +656,7 @@ export default function BatchDyeingPage() {
                                   <div className="flex flex-wrap gap-1.5">
                                     {b.lots.map((l, li) => (
                                       <span key={li} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-full font-medium">
-                                        {l.lotNo} ({l.than}T){l.marka ? ` 🏷️${l.marka}` : ''}
+                                        {l.lotNo} ({l.than}){l.marka ? ` 🏷️${l.marka}` : ''}
                                       </span>
                                     ))}
                                     <span className="text-[10px] text-gray-400 ml-auto">{b.totalWeight.toFixed(1)} kg</span>
@@ -1155,7 +1155,7 @@ export default function BatchDyeingPage() {
                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                       {lots.map((l: any, li: number) => (
                         <span key={li} className="text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-full">
-                          {l.lotNo}{l.marka ? ` [${l.marka}]` : ''} ({l.than}T)
+                          {l.lotNo}{l.marka ? ` [${l.marka}]` : ''} ({l.than})
                         </span>
                       ))}
                     </div>

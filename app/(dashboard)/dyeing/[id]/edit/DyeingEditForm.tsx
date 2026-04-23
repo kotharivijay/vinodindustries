@@ -808,7 +808,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
                     </div>
                     {totalThan > 0 && (
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-purple-200">Cost per Than ({totalThan}T)</span>
+                        <span className="text-xs text-purple-200">Cost per Than ({totalThan})</span>
                         <span className="text-sm font-semibold text-purple-300">&#8377;{costPerThan.toFixed(2)}</span>
                       </div>
                     )}

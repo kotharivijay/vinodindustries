@@ -1234,18 +1234,18 @@ export default function FinishStockPage() {
         for (const l of pe.lots) {
           const recs = (l as any).foldingReceipts || []
           const received = recs.reduce((s: number, r: any) => s + r.than, 0)
-          const frStatus = received >= l.than ? '✅' : `⏳ ${received}/${l.than}T`
-          text += `│   🏷️ ${l.lotNo} · ${l.than}T · ${frStatus}\n`
+          const frStatus = received >= l.than ? '✅' : `⏳ ${received}/${l.than}`
+          text += `│   🏷️ ${l.lotNo} · ${l.than} · ${frStatus}\n`
         }
         const qualities = [...new Set(pe.lots.map((l: any) => l.quality).filter(Boolean))]
         if (qualities.length > 0) text += `│ Quality: ${qualities.join(', ')}\n`
         const totalReceived = pe.lots.reduce((s: number, l: any) => s + ((l.foldingReceipts || []).reduce((s2: number, r: any) => s2 + r.than, 0)), 0)
-        text += `│ Total: ${pe.totalThan}T · FR: ${totalReceived}/${pe.totalThan}T\n`
+        text += `│ Total: ${pe.totalThan} · FR: ${totalReceived}/${pe.totalThan}\n`
       }
       text += `└──────────────────────\n`
     }
     const grandTotal = Array.from(despMap.values()).flat().reduce((s, e) => s + e.totalThan, 0)
-    text += `\n*Total: ${selectedDesps.size} slips · ${grandTotal}T*`
+    text += `\n*Total: ${selectedDesps.size} slips · ${grandTotal}*`
 
     if (navigator.share) {
       navigator.share({ text }).catch(() => {})
@@ -1459,7 +1459,7 @@ export default function FinishStockPage() {
                                       </div>
                                       <div className="flex items-center gap-2">
                                         {hasSlipThans ? (
-                                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{slipSum}T</span>
+                                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{slipSum}</span>
                                         ) : (
                                           <>
                                             <input type="number" value={lot.than}
@@ -1551,7 +1551,7 @@ export default function FinishStockPage() {
                                       {e.foldNo && <span className="text-indigo-500 ml-1">F{e.foldNo}</span>}
                                       {e.shadeName && <span className="text-purple-500 ml-1">{e.shadeName}</span>}
                                     </div>
-                                    <span className="font-bold text-gray-700 dark:text-gray-200">{l.than}T</span>
+                                    <span className="font-bold text-gray-700 dark:text-gray-200">{l.than}</span>
                                   </button>
                                 ))
                               ))}
@@ -1864,13 +1864,13 @@ export default function FinishStockPage() {
                                   </div>
                                   {totalThanDone > 0 && (
                                     <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2 mt-2">
-                                      <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">Cost per Than ({totalThanDone}T)</span>
+                                      <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">Cost per Than ({totalThanDone})</span>
                                       <span className="text-lg font-bold text-indigo-600 dark:text-indigo-400">&#8377;{costPerThan.toFixed(2)}/T</span>
                                     </div>
                                   )}
                                   {totalThanDone === 0 && totalThanAll > 0 && (
                                     <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 mt-2">
-                                      <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">Cost per Than ({totalThanAll}T)</span>
+                                      <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">Cost per Than ({totalThanAll})</span>
                                       <span className="text-base font-bold text-gray-600 dark:text-gray-300">&#8377;{(totalThanAll > 0 ? totalCost / totalThanAll : 0).toFixed(2)}/T</span>
                                     </div>
                                   )}
@@ -1935,7 +1935,7 @@ export default function FinishStockPage() {
                                 <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(entry.date).toLocaleDateString('en-IN')}</span>
                               </div>
                               <div className="flex items-center gap-3">
-                                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThanEntry}T</span>
+                                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThanEntry}</span>
                                 <span className={`text-gray-400 dark:text-gray-500 transition-transform text-xs ${fpOpen ? 'rotate-90' : ''}`}>&#9654;</span>
                               </div>
                             </div>
@@ -2004,14 +2004,14 @@ export default function FinishStockPage() {
                                                 <div key={lot.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg px-3 py-2">
                                                   <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
                                                     className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{lot.lotNo}</Link>
-                                                  <span className="text-xs text-gray-600 dark:text-gray-400">{lot.than}T</span>
+                                                  <span className="text-xs text-gray-600 dark:text-gray-400">{lot.than}</span>
 
                                                   {/* Status + actions */}
                                                   {lot.status === 'done' ? (
-                                                    <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium ml-auto">✅ Done ({lot.doneThan}T)</span>
+                                                    <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium ml-auto">✅ Done ({lot.doneThan})</span>
                                                   ) : lot.status === 'partial' ? (
                                                     <div className="flex items-center gap-1.5 ml-auto">
-                                                      <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">🟡 {lot.doneThan}T done</span>
+                                                      <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">🟡 {lot.doneThan} done</span>
                                                       {partialLotId === lot.id ? (
                                                         <div className="flex items-center gap-1">
                                                           <input type="number" value={partialThanInput} onChange={e => setPartialThanInput(e.target.value)}
@@ -2126,7 +2126,7 @@ export default function FinishStockPage() {
                 }
 
                 async function handleEditFR(r: any) {
-                  const newThan = prompt(`Edit Folding_recpt ${r.slipNo} — ${r.lotNo}\nCurrent: ${r.than}T\n\nNew than:`, String(r.than))
+                  const newThan = prompt(`Edit Folding_recpt ${r.slipNo} — ${r.lotNo}\nCurrent: ${r.than}\n\nNew than:`, String(r.than))
                   if (newThan === null || newThan === String(r.than)) return
                   const newDate = prompt('Date (YYYY-MM-DD):', new Date(r.date).toISOString().split('T')[0])
                   if (newDate === null) return
@@ -2141,7 +2141,7 @@ export default function FinishStockPage() {
                 }
 
                 async function handleDeleteFR(r: any) {
-                  if (!confirm(`Delete Folding_recpt ${r.slipNo} — ${r.lotNo} (${r.than}T)?`)) return
+                  if (!confirm(`Delete Folding_recpt ${r.slipNo} — ${r.lotNo} (${r.than})?`)) return
                   try {
                     await fetch('/api/finish/folding-receipt', {
                       method: 'DELETE',
@@ -2210,7 +2210,7 @@ export default function FinishStockPage() {
                         <div key={slipNo} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">Folding_recpt {slipNo}</span>
-                            <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThan}T</span>
+                            <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThan}</span>
                           </div>
                           <div className="space-y-1">
                             {recs.map((r: any, i: number) => (
@@ -2222,7 +2222,7 @@ export default function FinishStockPage() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className="text-gray-400">{new Date(r.date).toLocaleDateString('en-IN')}</span>
-                                  <span className="font-bold text-gray-700 dark:text-gray-200">{r.than}T</span>
+                                  <span className="font-bold text-gray-700 dark:text-gray-200">{r.than}</span>
                                   <button onClick={() => handleEditFR(r)} className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-[10px] font-medium">Edit</button>
                                   <button onClick={() => handleDeleteFR(r)} className="text-red-400 hover:text-red-600 dark:hover:text-red-300 text-[10px] font-medium">Del</button>
                                 </div>
@@ -2311,14 +2311,14 @@ export default function FinishStockPage() {
                                                               <div key={li} className={`rounded-lg p-2 ${complete ? 'bg-green-50 dark:bg-green-900/10' : 'bg-gray-50 dark:bg-gray-900/50'}`}>
                                                                 <div className="flex items-center justify-between mb-1">
                                                                   <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">{lot.lotNo}</span>
-                                                                  <span className="text-xs">{received}/{lot.than}T {complete ? '✅' : '⏳'}</span>
+                                                                  <span className="text-xs">{received}/{lot.than} {complete ? '✅' : '⏳'}</span>
                                                                 </div>
                                                                 {recs.length > 0 && (
                                                                   <div className="space-y-0.5">
                                                                     {recs.map((r: any) => (
                                                                       <div key={r.id} className="flex items-center justify-between text-[10px] text-gray-500">
                                                                         <span>Folding_recpt {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
-                                                                        <span className="font-medium">{r.than}T</span>
+                                                                        <span className="font-medium">{r.than}</span>
                                                                       </div>
                                                                     ))}
                                                                   </div>
@@ -2433,7 +2433,7 @@ export default function FinishStockPage() {
                               <span className="text-gray-300 dark:text-gray-600">&middot;</span>
                               <span className="text-teal-600 dark:text-teal-400 font-medium">Finish_Prg {e.slipNo}</span>
                             </div>
-                            <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{e.totalThan}T</span>
+                            <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{e.totalThan}</span>
                           </div>
                           <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                             {e.lots.map((lot, li) => (
@@ -2682,7 +2682,7 @@ export default function FinishStockPage() {
                                                         <span>{new Date(slip.date).toLocaleDateString('en-IN')}</span>
                                                         {slip.batchNo && <span className="text-[10px] text-gray-400">B{slip.batchNo}</span>}
                                                       </div>
-                                                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{slipQualityThan}T</span>
+                                                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{slipQualityThan}</span>
                                                     </div>
                                                     {shade && <p className="text-xs text-gray-600 dark:text-gray-300 mb-0.5">{shade}</p>}
                                                     <div className="flex flex-wrap gap-1.5">
@@ -3128,7 +3128,7 @@ export default function FinishStockPage() {
                                   <span className="text-[10px] text-gray-400 ml-2">{group.entries.length} FP{group.entries.length !== 1 ? 's' : ''}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThan}T</span>
+                                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{totalThan}</span>
                                   <span className={`text-gray-400 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
                                 </div>
                               </button>
@@ -3143,7 +3143,7 @@ export default function FinishStockPage() {
                                         {pe.isFromOB && <span className="text-[9px] font-bold bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded-full">OB</span>}
                                         <span className="text-gray-400">{new Date(pe.date).toLocaleDateString('en-IN')}</span>
                                       </div>
-                                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{pe.totalThan}T</span>
+                                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{pe.totalThan}</span>
                                     </div>
                                     <div className="space-y-2 mt-1">
                                       {pe.lots.map((l: any, li: number) => {
@@ -3162,7 +3162,7 @@ export default function FinishStockPage() {
                                                 >{l.lotNo}</LotLink>
                                                 {l.foldNo && <span className="text-[9px] text-indigo-500">F{l.foldNo}</span>}
                                               </div>
-                                              <span className="text-xs font-medium">{received}/{l.than}T {complete ? '✅' : '⏳'}</span>
+                                              <span className="text-xs font-medium">{received}/{l.than} {complete ? '✅' : '⏳'}</span>
                                             </div>
                                             {recs.length > 0 && (
                                               <div className="space-y-0.5 mb-1">
@@ -3179,7 +3179,7 @@ export default function FinishStockPage() {
                                                         </>
                                                       ) : (
                                                         <>
-                                                          <span className="font-medium text-gray-700 dark:text-gray-200">{r.than}T</span>
+                                                          <span className="font-medium text-gray-700 dark:text-gray-200">{r.than}</span>
                                                           <button onClick={() => { setFrEditId(r.id); setFrEditThan(String(r.than)) }} className="text-[9px] text-indigo-500 hover:underline">Edit</button>
                                                         </>
                                                       )}
@@ -3288,7 +3288,7 @@ export default function FinishStockPage() {
                                                 </>
                                               )}
                                             </div>
-                                            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{slipQualityThan}T</span>
+                                            <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{slipQualityThan}</span>
                                           </div>
                                           <div className="flex flex-wrap gap-1.5">
                                             {qLots.map((lot, li) => {
@@ -3330,7 +3330,7 @@ export default function FinishStockPage() {
             <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700">
               <div>
                 <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">+ Folding Receipt</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Finish_Prg {frFormFpNo} · {frFormLotNo} · {frFormMaxThan}T remaining</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Finish_Prg {frFormFpNo} · {frFormLotNo} · {frFormMaxThan} remaining</p>
               </div>
               <button onClick={() => setFrFormLotId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
             </div>
