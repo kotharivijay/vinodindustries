@@ -13,7 +13,7 @@ export async function GET() {
   // Fetch everything we need in parallel
   const [greyEntries, obBalances, despatchesParent, despatchLotRows, foldBatchLots] = await Promise.all([
     prisma.greyEntry.findMany({
-      select: { lotNo: true, than: true, weight: true, grayMtr: true, date: true, challanNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+      select: { lotNo: true, than: true, weight: true, marka: true, grayMtr: true, date: true, challanNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
     }),
     db.lotOpeningBalance.findMany({
       include: { allocations: true },
@@ -54,8 +54,10 @@ export async function GET() {
     lotNo: string
     remaining: number
     party: string
+    partyTag: string | null
     quality: string
     weight: string | null
+    marka: string | null
     grayMtr: number | null
     date: Date | null
     challanNos: string
@@ -64,10 +66,15 @@ export async function GET() {
     deducted: { despatched: number; folded: number; obAllocated: number }
   }
 
+  // Build party → tag lookup for downstream conditional fields
+  const allParties = await prisma.party.findMany({ select: { name: true, tag: true } })
+  const partyTagMap = new Map<string, string | null>()
+  for (const p of allParties) partyTagMap.set(p.name, p.tag)
+
   const lots: Lot[] = []
 
   // Process current-year grey entries (aggregate by lot across multiple inwards)
-  const greyByLot = new Map<string, { than: number; weight: string | null; grayMtr: number | null; date: Date; party: string; quality: string; challans: Set<string> }>()
+  const greyByLot = new Map<string, { than: number; weight: string | null; marka: string | null; grayMtr: number | null; date: Date; party: string; quality: string; challans: Set<string> }>()
   for (const g of greyEntries) {
     const k = g.lotNo.toLowerCase().trim()
     const existing = greyByLot.get(k)
@@ -76,12 +83,14 @@ export async function GET() {
       if (g.grayMtr) existing.grayMtr = (existing.grayMtr || 0) + g.grayMtr
       if (g.date > existing.date) existing.date = g.date
       if (g.challanNo != null) existing.challans.add(String(g.challanNo))
+      if (!existing.marka && g.marka) existing.marka = g.marka
     } else {
       const challans = new Set<string>()
       if (g.challanNo != null) challans.add(String(g.challanNo))
       greyByLot.set(k, {
         than: g.than,
         weight: g.weight,
+        marka: g.marka || null,
         grayMtr: g.grayMtr,
         date: g.date,
         party: g.party?.name || 'Unknown',
@@ -103,8 +112,10 @@ export async function GET() {
       lotNo: orig,
       remaining,
       party: g.party,
+      partyTag: partyTagMap.get(g.party) || null,
       quality: g.quality,
       weight: g.weight,
+      marka: g.marka,
       grayMtr: g.grayMtr,
       date: g.date,
       challanNos: Array.from(g.challans).sort().join(', '),
@@ -126,12 +137,15 @@ export async function GET() {
     const remaining = ob.openingThan - despatched - folded - obAllocated
     if (remaining <= 0) continue
 
+    const obParty = ob.party || 'Unknown'
     lots.push({
       lotNo: ob.lotNo,
       remaining,
-      party: ob.party || 'Unknown',
+      party: obParty,
+      partyTag: partyTagMap.get(obParty) || null,
       quality: ob.quality || 'Unknown',
       weight: ob.weight,
+      marka: ob.marka || null,
       grayMtr: ob.grayMtr,
       date: ob.greyDate,
       challanNos: '',

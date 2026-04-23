@@ -7,8 +7,10 @@ interface Lot {
   lotNo: string
   remaining: number
   party: string
+  partyTag: string | null
   quality: string
   weight: string | null
+  marka: string | null
   grayMtr: number | null
   date: string | null
   challanNos: string
@@ -185,9 +187,17 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                             <span className="text-[9px] text-gray-500 dark:text-gray-400">{l.weight}</span>
                                           )}
                                         </div>
-                                        {l.challanNos && (
-                                          <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Challan: {l.challanNos}</p>
-                                        )}
+                                        {(() => {
+                                          const showExtras = /prakash\s+shirting/i.test(l.party) || (l.partyTag || '').toLowerCase() === 'pali pc job'
+                                          if (!l.challanNos && !(showExtras && (l.date || l.marka))) return null
+                                          return (
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-x-2">
+                                              {l.challanNos && <span>Ch: {l.challanNos}</span>}
+                                              {showExtras && l.date && <span>{new Date(l.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>}
+                                              {showExtras && l.marka && <span>Marka: {l.marka}</span>}
+                                            </p>
+                                          )
+                                        })()}
                                         {(l.deducted.despatched > 0 || l.deducted.folded > 0 || l.deducted.obAllocated > 0) && (
                                           <p className="text-[9px] text-gray-400 mt-0.5">
                                             Of {l.originalThan}T: {l.deducted.despatched > 0 && `desp ${l.deducted.despatched}T · `}{l.deducted.folded > 0 && `folded ${l.deducted.folded}T · `}{l.deducted.obAllocated > 0 && `alloc ${l.deducted.obAllocated}T`}
