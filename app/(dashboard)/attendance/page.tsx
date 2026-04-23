@@ -140,6 +140,53 @@ export default function AttendancePage() {
     alert('Copied to clipboard — paste into WhatsApp.')
   }
 
+  const [imgBusy, setImgBusy] = useState(false)
+  async function shareImage() {
+    const node = document.getElementById('attendance-print-root')
+    if (!node) return
+    setImgBusy(true)
+    try {
+      const { default: html2canvas } = await import('html2canvas')
+      // Force white background so the dark-mode captures look clean
+      const canvas = await html2canvas(node, {
+        backgroundColor: '#ffffff',
+        scale: Math.max(2, window.devicePixelRatio || 1),
+        useCORS: true,
+        logging: false,
+      })
+      const blob: Blob | null = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'))
+      if (!blob) { alert('Image render failed'); return }
+      const fileName = `attendance-${date}.png`
+      const file = new File([blob], fileName, { type: 'image/png' })
+
+      // Prefer native share (opens WhatsApp picker on mobile)
+      if ((navigator as any).canShare?.({ files: [file] }) && navigator.share) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: `Attendance ${date}`,
+            text: `Attendance — ${fmtDate(date)}`,
+          })
+          return
+        } catch (e: any) {
+          if (e?.name === 'AbortError') return // user cancelled, no fallback needed
+        }
+      }
+
+      // Fallback: download the PNG
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = fileName
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+      alert('Image downloaded — upload to WhatsApp manually on this device.')
+    } catch (e: any) {
+      alert('Could not create image: ' + (e?.message || e))
+    } finally {
+      setImgBusy(false)
+    }
+  }
+
   const disabled = !tokenInfo?.present || tokenInfo.expired
 
   return (
@@ -198,14 +245,18 @@ export default function AttendancePage() {
           className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50">
           🔄 Refresh
         </button>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap gap-2">
+          <button onClick={shareImage} disabled={disabled || visibleGroups.length === 0 || imgBusy}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-pink-600 text-white disabled:opacity-50">
+            {imgBusy ? 'Rendering…' : '📸 Share Image'}
+          </button>
           <button onClick={copyText} disabled={disabled || visibleGroups.length === 0}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white disabled:opacity-50">
             📋 Copy Text
           </button>
           <button onClick={shareText} disabled={disabled || visibleGroups.length === 0}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 text-white disabled:opacity-50">
-            📤 WhatsApp
+            📤 WhatsApp Text
           </button>
           <button onClick={() => window.print()} disabled={disabled || visibleGroups.length === 0}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white disabled:opacity-50">
