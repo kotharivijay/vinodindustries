@@ -160,9 +160,10 @@ export async function GET() {
       partyThan += qTotal
       partyLots += qLots.length
     }
-    // Pali PC Job parties are job-workers/processors — once their lots
-    // are zero-balance, hide the party entirely from the unallocated view.
-    if ((partyTag.get(party) || '').toLowerCase() === 'pali pc job' && partyThan <= 0) continue
+    // Pali PC Job parties are job-workers/processors — material sent to
+    // them is allocated to the processor, not "unallocated stock". Hide
+    // them from this view entirely, regardless of remaining balance.
+    if ((partyTag.get(party) || '').toLowerCase() === 'pali pc job') continue
     qualities.sort((a, b) => a.quality.localeCompare(b.quality))
     parties.push({ party, totalThan: partyThan, totalLots: partyLots, qualities })
   }
