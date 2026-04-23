@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
 
@@ -397,7 +398,7 @@ export default function ReProcessPage() {
                       {lot.sources.map(s => (
                         <div key={s.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-xs">
                           <div>
-                            <span className="font-medium text-teal-700 dark:text-teal-400">{s.originalLotNo}</span>
+                            <Link href={`/lot/${encodeURIComponent(s.originalLotNo)}`} className="font-medium text-teal-700 dark:text-teal-400 hover:underline">{s.originalLotNo}</Link>
                             {s.party && <span className="text-gray-500 dark:text-gray-400 ml-2">{s.party}</span>}
                             {s.reason && <span className="text-gray-400 ml-2">({s.reason})</span>}
                             {s.sourceDyeSlip && <span className="text-gray-400 ml-1">Slip {s.sourceDyeSlip}</span>}
