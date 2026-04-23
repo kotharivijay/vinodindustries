@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
   const data = {
     token,
     userId: Number(au.user_id ?? body.userId ?? 0) || 0,
+    username: au.username || body.username || null,
     userEmail: au.email || body.email || null,
     hoId: Number(au.ho_id ?? body.hoId ?? 0) || 0,
     orgId: Number(au.organization_id ?? body.orgId ?? 0) || 0,

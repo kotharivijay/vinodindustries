@@ -3,9 +3,14 @@ import { prisma } from '@/lib/prisma'
 export const PETPOOJA_ATTN_BASE = 'https://attendanceinfo.petpooja.com'
 export const PETPOOJA_PAYROLL_BASE = 'https://payroll.petpooja.com/api'
 
+// Static AWS-level app token hardcoded in Petpooja's web bundle.
+// Sent in the body of attendanceinfo.petpooja.com requests as `access_token`.
+export const PETPOOJA_APP_ACCESS_TOKEN = '605ab775311eeee0ffa2c1d999e2968474f5381d'
+
 export interface PetpoojaAuth {
   token: string
   userId: number
+  username: string | null
   hoId: number
   orgId: number
   orgName: string | null
@@ -24,9 +29,43 @@ export async function getPetpoojaAuth(): Promise<PetpoojaAuth> {
     throw new Error(`Petpooja token expired on ${row.expiresAt.toISOString()}. Re-capture from payroll.petpooja.com`)
   }
   return {
-    token: row.token, userId: row.userId, hoId: row.hoId, orgId: row.orgId,
+    token: row.token, userId: row.userId, username: row.username ?? null,
+    hoId: row.hoId, orgId: row.orgId,
     orgName: row.orgName, uniqueCode: row.uniqueCode, expiresAt: row.expiresAt,
   }
+}
+
+/**
+ * Body fields the Petpooja web bundle's axios interceptor injects on every
+ * attendanceinfo.petpooja.com call. Endpoints add their own fields (e.g. emp_id).
+ */
+export function attnAppBody(auth: PetpoojaAuth): Record<string, any> {
+  return {
+    access_token: PETPOOJA_APP_ACCESS_TOKEN,
+    username: auth.username || 'OFFICE',
+    user_id: auth.userId,
+    device_type: 'web',
+  }
+}
+
+/**
+ * Fetch every punch row for a single employee. Petpooja returns punches for
+ * the current pay period (no date filter on the wire) — caller filters by date.
+ */
+export async function fetchEmployeePunches(auth: PetpoojaAuth, empId: number): Promise<any[]> {
+  const res = await fetch(
+    `${PETPOOJA_ATTN_BASE}/attendance_regularization/employee_punch_data`,
+    {
+      method: 'POST',
+      headers: attnHeaders(auth),
+      body: JSON.stringify({ emp_id: empId, ...attnAppBody(auth) }),
+    },
+  )
+  const text = await res.text()
+  if (!res.ok) throw new Error(`Petpooja punch ${res.status}: ${text.slice(0, 300)}`)
+  let payload: any
+  try { payload = JSON.parse(text) } catch { throw new Error(`Punch endpoint returned non-JSON: ${text.slice(0, 200)}`) }
+  return Array.isArray(payload?.data) ? payload.data : []
 }
 
 /**

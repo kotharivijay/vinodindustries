@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getPetpoojaAuth, payrollHeaders, PETPOOJA_PAYROLL_BASE } from '@/lib/petpooja'
+import { fetchEmployeePunches, getPetpoojaAuth, payrollHeaders, PETPOOJA_PAYROLL_BASE } from '@/lib/petpooja'
 
 export const maxDuration = 60
 
@@ -49,6 +49,37 @@ export async function GET(req: NextRequest) {
   const left = await db.attendanceEmployee.findMany({ where: { status: 'left' }, select: { petpoojaEmpId: true } })
   const leftSet = new Set(left.map((e: any) => Number(e.petpoojaEmpId)))
 
+  // Per-employee punch detail. Petpooja only exposes this one-by-one — fan
+  // out in chunks. Skip employees with no first_punch (absent/leave/holiday)
+  // since they have nothing to fetch. Failures are non-fatal: row keeps
+  // first/last only.
+  const targetEmpIds: number[] = []
+  for (const r of rows) {
+    const id = Number(r.employee_id)
+    if (!Number.isFinite(id) || !id) continue
+    const fp = (r.first_punch || '').trim()
+    if (!fp || fp === '-') continue
+    if (leftSet.has(id)) continue
+    targetEmpIds.push(id)
+  }
+
+  const punchesByEmp = new Map<number, { time: string; kind: 'IN' | 'OUT' }[]>()
+  const concurrency = 8
+  for (let i = 0; i < targetEmpIds.length; i += concurrency) {
+    const slice = targetEmpIds.slice(i, i + concurrency)
+    await Promise.all(slice.map(async empId => {
+      try {
+        const all = await fetchEmployeePunches(auth, empId)
+        const onDate = all.filter(p => (p.punch_log_date || '').slice(0, 10) === date)
+        onDate.sort((a, b) => String(a.punch_log_time || '').localeCompare(String(b.punch_log_time || '')))
+        punchesByEmp.set(empId, onDate.map((p, idx) => ({
+          time: p.log_time || (p.punch_log_time || '').slice(11, 16) || '—',
+          kind: idx % 2 === 0 ? 'IN' : 'OUT',
+        })))
+      } catch { /* leave row with first/last only */ }
+    }))
+  }
+
   // Group by department (matches the "Vinod Industries" / "Vi Folding" sections)
   const byDept = new Map<string, any[]>()
   for (const r of rows) {
@@ -72,21 +103,24 @@ export async function GET(req: NextRequest) {
       halfDay: hd,
       absent,
       attendancePct: list.length ? Math.round((fd / list.length) * 100) : 0,
-      rows: list.map(r => ({
-        id: r.code ?? r.employee_id ?? r.device_employee_id ?? '—',
-        petpoojaEmpId: Number(r.employee_id) || null,
-        name: r.name || '—',
-        designation: r.designation || '—',
-        punchIn: r.first_punch || '-',
-        punchOut: r.last_punch || '-',
-        workingHrs: r.working_hrs || '-',
-        break: r.break_hrs || '-',
-        status: r.status || '—',
-        isLeft: leftSet.has(Number(r.employee_id)),
-        leaveName: r.leave_name,
-        holidayName: r.holiday_name,
-        _raw: r,
-      })),
+      rows: list.map(r => {
+        const empId = Number(r.employee_id) || null
+        return {
+          id: r.code ?? r.employee_id ?? r.device_employee_id ?? '—',
+          petpoojaEmpId: empId,
+          name: r.name || '—',
+          designation: r.designation || '—',
+          punchIn: r.first_punch || '-',
+          punchOut: r.last_punch || '-',
+          workingHrs: r.working_hrs || '-',
+          break: r.break_hrs || '-',
+          status: r.status || '—',
+          isLeft: leftSet.has(Number(r.employee_id)),
+          leaveName: r.leave_name,
+          holidayName: r.holiday_name,
+          punches: empId ? (punchesByEmp.get(empId) || []) : [],
+        }
+      }),
     }
   })
 

@@ -6,6 +6,8 @@ import BackButton from '../BackButton'
 
 const fetcher = (u: string) => fetch(u).then(r => r.json())
 
+interface PunchInfo { time: string; kind: 'IN' | 'OUT' }
+
 interface AttendanceRow {
   id: string | number
   petpoojaEmpId: number | null
@@ -19,6 +21,18 @@ interface AttendanceRow {
   isLeft?: boolean
   leaveName?: string | null
   holidayName?: string | null
+  punches?: PunchInfo[]
+}
+
+/** Pair punches into [in,out] sessions. Trailing IN with no OUT becomes [in,null]. */
+function pairPunches(punches: PunchInfo[]): Array<[string, string | null]> {
+  const out: Array<[string, string | null]> = []
+  for (let i = 0; i < punches.length; i += 2) {
+    const a = punches[i]
+    const b = punches[i + 1]
+    out.push([a.time, b ? b.time : null])
+  }
+  return out
 }
 
 interface DeptGroup {
@@ -110,9 +124,17 @@ export default function AttendancePage() {
       if (punched.length > 0) {
         lines.push(`✅ Punched (${punched.length}):`)
         for (const r of punched) {
-          const out = r.punchOut && r.punchOut !== '-' ? r.punchOut : '-'
           const hrs = r.workingHrs && r.workingHrs !== '-' ? r.workingHrs : '-'
-          lines.push(`  ${String(r.id).padEnd(3)} ${r.name} · ${r.punchIn}→${out} · ${hrs}`)
+          let punchStr: string
+          if (r.punches && r.punches.length > 0) {
+            const pairs = pairPunches(r.punches)
+            punchStr = pairs.map(([i, o]) => `${i}→${o ?? '?'}`).join(' · ')
+          } else {
+            const out = r.punchOut && r.punchOut !== '-' ? r.punchOut : '-'
+            punchStr = `${r.punchIn}→${out}`
+          }
+          const brk = r.break && r.break !== '-' ? ` (brk ${r.break})` : ''
+          lines.push(`  ${String(r.id).padEnd(3)} ${r.name} · ${punchStr} · ${hrs}${brk}`)
         }
         lines.push('')
       }
@@ -308,29 +330,46 @@ export default function AttendancePage() {
                       <th className="px-2 py-1.5 text-left">ID</th>
                       <th className="px-2 py-1.5 text-left">Name</th>
                       <th className="px-2 py-1.5 text-left">Designation</th>
-                      <th className="px-2 py-1.5 text-left">Punch In</th>
-                      <th className="px-2 py-1.5 text-left">Punch Out</th>
+                      <th className="px-2 py-1.5 text-left">Punches</th>
                       <th className="px-2 py-1.5 text-left">Working Hrs</th>
                       <th className="px-2 py-1.5 text-left">Break</th>
                       <th className="px-2 py-1.5 text-left">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {active.map((r, i) => (
+                    {active.map((r, i) => {
+                      const hasPunches = (r.punches?.length || 0) > 0
+                      return (
                       <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                         <td className="px-2 py-1 text-gray-500">{r.id}</td>
                         <td className="px-2 py-1 font-medium text-gray-800 dark:text-gray-100">{r.name}</td>
                         <td className="px-2 py-1 text-gray-500 dark:text-gray-400">{r.designation}</td>
-                        <td className="px-2 py-1">{r.punchIn}</td>
-                        <td className="px-2 py-1">{r.punchOut}</td>
+                        <td className="px-2 py-1">
+                          {hasPunches ? (
+                            <div className="flex flex-wrap gap-1">
+                              {r.punches!.map((p, pi) => (
+                                <span key={pi}
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold ${p.kind === 'IN'
+                                    ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200'
+                                    : 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200'}`}>
+                                  {p.kind} {p.time}
+                                </span>
+                              ))}
+                            </div>
+                          ) : r.punchIn && r.punchIn !== '-' ? (
+                            <span className="text-gray-500">{r.punchIn} → {r.punchOut !== '-' ? r.punchOut : '?'}</span>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
+                        </td>
                         <td className="px-2 py-1">{r.workingHrs}</td>
                         <td className="px-2 py-1">{r.break}</td>
                         <td className="px-2 py-1">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor(r.status)}`}>{r.status}</span>
                         </td>
                       </tr>
-                    ))}
-                    {active.length === 0 && <tr><td colSpan={8} className="px-2 py-4 text-center text-gray-400">No active rows</td></tr>}
+                    )})}
+                    {active.length === 0 && <tr><td colSpan={7} className="px-2 py-4 text-center text-gray-400">No active rows</td></tr>}
                   </tbody>
                 </table>
               </div>

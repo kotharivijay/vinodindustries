@@ -683,6 +683,7 @@ model PetpoojaToken {
   id         Int      @id @default(autoincrement())
   token      String   // JWT from Petpooja's authUser
   userId     Int
+  username   String?  // sessionStorage.authUser.data.username (e.g. "OFFICE")
   userEmail  String?
   hoId       Int
   orgId      Int
