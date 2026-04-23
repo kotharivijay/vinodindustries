@@ -35,6 +35,25 @@ function pairPunches(punches: PunchInfo[]): Array<[string, string | null]> {
   return out
 }
 
+/** "09:18 AM" → "9:18", "07:34 PM" → "19:34" — short 24h for WhatsApp. */
+function to24h(s: string | null | undefined): string {
+  if (!s) return '-'
+  const m = s.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?$/)
+  if (!m) return s.trim()
+  let h = parseInt(m[1], 10)
+  const min = m[2]
+  const ap = (m[3] || '').toUpperCase()
+  if (ap === 'PM' && h < 12) h += 12
+  if (ap === 'AM' && h === 12) h = 0
+  return `${h}:${min}`
+}
+
+/** "9h 13m" / "9.21" / "9:13" → "9h13m". Cosmetic only. */
+function shortHrs(s: string | null | undefined): string {
+  if (!s || s === '-') return ''
+  return s.replace(/\s+/g, '').replace(/h$/i, 'h0m')
+}
+
 interface DeptGroup {
   department: string
   total: number
@@ -51,6 +70,79 @@ interface DailyResponse {
   orgId: number
   groups: DeptGroup[]
   totalRows: number
+}
+
+interface SharePage {
+  index: number
+  total: number
+  deptLabel: string
+  totals: { total: number; punched: number; noPunch: number }
+  rows: AttendanceRow[]
+  noPunch?: AttendanceRow[]
+}
+
+function SharePageCard({ page, dateLabel }: { page: SharePage; dateLabel: string }) {
+  return (
+    <div id={`attendance-img-page-${page.index - 1}`}
+      style={{ width: '720px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
+      className="bg-white text-gray-900 p-5">
+      <div className="border-b-2 border-emerald-700 pb-2 mb-3">
+        <div className="text-xl font-bold">📋 Attendance · {dateLabel}</div>
+        <div className="text-xs text-gray-600 mt-0.5">{page.deptLabel} · Page {page.index}/{page.total}</div>
+        <div className="text-xs mt-1 flex gap-3">
+          <span className="font-bold text-green-700">✅ Punched {page.totals.punched}</span>
+          <span className="font-bold text-red-700">❌ No Punch {page.totals.noPunch}</span>
+          <span className="text-gray-700">📊 {page.totals.punched}/{page.totals.total}</span>
+        </div>
+      </div>
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="bg-emerald-700 text-white">
+            <th className="px-2 py-1.5 text-left">ID</th>
+            <th className="px-2 py-1.5 text-left">Name</th>
+            <th className="px-2 py-1.5 text-left">Punches</th>
+            <th className="px-2 py-1.5 text-right">Hrs</th>
+          </tr>
+        </thead>
+        <tbody>
+          {page.rows.map((r, i) => (
+            <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+              <td className="px-2 py-1.5 align-top text-gray-600 border-b border-gray-200">{r.id}</td>
+              <td className="px-2 py-1.5 align-top font-semibold border-b border-gray-200">{r.name}</td>
+              <td className="px-2 py-1.5 align-top border-b border-gray-200">
+                {r.punches && r.punches.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {r.punches.map((p, pi) => (
+                      <span key={pi}
+                        style={{ fontFamily: 'ui-monospace, monospace' }}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${p.kind === 'IN'
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-orange-100 text-orange-800'}`}>
+                        {p.kind} {p.time}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-gray-500">{r.punchIn} → {r.punchOut}</span>
+                )}
+              </td>
+              <td className="px-2 py-1.5 align-top text-right font-mono text-gray-700 border-b border-gray-200">{r.workingHrs}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {page.noPunch && page.noPunch.length > 0 && (
+        <div className="mt-4 pt-3 border-t-2 border-red-300">
+          <div className="text-sm font-bold text-red-700 mb-1.5">❌ No Punch ({page.noPunch.length})</div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+            {page.noPunch.map((r, i) => (
+              <div key={i}>• <span className="font-medium">{r.name}</span> <span className="text-gray-500">({r.id})</span></div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
@@ -108,46 +200,56 @@ export default function AttendancePage() {
 
   function buildShareText() {
     const lines: string[] = []
-    lines.push(`📋 *Attendance — ${fmtDate(date)}*\n`)
     let grandTotal = 0, grandPunched = 0, grandNoPunch = 0
+    // Compute totals first for the header
     for (const g of visibleGroups) {
-      // Exclude employees tagged "left the job" from both lists.
+      const active = g.rows.filter(r => !r.isLeft)
+      grandTotal += active.length
+      grandPunched += active.filter(r => r.punchIn && r.punchIn !== '-').length
+      grandNoPunch += active.filter(r => !r.punchIn || r.punchIn === '-').length
+    }
+
+    lines.push(`📋 *Attendance · ${fmtDate(date)}*`)
+    lines.push(`✅ ${grandPunched}   ❌ ${grandNoPunch}   📊 ${grandPunched}/${grandTotal}`)
+
+    for (const g of visibleGroups) {
       const active = g.rows.filter(r => !r.isLeft)
       const punched = active.filter(r => r.punchIn && r.punchIn !== '-')
       const noPunch = active.filter(r => !r.punchIn || r.punchIn === '-')
-      grandTotal += active.length
-      grandPunched += punched.length
-      grandNoPunch += noPunch.length
 
-      lines.push(`*${g.department}* | ${active.length} total · ${punched.length} punched · ${noPunch.length} no punch\n`)
+      // Department header only if more than one department selected
+      if (visibleGroups.length > 1) {
+        lines.push('')
+        lines.push(`━━━ *${g.department}* ━━━`)
+      }
 
       if (punched.length > 0) {
-        lines.push(`✅ Punched (${punched.length}):`)
+        lines.push('')
+        lines.push(`✅ *Punched (${punched.length})*`)
         for (const r of punched) {
-          const hrs = r.workingHrs && r.workingHrs !== '-' ? r.workingHrs : '-'
           let punchStr: string
           if (r.punches && r.punches.length > 0) {
-            const pairs = pairPunches(r.punches)
-            punchStr = pairs.map(([i, o]) => `${i}→${o ?? '?'}`).join(' · ')
+            // 9:18-13:01·14:58-19:34 — concise 24h, dot-separated sessions
+            punchStr = pairPunches(r.punches)
+              .map(([i, o]) => `${to24h(i)}-${o ? to24h(o) : '?'}`)
+              .join('·')
           } else {
-            const out = r.punchOut && r.punchOut !== '-' ? r.punchOut : '-'
-            punchStr = `${r.punchIn}→${out}`
+            punchStr = `${to24h(r.punchIn)}-${to24h(r.punchOut)}`
           }
-          const brk = r.break && r.break !== '-' ? ` (brk ${r.break})` : ''
-          lines.push(`  ${String(r.id).padEnd(3)} ${r.name} · ${punchStr} · ${hrs}${brk}`)
+          const hrs = shortHrs(r.workingHrs)
+          const tail = hrs ? ` _(${hrs})_` : ''
+          lines.push(`• *${r.name}* · ${punchStr}${tail}`)
         }
-        lines.push('')
       }
 
       if (noPunch.length > 0) {
-        lines.push(`❌ No Punch (${noPunch.length}):`)
-        for (const r of noPunch) {
-          lines.push(`  ${String(r.id).padEnd(3)} ${r.name}`)
-        }
         lines.push('')
+        lines.push(`❌ *No Punch (${noPunch.length})*`)
+        for (const r of noPunch) {
+          lines.push(`• ${r.name}`)
+        }
       }
     }
-    lines.push(`Grand: ${grandTotal} · Punched ${grandPunched} · No Punch ${grandNoPunch}`)
     return lines.join('\n').trim()
   }
 
@@ -162,50 +264,90 @@ export default function AttendancePage() {
     alert('Copied to clipboard — paste into WhatsApp.')
   }
 
+  // ── Multi-image share (one PNG per page so WhatsApp doesn't downscale a tall image) ──
+  const ROWS_PER_IMAGE = 14
   const [imgBusy, setImgBusy] = useState(false)
+  const [pendingPages, setPendingPages] = useState<SharePage[] | null>(null)
+
+  function buildPages(): SharePage[] {
+    const punched: AttendanceRow[] = []
+    const noPunch: AttendanceRow[] = []
+    for (const g of visibleGroups) {
+      const active = g.rows.filter(r => !r.isLeft)
+      for (const r of active) {
+        if (r.punchIn && r.punchIn !== '-') punched.push(r)
+        else noPunch.push(r)
+      }
+    }
+    const totals = { total: punched.length + noPunch.length, punched: punched.length, noPunch: noPunch.length }
+    const deptLabel = visibleGroups.map(g => g.department).join(' · ')
+
+    const pages: SharePage[] = []
+    if (punched.length === 0) {
+      pages.push({ index: 1, total: 1, deptLabel, totals, rows: [], noPunch })
+    } else {
+      for (let i = 0; i < punched.length; i += ROWS_PER_IMAGE) {
+        pages.push({ index: 0, total: 0, deptLabel, totals, rows: punched.slice(i, i + ROWS_PER_IMAGE) })
+      }
+      // Attach no-punch list to last page
+      pages[pages.length - 1].noPunch = noPunch
+      pages.forEach((p, idx) => { p.index = idx + 1; p.total = pages.length })
+    }
+    return pages
+  }
+
   async function shareImage() {
-    const node = document.getElementById('attendance-print-root')
-    if (!node) return
+    const computed = buildPages()
+    if (computed.length === 0) return
     setImgBusy(true)
+    setPendingPages(computed)
+    // Wait two animation frames so the off-screen DOM mounts before we capture
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+
     try {
       const { default: html2canvas } = await import('html2canvas')
-      // Force white background so the dark-mode captures look clean
-      const canvas = await html2canvas(node, {
-        backgroundColor: '#ffffff',
-        scale: Math.max(2, window.devicePixelRatio || 1),
-        useCORS: true,
-        logging: false,
-      })
-      const blob: Blob | null = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'))
-      if (!blob) { alert('Image render failed'); return }
-      const fileName = `attendance-${date}.png`
-      const file = new File([blob], fileName, { type: 'image/png' })
-
-      // Prefer native share (opens WhatsApp picker on mobile)
-      if ((navigator as any).canShare?.({ files: [file] }) && navigator.share) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: `Attendance ${date}`,
-            text: `Attendance — ${fmtDate(date)}`,
-          })
-          return
-        } catch (e: any) {
-          if (e?.name === 'AbortError') return // user cancelled, no fallback needed
-        }
+      const files: File[] = []
+      for (let i = 0; i < computed.length; i++) {
+        const node = document.getElementById(`attendance-img-page-${i}`)
+        if (!node) continue
+        const canvas = await html2canvas(node, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: true,
+          logging: false,
+        })
+        const blob: Blob | null = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'))
+        if (blob) files.push(new File([blob], `attendance-${date}-${i + 1}.png`, { type: 'image/png' }))
       }
+      if (files.length === 0) { alert('Image render failed'); return }
 
-      // Fallback: download the PNG
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url; a.download = fileName
-      document.body.appendChild(a); a.click(); a.remove()
-      URL.revokeObjectURL(url)
-      alert('Image downloaded — upload to WhatsApp manually on this device.')
+      // Try native share first. Fall back to single share if the platform
+      // can't accept multiple files (some iOS combos), then to download.
+      const canMulti = (navigator as any).canShare?.({ files })
+      if (canMulti && navigator.share) {
+        try {
+          await navigator.share({ files, title: `Attendance ${date}`, text: `Attendance — ${fmtDate(date)}` })
+          return
+        } catch (e: any) { if (e?.name === 'AbortError') return }
+      }
+      if (files.length === 1 && (navigator as any).canShare?.({ files }) && navigator.share) {
+        try { await navigator.share({ files, title: `Attendance ${date}` }); return }
+        catch (e: any) { if (e?.name === 'AbortError') return }
+      }
+      // Final fallback: download every image
+      for (const f of files) {
+        const url = URL.createObjectURL(f)
+        const a = document.createElement('a')
+        a.href = url; a.download = f.name
+        document.body.appendChild(a); a.click(); a.remove()
+        URL.revokeObjectURL(url)
+      }
+      alert(`Downloaded ${files.length} image(s) — upload to WhatsApp manually.`)
     } catch (e: any) {
-      alert('Could not create image: ' + (e?.message || e))
+      alert('Could not create images: ' + (e?.message || e))
     } finally {
       setImgBusy(false)
+      setPendingPages(null)
     }
   }
 
@@ -270,7 +412,7 @@ export default function AttendancePage() {
         <div className="ml-auto flex flex-wrap gap-2">
           <button onClick={shareImage} disabled={disabled || visibleGroups.length === 0 || imgBusy}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-pink-600 text-white disabled:opacity-50">
-            {imgBusy ? 'Rendering…' : '📸 Share Image'}
+            {imgBusy ? 'Rendering…' : '📸 Share Image(s)'}
           </button>
           <button onClick={copyText} disabled={disabled || visibleGroups.length === 0}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white disabled:opacity-50">
@@ -375,6 +517,14 @@ export default function AttendancePage() {
               </div>
             </div>
           )})}
+        </div>
+      )}
+
+      {/* Off-screen render target for multi-image share. Positioned far off-screen
+          so html2canvas can capture it without flashing on screen. */}
+      {pendingPages && (
+        <div style={{ position: 'fixed', left: '-10000px', top: 0, zIndex: -1 }}>
+          {pendingPages.map(p => <SharePageCard key={p.index} page={p} dateLabel={fmtDate(date)} />)}
         </div>
       )}
     </div>
