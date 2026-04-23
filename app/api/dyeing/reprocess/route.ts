@@ -24,37 +24,57 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { sources, reason, notes } = await req.json()
+  const { sources, reason, notes, acceptMixedQuality } = await req.json()
   if (!Array.isArray(sources) || sources.length === 0) {
     return NextResponse.json({ error: 'At least one source lot required' }, { status: 400 })
   }
   if (!reason) return NextResponse.json({ error: 'Reason required' }, { status: 400 })
 
-  // Validate all sources have same quality
+  // Resolve quality info for every source lot
   const { buildLotInfoMap } = await import('@/lib/lot-info')
   const lotNos = sources.map((s: any) => s.lotNo)
   const lotInfoMap = await buildLotInfoMap(lotNos)
 
+  const sourceQualities: { lotNo: string; quality: string | null }[] = sources.map((s: any) => ({
+    lotNo: s.lotNo,
+    quality: lotInfoMap.get(s.lotNo.toLowerCase().trim())?.quality || null,
+  }))
   const qualities = new Set<string>()
+  for (const sq of sourceQualities) if (sq.quality) qualities.add(sq.quality)
+
+  // If multiple qualities and user hasn't confirmed yet, ask the client to
+  // get explicit approval (or to drop the conflicting lots and retry).
+  if (qualities.size > 1 && !acceptMixedQuality) {
+    return NextResponse.json({
+      needsConfirm: true,
+      reason: 'MIXED_QUALITY',
+      message: `Source lots have ${qualities.size} different qualities.`,
+      qualities: Array.from(qualities),
+      lots: sourceQualities,
+    }, { status: 200 })
+  }
+
+  // Aggregate weight + meter once we have a final quality decision.
   let totalWeight: string | null = null
   let totalMtr = 0
   let totalThan = 0
-
   for (const s of sources) {
     const info = lotInfoMap.get(s.lotNo.toLowerCase().trim())
-    if (info?.quality) qualities.add(info.quality)
     if (info?.weight && !totalWeight) totalWeight = info.weight
     if (info?.mtrPerThan) totalMtr += info.mtrPerThan * (parseInt(s.than) || 0)
     totalThan += parseInt(s.than) || 0
   }
 
-  if (qualities.size > 1) {
-    return NextResponse.json({
-      error: `Source lots have different qualities: ${Array.from(qualities).join(', ')}. All must be same quality.`,
-    }, { status: 400 })
+  // Pick a representative quality. If user accepted mixed, use the most
+  // common one; otherwise the single value.
+  let quality: string
+  if (qualities.size === 0) quality = 'Unknown'
+  else if (qualities.size === 1) quality = Array.from(qualities)[0]
+  else {
+    const counts = new Map<string, number>()
+    for (const sq of sourceQualities) if (sq.quality) counts.set(sq.quality, (counts.get(sq.quality) || 0) + 1)
+    quality = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0]
   }
-
-  const quality = qualities.size === 1 ? Array.from(qualities)[0] : 'Unknown'
 
   // Generate next RE-PRO number
   const maxRepro = await db.reProcessLot.findFirst({ orderBy: { id: 'desc' }, select: { reproNo: true } })
@@ -95,7 +115,7 @@ export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, addSources, status } = await req.json()
+  const { id, addSources, status, acceptMixedQuality } = await req.json()
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const existing = await db.reProcessLot.findUnique({ where: { id: parseInt(id) }, include: { sources: true } })
@@ -106,13 +126,30 @@ export async function PATCH(req: NextRequest) {
     const { buildLotInfoMap } = await import('@/lib/lot-info')
     const lotInfoMap = await buildLotInfoMap(addSources.map((s: any) => s.lotNo))
 
+    // Detect quality mismatches up front; ask client to confirm before saving.
+    if (!acceptMixedQuality) {
+      const conflicts: { lotNo: string; quality: string | null }[] = []
+      for (const s of addSources) {
+        const info = lotInfoMap.get(s.lotNo.toLowerCase().trim())
+        if (info?.quality && info.quality !== existing.quality) {
+          conflicts.push({ lotNo: s.lotNo, quality: info.quality })
+        }
+      }
+      if (conflicts.length > 0) {
+        return NextResponse.json({
+          needsConfirm: true,
+          reason: 'MIXED_QUALITY',
+          message: `${conflicts.length} added lot(s) have a different quality than ${existing.quality}.`,
+          existingQuality: existing.quality,
+          conflicts,
+        }, { status: 200 })
+      }
+    }
+
     let addedThan = 0
     let addedMtr = 0
     for (const s of addSources) {
       const info = lotInfoMap.get(s.lotNo.toLowerCase().trim())
-      if (info?.quality && info.quality !== existing.quality) {
-        return NextResponse.json({ error: `Quality mismatch: ${info.quality} vs ${existing.quality}` }, { status: 400 })
-      }
       await db.reProcessSource.create({
         data: {
           reprocessId: existing.id,

@@ -77,18 +77,47 @@ export default function ReProcessPage() {
     if (validSources.length === 0) { setCreateError('Add at least one lot'); return }
     setCreating(true)
     setCreateError('')
-    try {
+
+    async function post(payload: any) {
       const res = await fetch('/api/dyeing/reprocess', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reason,
-          notes: notes || null,
-          sources: validSources.map(s => ({ lotNo: s.lotNo.trim(), than: parseInt(s.than), reason: s.reason })),
-        }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
-      if (!res.ok) { setCreateError(data.error || 'Failed'); setCreating(false); return }
+      return { res, data }
+    }
+
+    try {
+      const basePayload = {
+        reason,
+        notes: notes || null,
+        sources: validSources.map(s => ({ lotNo: s.lotNo.trim(), than: parseInt(s.than), reason: s.reason })),
+      }
+      let { res, data } = await post(basePayload)
+
+      // Server asks for confirmation when source lots have mixed qualities.
+      if (res.ok && data?.needsConfirm && data.reason === 'MIXED_QUALITY') {
+        const lines = (data.lots || []).map((l: any) => `  ${l.lotNo}: ${l.quality ?? 'unknown'}`).join('\n')
+        const choice = window.confirm(
+          `Mixed qualities detected:\n\n${lines}\n\nClick OK to save with ALL lots (mixed quality).\nClick Cancel to drop the lots whose quality differs from the most common one and save the rest.`,
+        )
+        if (choice) {
+          // Yes — keep all, accept mixed quality
+          ;({ res, data } = await post({ ...basePayload, acceptMixedQuality: true }))
+        } else {
+          // No — exclude minority-quality lots
+          const counts = new Map<string, number>()
+          for (const l of data.lots || []) if (l.quality) counts.set(l.quality, (counts.get(l.quality) || 0) + 1)
+          const winner = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+          const keptLots = (data.lots || []).filter((l: any) => l.quality === winner).map((l: any) => l.lotNo.toLowerCase())
+          const filteredSources = basePayload.sources.filter(s => keptLots.includes(s.lotNo.toLowerCase()))
+          if (filteredSources.length === 0) { setCreateError('No lots left after excluding mismatched quality'); setCreating(false); return }
+          ;({ res, data } = await post({ ...basePayload, sources: filteredSources, acceptMixedQuality: true }))
+        }
+      }
+
+      if (!res.ok || data?.error) { setCreateError(data.error || 'Failed'); setCreating(false); return }
       setShowCreate(false)
       setSourceLots([{ lotNo: '', than: '', reason: 'patchy' }])
       setNotes('')
