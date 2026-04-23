@@ -9,18 +9,30 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const [entries, despatchTotals] = await Promise.all([
+  // Despatched per lot — combine legacy single-lot DespatchEntry rows
+  // (no children) with multi-lot DespatchEntryLot rows. Reading parent
+  // alone caused multi-lot challans to attribute the WHOLE challan total
+  // to the parent's first lot (e.g. SAM-20 showed 310 desp instead of 50).
+  const [entries, despParentTotals, despLotTotals] = await Promise.all([
     prisma.greyEntry.findMany({
       include: { party: true, quality: true, transport: true, weaver: true },
       orderBy: { date: 'desc' },
     }),
     prisma.despatchEntry.groupBy({
+      where: { despatchLots: { none: {} } },
+      by: ['lotNo'],
+      _sum: { than: true },
+    }),
+    prisma.despatchEntryLot.groupBy({
       by: ['lotNo'],
       _sum: { than: true },
     }),
   ])
 
-  const despatchMap = new Map(despatchTotals.map((d) => [d.lotNo, d._sum.than ?? 0]))
+  const despatchMap = new Map<string, number>()
+  const bumpDesp = (lot: string, n: number) => despatchMap.set(lot, (despatchMap.get(lot) || 0) + n)
+  for (const d of despParentTotals) bumpDesp(d.lotNo, d._sum.than ?? 0)
+  for (const d of despLotTotals) bumpDesp(d.lotNo, d._sum.than ?? 0)
 
   // Fetch opening balances (carry-forward from last year)
   let obMap = new Map<string, number>()
