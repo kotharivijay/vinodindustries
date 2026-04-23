@@ -3,10 +3,6 @@ import { prisma } from '@/lib/prisma'
 export const PETPOOJA_ATTN_BASE = 'https://attendanceinfo.petpooja.com'
 export const PETPOOJA_PAYROLL_BASE = 'https://payroll.petpooja.com/api'
 
-// Static AWS-level app token hardcoded in Petpooja's web bundle.
-// Sent in the body of attendanceinfo.petpooja.com requests as `access_token`.
-export const PETPOOJA_APP_ACCESS_TOKEN = '605ab775311eeee0ffa2c1d999e2968474f5381d'
-
 export interface PetpoojaAuth {
   token: string
   userId: number
@@ -35,37 +31,49 @@ export async function getPetpoojaAuth(): Promise<PetpoojaAuth> {
   }
 }
 
-/**
- * Body fields the Petpooja web bundle's axios interceptor injects on every
- * attendanceinfo.petpooja.com call. Endpoints add their own fields (e.g. emp_id).
- */
-export function attnAppBody(auth: PetpoojaAuth): Record<string, any> {
-  return {
-    access_token: PETPOOJA_APP_ACCESS_TOKEN,
-    username: auth.username || 'OFFICE',
-    user_id: auth.userId,
-    device_type: 'web',
-  }
-}
+export interface DailyPunch { time: string; kind: 'IN' | 'OUT' }
 
 /**
- * Fetch every punch row for a single employee. Petpooja returns punches for
- * the current pay period (no date filter on the wire) — caller filters by date.
+ * Pulls every employee's full punch list for a single day from
+ * payroll.petpooja.com/reports/daily_punch. Cheaper than the per-employee
+ * endpoint (one HTTP call instead of N) and exposes a `day_<M>_<D>` field
+ * per employee whose value is a comma-separated list of punch times.
+ *
+ * Returns Map keyed by `code` (the same code attendance_master uses) →
+ * alternating IN/OUT punches in chronological order.
  */
-export async function fetchEmployeePunches(auth: PetpoojaAuth, empId: number): Promise<any[]> {
-  const res = await fetch(
-    `${PETPOOJA_ATTN_BASE}/attendance_regularization/employee_punch_data`,
-    {
-      method: 'POST',
-      headers: attnHeaders(auth),
-      body: JSON.stringify({ emp_id: empId, ...attnAppBody(auth) }),
-    },
-  )
+export async function fetchDailyPunches(auth: PetpoojaAuth, date: string): Promise<{
+  byCode: Map<string, DailyPunch[]>
+  problems: Set<string> // codes where punch count is odd
+}> {
+  const d = new Date(date + 'T00:00:00Z')
+  const month = d.getUTCMonth() + 1
+  const day = d.getUTCDate()
+  const dayKey = `day_${month}_${day}`
+  const errKey = `err_${dayKey}`
+
+  const res = await fetch(`${PETPOOJA_PAYROLL_BASE}/reports/daily_punch`, {
+    method: 'POST',
+    headers: payrollHeaders(auth),
+    body: JSON.stringify({ filter_start_date: date, filter_end_date: date, filter_branch: null }),
+  })
   const text = await res.text()
-  if (!res.ok) throw new Error(`Petpooja punch ${res.status}: ${text.slice(0, 300)}`)
-  let payload: any
-  try { payload = JSON.parse(text) } catch { throw new Error(`Punch endpoint returned non-JSON: ${text.slice(0, 200)}`) }
-  return Array.isArray(payload?.data) ? payload.data : []
+  if (!res.ok) throw new Error(`daily_punch ${res.status}: ${text.slice(0, 300)}`)
+  const payload = JSON.parse(text)
+  const rows: any[] = Array.isArray(payload?.data) ? payload.data : []
+
+  const byCode = new Map<string, DailyPunch[]>()
+  const problems = new Set<string>()
+  for (const r of rows) {
+    const code = String(r.code ?? '')
+    if (!code) continue
+    const raw: string | null = r[dayKey] ?? null
+    if (!raw) continue
+    const times = String(raw).split(',').map(t => t.trim()).filter(Boolean)
+    byCode.set(code, times.map((time, i) => ({ time, kind: i % 2 === 0 ? 'IN' : 'OUT' })))
+    if (r[errKey] === 'Problem') problems.add(code)
+  }
+  return { byCode, problems }
 }
 
 /**
