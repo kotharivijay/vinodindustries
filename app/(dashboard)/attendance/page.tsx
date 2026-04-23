@@ -82,61 +82,64 @@ interface SharePage {
 }
 
 function SharePageCard({ page, dateLabel }: { page: SharePage; dateLabel: string }) {
+  // Portrait mobile dimensions (480px wide). At scale=2 this renders to a
+  // 960px PNG which fills a typical phone screen edge-to-edge in WhatsApp
+  // without WhatsApp shrinking it to unreadable size.
   return (
     <div id={`attendance-img-page-${page.index - 1}`}
-      style={{ width: '720px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
-      className="bg-white text-gray-900 p-5">
-      <div className="border-b-2 border-emerald-700 pb-2 mb-3">
-        <div className="text-xl font-bold">📋 Attendance · {dateLabel}</div>
-        <div className="text-xs text-gray-600 mt-0.5">{page.deptLabel} · Page {page.index}/{page.total}</div>
-        <div className="text-xs mt-1 flex gap-3">
-          <span className="font-bold text-green-700">✅ Punched {page.totals.punched}</span>
-          <span className="font-bold text-red-700">❌ No Punch {page.totals.noPunch}</span>
-          <span className="text-gray-700">📊 {page.totals.punched}/{page.totals.total}</span>
+      style={{ width: '480px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
+      className="bg-white text-gray-900 p-4">
+      <div className="border-b-4 border-emerald-700 pb-2 mb-3">
+        <div className="text-lg font-bold leading-tight">📋 Attendance</div>
+        <div className="text-base font-semibold text-black">{dateLabel}</div>
+        <div className="text-xs text-gray-700 mt-0.5">{page.deptLabel} · Page {page.index}/{page.total}</div>
+        <div className="text-sm mt-2 flex flex-wrap gap-x-3 gap-y-0.5">
+          <span className="font-bold text-green-700">✅ {page.totals.punched} punched</span>
+          <span className="font-bold text-red-700">❌ {page.totals.noPunch} absent</span>
+          <span className="font-semibold text-gray-800">📊 {page.totals.punched}/{page.totals.total}</span>
         </div>
       </div>
-      <table className="w-full text-xs border-collapse">
-        <thead>
-          <tr className="bg-emerald-700 text-white">
-            <th className="px-2 py-1.5 text-left">ID</th>
-            <th className="px-2 py-1.5 text-left">Name</th>
-            <th className="px-2 py-1.5 text-left">Punches</th>
-            <th className="px-2 py-1.5 text-right">Hrs</th>
-          </tr>
-        </thead>
-        <tbody>
-          {page.rows.map((r, i) => (
-            <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-              <td className="px-2 py-1.5 align-top text-black font-semibold border-b border-gray-200">{r.id}</td>
-              <td className="px-2 py-1.5 align-top font-bold text-black border-b border-gray-200">{r.name}</td>
-              <td className="px-2 py-1.5 align-top border-b border-gray-200">
-                {r.punches && r.punches.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {r.punches.map((p, pi) => (
-                      <span key={pi}
-                        style={{ fontFamily: 'ui-monospace, monospace' }}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${p.kind === 'IN'
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-orange-100 text-orange-800'}`}>
-                        {p.kind} {p.time}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-gray-500">{r.punchIn} → {r.punchOut}</span>
-                )}
-              </td>
-              <td className="px-2 py-1.5 align-top text-right font-mono font-bold text-black border-b border-gray-200">{r.workingHrs}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="space-y-2">
+        {page.rows.map((r, i) => (
+          <div key={i} className={`px-2.5 py-2 rounded ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border border-gray-200`}>
+            <div className="flex justify-between items-baseline gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-bold text-gray-700 mr-1.5">{r.id}</span>
+                <span className="text-sm font-bold text-black">{r.name}</span>
+              </div>
+              <span className="text-sm font-bold text-black whitespace-nowrap" style={{ fontFamily: 'ui-monospace, monospace' }}>
+                {r.workingHrs && r.workingHrs !== '-' ? r.workingHrs : '—'}
+              </span>
+            </div>
+            <div className="mt-1">
+              {r.punches && r.punches.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {r.punches.map((p, pi) => (
+                    <span key={pi}
+                      style={{ fontFamily: 'ui-monospace, monospace' }}
+                      className={`px-1.5 py-0.5 rounded text-xs font-bold ${p.kind === 'IN'
+                        ? 'bg-green-100 text-green-800 border border-green-300'
+                        : 'bg-orange-100 text-orange-800 border border-orange-300'}`}>
+                      {p.kind} {p.time}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-xs text-gray-600">{r.punchIn} → {r.punchOut}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
       {page.noPunch && page.noPunch.length > 0 && (
-        <div className="mt-4 pt-3 border-t-2 border-red-300">
-          <div className="text-sm font-bold text-red-700 mb-1.5">❌ No Punch ({page.noPunch.length})</div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+        <div className="mt-4 pt-3 border-t-4 border-red-300">
+          <div className="text-base font-bold text-red-700 mb-2">❌ No Punch ({page.noPunch.length})</div>
+          <div className="space-y-1">
             {page.noPunch.map((r, i) => (
-              <div key={i}>• <span className="font-bold text-black">{r.name}</span> <span className="text-gray-600">({r.id})</span></div>
+              <div key={i} className="text-sm">
+                <span className="font-bold text-gray-700 mr-1.5">{r.id}</span>
+                <span className="font-bold text-black">{r.name}</span>
+              </div>
             ))}
           </div>
         </div>
@@ -265,7 +268,7 @@ export default function AttendancePage() {
   }
 
   // ── Multi-image share (one PNG per page so WhatsApp doesn't downscale a tall image) ──
-  const ROWS_PER_IMAGE = 14
+  const ROWS_PER_IMAGE = 10
   const [imgBusy, setImgBusy] = useState(false)
   const [pendingPages, setPendingPages] = useState<SharePage[] | null>(null)
 
