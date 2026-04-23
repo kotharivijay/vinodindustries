@@ -76,8 +76,8 @@ export default function GreyListPage() {
     } catch {}
   }, [])
   const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [sortField, setSortField] = useState<SortField>('sn')
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [sortField, setSortField] = useState<SortField>('date')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [tab, setTab] = useState<Tab>('entries')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
   const [stockSearch, setStockSearch] = useState('')
