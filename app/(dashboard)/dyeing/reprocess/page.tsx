@@ -147,6 +147,49 @@ export default function ReProcessPage() {
     mutate()
   }
 
+  // ── Edit RE-PRO ─────────────────────────────────────────────────────────
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editReason, setEditReason] = useState('patchy')
+  const [editNotes, setEditNotes] = useState('')
+  const [editSources, setEditSources] = useState<{ id: number; lotNo: string; than: string; party: string }[]>([])
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+
+  function openEdit(lot: ReProLot) {
+    setEditingId(lot.id)
+    setEditReason(lot.reason)
+    setEditNotes(lot.notes || '')
+    setEditSources(lot.sources.map(s => ({ id: s.id, lotNo: s.originalLotNo, than: String(s.than), party: s.party || '' })))
+    setEditError('')
+  }
+
+  function closeEdit() { setEditingId(null); setEditSources([]); setEditError('') }
+
+  async function saveEdit() {
+    if (editingId == null) return
+    setEditSaving(true); setEditError('')
+    try {
+      const original = lots?.find(l => l.id === editingId)
+      const originalIds = new Set((original?.sources || []).map(s => s.id))
+      const keptIds = new Set(editSources.map(s => s.id))
+      const removeSources = [...originalIds].filter(id => !keptIds.has(id))
+      const updateSources = editSources
+        .filter(s => s.id > 0)
+        .map(s => ({ id: s.id, than: parseInt(s.than) || 0, party: s.party || null }))
+
+      const res = await fetch('/api/dyeing/reprocess', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingId, reason: editReason, notes: editNotes, updateSources, removeSources }),
+      })
+      const data = await res.json()
+      if (!res.ok || data?.error) { setEditError(data?.error || 'Save failed'); setEditSaving(false); return }
+      closeEdit()
+      mutate()
+    } catch (e: any) { setEditError(e?.message || 'Network error') }
+    setEditSaving(false)
+  }
+
   const summary = useMemo(() => {
     if (!lots) return { total: 0, pending: 0, inDyeing: 0, finished: 0, merged: 0, totalThan: 0 }
     return {
@@ -285,7 +328,48 @@ export default function ReProcessPage() {
                   </div>
                 </button>
 
-                {isOpen && (
+                {isOpen && editingId === lot.id && (
+                  <div className="border-t border-gray-100 dark:border-gray-700 px-4 pb-4 pt-3 space-y-3 bg-amber-50/40 dark:bg-amber-900/10">
+                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase">Editing RE-PRO {lot.reproNo}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">Reason</label>
+                        <select value={editReason} onChange={e => setEditReason(e.target.value)}
+                          className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                          {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">Notes</label>
+                        <input type="text" value={editNotes} onChange={e => setEditNotes(e.target.value)}
+                          className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase">Source lots</p>
+                      {editSources.map((s, idx) => (
+                        <div key={s.id} className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5">
+                          <span className="text-xs font-medium text-teal-700 dark:text-teal-400 min-w-[80px]">{s.lotNo}</span>
+                          <input type="number" value={s.than} onChange={e => setEditSources(prev => prev.map((x, i) => i === idx ? { ...x, than: e.target.value } : x))}
+                            className="w-16 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-100 text-center" placeholder="than" />
+                          <input type="text" value={s.party} onChange={e => setEditSources(prev => prev.map((x, i) => i === idx ? { ...x, party: e.target.value } : x))}
+                            className="flex-1 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-100" placeholder="party" />
+                          <button onClick={() => setEditSources(prev => prev.filter((_, i) => i !== idx))}
+                            className="text-red-400 hover:text-red-600 text-xs px-1">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                    {editError && <p className="text-xs text-red-600 dark:text-red-400">{editError}</p>}
+                    <div className="flex items-center gap-2">
+                      <button onClick={saveEdit} disabled={editSaving}
+                        className="text-xs bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white px-3 py-1.5 rounded font-semibold">
+                        {editSaving ? 'Saving…' : 'Save Changes'}
+                      </button>
+                      <button onClick={closeEdit} disabled={editSaving} className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400">Cancel</button>
+                    </div>
+                  </div>
+                )}
+                {isOpen && editingId !== lot.id && (
                   <div className="border-t border-gray-100 dark:border-gray-700 px-4 pb-4 pt-3 space-y-3">
                     {/* Source lots */}
                     <div className="space-y-1.5">
@@ -318,6 +402,10 @@ export default function ReProcessPage() {
                           <button onClick={() => handleStatusChange(lot.id, 'in-dyeing')}
                             className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-3 py-1 rounded-lg font-medium">
                             Start Dyeing
+                          </button>
+                          <button onClick={() => openEdit(lot)}
+                            className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 px-3 py-1 rounded-lg font-medium">
+                            Edit
                           </button>
                           <button onClick={() => handleDelete(lot.id)}
                             className="text-xs text-red-400 hover:text-red-600 ml-auto">Delete</button>

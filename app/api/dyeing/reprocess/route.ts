@@ -115,11 +115,46 @@ export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, addSources, status, acceptMixedQuality } = await req.json()
+  const { id, addSources, updateSources, removeSources, reason, notes, status, acceptMixedQuality } = await req.json()
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const existing = await db.reProcessLot.findUnique({ where: { id: parseInt(id) }, include: { sources: true } })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Edit existing source rows (than / party). Only fields provided are touched.
+  if (Array.isArray(updateSources) && updateSources.length > 0) {
+    for (const u of updateSources) {
+      if (!u?.id) continue
+      const data: any = {}
+      if (u.than !== undefined) data.than = parseInt(u.than) || 0
+      if (u.party !== undefined) data.party = u.party || null
+      if (u.reason !== undefined) data.reason = u.reason || existing.reason
+      if (Object.keys(data).length === 0) continue
+      await db.reProcessSource.update({ where: { id: parseInt(u.id) }, data })
+    }
+  }
+
+  // Remove source rows
+  if (Array.isArray(removeSources) && removeSources.length > 0) {
+    await db.reProcessSource.deleteMany({ where: { id: { in: removeSources.map((x: any) => parseInt(x)) }, reprocessId: existing.id } })
+  }
+
+  // Top-level fields
+  if (reason !== undefined || notes !== undefined) {
+    const data: any = {}
+    if (reason !== undefined) data.reason = reason
+    if (notes !== undefined) data.notes = notes || null
+    await db.reProcessLot.update({ where: { id: existing.id }, data })
+  }
+
+  // Recompute totalThan from sources after any add/update/remove later in the
+  // function (we do it inline below for addSources path; do it here too to
+  // catch update/remove-only edits).
+  if ((updateSources && updateSources.length) || (removeSources && removeSources.length)) {
+    const fresh = await db.reProcessSource.findMany({ where: { reprocessId: existing.id } })
+    const total = fresh.reduce((s: number, r: any) => s + (r.than || 0), 0)
+    await db.reProcessLot.update({ where: { id: existing.id }, data: { totalThan: total } })
+  }
 
   // Add more source lots
   if (addSources && Array.isArray(addSources) && addSources.length > 0) {
