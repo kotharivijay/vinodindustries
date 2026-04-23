@@ -188,13 +188,13 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                           )}
                                         </div>
                                         {(() => {
-                                          const showExtras = /prakash\s+shirting/i.test(l.party) || (l.partyTag || '').toLowerCase() === 'pali pc job'
-                                          if (!l.challanNos && !(showExtras && (l.date || l.marka))) return null
+                                          const showMarka = /prakash\s+shirting/i.test(l.party) || (l.partyTag || '').toLowerCase() === 'pali pc job'
+                                          if (!l.challanNos && !l.date && !(showMarka && l.marka)) return null
                                           return (
                                             <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-x-2">
                                               {l.challanNos && <span>Ch: {l.challanNos}</span>}
-                                              {showExtras && l.date && <span>{new Date(l.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>}
-                                              {showExtras && l.marka && <span>Marka: {l.marka}</span>}
+                                              {l.date && <span>{new Date(l.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>}
+                                              {showMarka && l.marka && <span>Marka: {l.marka}</span>}
                                             </p>
                                           )
                                         })()}
