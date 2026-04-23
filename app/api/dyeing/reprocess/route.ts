@@ -159,7 +159,8 @@ export async function PATCH(req: NextRequest) {
   const existing = await db.reProcessLot.findUnique({ where: { id: parseInt(id) }, include: { sources: true } })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Edit existing source rows (than / party). Only fields provided are touched.
+  // Edit existing source rows (lotNo / than / party / reason / notes).
+  // Only fields actually provided in the payload are touched.
   if (Array.isArray(updateSources) && updateSources.length > 0) {
     for (const u of updateSources) {
       if (!u?.id) continue
@@ -167,6 +168,11 @@ export async function PATCH(req: NextRequest) {
       if (u.than !== undefined) data.than = parseInt(u.than) || 0
       if (u.party !== undefined) data.party = u.party || null
       if (u.reason !== undefined) data.reason = u.reason || existing.reason
+      if (u.notes !== undefined) data.notes = u.notes || null
+      if (u.originalLotNo !== undefined) {
+        const v = String(u.originalLotNo).trim()
+        if (v) data.originalLotNo = v
+      }
       if (Object.keys(data).length === 0) continue
       await db.reProcessSource.update({ where: { id: parseInt(u.id) }, data })
     }

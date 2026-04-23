@@ -13,6 +13,7 @@ interface Source {
   than: number
   party: string | null
   reason: string | null
+  notes: string | null
   sourceDyeSlip: number | null
 }
 
@@ -173,7 +174,7 @@ export default function ReProcessPage() {
   const [editReason, setEditReason] = useState('patchy')
   const [editNotes, setEditNotes] = useState('')
   const [editGrayMtr, setEditGrayMtr] = useState('')
-  const [editSources, setEditSources] = useState<{ id: number; lotNo: string; than: string; party: string }[]>([])
+  const [editSources, setEditSources] = useState<{ id: number; lotNo: string; than: string; party: string; notes: string }[]>([])
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -182,7 +183,7 @@ export default function ReProcessPage() {
     setEditReason(lot.reason)
     setEditNotes(lot.notes || '')
     setEditGrayMtr(lot.grayMtr != null ? String(lot.grayMtr) : '')
-    setEditSources(lot.sources.map(s => ({ id: s.id, lotNo: s.originalLotNo, than: String(s.than), party: s.party || '' })))
+    setEditSources(lot.sources.map(s => ({ id: s.id, lotNo: s.originalLotNo, than: String(s.than), party: s.party || '', notes: s.notes || '' })))
     setEditError('')
   }
 
@@ -198,7 +199,7 @@ export default function ReProcessPage() {
       const removeSources = [...originalIds].filter(id => !keptIds.has(id))
       const updateSources = editSources
         .filter(s => s.id > 0)
-        .map(s => ({ id: s.id, than: parseInt(s.than) || 0, party: s.party || null }))
+        .map(s => ({ id: s.id, originalLotNo: s.lotNo.trim(), than: parseInt(s.than) || 0, party: s.party || null, notes: s.notes || null }))
 
       const res = await fetch('/api/dyeing/reprocess', {
         method: 'PATCH',
@@ -377,14 +378,19 @@ export default function ReProcessPage() {
                     <div className="space-y-1.5">
                       <p className="text-[10px] font-semibold text-gray-500 uppercase">Source lots</p>
                       {editSources.map((s, idx) => (
-                        <div key={s.id} className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5">
-                          <span className="text-xs font-medium text-teal-700 dark:text-teal-400 min-w-[80px]">{s.lotNo}</span>
-                          <input type="number" value={s.than} onChange={e => setEditSources(prev => prev.map((x, i) => i === idx ? { ...x, than: e.target.value } : x))}
-                            className="w-16 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-100 text-center" placeholder="than" />
-                          <input type="text" value={s.party} onChange={e => setEditSources(prev => prev.map((x, i) => i === idx ? { ...x, party: e.target.value } : x))}
-                            className="flex-1 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-100" placeholder="party" />
-                          <button onClick={() => setEditSources(prev => prev.filter((_, i) => i !== idx))}
-                            className="text-red-400 hover:text-red-600 text-xs px-1">✕</button>
+                        <div key={s.id} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-2 py-1.5 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <input type="text" value={s.lotNo} onChange={e => setEditSources(prev => prev.map((x, i) => i === idx ? { ...x, lotNo: e.target.value } : x))}
+                              className="w-24 text-xs font-medium text-teal-700 dark:text-teal-400 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700" placeholder="lot no" />
+                            <input type="number" value={s.than} onChange={e => setEditSources(prev => prev.map((x, i) => i === idx ? { ...x, than: e.target.value } : x))}
+                              className="w-16 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-100 text-center" placeholder="than" />
+                            <input type="text" value={s.party} onChange={e => setEditSources(prev => prev.map((x, i) => i === idx ? { ...x, party: e.target.value } : x))}
+                              className="flex-1 text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1 bg-white dark:bg-gray-700 dark:text-gray-100" placeholder="party" />
+                            <button onClick={() => setEditSources(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-red-400 hover:text-red-600 text-xs px-1">✕</button>
+                          </div>
+                          <input type="text" value={s.notes} onChange={e => setEditSources(prev => prev.map((x, i) => i === idx ? { ...x, notes: e.target.value } : x))}
+                            className="w-full text-[11px] border border-gray-200 dark:border-gray-700 rounded px-2 py-1 bg-gray-50 dark:bg-gray-900/40 text-gray-600 dark:text-gray-300" placeholder="notes for this lot" />
                         </div>
                       ))}
                     </div>
@@ -404,14 +410,17 @@ export default function ReProcessPage() {
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Source Lots</p>
                       {lot.sources.map(s => (
-                        <div key={s.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-xs">
-                          <div>
-                            <Link href={`/lot/${encodeURIComponent(s.originalLotNo)}`} className="font-medium text-teal-700 dark:text-teal-400 hover:underline">{s.originalLotNo}</Link>
-                            {s.party && <span className="text-gray-500 dark:text-gray-400 ml-2">{s.party}</span>}
-                            {s.reason && <span className="text-gray-400 ml-2">({s.reason})</span>}
-                            {s.sourceDyeSlip && <span className="text-gray-400 ml-1">Slip {s.sourceDyeSlip}</span>}
+                        <div key={s.id} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <Link href={`/lot/${encodeURIComponent(s.originalLotNo)}`} className="font-medium text-teal-700 dark:text-teal-400 hover:underline">{s.originalLotNo}</Link>
+                              {s.party && <span className="text-gray-500 dark:text-gray-400 ml-2">{s.party}</span>}
+                              {s.reason && <span className="text-gray-400 ml-2">({s.reason})</span>}
+                              {s.sourceDyeSlip && <span className="text-gray-400 ml-1">Slip {s.sourceDyeSlip}</span>}
+                            </div>
+                            <span className="font-bold text-gray-700 dark:text-gray-200">{s.than}</span>
                           </div>
-                          <span className="font-bold text-gray-700 dark:text-gray-200">{s.than}</span>
+                          {s.notes && <p className="text-[10px] text-gray-500 dark:text-gray-400 italic mt-0.5">{s.notes}</p>}
                         </div>
                       ))}
                     </div>
@@ -428,10 +437,6 @@ export default function ReProcessPage() {
                     <div className="flex items-center gap-2 pt-1">
                       {lot.status === 'pending' && (
                         <>
-                          <button onClick={() => handleStatusChange(lot.id, 'in-dyeing')}
-                            className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-3 py-1 rounded-lg font-medium">
-                            Start Dyeing
-                          </button>
                           <button onClick={() => openEdit(lot)}
                             className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 px-3 py-1 rounded-lg font-medium">
                             Edit
@@ -439,12 +444,6 @@ export default function ReProcessPage() {
                           <button onClick={() => handleDelete(lot.id)}
                             className="text-xs text-red-400 hover:text-red-600 ml-auto">Delete</button>
                         </>
-                      )}
-                      {lot.status === 'in-dyeing' && (
-                        <button onClick={() => handleStatusChange(lot.id, 'finished')}
-                          className="text-xs bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border border-green-200 dark:border-green-800 px-3 py-1 rounded-lg font-medium">
-                          Mark Finished
-                        </button>
                       )}
                       {lot.status === 'finished' && (
                         <button onClick={() => handleStatusChange(lot.id, 'merged')}
