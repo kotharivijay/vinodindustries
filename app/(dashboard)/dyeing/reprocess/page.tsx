@@ -1,9 +1,12 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
+import { LotLink, useLotBackHighlight, persistViewState, readViewState } from '@/lib/viewStatePersist'
+
+const REPRO_VIEW_KEY = 'reprocess-view-state'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -48,7 +51,13 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function ReProcessPage() {
   const { data: lots, mutate } = useSWR<ReProLot[]>('/api/dyeing/reprocess', fetcher)
-  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [expanded, setExpanded] = useState<Set<number>>(() => {
+    const arr = readViewState(REPRO_VIEW_KEY).expanded
+    return new Set(Array.isArray(arr) ? arr : [])
+  })
+
+  useEffect(() => { persistViewState(REPRO_VIEW_KEY, { expanded: [...expanded] }) }, [expanded])
+  useLotBackHighlight(REPRO_VIEW_KEY, true)
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
@@ -410,10 +419,10 @@ export default function ReProcessPage() {
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Source Lots</p>
                       {lot.sources.map(s => (
-                        <div key={s.id} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-xs">
+                        <div key={s.id} data-lot-card={s.originalLotNo} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-xs transition-shadow">
                           <div className="flex items-center justify-between">
                             <div>
-                              <Link href={`/lot/${encodeURIComponent(s.originalLotNo)}`} className="font-medium text-teal-700 dark:text-teal-400 hover:underline">{s.originalLotNo}</Link>
+                              <LotLink lotNo={s.originalLotNo} storageKey={REPRO_VIEW_KEY} className="font-medium text-teal-700 dark:text-teal-400 hover:underline">{s.originalLotNo}</LotLink>
                               {s.party && <span className="text-gray-500 dark:text-gray-400 ml-2">{s.party}</span>}
                               {s.reason && <span className="text-gray-400 ml-2">({s.reason})</span>}
                               {s.sourceDyeSlip && <span className="text-gray-400 ml-1">Slip {s.sourceDyeSlip}</span>}
