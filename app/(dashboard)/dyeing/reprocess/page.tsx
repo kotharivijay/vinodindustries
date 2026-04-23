@@ -198,6 +198,23 @@ export default function ReProcessPage() {
 
   function closeEdit() { setEditingId(null); setEditSources([]); setEditError('') }
 
+  // Inline notes editing on the read-only card
+  const [inlineNotesDraft, setInlineNotesDraft] = useState<Record<number, string>>({})
+  const [inlineSavingId, setInlineSavingId] = useState<number | null>(null)
+  async function saveSourceNotes(sourceId: number, lotId: number, value: string) {
+    const before = (lots?.find(l => l.id === lotId)?.sources.find(s => s.id === sourceId)?.notes) ?? ''
+    if (value === before) return
+    setInlineSavingId(sourceId)
+    try {
+      await fetch('/api/dyeing/reprocess', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: lotId, updateSources: [{ id: sourceId, notes: value }] }),
+      })
+      mutate()
+    } finally { setInlineSavingId(null) }
+  }
+
   async function saveEdit() {
     if (editingId == null) return
     setEditSaving(true); setEditError('')
@@ -418,7 +435,10 @@ export default function ReProcessPage() {
                     {/* Source lots */}
                     <div className="space-y-1.5">
                       <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Source Lots</p>
-                      {lot.sources.map(s => (
+                      {lot.sources.map(s => {
+                        const draftKey = s.id
+                        const draftVal = inlineNotesDraft[draftKey] ?? (s.notes || '')
+                        return (
                         <div key={s.id} data-lot-card={s.originalLotNo} className="bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-xs transition-shadow">
                           <div className="flex items-center justify-between">
                             <div>
@@ -429,9 +449,21 @@ export default function ReProcessPage() {
                             </div>
                             <span className="font-bold text-gray-700 dark:text-gray-200">{s.than}</span>
                           </div>
-                          {s.notes && <p className="text-[10px] text-gray-500 dark:text-gray-400 italic mt-0.5">{s.notes}</p>}
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={draftVal}
+                              placeholder="add note for this lot…"
+                              onChange={e => setInlineNotesDraft(prev => ({ ...prev, [draftKey]: e.target.value }))}
+                              onBlur={e => saveSourceNotes(s.id, lot.id, e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                              className="flex-1 text-[11px] italic bg-transparent border-0 border-b border-dashed border-gray-300 dark:border-gray-600 focus:outline-none focus:border-purple-500 px-0 py-0.5 text-gray-600 dark:text-gray-300"
+                            />
+                            {inlineSavingId === s.id && <span className="text-[9px] text-gray-400">saving…</span>}
+                          </div>
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
 
                     {/* Info */}
