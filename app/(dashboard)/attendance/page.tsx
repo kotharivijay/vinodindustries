@@ -107,8 +107,8 @@ function SharePageCard({ page, dateLabel }: { page: SharePage; dateLabel: string
         <tbody>
           {page.rows.map((r, i) => (
             <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-              <td className="px-2 py-1.5 align-top text-gray-600 border-b border-gray-200">{r.id}</td>
-              <td className="px-2 py-1.5 align-top font-semibold border-b border-gray-200">{r.name}</td>
+              <td className="px-2 py-1.5 align-top text-black font-semibold border-b border-gray-200">{r.id}</td>
+              <td className="px-2 py-1.5 align-top font-bold text-black border-b border-gray-200">{r.name}</td>
               <td className="px-2 py-1.5 align-top border-b border-gray-200">
                 {r.punches && r.punches.length > 0 ? (
                   <div className="flex flex-wrap gap-1">
@@ -136,7 +136,7 @@ function SharePageCard({ page, dateLabel }: { page: SharePage; dateLabel: string
           <div className="text-sm font-bold text-red-700 mb-1.5">❌ No Punch ({page.noPunch.length})</div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
             {page.noPunch.map((r, i) => (
-              <div key={i}>• <span className="font-medium">{r.name}</span> <span className="text-gray-500">({r.id})</span></div>
+              <div key={i}>• <span className="font-bold text-black">{r.name}</span> <span className="text-gray-600">({r.id})</span></div>
             ))}
           </div>
         </div>
