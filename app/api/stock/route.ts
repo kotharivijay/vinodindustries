@@ -41,9 +41,17 @@ export async function GET() {
   // Fetch grey entries grouped by lot
   const greyByLot = await prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
 
-  // Fetch despatch entries grouped by lot
-  const despatchByLot = await prisma.despatchEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
-  const despatchMap = new Map(despatchByLot.map(d => [d.lotNo, d._sum.than ?? 0]))
+  // Fetch despatch totals per lot — combine legacy single-lot DespatchEntry
+  // (no children) with multi-lot DespatchEntryLot rows, otherwise multi-lot
+  // challans get attributed entirely to the parent's first lot.
+  const despParentByLot = await prisma.despatchEntry.groupBy({
+    where: { despatchLots: { none: {} } },
+    by: ['lotNo'], _sum: { than: true },
+  })
+  const despLotByLot = await prisma.despatchEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } })
+  const despatchMap = new Map<string, number>()
+  for (const d of despParentByLot) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
+  for (const d of despLotByLot) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
 
   // Fetch opening balances
   let obList: any[] = []
@@ -142,6 +150,40 @@ export async function GET() {
       foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
     })
   }
+
+  // Active RE-PRO lots — surface as "Re-Process" party so they appear in
+  // fold creation and stock pickers like any other lot. Drops out
+  // automatically once status flips to 'merged'.
+  try {
+    const db = prisma as any
+    const repros = await db.reProcessLot.findMany({
+      where: { status: { in: ['pending', 'in-dyeing', 'finished'] } },
+    })
+    for (const r of repros) {
+      const key = r.reproNo.toLowerCase()
+      const despThan = despatchMap.get(r.reproNo) ?? 0
+      const stock = r.totalThan - despThan
+      if (stock <= 0) continue
+      const foldProgrammed = foldMap.get(key) ?? 0
+      const dyeingUsed = dyeingUsedMap.get(key) ?? 0
+      const reservation = reservationMap.get(key)
+      const manuallyUsed = reservation?.usedThan ?? 0
+      lotStocks.push({
+        lotNo: r.reproNo,
+        party: 'Re-Process',
+        partyTag: null,
+        quality: r.quality || '-',
+        stock,
+        openingBalance: 0,
+        greyThan: r.totalThan,
+        despatchThan: despThan,
+        foldProgrammed,
+        manuallyUsed,
+        manuallyUsedNote: reservation?.note ?? null,
+        foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
+      })
+    }
+  } catch {}
 
   // Group by party
   const partyMap = new Map<string, { party: string; partyTag: string | null; totalStock: number; lotCount: number; lots: LotStock[] }>()
