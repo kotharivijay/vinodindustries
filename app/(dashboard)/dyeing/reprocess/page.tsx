@@ -94,27 +94,47 @@ export default function ReProcessPage() {
         notes: notes || null,
         sources: validSources.map(s => ({ lotNo: s.lotNo.trim(), than: parseInt(s.than), reason: s.reason })),
       }
+      let extras: any = {}
       let { res, data } = await post(basePayload)
 
-      // Server asks for confirmation when source lots have mixed qualities.
+      // Step 1: mixed quality? Resolve into acceptMixedQuality / filtered sources.
       if (res.ok && data?.needsConfirm && data.reason === 'MIXED_QUALITY') {
         const lines = (data.lots || []).map((l: any) => `  ${l.lotNo}: ${l.quality ?? 'unknown'}`).join('\n')
         const choice = window.confirm(
           `Mixed qualities detected:\n\n${lines}\n\nClick OK to save with ALL lots (mixed quality).\nClick Cancel to drop the lots whose quality differs from the most common one and save the rest.`,
         )
         if (choice) {
-          // Yes — keep all, accept mixed quality
-          ;({ res, data } = await post({ ...basePayload, acceptMixedQuality: true }))
+          extras = { acceptMixedQuality: true }
         } else {
-          // No — exclude minority-quality lots
           const counts = new Map<string, number>()
           for (const l of data.lots || []) if (l.quality) counts.set(l.quality, (counts.get(l.quality) || 0) + 1)
           const winner = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
           const keptLots = (data.lots || []).filter((l: any) => l.quality === winner).map((l: any) => l.lotNo.toLowerCase())
           const filteredSources = basePayload.sources.filter(s => keptLots.includes(s.lotNo.toLowerCase()))
           if (filteredSources.length === 0) { setCreateError('No lots left after excluding mismatched quality'); setCreating(false); return }
-          ;({ res, data } = await post({ ...basePayload, sources: filteredSources, acceptMixedQuality: true }))
+          basePayload.sources = filteredSources
+          extras = { acceptMixedQuality: true }
         }
+        ;({ res, data } = await post({ ...basePayload, ...extras }))
+      }
+
+      // Step 2: confirm weight + quality (always asked unless `confirmed: true`).
+      if (res.ok && data?.needsConfirm && data.reason === 'CONFIRM_WEIGHT_QUALITY') {
+        const computedQ = data.computedQuality
+        const computedW = data.computedWeight
+        const opts: string[] = data.qualityOptions || []
+        let pickedQuality = computedQ
+        if (!pickedQuality) {
+          const list = opts.length ? `\n\nAvailable qualities:\n${opts.map((q, i) => `  ${i+1}. ${q}`).join('\n')}` : ''
+          const ans = window.prompt(`No quality detected on source lots. Type a quality name to use:${list}`, opts[0] || '')
+          if (!ans || !ans.trim()) { setCreateError('Quality required'); setCreating(false); return }
+          pickedQuality = ans.trim()
+        }
+        const wAns = window.prompt(`Confirm/edit avg weight (computed: ${computedW ?? '—'}) and quality "${pickedQuality}".\n\nEnter weight (e.g. 110g, blank to skip):`, computedW ?? '')
+        if (wAns === null) { setCreating(false); return } // user cancelled
+        const qAns = window.prompt(`Quality:`, pickedQuality)
+        if (qAns === null) { setCreating(false); return }
+        ;({ res, data } = await post({ ...basePayload, ...extras, confirmed: true, confirmedWeight: wAns.trim(), confirmedQuality: qAns.trim() }))
       }
 
       if (!res.ok || data?.error) { setCreateError(data.error || 'Failed'); setCreating(false); return }

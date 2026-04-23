@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { sources, reason, notes, acceptMixedQuality } = await req.json()
+  const { sources, reason, notes, acceptMixedQuality, confirmedWeight, confirmedQuality, confirmed } = await req.json()
   if (!Array.isArray(sources) || sources.length === 0) {
     return NextResponse.json({ error: 'At least one source lot required' }, { status: 400 })
   }
@@ -84,14 +84,35 @@ export async function POST(req: NextRequest) {
 
   // Pick a representative quality. If user accepted mixed, use the most
   // common one; otherwise the single value.
-  let quality: string
-  if (qualities.size === 0) quality = 'Unknown'
-  else if (qualities.size === 1) quality = Array.from(qualities)[0]
-  else {
+  let computedQuality: string | null = null
+  if (qualities.size === 1) computedQuality = Array.from(qualities)[0]
+  else if (qualities.size > 1) {
     const counts = new Map<string, number>()
     for (const sq of sourceQualities) if (sq.quality) counts.set(sq.quality, (counts.get(sq.quality) || 0) + 1)
-    quality = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    computedQuality = [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0]
   }
+
+  // Ask client to confirm weight + quality before saving. Also surface a
+  // dropdown list of all qualities so user can pick when none is detected
+  // (computedQuality === null).
+  if (!confirmed) {
+    const allQualities = await prisma.quality.findMany({ select: { name: true }, orderBy: { name: 'asc' } })
+    return NextResponse.json({
+      needsConfirm: true,
+      reason: 'CONFIRM_WEIGHT_QUALITY',
+      computedWeight: totalWeight,
+      computedQuality,
+      computedThan: totalThan,
+      computedMtr: totalMtr > 0 ? totalMtr : null,
+      qualityOptions: allQualities.map(q => q.name),
+      message: computedQuality
+        ? `Confirm weight ${totalWeight ?? '—'} and quality ${computedQuality}.`
+        : `No quality detected on source lots — please pick one.`,
+    }, { status: 200 })
+  }
+
+  const quality = (confirmedQuality && String(confirmedQuality).trim()) || computedQuality || 'Unknown'
+  const finalWeight: string | null = (confirmedWeight !== undefined ? (String(confirmedWeight).trim() || null) : totalWeight)
 
   // Generate next RE-PRO number
   const maxRepro = await db.reProcessLot.findFirst({ orderBy: { id: 'desc' }, select: { reproNo: true } })
@@ -106,7 +127,7 @@ export async function POST(req: NextRequest) {
     data: {
       reproNo,
       quality,
-      weight: totalWeight,
+      weight: finalWeight,
       grayMtr: totalMtr > 0 ? totalMtr : null,
       totalThan,
       reason,
