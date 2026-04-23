@@ -44,12 +44,34 @@ export async function GET(req: NextRequest) {
   })
   const obMap = new Map<string, number>(obStock.map((o: any) => [o.lotNo.toLowerCase().trim(), o.openingThan ?? 0]))
 
-  const despStock = await prisma.despatchEntry.groupBy({
+  // Despatch totals — combine legacy single-lot DespatchEntry (no children)
+  // with multi-lot DespatchEntryLot rows; otherwise multi-lot challans
+  // attribute the entire challan to the parent's first lot.
+  const despParent = await prisma.despatchEntry.groupBy({
+    by: ['lotNo'],
+    where: { lotNo: { in: Array.from(allLotNos) }, despatchLots: { none: {} } },
+    _sum: { than: true },
+  })
+  const despChild = await prisma.despatchEntryLot.groupBy({
     by: ['lotNo'],
     where: { lotNo: { in: Array.from(allLotNos) } },
     _sum: { than: true },
   })
-  const despMap = new Map(despStock.map(d => [d.lotNo.toLowerCase().trim(), d._sum.than ?? 0]))
+  const despMap = new Map<string, number>()
+  for (const d of despParent) despMap.set(d.lotNo.toLowerCase().trim(), (despMap.get(d.lotNo.toLowerCase().trim()) || 0) + (d._sum.than ?? 0))
+  for (const d of despChild) despMap.set(d.lotNo.toLowerCase().trim(), (despMap.get(d.lotNo.toLowerCase().trim()) || 0) + (d._sum.than ?? 0))
+
+  // Active RE-PRO lots — treat their totalThan as available stock so
+  // RE-PRO-N can be a fold input (matches /api/grey/lots model).
+  const reproLots = await db.reProcessLot.findMany({
+    where: {
+      reproNo: { in: Array.from(allLotNos) },
+      status: { in: ['pending', 'in-dyeing', 'finished'] },
+    },
+    select: { reproNo: true, totalThan: true },
+  })
+  const reproMap = new Map<string, number>()
+  for (const r of reproLots) reproMap.set(r.reproNo.toLowerCase().trim(), r.totalThan)
 
   // Fold usage (all folds, not just current)
   const foldLots = await db.foldBatchLot.findMany({
@@ -110,13 +132,14 @@ export async function GET(req: NextRequest) {
       const lotNo = Array.from(allLotNos).find(l => l.toLowerCase().trim() === key) || key
       const grey = greyMap.get(key) ?? 0
       const ob = obMap.get(key) ?? 0
+      const repro = reproMap.get(key) ?? 0
       const desp = despMap.get(key) ?? 0
       const otherFold = otherFoldUsage.get(key) ?? 0
       const dye = dyeMap.get(key) ?? 0
-      const stock = grey + ob - desp
+      const stock = grey + ob + repro - desp
       const available = Math.max(0, stock - otherFold - dye)
 
-      if (stock <= 0 && grey === 0 && ob === 0) {
+      if (stock <= 0 && grey === 0 && ob === 0 && repro === 0) {
         lotIssues.push({ lotNo, needed, available: 0, stock: 0, type: 'not_found' })
       } else if (available < needed) {
         lotIssues.push({ lotNo, needed, available, stock, type: 'low_stock' })
