@@ -126,7 +126,7 @@ function SharePageCard({ page, dateLabel }: { page: SharePage; dateLabel: string
                   <span className="text-gray-500">{r.punchIn} → {r.punchOut}</span>
                 )}
               </td>
-              <td className="px-2 py-1.5 align-top text-right font-mono text-gray-700 border-b border-gray-200">{r.workingHrs}</td>
+              <td className="px-2 py-1.5 align-top text-right font-mono font-bold text-black border-b border-gray-200">{r.workingHrs}</td>
             </tr>
           ))}
         </tbody>
@@ -484,7 +484,7 @@ export default function AttendancePage() {
                       return (
                       <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                         <td className="px-2 py-1 text-gray-500">{r.id}</td>
-                        <td className="px-2 py-1 font-medium text-gray-800 dark:text-gray-100">{r.name}</td>
+                        <td className="px-2 py-1 font-semibold text-black dark:text-white">{r.name}</td>
                         <td className="px-2 py-1 text-gray-500 dark:text-gray-400">{r.designation}</td>
                         <td className="px-2 py-1">
                           {hasPunches ? (
@@ -504,8 +504,8 @@ export default function AttendancePage() {
                             <span className="text-gray-400">—</span>
                           )}
                         </td>
-                        <td className="px-2 py-1">{r.workingHrs}</td>
-                        <td className="px-2 py-1">{r.break}</td>
+                        <td className="px-2 py-1 font-semibold text-black dark:text-white">{r.workingHrs}</td>
+                        <td className="px-2 py-1 text-gray-700 dark:text-gray-300">{r.break}</td>
                         <td className="px-2 py-1">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${statusColor(r.status)}`}>{r.status}</span>
                         </td>
