@@ -21,6 +21,9 @@ interface ChemicalRow {
 interface MachineOption { id: number; number: number; name: string; isActive: boolean }
 interface OperatorOption { id: number; name: string; mobileNo: string | null; isActive: boolean }
 
+interface DyeingProcessItem { chemicalId: number; quantity: number; quantityHigh?: number | null; chemical: { id: number; name: string; unit: string } }
+interface DyeingProcess { id: number; name: string; description?: string; threshold?: number; items: DyeingProcessItem[] }
+
 export default function DyeingEditForm({ id }: { id: string }) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -66,13 +69,44 @@ export default function DyeingEditForm({ id }: { id: string }) {
   const [shadeSearch, setShadeSearch] = useState('')
   const [showShadePicker, setShowShadePicker] = useState(false)
 
-  // Load chemical master + machines + operators + shades
+  // Process pills for adding auxiliary chemicals
+  const [processes, setProcesses] = useState<DyeingProcess[]>([])
+  const [addedProcesses, setAddedProcesses] = useState<Set<number>>(new Set())
+  const [processPopup, setProcessPopup] = useState<{ process: DyeingProcess; items: { chemicalId: number; name: string; unit: string; quantity: string }[] } | null>(null)
+
+  // Load chemical master + machines + operators + shades + processes
   useEffect(() => {
     fetch('/api/chemicals').then(r => r.json()).then(d => setMasterChemicals(Array.isArray(d) ? d : [])).catch(() => {})
     fetch('/api/dyeing/machines').then(r => r.json()).then(d => setMachines(Array.isArray(d) ? d.filter((m: any) => m.isActive) : [])).catch(() => {})
     fetch('/api/dyeing/operators?active=true').then(r => r.json()).then(d => setOperators(Array.isArray(d) ? d : [])).catch(() => {})
     fetch('/api/shades').then(r => r.json()).then(d => setAllShades(Array.isArray(d) ? d : [])).catch(() => {})
+    fetch('/api/dyeing/processes').then(r => r.json()).then(d => setProcesses(Array.isArray(d) ? d : [])).catch(() => {})
   }, [])
+
+  // Add chemicals from a process pill (additive — replaces previous addition from same process)
+  function addProcessChemicals(process: DyeingProcess, items: { chemicalId: number; name: string; unit: string; quantity: string }[]) {
+    setChemicals(prev => {
+      const withoutOld = prev.filter(c => c.processTag !== process.name)
+      const newRows: ChemicalRow[] = items.map(it => {
+        const m = masterChemicals.find(x => x.id === it.chemicalId)
+        const qty = parseFloat(it.quantity) || 0
+        const rate = m?.currentPrice ?? null
+        return {
+          name: it.name,
+          chemicalId: it.chemicalId,
+          quantity: it.quantity,
+          unit: it.unit,
+          rate: rate != null ? String(rate) : '',
+          cost: rate != null ? Math.round(qty * rate * 100) / 100 : null,
+          matched: true,
+          processTag: process.name,
+        }
+      })
+      return [...withoutOld, ...newRows]
+    })
+    setAddedProcesses(prev => new Set([...prev, process.id]))
+    setProcessPopup(null)
+  }
 
   function applyShadeRecipe(shade: any) {
     const totalThan = lots.reduce((s, l) => s + (parseInt(l.than) || 0), 0)
@@ -678,6 +712,65 @@ export default function DyeingEditForm({ id }: { id: string }) {
               </button>
             </div>
           </div>
+
+          {/* Process pills — quick-add auxiliary chemical sets */}
+          {processes.length > 0 && (
+            <div className="mb-3">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                <span className="text-xs font-medium text-gray-400 shrink-0">Processes:</span>
+                {processes.map(p => {
+                  const isAdded = addedProcesses.has(p.id) || chemicals.some(c => c.processTag === p.name)
+                  return (
+                    <button key={p.id} type="button"
+                      onClick={() => setProcessPopup({
+                        process: p,
+                        items: p.items.map(item => ({
+                          chemicalId: item.chemicalId,
+                          name: item.chemical.name,
+                          unit: item.chemical.unit || 'kg',
+                          quantity: String(item.quantity),
+                        })),
+                      })}
+                      title={p.description || `${p.items.length} chemicals`}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition shrink-0 ${
+                        isAdded ? 'bg-green-900/40 text-green-300 border border-green-700' : 'bg-indigo-900/40 text-indigo-300 border border-indigo-700 hover:bg-indigo-900/60'
+                      }`}>
+                      {isAdded ? '✅ ' : ''}{p.name}<span className={`ml-1 ${isAdded ? 'text-green-400' : 'text-indigo-400'}`}>({p.items.length})</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Process popup */}
+          {processPopup && (
+            <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center" onClick={() => setProcessPopup(null)}>
+              <div className="bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl max-h-[80vh] overflow-y-auto border border-gray-700" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between p-4 border-b border-gray-700">
+                  <h3 className="text-base font-bold text-white">{processPopup.process.name}</h3>
+                  <button onClick={() => setProcessPopup(null)} className="text-gray-400 hover:text-white text-2xl leading-none">&times;</button>
+                </div>
+                <div className="p-4 space-y-3">
+                  {processPopup.items.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-3">
+                      <span className="text-sm text-gray-200 flex-1">{item.name}</span>
+                      <input type="number" step="0.001" value={item.quantity}
+                        onChange={e => setProcessPopup(prev => prev ? ({ ...prev, items: prev.items.map((x, i) => i === idx ? { ...x, quantity: e.target.value } : x) }) : prev)}
+                        className="w-24 bg-gray-700 border border-gray-600 text-gray-100 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                      <span className="text-xs text-gray-500 w-8">{item.unit}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-4 border-t border-gray-700">
+                  <button type="button" onClick={() => addProcessChemicals(processPopup.process, processPopup.items)}
+                    className="w-full bg-purple-600 text-white font-semibold rounded-lg px-4 py-2.5 text-sm hover:bg-purple-700 transition">
+                    Add to Slip
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {chemicals.length === 0 ? (
             <p className="text-xs text-gray-600 text-center py-4">No chemicals. Click &quot;+ Add Chemical&quot; to add.</p>
