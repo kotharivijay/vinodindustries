@@ -172,6 +172,7 @@ export default function ReProcessPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editReason, setEditReason] = useState('patchy')
   const [editNotes, setEditNotes] = useState('')
+  const [editGrayMtr, setEditGrayMtr] = useState('')
   const [editSources, setEditSources] = useState<{ id: number; lotNo: string; than: string; party: string }[]>([])
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
@@ -180,6 +181,7 @@ export default function ReProcessPage() {
     setEditingId(lot.id)
     setEditReason(lot.reason)
     setEditNotes(lot.notes || '')
+    setEditGrayMtr(lot.grayMtr != null ? String(lot.grayMtr) : '')
     setEditSources(lot.sources.map(s => ({ id: s.id, lotNo: s.originalLotNo, than: String(s.than), party: s.party || '' })))
     setEditError('')
   }
@@ -201,7 +203,7 @@ export default function ReProcessPage() {
       const res = await fetch('/api/dyeing/reprocess', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingId, reason: editReason, notes: editNotes, updateSources, removeSources }),
+        body: JSON.stringify({ id: editingId, reason: editReason, notes: editNotes, grayMtr: editGrayMtr, updateSources, removeSources }),
       })
       const data = await res.json()
       if (!res.ok || data?.error) { setEditError(data?.error || 'Save failed'); setEditSaving(false); return }
@@ -352,13 +354,19 @@ export default function ReProcessPage() {
                 {isOpen && editingId === lot.id && (
                   <div className="border-t border-gray-100 dark:border-gray-700 px-4 pb-4 pt-3 space-y-3 bg-amber-50/40 dark:bg-amber-900/10">
                     <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase">Editing RE-PRO {lot.reproNo}</p>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <div>
                         <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">Reason</label>
                         <select value={editReason} onChange={e => setEditReason(e.target.value)}
                           className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                           {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                         </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">Total Meter</label>
+                        <input type="number" step="0.01" value={editGrayMtr} onChange={e => setEditGrayMtr(e.target.value)}
+                          placeholder="metres"
+                          className="w-full text-xs border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       </div>
                       <div>
                         <label className="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">Notes</label>
