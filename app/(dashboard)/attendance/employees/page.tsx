@@ -75,7 +75,7 @@ export default function AttendanceEmployeesPage() {
 
       {data?.tokenError && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 mb-4 text-xs text-amber-700 dark:text-amber-300">
-          {data.tokenError} — showing stored rows only. New employees won't sync until token is captured.
+          {data.tokenError} — showing stored rows only. New employees won&apos;t sync until token is captured.
         </div>
       )}
 
