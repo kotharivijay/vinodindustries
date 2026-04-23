@@ -17,7 +17,9 @@ async function readFoldSheet(): Promise<string[][] | null> {
   const client = await auth.getClient()
   const token = await client.getAccessToken()
 
-  const range = encodeURIComponent("'Sheet1'!A1:Z500")
+  // Sheet currently runs ~500+ rows (last fold is past row 500). Read up to
+  // row 5000 so we don't silently lose new folds appended at the bottom.
+  const range = encodeURIComponent("'Sheet1'!A1:Z5000")
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${FOLD_SHEET_ID}/values/${range}`
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token.token}` } })
   if (!res.ok) return null
