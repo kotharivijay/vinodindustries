@@ -166,6 +166,13 @@ export async function GET() {
     const dyeingUsed = dyeingUsedMap.get(key) ?? 0
     const reservation = reservationMap.get(key)
     const manuallyUsed = reservation?.usedThan ?? 0
+    // For OB lots, the LR/date come from the OB row itself (carry-forward from
+    // last year's grey entry). Fall back to any matching GreyEntry aggregation
+    // if the OB row's fields are blank.
+    const obLr = ob.lrNo || Array.from(lrMap.get(key) || []).join(', ')
+    const obDateSet = new Set<string>(Array.from(dateMap.get(key) || []))
+    if (ob.greyDate) obDateSet.add(ob.greyDate.toISOString().slice(0, 10))
+
     lotStocks.push({
       lotNo: ob.lotNo,
       party: ob.party || 'Unknown',
@@ -180,9 +187,9 @@ export async function GET() {
       manuallyUsed,
       manuallyUsedNote: reservation?.note ?? null,
       foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
-      lrNos: Array.from(lrMap.get(key) || []).join(', '),
+      lrNos: obLr,
       markas: Array.from(markaMap.get(key) || []).join(', '),
-      inwardDates: Array.from(dateMap.get(key) || []).sort().join(', '),
+      inwardDates: Array.from(obDateSet).sort().join(', '),
     })
   }
 

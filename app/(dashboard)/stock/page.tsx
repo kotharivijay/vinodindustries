@@ -50,13 +50,13 @@ function compareLotNo(a: string, b: string): number {
   return pa.num - pb.num
 }
 
-/** "2026-04-21,2026-04-25" → "21 Apr, 25 Apr". Empty input → "—". */
+/** "2026-04-21,2026-04-25" → "21 Apr 26, 25 Apr 26". Empty input → "—". */
 function formatInwardDates(csv: string): string {
   if (!csv) return '—'
   return csv.split(',').map(d => {
     const dt = new Date(d.trim() + 'T00:00:00')
     if (isNaN(dt.getTime())) return d
-    return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+    return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
   }).join(', ')
 }
 

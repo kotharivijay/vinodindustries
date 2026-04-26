@@ -630,6 +630,7 @@ model LotOpeningBalance {
   weight          String?  // e.g. "90g", ".98g"
   grayMtr         Float?   // total gray meters
   greyDate        DateTime? // original grey inward date
+  lrNo            String?   // original transport LR number
   marka           String?
   notes           String?
   createdAt       DateTime @default(now())
