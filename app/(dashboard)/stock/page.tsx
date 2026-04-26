@@ -92,26 +92,29 @@ function PartyStockShareCard({ page }: { page: PartySharePage }) {
           <span className="font-bold text-indigo-700">📊 Balance {page.totalStock} than</span>
         </div>
       </div>
+      {/* Column header */}
+      <div className="flex items-baseline justify-between gap-2 px-2.5 pb-1.5 mb-1 border-b-2 border-gray-300 text-[10px] font-bold uppercase tracking-wide text-gray-600">
+        <span>Lot · Quality</span>
+        <span className="text-indigo-700">Balance</span>
+      </div>
       <div className="space-y-2">
         {page.lots.map((l, i) => (
           <div key={l.lotNo} className={`px-2.5 py-2 rounded ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border border-gray-200`}>
-            <div className="flex justify-between items-baseline gap-2">
-              <span className="text-base font-bold text-black">{l.lotNo}</span>
-              <span className="text-xs font-semibold text-gray-700">{l.quality}</span>
+            <div className="flex justify-between items-baseline gap-3">
+              <div className="flex items-baseline gap-3 min-w-0">
+                <span className="text-base font-bold text-black whitespace-nowrap">{l.lotNo}</span>
+                <span className="text-xs font-semibold text-gray-700 truncate">{l.quality}</span>
+              </div>
+              <span className="text-base font-bold text-indigo-700 whitespace-nowrap">{l.stock}</span>
             </div>
-            <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
-              <div><span className="text-gray-600">Inward:</span> <span className="font-bold text-black">{formatInwardDates(l.inwardDates)}</span></div>
-              <div><span className="text-gray-600">LR:</span> <span className="font-bold text-black">{l.lrNos || '—'}</span></div>
-              <div><span className="text-gray-600">Total:</span> <span className="font-bold text-black">{l.totalThan}</span></div>
-              <div><span className="text-gray-600">Desp:</span> <span className="font-bold text-black">{l.despatchThan}</span></div>
-            </div>
-            <div className="mt-1.5 flex justify-between items-baseline gap-2 pt-1 border-t border-gray-100">
-              {showMarka && l.markas ? (
-                <span className="text-xs"><span className="text-gray-600">Marka:</span> <span className="font-bold text-black">{l.markas}</span></span>
-              ) : <span />}
-              <span className="text-sm font-bold text-indigo-700 whitespace-nowrap">
-                Balance {l.stock} than
-              </span>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+              <span><span className="text-gray-600">Inward:</span> <span className="font-bold text-black">{formatInwardDates(l.inwardDates)}</span></span>
+              <span><span className="text-gray-600">LR:</span> <span className="font-bold text-black">{l.lrNos || '—'}</span></span>
+              <span><span className="text-gray-600">Total:</span> <span className="font-bold text-black">{l.totalThan}</span></span>
+              <span><span className="text-gray-600">Desp:</span> <span className="font-bold text-black">{l.despatchThan}</span></span>
+              {showMarka && l.markas && (
+                <span><span className="text-gray-600">Marka:</span> <span className="font-bold text-black">{l.markas}</span></span>
+              )}
             </div>
           </div>
         ))}
