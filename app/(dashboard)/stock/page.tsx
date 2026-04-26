@@ -100,11 +100,13 @@ function PartyStockShareCard({ page }: { page: PartySharePage }) {
       <div className="space-y-2">
         {page.lots.map((l, i) => (
           <div key={l.lotNo} className={`px-2.5 py-2 rounded ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border border-gray-200`}>
-            <div className="flex justify-between items-baseline gap-3">
-              <span className="text-base font-bold text-black">{l.lotNo}</span>
-              <span className="text-base font-bold text-indigo-700 whitespace-nowrap">{l.stock}</span>
+            <div className="flex justify-between items-baseline gap-2">
+              <div className="flex items-baseline gap-2 flex-wrap min-w-0">
+                <span className="text-base font-bold text-black whitespace-nowrap">{l.lotNo}</span>
+                <span className="text-[11px] font-semibold text-gray-700 leading-snug">{l.quality}</span>
+              </div>
+              <span className="text-base font-bold text-indigo-700 whitespace-nowrap shrink-0">{l.stock}</span>
             </div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5 leading-snug">{l.quality}</div>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
               <span><span className="text-gray-600">Inward:</span> <span className="font-bold text-black">{formatInwardDates(l.inwardDates)}</span></span>
               <span><span className="text-gray-600">LR:</span> <span className="font-bold text-black">{l.lrNos || '—'}</span></span>
