@@ -631,10 +631,10 @@ export default function StockPage() {
                 >
                   <span className="text-lg">📦</span>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{p.party}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate min-w-0 flex-1">{p.party}</p>
                       {p.partyTag && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 font-medium">
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 font-medium">
                           {p.partyTag}
                         </span>
                       )}
