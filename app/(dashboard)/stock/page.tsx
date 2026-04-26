@@ -567,7 +567,7 @@ export default function StockPage() {
                 )}
                 <button
                   onClick={() => toggle(p.party)}
-                  className="flex-1 text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition"
+                  className="flex-1 min-w-0 text-left px-4 py-3 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition"
                 >
                   <span className="text-lg">📦</span>
                   <div className="flex-1 min-w-0">
@@ -599,7 +599,7 @@ export default function StockPage() {
                     onClick={(e) => { e.stopPropagation(); shareParty(p) }}
                     disabled={shareBusy !== null}
                     title="Share this party's stock as WhatsApp image"
-                    className="px-3 py-3 text-sm bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400 hover:bg-pink-100 dark:hover:bg-pink-900/40 border-l border-gray-100 dark:border-gray-700 disabled:opacity-50"
+                    className="shrink-0 px-2.5 py-3 text-sm bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400 hover:bg-pink-100 dark:hover:bg-pink-900/40 border-l border-gray-100 dark:border-gray-700 disabled:opacity-50"
                   >
                     {shareBusy === p.party ? '⏳' : '📸'}
                   </button>
