@@ -459,8 +459,7 @@ export default function StockPage() {
         chunks.push(files.slice(i, i + SHARE_FILES_PER_BATCH))
       }
 
-      // No native share at all → download everything
-      if (!navigator.share) {
+      const downloadAll = () => {
         for (const f of files) {
           const url = URL.createObjectURL(f)
           const a = document.createElement('a')
@@ -468,11 +467,21 @@ export default function StockPage() {
           document.body.appendChild(a); a.click(); a.remove()
           URL.revokeObjectURL(url)
         }
-        alert(`Downloaded ${files.length} image(s) — upload to WhatsApp manually.`)
+      }
+
+      // 1) Some browsers expose navigator.share but can't share files at all.
+      //    Use canShare to decide upfront — avoids surprise failure.
+      const supportsFileShare = typeof navigator.share === 'function'
+        && typeof (navigator as any).canShare === 'function'
+        && (navigator as any).canShare({ files: chunks[0] })
+
+      if (!supportsFileShare) {
+        downloadAll()
+        alert(`Your browser can't share images to WhatsApp directly.\n\nDownloaded ${files.length} image(s) to your device. Open WhatsApp and attach them manually.`)
         return
       }
 
-      // Share the first batch immediately while we still have user gesture.
+      // 2) Share the first batch immediately while we still have user gesture.
       try {
         await navigator.share({
           files: chunks[0],
@@ -480,19 +489,41 @@ export default function StockPage() {
           text: `Stock — ${party.party} (1/${chunks.length})`,
         })
       } catch (e: any) {
-        if (e?.name === 'AbortError') {
-          // User cancelled the picker. Don't queue more.
-          return
+        if (e?.name === 'AbortError') return // user dismissed
+
+        // 3) Some browsers fail multi-file but accept a single file.
+        //    Try one-by-one if the first batch had >1 file.
+        if (chunks[0].length > 1) {
+          try {
+            await navigator.share({
+              files: [chunks[0][0]],
+              title: `Stock — ${party.party}`,
+              text: `Stock — ${party.party}`,
+            })
+            // Single-file share worked — re-chunk to one-per-batch and queue the rest
+            const oneAtATime: File[][] = []
+            for (let i = 1; i < chunks[0].length; i++) oneAtATime.push([chunks[0][i]])
+            for (let ci = 1; ci < chunks.length; ci++) {
+              for (const f of chunks[ci]) oneAtATime.push([f])
+            }
+            if (oneAtATime.length > 0) {
+              setShareQueue({ party: party.party, chunks: oneAtATime, nextIndex: 0 })
+            }
+            return
+          } catch (e2: any) {
+            if (e2?.name === 'AbortError') return
+            // fall through to download
+          }
         }
-        // Share failed — fall back to download for ALL files
-        for (const f of files) {
-          const url = URL.createObjectURL(f)
-          const a = document.createElement('a')
-          a.href = url; a.download = f.name
-          document.body.appendChild(a); a.click(); a.remove()
-          URL.revokeObjectURL(url)
-        }
-        alert('Native share failed — downloaded images instead.')
+
+        // 4) Final fallback: download all + tell the user what to do
+        downloadAll()
+        const ok = confirm(
+          `Sharing failed (${e?.message || e?.name || 'unknown'}).\n\n` +
+          `${files.length} image(s) downloaded to your device.\n\n` +
+          `Open WhatsApp now? You'll need to attach the images manually.`,
+        )
+        if (ok) window.open('https://wa.me/', '_blank')
         return
       }
 
