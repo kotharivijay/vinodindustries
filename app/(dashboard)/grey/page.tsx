@@ -69,14 +69,28 @@ export default function GreyListPage() {
   const [showImport, setShowImport] = useState(false)
   const [showUnallocated, setShowUnallocated] = useState(false)
 
-  // Auto-reopen unallocated stock modal if user navigated away and came back
+  // Auto-reopen unallocated stock modal if user navigated away and came back.
+  // App Router restores cached pages on router.back() without remounting, so a
+  // mount-only useEffect misses the return trip. Re-check on every nav-back
+  // signal (popstate, pageshow, visibilitychange).
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem('unallocated-reopen') === '1') {
-        sessionStorage.removeItem('unallocated-reopen')
-        setShowUnallocated(true)
-      }
-    } catch {}
+    function check() {
+      try {
+        if (sessionStorage.getItem('unallocated-reopen') === '1') {
+          sessionStorage.removeItem('unallocated-reopen')
+          setShowUnallocated(true)
+        }
+      } catch {}
+    }
+    check()
+    window.addEventListener('popstate', check)
+    window.addEventListener('pageshow', check)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      window.removeEventListener('popstate', check)
+      window.removeEventListener('pageshow', check)
+      document.removeEventListener('visibilitychange', check)
+    }
   }, [])
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [sortField, setSortField] = useState<SortField>('date')

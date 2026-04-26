@@ -55,6 +55,26 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
       .finally(() => setLoading(false))
   }, [open])
 
+  // After data loads, scroll to the lot the user last clicked so they land
+  // back on the same row instead of at the top of the modal.
+  useEffect(() => {
+    if (!open || loading || !data) return
+    let lastLot: string | null = null
+    try { lastLot = sessionStorage.getItem('unallocated-last-lot') } catch {}
+    if (!lastLot) return
+    // Wait one frame so the DOM has the rendered lot rows
+    const t = setTimeout(() => {
+      const el = document.getElementById(`unalloc-lot-${lastLot}`)
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior })
+        el.classList.add('ring-2', 'ring-teal-400')
+        setTimeout(() => el.classList.remove('ring-2', 'ring-teal-400'), 1500)
+      }
+      try { sessionStorage.removeItem('unallocated-last-lot') } catch {}
+    }, 50)
+    return () => clearTimeout(t)
+  }, [open, loading, data])
+
   // Persist expansion state when user interacts
   useEffect(() => {
     if (!open) return
@@ -171,9 +191,13 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                   {q.lots.map(l => (
                                     <Link
                                       key={l.lotNo}
+                                      id={`unalloc-lot-${l.lotNo}`}
                                       href={`/lot/${encodeURIComponent(l.lotNo)}`}
                                       onClick={() => {
-                                        try { sessionStorage.setItem('unallocated-reopen', '1') } catch {}
+                                        try {
+                                          sessionStorage.setItem('unallocated-reopen', '1')
+                                          sessionStorage.setItem('unallocated-last-lot', l.lotNo)
+                                        } catch {}
                                       }}
                                       className="flex items-center justify-between bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 hover:border-teal-300 dark:hover:border-teal-700 hover:bg-teal-50/50 dark:hover:bg-teal-900/10 rounded-lg px-3 py-2 transition"
                                     >
