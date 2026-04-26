@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -104,6 +104,66 @@ export default function StockPage() {
   const [sort, setSort] = useState<SortMode>('party-asc')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [tagFilter, setTagFilter] = useState<string | null>(null)
+  const restoredRef = useRef(false)
+
+  // ── Restore filter + expansion state when arriving on the page (incl. via
+  // router.back() from a lot tracking page). App Router doesn't remount
+  // cached pages, so a mount-only effect won't fire on back-nav — listen
+  // for popstate/pageshow/visibilitychange too.
+  useEffect(() => {
+    function loadFromSession() {
+      try {
+        const e = sessionStorage.getItem('stock-expanded')
+        const s = sessionStorage.getItem('stock-search')
+        const so = sessionStorage.getItem('stock-sort')
+        const tf = sessionStorage.getItem('stock-tagFilter')
+        if (e) setExpanded(new Set(JSON.parse(e)))
+        if (s !== null) setSearch(s)
+        if (so) setSort(so as SortMode)
+        if (tf !== null) setTagFilter(tf === '__null__' ? null : tf)
+      } catch {}
+      restoredRef.current = true
+    }
+    loadFromSession()
+    window.addEventListener('popstate', loadFromSession)
+    window.addEventListener('pageshow', loadFromSession)
+    document.addEventListener('visibilitychange', loadFromSession)
+    return () => {
+      window.removeEventListener('popstate', loadFromSession)
+      window.removeEventListener('pageshow', loadFromSession)
+      document.removeEventListener('visibilitychange', loadFromSession)
+    }
+  }, [])
+
+  // Persist on any state change (after the first restore so we don't write
+  // empty defaults over saved values).
+  useEffect(() => {
+    if (!restoredRef.current) return
+    try {
+      sessionStorage.setItem('stock-expanded', JSON.stringify(Array.from(expanded)))
+      sessionStorage.setItem('stock-search', search)
+      sessionStorage.setItem('stock-sort', sort)
+      sessionStorage.setItem('stock-tagFilter', tagFilter === null ? '__null__' : tagFilter)
+    } catch {}
+  }, [expanded, search, sort, tagFilter])
+
+  // Scroll back to the last clicked lot once data + expansions are in place.
+  useEffect(() => {
+    if (isLoading || !data) return
+    let lastLot: string | null = null
+    try { lastLot = sessionStorage.getItem('stock-last-lot') } catch {}
+    if (!lastLot) return
+    const t = setTimeout(() => {
+      const el = document.getElementById(`stock-lot-${lastLot}`)
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior })
+        el.classList.add('ring-2', 'ring-indigo-400')
+        setTimeout(() => el.classList.remove('ring-2', 'ring-indigo-400'), 1500)
+      }
+      try { sessionStorage.removeItem('stock-last-lot') } catch {}
+    }, 80)
+    return () => clearTimeout(t)
+  }, [isLoading, data, expanded])
 
   // Single-lot reservation
   const [editingReservation, setEditingReservation] = useState<string | null>(null)
@@ -615,6 +675,7 @@ export default function StockPage() {
                     return (
                       <div
                         key={lot.lotNo}
+                        id={`stock-lot-${lot.lotNo}`}
                         className={`bg-white dark:bg-gray-800 rounded-lg border p-3 transition ${
                           bulkMode && isChecked
                             ? 'border-amber-300 dark:border-amber-600 ring-1 ring-amber-200 dark:ring-amber-700'
@@ -631,7 +692,11 @@ export default function StockPage() {
                               className="w-4 h-4 accent-amber-500 shrink-0 cursor-pointer"
                             />
                           )}
-                          <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 hover:underline flex-1">
+                          <Link
+                            href={`/lot/${encodeURIComponent(lot.lotNo)}`}
+                            onClick={() => { try { sessionStorage.setItem('stock-last-lot', lot.lotNo) } catch {} }}
+                            className="text-sm font-semibold text-indigo-700 dark:text-indigo-400 hover:underline flex-1"
+                          >
                             {lot.lotNo}
                           </Link>
                           <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{lot.stock} than</span>
