@@ -448,13 +448,41 @@ export default function StockPage() {
         }
       }
       if (files.length === 0) { alert('Image render failed'); return }
-      if ((navigator as any).canShare?.({ files }) && navigator.share) {
-        try {
-          await navigator.share({ files, title: `Stock — ${party.party}`, text: `Stock — ${party.party}` })
-          return
-        } catch (e: any) { if (e?.name === 'AbortError') return }
+
+      // WhatsApp's share intent accepts up to 6 files at a time. Split into
+      // chunks of 6 and call navigator.share once per chunk — user picks the
+      // contact once per chunk (e.g. 1 chunk for 1-6 images, 2 for 7-12).
+      const CHUNK = 6
+      if (navigator.share) {
+        const chunks: File[][] = []
+        for (let i = 0; i < files.length; i += CHUNK) chunks.push(files.slice(i, i + CHUNK))
+        let sentChunks = 0
+        for (let ci = 0; ci < chunks.length; ci++) {
+          const chunk = chunks[ci]
+          const canShare = (navigator as any).canShare?.({ files: chunk })
+          if (canShare === false) break // platform really can't share files — fall through
+          if (chunks.length > 1 && ci > 0) {
+            const ok = confirm(`Share next ${chunk.length} image(s)? (${ci + 1} of ${chunks.length})`)
+            if (!ok) { sentChunks = ci; break }
+          }
+          try {
+            await navigator.share({
+              files: chunk,
+              title: `Stock — ${party.party}`,
+              text: `Stock — ${party.party} (${ci + 1}/${chunks.length})`,
+            })
+            sentChunks = ci + 1
+          } catch (e: any) {
+            if (e?.name === 'AbortError') { sentChunks = ci; break }
+            // canShare lied or share failed — drop out of native flow
+            break
+          }
+        }
+        if (sentChunks === chunks.length) return
+        if (sentChunks > 0) return // user cancelled mid-way; assume intentional
       }
-      // Fallback: download
+
+      // Final fallback: download all images
       for (const f of files) {
         const url = URL.createObjectURL(f)
         const a = document.createElement('a')
