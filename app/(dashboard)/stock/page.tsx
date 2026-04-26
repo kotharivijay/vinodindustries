@@ -23,6 +23,7 @@ interface LotStock {
   foldAvailable: number
   lrNos: string
   markas: string
+  inwardDates: string
 }
 
 interface PartyStock {
@@ -47,6 +48,16 @@ function compareLotNo(a: string, b: string): number {
   const prefixCmp = pa.prefix.localeCompare(pb.prefix)
   if (prefixCmp !== 0) return prefixCmp
   return pa.num - pb.num
+}
+
+/** "2026-04-21,2026-04-25" → "21 Apr, 25 Apr". Empty input → "—". */
+function formatInwardDates(csv: string): string {
+  if (!csv) return '—'
+  return csv.split(',').map(d => {
+    const dt = new Date(d.trim() + 'T00:00:00')
+    if (isNaN(dt.getTime())) return d
+    return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
+  }).join(', ')
 }
 
 interface PartySharePage {
@@ -85,21 +96,22 @@ function PartyStockShareCard({ page }: { page: PartySharePage }) {
         {page.lots.map((l, i) => (
           <div key={l.lotNo} className={`px-2.5 py-2 rounded ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border border-gray-200`}>
             <div className="flex justify-between items-baseline gap-2">
-              <span className="text-sm font-bold text-black">{l.lotNo}</span>
-              <span className="text-sm font-bold text-indigo-700 whitespace-nowrap">
-                Bal {l.stock}
-              </span>
+              <span className="text-base font-bold text-black">{l.lotNo}</span>
+              <span className="text-xs font-semibold text-gray-700">{l.quality}</span>
             </div>
-            <div className="text-xs font-semibold text-gray-700 mt-0.5">{l.quality}</div>
-            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-              <span><span className="text-gray-600">Total:</span> <span className="font-bold text-black">{l.totalThan}</span></span>
-              <span><span className="text-gray-600">Desp:</span> <span className="font-bold text-black">{l.despatchThan}</span></span>
-              {l.lrNos && (
-                <span><span className="text-gray-600">LR:</span> <span className="font-bold text-black">{l.lrNos}</span></span>
-              )}
-              {showMarka && l.markas && (
-                <span><span className="text-gray-600">Marka:</span> <span className="font-bold text-black">{l.markas}</span></span>
-              )}
+            <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs">
+              <div><span className="text-gray-600">Inward:</span> <span className="font-bold text-black">{formatInwardDates(l.inwardDates)}</span></div>
+              <div><span className="text-gray-600">LR:</span> <span className="font-bold text-black">{l.lrNos || '—'}</span></div>
+              <div><span className="text-gray-600">Total:</span> <span className="font-bold text-black">{l.totalThan}</span></div>
+              <div><span className="text-gray-600">Desp:</span> <span className="font-bold text-black">{l.despatchThan}</span></div>
+            </div>
+            <div className="mt-1.5 flex justify-between items-baseline gap-2 pt-1 border-t border-gray-100">
+              {showMarka && l.markas ? (
+                <span className="text-xs"><span className="text-gray-600">Marka:</span> <span className="font-bold text-black">{l.markas}</span></span>
+              ) : <span />}
+              <span className="text-sm font-bold text-indigo-700 whitespace-nowrap">
+                Balance {l.stock} than
+              </span>
             </div>
           </div>
         ))}
@@ -643,7 +655,7 @@ export default function StockPage() {
                   <span className="text-lg">📦</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start gap-2 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex-1 min-w-0 break-words leading-snug">{p.party}</p>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex-1 min-w-0 leading-snug">{p.party}</p>
                       {p.partyTag && (
                         <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 font-medium">
                           {p.partyTag}

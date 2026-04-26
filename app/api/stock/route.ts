@@ -68,13 +68,14 @@ export async function GET() {
   })
   const lotDetailMap = new Map(greyDetails.map(g => [g.lotNo.toLowerCase(), { party: g.party.name, quality: g.quality.name, partyTag: g.party.tag }]))
 
-  // LR numbers + markas per lot (a lot can have multiple grey entries on different LRs / markas)
-  const greyLrs = await prisma.greyEntry.findMany({
-    select: { lotNo: true, transportLrNo: true, marka: true },
+  // LR numbers + markas + inward dates per lot
+  const greyMeta = await prisma.greyEntry.findMany({
+    select: { lotNo: true, transportLrNo: true, marka: true, date: true },
   })
   const lrMap = new Map<string, Set<string>>()
   const markaMap = new Map<string, Set<string>>()
-  for (const g of greyLrs) {
+  const dateMap = new Map<string, Set<string>>()
+  for (const g of greyMeta) {
     const k = g.lotNo.toLowerCase()
     if (g.transportLrNo) {
       if (!lrMap.has(k)) lrMap.set(k, new Set())
@@ -83,6 +84,10 @@ export async function GET() {
     if (g.marka) {
       if (!markaMap.has(k)) markaMap.set(k, new Set())
       markaMap.get(k)!.add(g.marka)
+    }
+    if (g.date) {
+      if (!dateMap.has(k)) dateMap.set(k, new Set())
+      dateMap.get(k)!.add(g.date.toISOString().slice(0, 10)) // YYYY-MM-DD
     }
   }
 
@@ -103,6 +108,7 @@ export async function GET() {
     foldAvailable: number
     lrNos: string          // comma-separated LR numbers
     markas: string         // comma-separated marka values (mainly for Pali PC Job parties)
+    inwardDates: string    // comma-separated YYYY-MM-DD dates from grey entries
   }
 
   const lotStocks: LotStock[] = []
@@ -140,6 +146,7 @@ export async function GET() {
       foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
       lrNos: Array.from(lrMap.get(key) || []).join(', '),
       markas: Array.from(markaMap.get(key) || []).join(', '),
+      inwardDates: Array.from(dateMap.get(key) || []).sort().join(', '),
     })
   }
 
@@ -175,6 +182,7 @@ export async function GET() {
       foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
       lrNos: Array.from(lrMap.get(key) || []).join(', '),
       markas: Array.from(markaMap.get(key) || []).join(', '),
+      inwardDates: Array.from(dateMap.get(key) || []).sort().join(', '),
     })
   }
 
@@ -211,6 +219,7 @@ export async function GET() {
         foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
         lrNos: '',
         markas: '',
+        inwardDates: '',
       })
     }
   } catch {}
