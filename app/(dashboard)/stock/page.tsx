@@ -398,7 +398,19 @@ export default function StockPage() {
   const [pendingShare, setPendingShare] = useState<PartySharePage[] | null>(null)
 
   function buildSharePages(party: PartyStock): PartySharePage[] {
-    const lots = [...party.lots].sort((a, b) => compareLotNo(a.lotNo, b.lotNo))
+    // Oldest inward date first, newest last. Lots without any inwardDate go
+    // to the end (sorted by lotNo as a tiebreaker).
+    const earliest = (l: LotStock): number => {
+      if (!l.inwardDates) return Number.POSITIVE_INFINITY
+      const parts = l.inwardDates.split(',').map(s => s.trim()).filter(Boolean)
+      const millis = parts.map(p => new Date(p + 'T00:00:00').getTime()).filter(t => !isNaN(t))
+      return millis.length ? Math.min(...millis) : Number.POSITIVE_INFINITY
+    }
+    const lots = [...party.lots].sort((a, b) => {
+      const da = earliest(a), db = earliest(b)
+      if (da !== db) return da - db
+      return compareLotNo(a.lotNo, b.lotNo)
+    })
     const pages: PartySharePage[] = []
     for (let i = 0; i < lots.length; i += SHARE_LOTS_PER_IMAGE) {
       pages.push({
