@@ -394,8 +394,12 @@ export default function StockPage() {
 
   // ── Share Party Stock as image(s) — same UX as attendance ──
   const SHARE_LOTS_PER_IMAGE = 6
+  const SHARE_FILES_PER_BATCH = 6
   const [shareBusy, setShareBusy] = useState<string | null>(null) // party currently rendering
   const [pendingShare, setPendingShare] = useState<PartySharePage[] | null>(null)
+  // Queued batches waiting for a fresh user click (browsers drop the
+  // user-activation grant after navigator.share resolves).
+  const [shareQueue, setShareQueue] = useState<{ party: string; chunks: File[][]; nextIndex: number } | null>(null)
 
   function buildSharePages(party: PartyStock): PartySharePage[] {
     // Oldest inward date first, newest last. Lots without any inwardDate go
@@ -449,54 +453,83 @@ export default function StockPage() {
       }
       if (files.length === 0) { alert('Image render failed'); return }
 
-      // WhatsApp's share intent accepts up to 6 files at a time. Split into
-      // chunks of 6 and call navigator.share once per chunk — user picks the
-      // contact once per chunk (e.g. 1 chunk for 1-6 images, 2 for 7-12).
-      const CHUNK = 6
-      if (navigator.share) {
-        const chunks: File[][] = []
-        for (let i = 0; i < files.length; i += CHUNK) chunks.push(files.slice(i, i + CHUNK))
-        let sentChunks = 0
-        for (let ci = 0; ci < chunks.length; ci++) {
-          const chunk = chunks[ci]
-          const canShare = (navigator as any).canShare?.({ files: chunk })
-          if (canShare === false) break // platform really can't share files — fall through
-          if (chunks.length > 1 && ci > 0) {
-            const ok = confirm(`Share next ${chunk.length} image(s)? (${ci + 1} of ${chunks.length})`)
-            if (!ok) { sentChunks = ci; break }
-          }
-          try {
-            await navigator.share({
-              files: chunk,
-              title: `Stock — ${party.party}`,
-              text: `Stock — ${party.party} (${ci + 1}/${chunks.length})`,
-            })
-            sentChunks = ci + 1
-          } catch (e: any) {
-            if (e?.name === 'AbortError') { sentChunks = ci; break }
-            // canShare lied or share failed — drop out of native flow
-            break
-          }
-        }
-        if (sentChunks === chunks.length) return
-        if (sentChunks > 0) return // user cancelled mid-way; assume intentional
+      // Group files into batches of 6 (WhatsApp's per-share limit).
+      const chunks: File[][] = []
+      for (let i = 0; i < files.length; i += SHARE_FILES_PER_BATCH) {
+        chunks.push(files.slice(i, i + SHARE_FILES_PER_BATCH))
       }
 
-      // Final fallback: download all images
-      for (const f of files) {
-        const url = URL.createObjectURL(f)
-        const a = document.createElement('a')
-        a.href = url; a.download = f.name
-        document.body.appendChild(a); a.click(); a.remove()
-        URL.revokeObjectURL(url)
+      // No native share at all → download everything
+      if (!navigator.share) {
+        for (const f of files) {
+          const url = URL.createObjectURL(f)
+          const a = document.createElement('a')
+          a.href = url; a.download = f.name
+          document.body.appendChild(a); a.click(); a.remove()
+          URL.revokeObjectURL(url)
+        }
+        alert(`Downloaded ${files.length} image(s) — upload to WhatsApp manually.`)
+        return
       }
-      alert(`Downloaded ${files.length} image(s) — upload to WhatsApp manually.`)
+
+      // Share the first batch immediately while we still have user gesture.
+      try {
+        await navigator.share({
+          files: chunks[0],
+          title: `Stock — ${party.party}`,
+          text: `Stock — ${party.party} (1/${chunks.length})`,
+        })
+      } catch (e: any) {
+        if (e?.name === 'AbortError') {
+          // User cancelled the picker. Don't queue more.
+          return
+        }
+        // Share failed — fall back to download for ALL files
+        for (const f of files) {
+          const url = URL.createObjectURL(f)
+          const a = document.createElement('a')
+          a.href = url; a.download = f.name
+          document.body.appendChild(a); a.click(); a.remove()
+          URL.revokeObjectURL(url)
+        }
+        alert('Native share failed — downloaded images instead.')
+        return
+      }
+
+      // Stash remaining chunks for the user to send via fresh button clicks.
+      if (chunks.length > 1) {
+        setShareQueue({ party: party.party, chunks, nextIndex: 1 })
+      }
     } catch (e: any) {
       alert('Could not create images: ' + (e?.message || e))
     } finally {
       setShareBusy(null)
       setPendingShare(null)
     }
+    return // prevent double-running the original try/finally below
+  }
+
+  async function shareNextBatch() {
+    if (!shareQueue) return
+    const { chunks, nextIndex, party } = shareQueue
+    if (nextIndex >= chunks.length) { setShareQueue(null); return }
+    try {
+      await navigator.share({
+        files: chunks[nextIndex],
+        title: `Stock — ${party}`,
+        text: `Stock — ${party} (${nextIndex + 1}/${chunks.length})`,
+      })
+      const newIndex = nextIndex + 1
+      if (newIndex >= chunks.length) setShareQueue(null)
+      else setShareQueue({ ...shareQueue, nextIndex: newIndex })
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return // user cancelled — keep queue, let them retry
+      alert('Share failed: ' + (e?.message || e))
+    }
+  }
+
+  function dismissShareQueue() {
+    setShareQueue(null)
   }
 
   if (isLoading) return <div className="p-8 text-gray-400">Loading stock data...</div>
@@ -920,6 +953,32 @@ export default function StockPage() {
       {pendingShare && (
         <div style={{ position: 'fixed', left: '-10000px', top: 0, zIndex: -1 }}>
           {pendingShare.map(p => <PartyStockShareCard key={p.index} page={p} />)}
+        </div>
+      )}
+
+      {/* Floating banner for the remaining share batches */}
+      {shareQueue && shareQueue.nextIndex < shareQueue.chunks.length && (
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:max-w-md md:right-6 z-50 bg-pink-600 text-white rounded-xl shadow-2xl p-4 flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-bold truncate">{shareQueue.party}</div>
+            <div className="text-xs opacity-90">
+              Batch {shareQueue.nextIndex + 1} of {shareQueue.chunks.length}
+              {' · '}
+              {shareQueue.chunks[shareQueue.nextIndex].length} image(s) waiting
+            </div>
+          </div>
+          <button
+            onClick={dismissShareQueue}
+            className="text-white/70 hover:text-white text-xs px-2 py-1"
+          >
+            Skip
+          </button>
+          <button
+            onClick={shareNextBatch}
+            className="bg-white text-pink-700 font-bold rounded-lg px-4 py-2 text-sm hover:bg-pink-50 transition shrink-0"
+          >
+            📤 Send Next
+          </button>
         </div>
       )}
     </div>
