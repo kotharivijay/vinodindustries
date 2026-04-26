@@ -22,6 +22,7 @@ interface LotStock {
   manuallyUsedNote: string | null
   foldAvailable: number
   lrNos: string
+  markas: string
 }
 
 interface PartyStock {
@@ -59,6 +60,8 @@ interface PartySharePage {
 }
 
 function PartyStockShareCard({ page }: { page: PartySharePage }) {
+  // Pali PC Job parties want Marka shown alongside the lot details
+  const showMarka = (page.partyTag || '').toLowerCase() === 'pali pc job'
   return (
     <div id={`stock-share-page-${page.index - 1}`}
       style={{ width: '480px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
@@ -88,6 +91,9 @@ function PartyStockShareCard({ page }: { page: PartySharePage }) {
               <span><span className="text-gray-600">Desp:</span> <span className="font-bold text-black">{l.despatchThan}</span></span>
               {l.lrNos && (
                 <span><span className="text-gray-600">LR:</span> <span className="font-bold text-black">{l.lrNos}</span></span>
+              )}
+              {showMarka && l.markas && (
+                <span><span className="text-gray-600">Marka:</span> <span className="font-bold text-black">{l.markas}</span></span>
               )}
             </div>
           </div>
