@@ -60,8 +60,13 @@ interface PartySharePage {
 }
 
 function PartyStockShareCard({ page }: { page: PartySharePage }) {
-  // Pali PC Job parties want Marka shown alongside the lot details
-  const showMarka = (page.partyTag || '').toLowerCase() === 'pali pc job'
+  // Show Marka for Pali PC Job tagged parties (any case/spacing) AND for
+  // Prakash Shirting (matches the rule used in the unallocated-stock modal).
+  const tagLower = (page.partyTag || '').toLowerCase()
+  const showMarka =
+    tagLower.includes('pali') && tagLower.includes('pc') ||
+    tagLower === 'pali pc job' ||
+    /prakash\s+shirting/i.test(page.party)
   return (
     <div id={`stock-share-page-${page.index - 1}`}
       style={{ width: '480px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
@@ -373,7 +378,7 @@ export default function StockPage() {
   }
 
   // ── Share Party Stock as image(s) — same UX as attendance ──
-  const SHARE_LOTS_PER_IMAGE = 10
+  const SHARE_LOTS_PER_IMAGE = 6
   const [shareBusy, setShareBusy] = useState<string | null>(null) // party currently rendering
   const [pendingShare, setPendingShare] = useState<PartySharePage[] | null>(null)
 
@@ -637,8 +642,8 @@ export default function StockPage() {
                 >
                   <span className="text-lg">📦</span>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate min-w-0 flex-1">{p.party}</p>
+                    <div className="flex items-start gap-2 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex-1 min-w-0 break-words leading-snug">{p.party}</p>
                       {p.partyTag && (
                         <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 font-medium">
                           {p.partyTag}
