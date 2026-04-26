@@ -15,11 +15,13 @@ interface LotStock {
   stock: number
   openingBalance: number
   greyThan: number
+  totalThan: number
   despatchThan: number
   foldProgrammed: number
   manuallyUsed: number
   manuallyUsedNote: string | null
   foldAvailable: number
+  lrNos: string
 }
 
 interface PartyStock {
@@ -44,6 +46,55 @@ function compareLotNo(a: string, b: string): number {
   const prefixCmp = pa.prefix.localeCompare(pb.prefix)
   if (prefixCmp !== 0) return prefixCmp
   return pa.num - pb.num
+}
+
+interface PartySharePage {
+  index: number
+  total: number
+  party: string
+  partyTag: string | null
+  totalStock: number
+  totalLots: number
+  lots: LotStock[]
+}
+
+function PartyStockShareCard({ page }: { page: PartySharePage }) {
+  return (
+    <div id={`stock-share-page-${page.index - 1}`}
+      style={{ width: '480px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
+      className="bg-white text-gray-900 p-4">
+      <div className="border-b-4 border-indigo-700 pb-2 mb-3">
+        <div className="text-lg font-bold leading-tight">📦 Stock</div>
+        <div className="text-base font-bold text-black">{page.party}</div>
+        <div className="text-xs text-gray-700 mt-0.5">
+          {page.totalLots} lots · Page {page.index}/{page.total}
+        </div>
+        <div className="text-sm mt-2 flex gap-3">
+          <span className="font-bold text-indigo-700">📊 Balance {page.totalStock} than</span>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {page.lots.map((l, i) => (
+          <div key={l.lotNo} className={`px-2.5 py-2 rounded ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border border-gray-200`}>
+            <div className="flex justify-between items-baseline gap-2">
+              <span className="text-sm font-bold text-black">{l.lotNo}</span>
+              <span className="text-sm font-bold text-indigo-700 whitespace-nowrap">
+                Bal {l.stock}
+              </span>
+            </div>
+            <div className="text-xs font-semibold text-gray-700 mt-0.5">{l.quality}</div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+              <span><span className="text-gray-600">Total:</span> <span className="font-bold text-black">{l.totalThan}</span></span>
+              <span><span className="text-gray-600">Desp:</span> <span className="font-bold text-black">{l.despatchThan}</span></span>
+              {l.lrNos && (
+                <span><span className="text-gray-600">LR:</span> <span className="font-bold text-black">{l.lrNos}</span></span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function StockPage() {
@@ -253,6 +304,73 @@ export default function StockPage() {
       },
     })
     doc.save('balance-stock.pdf')
+  }
+
+  // ── Share Party Stock as image(s) — same UX as attendance ──
+  const SHARE_LOTS_PER_IMAGE = 10
+  const [shareBusy, setShareBusy] = useState<string | null>(null) // party currently rendering
+  const [pendingShare, setPendingShare] = useState<PartySharePage[] | null>(null)
+
+  function buildSharePages(party: PartyStock): PartySharePage[] {
+    const lots = [...party.lots].sort((a, b) => compareLotNo(a.lotNo, b.lotNo))
+    const pages: PartySharePage[] = []
+    for (let i = 0; i < lots.length; i += SHARE_LOTS_PER_IMAGE) {
+      pages.push({
+        index: 0, total: 0,
+        party: party.party,
+        partyTag: party.partyTag ?? null,
+        totalStock: party.totalStock,
+        totalLots: party.lotCount,
+        lots: lots.slice(i, i + SHARE_LOTS_PER_IMAGE),
+      })
+    }
+    pages.forEach((p, idx) => { p.index = idx + 1; p.total = pages.length })
+    return pages
+  }
+
+  async function shareParty(party: PartyStock) {
+    const pages = buildSharePages(party)
+    if (pages.length === 0) return
+    setShareBusy(party.party)
+    setPendingShare(pages)
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    try {
+      const { default: html2canvas } = await import('html2canvas')
+      const files: File[] = []
+      for (let i = 0; i < pages.length; i++) {
+        const node = document.getElementById(`stock-share-page-${i}`)
+        if (!node) continue
+        const canvas = await html2canvas(node, {
+          backgroundColor: '#ffffff', scale: 2, useCORS: true, logging: false,
+        })
+        const blob: Blob | null = await new Promise(res => canvas.toBlob(b => res(b), 'image/png'))
+        if (blob) {
+          const safe = party.party.replace(/[^a-z0-9]+/gi, '-').toLowerCase()
+          files.push(new File([blob], `stock-${safe}-${i + 1}.png`, { type: 'image/png' }))
+        }
+      }
+      if (files.length === 0) { alert('Image render failed'); return }
+      if ((navigator as any).canShare?.({ files }) && navigator.share) {
+        try {
+          await navigator.share({ files, title: `Stock — ${party.party}`, text: `Stock — ${party.party}` })
+          return
+        } catch (e: any) { if (e?.name === 'AbortError') return }
+      }
+      // Fallback: download
+      for (const f of files) {
+        const url = URL.createObjectURL(f)
+        const a = document.createElement('a')
+        a.href = url; a.download = f.name
+        document.body.appendChild(a); a.click(); a.remove()
+        URL.revokeObjectURL(url)
+      }
+      alert(`Downloaded ${files.length} image(s) — upload to WhatsApp manually.`)
+    } catch (e: any) {
+      alert('Could not create images: ' + (e?.message || e))
+    } finally {
+      setShareBusy(null)
+      setPendingShare(null)
+    }
   }
 
   if (isLoading) return <div className="p-8 text-gray-400">Loading stock data...</div>
@@ -476,6 +594,16 @@ export default function StockPage() {
                   </div>
                   <span className="text-gray-300 dark:text-gray-600 text-sm">{expanded.has(p.party) ? '▲' : '▼'}</span>
                 </button>
+                {!bulkMode && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); shareParty(p) }}
+                    disabled={shareBusy !== null}
+                    title="Share this party's stock as WhatsApp image"
+                    className="px-3 py-3 text-sm bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400 hover:bg-pink-100 dark:hover:bg-pink-900/40 border-l border-gray-100 dark:border-gray-700 disabled:opacity-50"
+                  >
+                    {shareBusy === p.party ? '⏳' : '📸'}
+                  </button>
+                )}
               </div>
 
               {/* Expanded lot cards */}
@@ -654,6 +782,13 @@ export default function StockPage() {
           >
             {savingBulk ? 'Saving...' : `Save ${bulkSelectedCount} lot${bulkSelectedCount !== 1 ? 's' : ''}`}
           </button>
+        </div>
+      )}
+
+      {/* Off-screen render target for the party-stock share images */}
+      {pendingShare && (
+        <div style={{ position: 'fixed', left: '-10000px', top: 0, zIndex: -1 }}>
+          {pendingShare.map(p => <PartyStockShareCard key={p.index} page={p} />)}
         </div>
       )}
     </div>

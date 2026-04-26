@@ -68,6 +68,19 @@ export async function GET() {
   })
   const lotDetailMap = new Map(greyDetails.map(g => [g.lotNo.toLowerCase(), { party: g.party.name, quality: g.quality.name, partyTag: g.party.tag }]))
 
+  // LR numbers per lot (a lot can have multiple grey entries on different LRs)
+  const greyLrs = await prisma.greyEntry.findMany({
+    select: { lotNo: true, transportLrNo: true },
+    where: { transportLrNo: { not: null } },
+  })
+  const lrMap = new Map<string, Set<string>>()
+  for (const g of greyLrs) {
+    if (!g.transportLrNo) continue
+    const k = g.lotNo.toLowerCase()
+    if (!lrMap.has(k)) lrMap.set(k, new Set())
+    lrMap.get(k)!.add(g.transportLrNo)
+  }
+
   // Build per-lot stock data
   interface LotStock {
     lotNo: string
@@ -77,11 +90,13 @@ export async function GET() {
     stock: number
     openingBalance: number
     greyThan: number
+    totalThan: number      // ob + grey (i.e. total received before despatch)
     despatchThan: number
     foldProgrammed: number
     manuallyUsed: number
     manuallyUsedNote: string | null
     foldAvailable: number
+    lrNos: string          // comma-separated LR numbers
   }
 
   const lotStocks: LotStock[] = []
@@ -111,11 +126,13 @@ export async function GET() {
       stock,
       openingBalance: obThan,
       greyThan,
+      totalThan: obThan + greyThan,
       despatchThan: despThan,
       foldProgrammed,
       manuallyUsed,
       manuallyUsedNote: reservation?.note ?? null,
       foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
+      lrNos: Array.from(lrMap.get(key) || []).join(', '),
     })
   }
 
@@ -143,11 +160,13 @@ export async function GET() {
       stock,
       openingBalance: ob.openingThan,
       greyThan: 0,
+      totalThan: ob.openingThan,
       despatchThan: despThan,
       foldProgrammed,
       manuallyUsed,
       manuallyUsedNote: reservation?.note ?? null,
       foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
+      lrNos: Array.from(lrMap.get(key) || []).join(', '),
     })
   }
 
@@ -176,11 +195,13 @@ export async function GET() {
         stock,
         openingBalance: 0,
         greyThan: r.totalThan,
+        totalThan: r.totalThan,
         despatchThan: despThan,
         foldProgrammed,
         manuallyUsed,
         manuallyUsedNote: reservation?.note ?? null,
         foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
+        lrNos: '',
       })
     }
   } catch {}
