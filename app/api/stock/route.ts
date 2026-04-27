@@ -110,20 +110,47 @@ export async function GET() {
    *    Fold    = FoldBatchLot   (pre-dye bundling; queued in a fold program)
    *    Folding = FoldingSlipLot (post-finish folding on an active slip)
    *  Re-Pro is parallel.
+   *
+   *  Despatch can pull from any stage — most commonly Pack, but smaller
+   *  facilities often despatch straight from Finish. We model this as a
+   *  "despatch pool" that consumes from the latest stage backward, so a
+   *  finish-direct despatch correctly drains the Finish bucket instead of
+   *  leaving it bloated.
    */
   function stagesFor(key: string, stock: number) {
     const dyed = stageDyed.get(key) || 0
     const finished = stageFinished.get(key) || 0
-    const foldQueued = foldMap.get(key) || 0          // FoldBatchLot (pre-dye)
-    const foldingActive = stageFolding.get(key) || 0  // FoldingSlipLot (post-finish)
+    const foldQueued = foldMap.get(key) || 0
+    const foldingActive = stageFolding.get(key) || 0
     const packed = stagePacked.get(key) || 0
     const despatched = despatchMapLower.get(key) || 0
     const repro = stageRePro.get(key) || 0
-    const inPack = Math.max(0, packed - despatched)
-    const inFolding = Math.max(0, foldingActive - packed)
-    const inFinish = Math.max(0, finished - foldingActive - repro)
-    const inDye = Math.max(0, dyed - finished)
-    const inFold = Math.max(0, foldQueued - dyed)
+
+    let pool = despatched
+    // Pack only flows to despatch
+    const inPack = Math.max(0, packed - pool)
+    pool = Math.max(0, pool - packed)
+
+    // Folding flows to Pack + can spill direct to despatch
+    const foldingResidual = Math.max(0, foldingActive - packed)
+    const inFolding = Math.max(0, foldingResidual - pool)
+    pool = Math.max(0, pool - foldingResidual)
+
+    // Finish flows to Folding + Repro + spill
+    const finishResidual = Math.max(0, finished - foldingActive - repro)
+    const inFinish = Math.max(0, finishResidual - pool)
+    pool = Math.max(0, pool - finishResidual)
+
+    // Dye flows to Finish + spill
+    const dyeResidual = Math.max(0, dyed - finished)
+    const inDye = Math.max(0, dyeResidual - pool)
+    pool = Math.max(0, pool - dyeResidual)
+
+    // Fold flows to Dye + spill
+    const foldResidual = Math.max(0, foldQueued - dyed)
+    const inFold = Math.max(0, foldResidual - pool)
+    pool = Math.max(0, pool - foldResidual)
+
     const consumed = inPack + inFolding + inFinish + inDye + inFold + repro
     const inGrey = Math.max(0, stock - consumed)
     return { grey: inGrey, fold: inFold, dye: inDye, finish: inFinish, folding: inFolding, pack: inPack, repro }
