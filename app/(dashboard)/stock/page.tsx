@@ -80,7 +80,7 @@ function StageChips({ s }: { s: { grey: number; dye: number; finish: number; fol
     { label: 'Grey',   emoji: '🟦', n: s.grey,   bg: '#dbeafe', fg: '#1e40af' },
     { label: 'Dye',    emoji: '🟪', n: s.dye,    bg: '#e9d5ff', fg: '#6b21a8' },
     { label: 'Finish', emoji: '🟧', n: s.finish, bg: '#fed7aa', fg: '#9a3412' },
-    { label: 'Fold',   emoji: '🟨', n: s.fold,   bg: '#fef08a', fg: '#854d0e' },
+    { label: 'Folding', emoji: '🟨', n: s.fold,   bg: '#fef08a', fg: '#854d0e' },
     { label: 'Pack',   emoji: '🟩', n: s.pack,   bg: '#bbf7d0', fg: '#166534' },
     { label: 'Re-Pro', emoji: '🟫', n: s.repro,  bg: '#fde68a', fg: '#78350f' },
   ]
