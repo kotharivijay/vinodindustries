@@ -67,6 +67,24 @@ export async function GET() {
     stageRePro.set(k, (stageRePro.get(k) || 0) + (r.than || 0))
   }
 
+  // OB stage tagging — when a lot was carried forward, its remaining than may
+  // already be classified as 'dyed'/'finished'/'packed' via
+  // LotOpeningBalanceAllocation. Fold these counts into the underlying stage
+  // maps so the chip row reflects the user's tagging.
+  try {
+    const obAllocs = await (prisma as any).lotOpeningBalanceAllocation.findMany({
+      select: { stage: true, than: true, balance: { select: { lotNo: true } } },
+    })
+    for (const a of obAllocs) {
+      const k = (a.balance?.lotNo || '').toLowerCase()
+      if (!k) continue
+      const t = a.than || 0
+      if (a.stage === 'dyed')          stageDyed.set(k,    (stageDyed.get(k)    || 0) + t)
+      else if (a.stage === 'finished') stageFinished.set(k, (stageFinished.get(k) || 0) + t)
+      else if (a.stage === 'packed')   stagePacked.set(k,   (stagePacked.get(k)   || 0) + t)
+    }
+  } catch {}
+
   // Fetch grey entries grouped by lot
   const greyByLot = await prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
 
