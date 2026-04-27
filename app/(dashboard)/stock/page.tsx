@@ -433,6 +433,10 @@ export default function StockPage() {
   // Queued batches waiting for a fresh user click (browsers drop the
   // user-activation grant after navigator.share resolves).
   const [shareQueue, setShareQueue] = useState<{ party: string; chunks: File[][]; nextIndex: number } | null>(null)
+  // Action menu (Preview vs WhatsApp) and the in-app preview viewer.
+  const [actionParty, setActionParty] = useState<PartyStock | null>(null)
+  const [previewParty, setPreviewParty] = useState<PartyStock | null>(null)
+  const [previewMode, setPreviewMode] = useState<'light' | 'dark'>('light')
 
   function buildSharePages(party: PartyStock): PartySharePage[] {
     // Oldest inward date first, newest last. Lots without any inwardDate go
@@ -594,6 +598,25 @@ export default function StockPage() {
 
   function dismissShareQueue() {
     setShareQueue(null)
+  }
+
+  function openShareMenu(p: PartyStock) {
+    setActionParty(p)
+  }
+  function chooseShareWhatsApp() {
+    const p = actionParty
+    setActionParty(null)
+    if (p) shareParty(p)
+  }
+  function chooseShowPreview() {
+    const p = actionParty
+    setActionParty(null)
+    if (p) setPreviewParty(p)
+  }
+  function shareFromPreview() {
+    const p = previewParty
+    setPreviewParty(null)
+    if (p) shareParty(p)
   }
 
   if (isLoading) return <div className="p-8 text-gray-400">Loading stock data...</div>
@@ -819,9 +842,9 @@ export default function StockPage() {
                 </button>
                 {!bulkMode && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); shareParty(p) }}
+                    onClick={(e) => { e.stopPropagation(); openShareMenu(p) }}
                     disabled={shareBusy !== null}
-                    title="Share this party's stock as WhatsApp image"
+                    title="Preview or share this party's stock as image"
                     className="shrink-0 px-2.5 py-3 text-sm bg-pink-50 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400 hover:bg-pink-100 dark:hover:bg-pink-900/40 border-l border-gray-100 dark:border-gray-700 disabled:opacity-50"
                   >
                     {shareBusy === p.party ? '⏳' : '📸'}
@@ -1017,6 +1040,83 @@ export default function StockPage() {
       {pendingShare && (
         <div style={{ position: 'fixed', left: '-10000px', top: 0, zIndex: -1 }}>
           {pendingShare.map(p => <PartyStockShareCard key={p.index} page={p} />)}
+        </div>
+      )}
+
+      {/* Action menu — Preview or WhatsApp */}
+      {actionParty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setActionParty(null)}>
+          <div onClick={e => e.stopPropagation()}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Share stock for</p>
+              <p className="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">{actionParty.party}</p>
+            </div>
+            <button onClick={chooseShowPreview}
+              className="w-full px-5 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3">
+              <span className="text-xl">👁</span>
+              <div>
+                <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Preview</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">See what the image looks like</div>
+              </div>
+            </button>
+            <button onClick={chooseShareWhatsApp}
+              className="w-full px-5 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-3">
+              <span className="text-xl">📤</span>
+              <div>
+                <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">WhatsApp</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Share directly</div>
+              </div>
+            </button>
+            <button onClick={() => setActionParty(null)}
+              className="w-full px-5 py-2.5 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 border-t border-gray-100 dark:border-gray-700">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Preview modal — centered card view with light/dark frame toggle */}
+      {previewParty && (
+        <div className="fixed inset-0 z-50 flex flex-col"
+          style={{ background: previewMode === 'dark' ? '#0b141a' : '#ece5dd' }}>
+          {/* Top bar */}
+          <div className="flex items-center gap-2 px-4 py-3 shrink-0"
+            style={{ background: previewMode === 'dark' ? '#202c33' : '#075e54', color: 'white' }}>
+            <button onClick={() => setPreviewParty(null)} className="text-white text-xl mr-1">×</button>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold truncate">{previewParty.party}</div>
+              <div className="text-[11px] opacity-80">Preview · {previewMode === 'dark' ? 'WhatsApp dark' : 'WhatsApp light'}</div>
+            </div>
+            <button
+              onClick={() => setPreviewMode(m => m === 'dark' ? 'light' : 'dark')}
+              className="text-xs px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30">
+              {previewMode === 'dark' ? '☀ Light' : '🌙 Dark'}
+            </button>
+          </div>
+          {/* Body — scrollable list of share-page cards centered */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex flex-col items-center gap-4">
+              {buildSharePages(previewParty).map(p => (
+                <div key={p.index} className="shadow-2xl rounded-lg overflow-hidden">
+                  <PartyStockShareCard page={p} />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Bottom action bar */}
+          <div className="flex gap-2 px-4 py-3 shrink-0 border-t"
+            style={{ background: previewMode === 'dark' ? '#1f2c33' : '#f0f0f0', borderColor: previewMode === 'dark' ? '#2a3942' : '#d1d5db' }}>
+            <button onClick={() => setPreviewParty(null)}
+              className="flex-1 px-4 py-3 rounded-lg text-sm font-semibold"
+              style={{ background: previewMode === 'dark' ? '#2a3942' : '#e5e7eb', color: previewMode === 'dark' ? '#d1d5db' : '#374151' }}>
+              Close
+            </button>
+            <button onClick={shareFromPreview}
+              className="flex-[2] px-4 py-3 rounded-lg bg-green-600 text-white text-sm font-bold shadow hover:bg-green-700">
+              📤 Send to WhatsApp
+            </button>
+          </div>
         </div>
       )}
 
