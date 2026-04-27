@@ -426,7 +426,7 @@ export default function StockPage() {
   }
 
   // ── Share Party Stock as image(s) — same UX as attendance ──
-  const SHARE_LOTS_PER_IMAGE = 6
+  const SHARE_LOTS_PER_IMAGE = 5
   const SHARE_FILES_PER_BATCH = 6
   const [shareBusy, setShareBusy] = useState<string | null>(null) // party currently rendering
   const [pendingShare, setPendingShare] = useState<PartySharePage[] | null>(null)
