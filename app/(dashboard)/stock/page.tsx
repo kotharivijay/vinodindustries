@@ -76,13 +76,14 @@ interface PartySharePage {
  *  Zero chips render dimmed (gray + opacity) so the eye still sees the full pipeline.
  */
 function StageChips({ s }: { s: { grey: number; dye: number; finish: number; fold: number; folding: number; pack: number; repro: number } }) {
+  // Pipeline order: Grey → Fold (pre-dye bundle) → Dye → Finish → Folding (post-finish slip) → Packing → Re-Pro
   const items: { label: string; emoji: string; n: number; bg: string; fg: string }[] = [
     { label: 'Grey',    emoji: '🟦', n: s.grey,    bg: '#dbeafe', fg: '#1e40af' },
+    { label: 'Fold',    emoji: '🟨', n: s.fold,    bg: '#fef08a', fg: '#854d0e' }, // FoldBatchLot
     { label: 'Dye',     emoji: '🟪', n: s.dye,     bg: '#e9d5ff', fg: '#6b21a8' },
     { label: 'Finish',  emoji: '🟧', n: s.finish,  bg: '#fed7aa', fg: '#9a3412' },
-    { label: 'Fold',    emoji: '🟨', n: s.fold,    bg: '#fef08a', fg: '#854d0e' }, // queued in fold program
-    { label: 'Folding', emoji: '🟨', n: s.folding, bg: '#fcd34d', fg: '#713f12' }, // active folding slip
-    { label: 'Pack',    emoji: '🟩', n: s.pack,    bg: '#bbf7d0', fg: '#166534' },
+    { label: 'Folding', emoji: '🟨', n: s.folding, bg: '#fcd34d', fg: '#713f12' }, // FoldingSlipLot
+    { label: 'Packing', emoji: '🟩', n: s.pack,    bg: '#bbf7d0', fg: '#166534' },
     { label: 'Re-Pro',  emoji: '🔴', n: s.repro,   bg: '#fee2e2', fg: '#991b1b' },
   ]
   return (

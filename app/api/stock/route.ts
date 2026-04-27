@@ -88,27 +88,27 @@ export async function GET() {
   for (const [k, v] of despatchMap) despatchMapLower.set(k.toLowerCase(), (despatchMapLower.get(k.toLowerCase()) || 0) + v)
 
   /** How much of `stock` sits at each pipeline stage.
-   *  Pipeline: Grey → Dye → Finish → Fold → Folding → Pack → Despatch
-   *    Fold    = FoldBatchLot (queued in a fold program)
-   *    Folding = FoldingSlipLot (active folding-slip work)
+   *  Pipeline: Grey → Fold → Dye → Finish → Folding → Pack → Despatch
+   *    Fold    = FoldBatchLot   (pre-dye bundling; queued in a fold program)
+   *    Folding = FoldingSlipLot (post-finish folding on an active slip)
    *  Re-Pro is parallel.
    */
   function stagesFor(key: string, stock: number) {
     const dyed = stageDyed.get(key) || 0
     const finished = stageFinished.get(key) || 0
-    const foldQueued = foldMap.get(key) || 0       // FoldBatchLot
-    const foldingActive = stageFolding.get(key) || 0 // FoldingSlipLot
+    const foldQueued = foldMap.get(key) || 0          // FoldBatchLot (pre-dye)
+    const foldingActive = stageFolding.get(key) || 0  // FoldingSlipLot (post-finish)
     const packed = stagePacked.get(key) || 0
     const despatched = despatchMapLower.get(key) || 0
     const repro = stageRePro.get(key) || 0
     const inPack = Math.max(0, packed - despatched)
     const inFolding = Math.max(0, foldingActive - packed)
-    const inFold = Math.max(0, foldQueued - foldingActive)
-    const inFinish = Math.max(0, finished - foldQueued - repro)
+    const inFinish = Math.max(0, finished - foldingActive - repro)
     const inDye = Math.max(0, dyed - finished)
-    const consumed = inPack + inFolding + inFold + inFinish + inDye + repro
+    const inFold = Math.max(0, foldQueued - dyed)
+    const consumed = inPack + inFolding + inFinish + inDye + inFold + repro
     const inGrey = Math.max(0, stock - consumed)
-    return { grey: inGrey, dye: inDye, finish: inFinish, fold: inFold, folding: inFolding, pack: inPack, repro }
+    return { grey: inGrey, fold: inFold, dye: inDye, finish: inFinish, folding: inFolding, pack: inPack, repro }
   }
 
   // Fetch opening balances
