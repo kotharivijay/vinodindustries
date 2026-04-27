@@ -75,24 +75,31 @@ interface PartySharePage {
  *  Active chips (count > 0) get a solid colored background.
  *  Zero chips render dimmed (gray + opacity) so the eye still sees the full pipeline.
  */
-function StageChips({ s }: { s: { grey: number; dye: number; finish: number; fold: number; folding: number; pack: number; repro: number } }) {
+function StageChips({ s, mode = 'light' }: { s: { grey: number; dye: number; finish: number; fold: number; folding: number; pack: number; repro: number }; mode?: 'light' | 'dark' }) {
   // Pipeline order: Grey → Fold (pre-dye bundle) → Dye → Finish → Folding (post-finish slip) → Packing → Re-Pro
-  const items: { label: string; emoji: string; n: number; bg: string; fg: string }[] = [
-    { label: 'Grey',    emoji: '🟦', n: s.grey,    bg: '#dbeafe', fg: '#1e40af' },
-    { label: 'Fold',    emoji: '🟨', n: s.fold,    bg: '#fef08a', fg: '#854d0e' }, // FoldBatchLot
-    { label: 'Dye',     emoji: '🟪', n: s.dye,     bg: '#e9d5ff', fg: '#6b21a8' },
-    { label: 'Finish',  emoji: '🟧', n: s.finish,  bg: '#fed7aa', fg: '#9a3412' },
-    { label: 'Folding', emoji: '🟨', n: s.folding, bg: '#fcd34d', fg: '#713f12' }, // FoldingSlipLot
-    { label: 'Packing', emoji: '🟩', n: s.pack,    bg: '#bbf7d0', fg: '#166534' },
-    { label: 'Re-Pro',  emoji: '🔴', n: s.repro,   bg: '#fee2e2', fg: '#991b1b' },
+  // Dark variants use deeper background + lighter foreground tuned for OLED.
+  const items: { label: string; emoji: string; n: number; bg: string; fg: string; dbg: string; dfg: string }[] = [
+    { label: 'Grey',    emoji: '🟦', n: s.grey,    bg: '#dbeafe', fg: '#1e40af', dbg: '#1e3a8a', dfg: '#bfdbfe' },
+    { label: 'Fold',    emoji: '🟨', n: s.fold,    bg: '#fef08a', fg: '#854d0e', dbg: '#854d0e', dfg: '#fef08a' },
+    { label: 'Dye',     emoji: '🟪', n: s.dye,     bg: '#e9d5ff', fg: '#6b21a8', dbg: '#6b21a8', dfg: '#e9d5ff' },
+    { label: 'Finish',  emoji: '🟧', n: s.finish,  bg: '#fed7aa', fg: '#9a3412', dbg: '#9a3412', dfg: '#fed7aa' },
+    { label: 'Folding', emoji: '🟨', n: s.folding, bg: '#fcd34d', fg: '#713f12', dbg: '#713f12', dfg: '#fcd34d' },
+    { label: 'Packing', emoji: '🟩', n: s.pack,    bg: '#bbf7d0', fg: '#166534', dbg: '#166534', dfg: '#bbf7d0' },
+    { label: 'Re-Pro',  emoji: '🔴', n: s.repro,   bg: '#fee2e2', fg: '#991b1b', dbg: '#991b1b', dfg: '#fee2e2' },
   ]
   return (
     <div className="mt-1.5 flex flex-wrap gap-1">
       {items.map(it => {
         const dim = it.n === 0
+        const dimStyle = mode === 'dark'
+          ? { background: '#374151', color: '#6b7280', opacity: 0.5 }
+          : { background: '#f3f4f6', color: '#9ca3af', opacity: 0.45 }
+        const activeStyle = mode === 'dark'
+          ? { background: it.dbg, color: it.dfg }
+          : { background: it.bg, color: it.fg }
         return (
           <span key={it.label}
-            style={dim ? { background: '#f3f4f6', color: '#9ca3af', opacity: 0.45 } : { background: it.bg, color: it.fg }}
+            style={dim ? dimStyle : activeStyle}
             className="text-[11px] font-bold px-2 py-0.5 rounded">
             {it.emoji} {it.label} {it.n}
           </span>
@@ -102,7 +109,7 @@ function StageChips({ s }: { s: { grey: number; dye: number; finish: number; fol
   )
 }
 
-function PartyStockShareCard({ page }: { page: PartySharePage }) {
+function PartyStockShareCard({ page, mode = 'light' }: { page: PartySharePage; mode?: 'light' | 'dark' }) {
   // Show Marka for Pali PC Job tagged parties (any case/spacing) AND for
   // Prakash Shirting (matches the rule used in the unallocated-stock modal).
   const tagLower = (page.partyTag || '').toLowerCase()
@@ -110,45 +117,79 @@ function PartyStockShareCard({ page }: { page: PartySharePage }) {
     tagLower.includes('pali') && tagLower.includes('pc') ||
     tagLower === 'pali pc job' ||
     /prakash\s+shirting/i.test(page.party)
+
+  // Theme tokens — dark variant inverts surface colors, keeps accent hues.
+  const t = mode === 'dark' ? {
+    cardBg: '#0f172a',           // slate-900
+    headBorder: '#818cf8',       // indigo-400
+    rowEven: '#0f172a',
+    rowOdd: '#1e293b',           // slate-800
+    rowBorder: '#334155',        // slate-700
+    colHeadBorder: '#475569',    // slate-600
+    headTitle: '#f1f5f9',        // slate-100
+    title: '#ffffff',
+    subTitle: '#cbd5e1',         // slate-300
+    accent: '#a5b4fc',           // indigo-300
+    label: '#94a3b8',            // slate-400
+    value: '#f8fafc',            // slate-50
+    quality: '#cbd5e1',          // slate-300
+    headSub: '#94a3b8',
+  } : {
+    cardBg: '#ffffff',
+    headBorder: '#4338ca',       // indigo-700
+    rowEven: '#ffffff',
+    rowOdd: '#f9fafb',           // gray-50
+    rowBorder: '#e5e7eb',        // gray-200
+    colHeadBorder: '#d1d5db',    // gray-300
+    headTitle: '#111827',
+    title: '#000000',
+    subTitle: '#374151',
+    accent: '#3730a3',           // indigo-700
+    label: '#4b5563',            // gray-600
+    value: '#000000',
+    quality: '#374151',          // gray-700
+    headSub: '#4b5563',
+  }
   return (
     <div id={`stock-share-page-${page.index - 1}`}
-      style={{ width: '480px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
-      className="bg-white text-gray-900 p-4">
-      <div className="border-b-4 border-indigo-700 pb-2 mb-3">
+      style={{ width: '480px', fontFamily: 'system-ui, -apple-system, sans-serif', background: t.cardBg, color: t.headTitle }}
+      className="p-4">
+      <div className="pb-2 mb-3" style={{ borderBottom: `4px solid ${t.headBorder}` }}>
         <div className="text-lg font-bold leading-tight">📦 Stock</div>
-        <div className="text-base font-bold text-black">{page.party}</div>
-        <div className="text-xs text-gray-700 mt-0.5">
+        <div className="text-base font-bold" style={{ color: t.title }}>{page.party}</div>
+        <div className="text-xs mt-0.5" style={{ color: t.headSub }}>
           {page.totalLots} lots · Page {page.index}/{page.total}
         </div>
         <div className="text-sm mt-2 flex gap-3">
-          <span className="font-bold text-indigo-700">📊 Balance {page.totalStock} than</span>
+          <span className="font-bold" style={{ color: t.accent }}>📊 Balance {page.totalStock} than</span>
         </div>
       </div>
-      {/* Column header */}
-      <div className="flex items-baseline justify-between gap-2 px-2.5 pb-1.5 mb-1 border-b-2 border-gray-300 text-[10px] font-bold uppercase tracking-wide text-gray-600">
+      <div className="flex items-baseline justify-between gap-2 px-2.5 pb-1.5 mb-1 text-[10px] font-bold uppercase tracking-wide"
+        style={{ borderBottom: `2px solid ${t.colHeadBorder}`, color: t.label }}>
         <span>Lot · Quality</span>
-        <span className="text-indigo-700">Balance</span>
+        <span style={{ color: t.accent }}>Balance</span>
       </div>
       <div className="space-y-2">
         {page.lots.map((l, i) => (
-          <div key={l.lotNo} className={`px-2.5 py-2 rounded ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} border border-gray-200`}>
+          <div key={l.lotNo} className="px-2.5 py-2 rounded"
+            style={{ background: i % 2 === 0 ? t.rowEven : t.rowOdd, border: `1px solid ${t.rowBorder}` }}>
             <div className="flex justify-between items-baseline gap-2">
               <div className="flex items-baseline gap-2 flex-wrap min-w-0">
-                <span className="text-base font-bold text-black whitespace-nowrap">{l.lotNo}</span>
-                <span className="text-[11px] font-semibold text-gray-700 leading-snug">{l.quality}</span>
+                <span className="text-base font-bold whitespace-nowrap" style={{ color: t.title }}>{l.lotNo}</span>
+                <span className="text-[11px] font-semibold leading-snug" style={{ color: t.quality }}>{l.quality}</span>
               </div>
-              <span className="text-base font-bold text-indigo-700 whitespace-nowrap shrink-0">{l.stock}</span>
+              <span className="text-base font-bold whitespace-nowrap shrink-0" style={{ color: t.accent }}>{l.stock}</span>
             </div>
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-              <span><span className="text-gray-600">Inward:</span> <span className="font-bold text-black">{formatInwardDates(l.inwardDates)}</span></span>
-              <span><span className="text-gray-600">LR:</span> <span className="font-bold text-black">{l.lrNos || '—'}</span></span>
-              <span><span className="text-gray-600">Total:</span> <span className="font-bold text-black">{l.totalThan}</span></span>
-              <span><span className="text-gray-600">Desp:</span> <span className="font-bold text-black">{l.despatchThan}</span></span>
+              <span><span style={{ color: t.label }}>Inward:</span> <span className="font-bold" style={{ color: t.value }}>{formatInwardDates(l.inwardDates)}</span></span>
+              <span><span style={{ color: t.label }}>LR:</span> <span className="font-bold" style={{ color: t.value }}>{l.lrNos || '—'}</span></span>
+              <span><span style={{ color: t.label }}>Total:</span> <span className="font-bold" style={{ color: t.value }}>{l.totalThan}</span></span>
+              <span><span style={{ color: t.label }}>Desp:</span> <span className="font-bold" style={{ color: t.value }}>{l.despatchThan}</span></span>
               {showMarka && l.markas && (
-                <span><span className="text-gray-600">Marka:</span> <span className="font-bold text-black">{l.markas}</span></span>
+                <span><span style={{ color: t.label }}>Marka:</span> <span className="font-bold" style={{ color: t.value }}>{l.markas}</span></span>
               )}
             </div>
-            {l.stages && <StageChips s={l.stages} />}
+            {l.stages && <StageChips s={l.stages} mode={mode} />}
           </div>
         ))}
       </div>
@@ -437,6 +478,23 @@ export default function StockPage() {
   const [actionParty, setActionParty] = useState<PartyStock | null>(null)
   const [previewParty, setPreviewParty] = useState<PartyStock | null>(null)
   const [previewMode, setPreviewMode] = useState<'light' | 'dark'>('light')
+  const [previewScale, setPreviewScale] = useState(1)
+  // Re-measure when the preview opens or the window resizes — cards are 480px
+  // wide; on phones we need to scale down so they fit without horizontal scroll.
+  useEffect(() => {
+    if (!previewParty) return
+    const update = () => {
+      const vw = window.innerWidth - 24 // small horizontal padding
+      setPreviewScale(Math.min(1, vw / 480))
+    }
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('orientationchange', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', update)
+    }
+  }, [previewParty])
 
   function buildSharePages(party: PartyStock): PartySharePage[] {
     // Oldest inward date first, newest last. Lots without any inwardDate go
@@ -1094,12 +1152,18 @@ export default function StockPage() {
               {previewMode === 'dark' ? '☀ Light' : '🌙 Dark'}
             </button>
           </div>
-          {/* Body — scrollable list of share-page cards centered */}
-          <div className="flex-1 overflow-y-auto p-4">
+          {/* Body — scrollable list of share-page cards centered + scaled to fit */}
+          <div className="flex-1 overflow-y-auto py-3">
             <div className="flex flex-col items-center gap-4">
               {buildSharePages(previewParty).map(p => (
-                <div key={p.index} className="shadow-2xl rounded-lg overflow-hidden">
-                  <PartyStockShareCard page={p} />
+                <div key={p.index}
+                  className="shadow-2xl rounded-lg overflow-hidden"
+                  // CSS `zoom` rescales both visual size AND layout box, so the
+                  // wrapper's flex layout takes the scaled height naturally.
+                  // Works on Chrome/Safari/Edge — fallback (Firefox) renders
+                  // unscaled (overflow scrolls horizontally).
+                  style={{ zoom: previewScale }}>
+                  <PartyStockShareCard page={p} mode={previewMode} />
                 </div>
               ))}
             </div>
