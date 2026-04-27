@@ -38,6 +38,30 @@ export async function GET() {
     reservationMap.set(r.lotNo.toLowerCase(), { usedThan: r.usedThan, note: r.note })
   }
 
+  // ── Stage breakdown queries (for the share-image chip row) ──
+  // Pipeline: Grey → Dye → Finish → Fold → Pack → Despatch
+  // Re-Pro is parallel: ReProcessSource rows where parent.status != 'merged'.
+  const [dyedAllByLot, finishedByLot, packedByLot, reproSources] = await Promise.all([
+    (prisma as any).dyeingEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } }),
+    (prisma as any).finishEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } }),
+    (prisma as any).packingLot.groupBy({ by: ['lotNo'], _sum: { than: true } }),
+    (prisma as any).reProcessSource.findMany({
+      where: { reprocess: { status: { not: 'merged' } } },
+      select: { originalLotNo: true, than: true },
+    }),
+  ])
+  const stageDyed = new Map<string, number>()
+  for (const r of dyedAllByLot) stageDyed.set(r.lotNo.toLowerCase(), (stageDyed.get(r.lotNo.toLowerCase()) || 0) + (r._sum.than || 0))
+  const stageFinished = new Map<string, number>()
+  for (const r of finishedByLot) stageFinished.set(r.lotNo.toLowerCase(), (stageFinished.get(r.lotNo.toLowerCase()) || 0) + (r._sum.than || 0))
+  const stagePacked = new Map<string, number>()
+  for (const r of packedByLot) stagePacked.set(r.lotNo.toLowerCase(), (stagePacked.get(r.lotNo.toLowerCase()) || 0) + (r._sum.than || 0))
+  const stageRePro = new Map<string, number>()
+  for (const r of reproSources) {
+    const k = r.originalLotNo.toLowerCase()
+    stageRePro.set(k, (stageRePro.get(k) || 0) + (r.than || 0))
+  }
+
   // Fetch grey entries grouped by lot
   const greyByLot = await prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
 
@@ -52,6 +76,28 @@ export async function GET() {
   const despatchMap = new Map<string, number>()
   for (const d of despParentByLot) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
   for (const d of despLotByLot) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
+
+  // Lower-cased despatch map for the stage-breakdown calculator (other lookups
+  // in this file still use the original mixed-case `despatchMap`).
+  const despatchMapLower = new Map<string, number>()
+  for (const [k, v] of despatchMap) despatchMapLower.set(k.toLowerCase(), (despatchMapLower.get(k.toLowerCase()) || 0) + v)
+
+  /** How much of `stock` sits at each pipeline stage. */
+  function stagesFor(key: string, stock: number) {
+    const dyed = stageDyed.get(key) || 0
+    const finished = stageFinished.get(key) || 0
+    const folded = foldMap.get(key) || 0
+    const packed = stagePacked.get(key) || 0
+    const despatched = despatchMapLower.get(key) || 0
+    const repro = stageRePro.get(key) || 0
+    const inPack = Math.max(0, packed - despatched)
+    const inFold = Math.max(0, folded - packed)
+    const inFinish = Math.max(0, finished - folded - repro)
+    const inDye = Math.max(0, dyed - finished)
+    const consumed = inPack + inFold + inFinish + inDye + repro
+    const inGrey = Math.max(0, stock - consumed)
+    return { grey: inGrey, dye: inDye, finish: inFinish, fold: inFold, pack: inPack, repro }
+  }
 
   // Fetch opening balances
   let obList: any[] = []
@@ -109,6 +155,7 @@ export async function GET() {
     lrNos: string          // comma-separated LR numbers
     markas: string         // comma-separated marka values (mainly for Pali PC Job parties)
     inwardDates: string    // comma-separated YYYY-MM-DD dates from grey entries
+    stages: { grey: number; dye: number; finish: number; fold: number; pack: number; repro: number }
   }
 
   const lotStocks: LotStock[] = []
@@ -147,6 +194,7 @@ export async function GET() {
       lrNos: Array.from(lrMap.get(key) || []).join(', '),
       markas: Array.from(markaMap.get(key) || []).join(', '),
       inwardDates: Array.from(dateMap.get(key) || []).sort().join(', '),
+      stages: stagesFor(key, stock),
     })
   }
 
@@ -190,6 +238,7 @@ export async function GET() {
       lrNos: obLr,
       markas: Array.from(markaMap.get(key) || []).join(', '),
       inwardDates: Array.from(obDateSet).sort().join(', '),
+      stages: stagesFor(key, stock),
     })
   }
 
@@ -227,6 +276,7 @@ export async function GET() {
         lrNos: '',
         markas: '',
         inwardDates: '',
+        stages: stagesFor(key, stock),
       })
     }
   } catch {}

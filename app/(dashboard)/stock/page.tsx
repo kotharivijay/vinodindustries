@@ -24,6 +24,7 @@ interface LotStock {
   lrNos: string
   markas: string
   inwardDates: string
+  stages?: { grey: number; dye: number; finish: number; fold: number; pack: number; repro: number }
 }
 
 interface PartyStock {
@@ -68,6 +69,35 @@ interface PartySharePage {
   totalStock: number
   totalLots: number
   lots: LotStock[]
+}
+
+/** Six-stage chip row for the share image: Grey → Dye → Finish → Fold → Pack → Re-Pro.
+ *  Active chips (count > 0) get a solid colored background.
+ *  Zero chips render dimmed (gray + opacity) so the eye still sees the full pipeline.
+ */
+function StageChips({ s }: { s: { grey: number; dye: number; finish: number; fold: number; pack: number; repro: number } }) {
+  const items: { label: string; emoji: string; n: number; bg: string; fg: string }[] = [
+    { label: 'Grey',   emoji: '🟦', n: s.grey,   bg: '#dbeafe', fg: '#1e40af' },
+    { label: 'Dye',    emoji: '🟪', n: s.dye,    bg: '#e9d5ff', fg: '#6b21a8' },
+    { label: 'Finish', emoji: '🟧', n: s.finish, bg: '#fed7aa', fg: '#9a3412' },
+    { label: 'Fold',   emoji: '🟨', n: s.fold,   bg: '#fef08a', fg: '#854d0e' },
+    { label: 'Pack',   emoji: '🟩', n: s.pack,   bg: '#bbf7d0', fg: '#166534' },
+    { label: 'Re-Pro', emoji: '🟫', n: s.repro,  bg: '#fde68a', fg: '#78350f' },
+  ]
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1">
+      {items.map(it => {
+        const dim = it.n === 0
+        return (
+          <span key={it.label}
+            style={dim ? { background: '#f3f4f6', color: '#9ca3af', opacity: 0.45 } : { background: it.bg, color: it.fg }}
+            className="text-[11px] font-bold px-2 py-0.5 rounded">
+            {it.emoji} {it.label} {it.n}
+          </span>
+        )
+      })}
+    </div>
+  )
 }
 
 function PartyStockShareCard({ page }: { page: PartySharePage }) {
@@ -116,6 +146,7 @@ function PartyStockShareCard({ page }: { page: PartySharePage }) {
                 <span><span className="text-gray-600">Marka:</span> <span className="font-bold text-black">{l.markas}</span></span>
               )}
             </div>
+            {l.stages && <StageChips s={l.stages} />}
           </div>
         ))}
       </div>

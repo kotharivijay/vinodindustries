@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stock Share UX preview</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+  body { margin: 0; padding: 24px; background: #e5e7eb; font-family: system-ui, -apple-system, sans-serif; }
+  button { margin-bottom: 16px; padding: 10px 18px; background: #db2777; color: white; border: 0; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .preview { background: white; }
+</style>
+</head>
+<body>
+<button id="dl">⬇ Download PNG</button>
+
+<div id="card" class="preview" style="width:480px;padding:16px;color:#111827;">
+  <!-- Header -->
+  <div style="border-bottom:4px solid #047857;padding-bottom:8px;margin-bottom:12px;">
+    <div style="font-size:18px;font-weight:700;line-height:1.2;">📦 Stock</div>
+    <div style="font-size:16px;font-weight:700;color:black;">M/S Shree Bhairav Clothing Co</div>
+    <div style="font-size:11px;color:#374151;margin-top:2px;">3 lots · Page 1/1</div>
+    <div style="font-size:13px;margin-top:8px;display:flex;gap:12px;">
+      <span style="font-weight:700;color:#3730a3;">📊 Balance 48 than</span>
+    </div>
+  </div>
+
+  <!-- Column header -->
+  <div style="display:flex;justify-content:space-between;padding:0 10px 6px;margin-bottom:4px;border-bottom:2px solid #d1d5db;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;color:#4b5563;">
+    <span>Lot · Quality</span>
+    <span style="color:#3730a3;">Balance</span>
+  </div>
+
+  <!-- Card 1 — middle of pipeline -->
+  <div style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;background:white;margin-bottom:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-width:0;">
+        <span style="font-size:16px;font-weight:700;color:black;">PS-1800</span>
+        <span style="font-size:11px;font-weight:600;color:#374151;">DULL POLYESTER 38"</span>
+      </div>
+      <span style="font-size:16px;font-weight:700;color:#3730a3;white-space:nowrap;">30</span>
+    </div>
+    <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:0 12px;font-size:12px;">
+      <span><span style="color:#4b5563;">Inward:</span> <span style="font-weight:700;color:black;">06 Apr 22</span></span>
+      <span><span style="color:#4b5563;">LR:</span> <span style="font-weight:700;color:black;">Open</span></span>
+      <span><span style="color:#4b5563;">Total:</span> <span style="font-weight:700;color:black;">30</span></span>
+      <span><span style="color:#4b5563;">Desp:</span> <span style="font-weight:700;color:black;">0</span></span>
+    </div>
+    <!-- Stage chips row -->
+    <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#dbeafe;color:#1e40af;">🟦 Grey 25</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟪 Dye 0</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#fed7aa;color:#9a3412;">🟧 Finish 5</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟨 Fold 0</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟩 Pack 0</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟫 Re-Pro 0</span>
+    </div>
+  </div>
+
+  <!-- Card 2 — late pipeline -->
+  <div style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;margin-bottom:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-width:0;">
+        <span style="font-size:16px;font-weight:700;color:black;">PS-2100</span>
+        <span style="font-size:11px;font-weight:600;color:#374151;">COTTON CORD 40"</span>
+      </div>
+      <span style="font-size:16px;font-weight:700;color:#3730a3;white-space:nowrap;">18</span>
+    </div>
+    <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:0 12px;font-size:12px;">
+      <span><span style="color:#4b5563;">Inward:</span> <span style="font-weight:700;color:black;">12 Aug 24</span></span>
+      <span><span style="color:#4b5563;">LR:</span> <span style="font-weight:700;color:black;">12345</span></span>
+      <span><span style="color:#4b5563;">Total:</span> <span style="font-weight:700;color:black;">50</span></span>
+      <span><span style="color:#4b5563;">Desp:</span> <span style="font-weight:700;color:black;">32</span></span>
+    </div>
+    <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟦 Grey 0</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟪 Dye 0</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#fed7aa;color:#9a3412;">🟧 Finish 2</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#fef08a;color:#854d0e;">🟨 Fold 6</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#bbf7d0;color:#166534;">🟩 Pack 8</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#fde68a;color:#78350f;">🟫 Re-Pro 2</span>
+    </div>
+  </div>
+
+  <!-- Card 3 — only in dyeing -->
+  <div style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;background:white;">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;min-width:0;">
+        <span style="font-size:16px;font-weight:700;color:black;">SAM-23</span>
+        <span style="font-size:11px;font-weight:600;color:#374151;">MAGIC ZARI 47"</span>
+      </div>
+      <span style="font-size:16px;font-weight:700;color:#3730a3;white-space:nowrap;">12</span>
+    </div>
+    <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:0 12px;font-size:12px;">
+      <span><span style="color:#4b5563;">Inward:</span> <span style="font-weight:700;color:black;">08 Apr 26</span></span>
+      <span><span style="color:#4b5563;">LR:</span> <span style="font-weight:700;color:black;">59755</span></span>
+      <span><span style="color:#4b5563;">Total:</span> <span style="font-weight:700;color:black;">12</span></span>
+      <span><span style="color:#4b5563;">Desp:</span> <span style="font-weight:700;color:black;">0</span></span>
+    </div>
+    <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;">
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟦 Grey 0</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#e9d5ff;color:#6b21a8;">🟪 Dye 12</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟧 Finish 0</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟨 Fold 0</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟩 Pack 0</span>
+      <span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:#f3f4f6;color:#9ca3af;opacity:0.45;">🟫 Re-Pro 0</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById('dl').onclick = async () => {
+    const node = document.getElementById('card')
+    const canvas = await html2canvas(node, { backgroundColor: '#ffffff', scale: 2 })
+    const url = canvas.toDataURL('image/png')
+    const a = document.createElement('a')
+    a.href = url; a.download = 'stock-share-ux-sample.png'
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+  // auto-download once on load
+  window.addEventListener('load', () => setTimeout(() => document.getElementById('dl').click(), 600))
+</script>
+</body>
+</html>
