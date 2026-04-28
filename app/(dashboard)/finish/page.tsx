@@ -3309,12 +3309,6 @@ export default function FinishStockPage() {
                                               <span className="font-medium text-teal-600 dark:text-teal-400">Finish_Prg {slip.slipNo}</span>
                                               <span className="text-gray-300 dark:text-gray-600">&middot;</span>
                                               <span>{new Date(slip.date).toLocaleDateString('en-IN')}</span>
-                                              {slip.meter != null && (
-                                                <>
-                                                  <span className="text-gray-300 dark:text-gray-600">&middot;</span>
-                                                  <span>{slip.meter}m</span>
-                                                </>
-                                              )}
                                             </div>
                                             <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{slipQualityThan}</span>
                                           </div>
