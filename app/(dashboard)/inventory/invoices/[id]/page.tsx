@@ -17,7 +17,28 @@ export default function InvoiceDetailPage() {
     mutate()
   }
   async function pushToTally() {
-    alert('Tally JSON push not yet implemented in this build. Schema + voucher builder land in the next commit.')
+    if (!confirm('Push this invoice to Tally as a Purchase voucher?')) return
+    const res = await fetch(`/api/inv/invoices/${id}/push-to-tally`, { method: 'POST' })
+    const d = await res.json()
+    if (d.failures && d.failures.length) {
+      alert('Pre-push validation failed:\n' + d.failures.map((f: any) => `• ${f.message}`).join('\n'))
+      return
+    }
+    if (!d.ok) {
+      alert('Push failed: ' + (d.error || JSON.stringify(d.parsed || d.body || '').slice(0, 300)))
+      mutate()
+      return
+    }
+    alert(`✓ Pushed to Tally — voucher ${d.vchkey || 'created'}`)
+    mutate()
+  }
+  async function previewPayload() {
+    const res = await fetch(`/api/inv/invoices/${id}/preview-payload`)
+    const d = await res.json()
+    const w = window.open('', '_blank')
+    if (w) {
+      w.document.write(`<pre style="font-family:monospace;font-size:11px;padding:16px">${JSON.stringify(d, null, 2).replace(/[<>]/g, c => c === '<' ? '&lt;' : '&gt;')}</pre>`)
+    }
   }
 
   if (!inv) return <div className="p-12 text-center text-gray-400">Loading…</div>
@@ -93,6 +114,9 @@ export default function InvoiceDetailPage() {
         )}
 
         <div className="flex gap-2 justify-end pt-3 border-t border-gray-200 dark:border-gray-700">
+          {inv.status !== 'Voided' && (
+            <button onClick={previewPayload} className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm font-medium">👁 Preview JSON</button>
+          )}
           {inv.status !== 'Voided' && inv.status !== 'PushedToTally' && (
             <button onClick={pushToTally} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">📤 Push to Tally</button>
           )}
