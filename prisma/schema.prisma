@@ -11,15 +11,15 @@ datasource db {
 // ─── Master Tables (Dynamic Dropdowns) ────────────────────────────────────────
 
 model Party {
-  id              Int             @id @default(autoincrement())
-  name            String          @unique
-  tag             String?         // "Pali PC Job", "Local", "Direct", etc.
-  createdAt       DateTime        @default(now())
-  greyEntries     GreyEntry[]
-  despatchEntries DespatchEntry[]
-  foldBatchLots   FoldBatchLot[]
-  finishRecipes     FinishRecipe[]
-  finishRecipeTags  FinishRecipeTag[]
+  id               Int               @id @default(autoincrement())
+  name             String            @unique
+  tag              String? // "Pali PC Job", "Local", "Direct", etc.
+  createdAt        DateTime          @default(now())
+  greyEntries      GreyEntry[]
+  despatchEntries  DespatchEntry[]
+  foldBatchLots    FoldBatchLot[]
+  finishRecipes    FinishRecipe[]
+  finishRecipeTags FinishRecipeTag[]
 }
 
 model Weaver {
@@ -30,15 +30,15 @@ model Weaver {
 }
 
 model Quality {
-  id              Int             @id @default(autoincrement())
-  name            String          @unique
-  createdAt       DateTime        @default(now())
-  greyEntries     GreyEntry[]
-  despatchEntries DespatchEntry[]
-  despatchLots    DespatchEntryLot[]
-  foldBatchLots   FoldBatchLot[]
-  finishRecipes     FinishRecipe[]
-  finishRecipeTags  FinishRecipeTag[]
+  id               Int                @id @default(autoincrement())
+  name             String             @unique
+  createdAt        DateTime           @default(now())
+  greyEntries      GreyEntry[]
+  despatchEntries  DespatchEntry[]
+  despatchLots     DespatchEntryLot[]
+  foldBatchLots    FoldBatchLot[]
+  finishRecipes    FinishRecipe[]
+  finishRecipeTags FinishRecipeTag[]
 }
 
 model Transport {
@@ -53,14 +53,14 @@ model Transport {
 
 model GreyEntry {
   id            Int       @id @default(autoincrement())
-  sn            Int?      // Serial number from source spreadsheet
+  sn            Int? // Serial number from source spreadsheet
   date          DateTime
   challanNo     Int
   partyId       Int
   party         Party     @relation(fields: [partyId], references: [id])
   qualityId     Int
   quality       Quality   @relation(fields: [qualityId], references: [id])
-  weight        String?   // e.g. "106g", "114g", "(RG)"
+  weight        String? // e.g. "106g", "114g", "(RG)"
   than          Int
   grayMtr       Float?
   transportId   Int
@@ -105,38 +105,38 @@ model DyeingOperator {
 // ─── Dyeing Slip Entry ─────────────────────────────────────────────────────────
 
 model DyeingEntry {
-  id              Int                  @id @default(autoincrement())
-  date            DateTime
-  slipNo          Int
-  lotNo           String
-  than            Int
-  shadeName       String?
-  notes           String?
-  foldBatchId     Int?
-  foldBatch       FoldBatch?           @relation(fields: [foldBatchId], references: [id])
-  dyeingDoneAt    DateTime?
-  dyeingPhotoUrl  String?
-  dyeingDriveId   String?
-  dyeingNotes     String?
-  machineId       Int?
-  machine         DyeingMachine?   @relation(fields: [machineId], references: [id])
-  operatorId      Int?
-  operator        DyeingOperator?  @relation(fields: [operatorId], references: [id])
-  colorC          Float?
-  colorM          Float?
-  colorY          Float?
-  colorK          Float?
-  colorHex        String?
-  isPcJob         Boolean              @default(false)
-  marka           String?
+  id                Int                  @id @default(autoincrement())
+  date              DateTime
+  slipNo            Int
+  lotNo             String
+  than              Int
+  shadeName         String?
+  notes             String?
+  foldBatchId       Int?
+  foldBatch         FoldBatch?           @relation(fields: [foldBatchId], references: [id])
+  dyeingDoneAt      DateTime?
+  dyeingPhotoUrl    String?
+  dyeingDriveId     String?
+  dyeingNotes       String?
+  machineId         Int?
+  machine           DyeingMachine?       @relation(fields: [machineId], references: [id])
+  operatorId        Int?
+  operator          DyeingOperator?      @relation(fields: [operatorId], references: [id])
+  colorC            Float?
+  colorM            Float?
+  colorY            Float?
+  colorK            Float?
+  colorHex          String?
+  isPcJob           Boolean              @default(false)
+  marka             String?
   partyInstructions String?
-  status          String               @default("pending")   // pending|patchy|re-dyeing|done
-  totalRounds     Int                  @default(1)
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  chemicals       DyeingSlipChemical[]
-  lots            DyeingEntryLot[]
-  additions       DyeingAddition[]
+  status            String               @default("pending") // pending|patchy|re-dyeing|done
+  totalRounds       Int                  @default(1)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  chemicals         DyeingSlipChemical[]
+  lots              DyeingEntryLot[]
+  additions         DyeingAddition[]
 }
 
 model DyeingEntryLot {
@@ -148,103 +148,103 @@ model DyeingEntryLot {
 }
 
 model DyeingSlipChemical {
-  id         Int          @id @default(autoincrement())
+  id         Int         @id @default(autoincrement())
   entryId    Int
-  entry      DyeingEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entry      DyeingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
   chemicalId Int?
-  chemical   Chemical?    @relation(fields: [chemicalId], references: [id])
+  chemical   Chemical?   @relation(fields: [chemicalId], references: [id])
   name       String
   quantity   Float?
-  unit       String       @default("kg")
+  unit       String      @default("kg")
   rate       Float?
   cost       Float?
-  processTag String?      // "shade" | "Scouring" | "Anti Fungus" | process name
-  createdAt  DateTime     @default(now())
+  processTag String? // "shade" | "Scouring" | "Anti Fungus" | process name
+  createdAt  DateTime    @default(now())
 }
 
 // ─── Dyeing Addition (for additions and re-dye rounds) ───────────────────────
 
 model DyeingAddition {
-  id            Int                     @id @default(autoincrement())
+  id            Int                  @id @default(autoincrement())
   entryId       Int
-  entry         DyeingEntry             @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entry         DyeingEntry          @relation(fields: [entryId], references: [id], onDelete: Cascade)
   roundNo       Int
-  type          String                  // "addition" | "re-dye"
-  defectType    String?                 // "patchy"|"uneven"|"light"|"dark"|"spots"
+  type          String // "addition" | "re-dye"
+  defectType    String? // "patchy"|"uneven"|"light"|"dark"|"spots"
   defectPhoto   String?
   defectDriveId String?
   reason        String?
   time          String?
   machineId     Int?
-  machine       DyeingMachine?          @relation(fields: [machineId], references: [id])
+  machine       DyeingMachine?       @relation(fields: [machineId], references: [id])
   operatorId    Int?
-  operator      DyeingOperator?         @relation(fields: [operatorId], references: [id])
+  operator      DyeingOperator?      @relation(fields: [operatorId], references: [id])
   chemicals     DyeingAdditionItem[]
-  createdAt     DateTime                @default(now())
+  createdAt     DateTime             @default(now())
 }
 
 model DyeingAdditionItem {
-  id            Int              @id @default(autoincrement())
-  additionId    Int
-  addition      DyeingAddition   @relation(fields: [additionId], references: [id], onDelete: Cascade)
-  chemicalId    Int?
-  chemical      Chemical?        @relation(fields: [chemicalId], references: [id])
-  name          String
-  quantity      Float
-  unit          String           @default("kg")
-  rate          Float?
-  cost          Float?
+  id         Int            @id @default(autoincrement())
+  additionId Int
+  addition   DyeingAddition @relation(fields: [additionId], references: [id], onDelete: Cascade)
+  chemicalId Int?
+  chemical   Chemical?      @relation(fields: [chemicalId], references: [id])
+  name       String
+  quantity   Float
+  unit       String         @default("kg")
+  rate       Float?
+  cost       Float?
 }
 
 // ─── Re-Process Lots ──────────────────────────────────────────────────────────
 
 model ReProcessLot {
-  id        Int                @id @default(autoincrement())
-  reproNo   String             @unique   // "RE-PRO-1", "RE-PRO-2"
-  quality   String                       // shared quality from source lots
-  weight    String?                      // from originals
-  grayMtr   Float?                       // sum of source meters
-  totalThan Int                          // sum of all source thans
-  reason    String                       // "patchy" | "daagi" | "shade_mismatch" | "other"
+  id        Int               @id @default(autoincrement())
+  reproNo   String            @unique // "RE-PRO-1", "RE-PRO-2"
+  quality   String // shared quality from source lots
+  weight    String? // from originals
+  grayMtr   Float? // sum of source meters
+  totalThan Int // sum of all source thans
+  reason    String // "patchy" | "daagi" | "shade_mismatch" | "other"
   notes     String?
-  status    String             @default("pending") // pending | in-dyeing | finished | merged
+  status    String            @default("pending") // pending | in-dyeing | finished | merged
   mergedAt  DateTime?
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
   sources   ReProcessSource[]
 }
 
 model ReProcessSource {
-  id            Int            @id @default(autoincrement())
+  id            Int          @id @default(autoincrement())
   reprocessId   Int
-  reprocess     ReProcessLot   @relation(fields: [reprocessId], references: [id], onDelete: Cascade)
+  reprocess     ReProcessLot @relation(fields: [reprocessId], references: [id], onDelete: Cascade)
   originalLotNo String
   than          Int
   party         String?
   reason        String?
   notes         String?
   sourceDyeSlip Int?
-  createdAt     DateTime       @default(now())
+  createdAt     DateTime     @default(now())
 }
 
 // ─── Chemical Master ───────────────────────────────────────────────────────────
 
 model Chemical {
-  id           Int                    @id @default(autoincrement())
-  name         String                 @unique
-  unit         String                 @default("kg")
-  category     String?                // 'color' | 'auxiliary'
-  currentPrice Float?
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
-  priceHistory   ChemicalPriceHistory[]
-  slipUsages     DyeingSlipChemical[]
-  finishUsages   FinishSlipChemical[]
-  aliases        ChemicalAlias[]
-  recipeUsages   ShadeRecipeItem[]
-  processItems   DyeingProcessItem[]
-  additionUsages DyeingAdditionItem[]
-  finishRecipeItems FinishRecipeItem[]
+  id                      Int                      @id @default(autoincrement())
+  name                    String                   @unique
+  unit                    String                   @default("kg")
+  category                String? // 'color' | 'auxiliary'
+  currentPrice            Float?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  priceHistory            ChemicalPriceHistory[]
+  slipUsages              DyeingSlipChemical[]
+  finishUsages            FinishSlipChemical[]
+  aliases                 ChemicalAlias[]
+  recipeUsages            ShadeRecipeItem[]
+  processItems            DyeingProcessItem[]
+  additionUsages          DyeingAdditionItem[]
+  finishRecipeItems       FinishRecipeItem[]
   finishAdditionChemicals FinishAdditionChemical[]
 }
 
@@ -263,7 +263,7 @@ model ChemicalPriceHistory {
 
 model ChemicalAlias {
   id         Int      @id @default(autoincrement())
-  ocrName    String   @unique   // normalized OCR text e.g. "bezafix"
+  ocrName    String   @unique // normalized OCR text e.g. "bezafix"
   chemicalId Int
   chemical   Chemical @relation(fields: [chemicalId], references: [id], onDelete: Cascade)
   hitCount   Int      @default(1)
@@ -289,66 +289,67 @@ model DyeingProcessItem {
   chemicalId   Int
   chemical     Chemical      @relation(fields: [chemicalId], references: [id])
   quantity     Float
-  quantityHigh Float?        // quantity when batch weight > threshold
+  quantityHigh Float? // quantity when batch weight > threshold
+
   @@unique([processId, chemicalId])
 }
 
 // ─── Dyeing Draft Queue (cloud save) ────────────────────────────────────────
 
 model DyeingDraftBatch {
-  id        Int                @id @default(autoincrement())
-  userId    String             // email of the user
-  status    String             @default("active") // active | completed
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  id        Int               @id @default(autoincrement())
+  userId    String // email of the user
+  status    String            @default("active") // active | completed
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
   items     DyeingDraftItem[]
 }
 
 model DyeingDraftItem {
-  id          Int               @id @default(autoincrement())
+  id          Int              @id @default(autoincrement())
   batchId     Int
-  batch       DyeingDraftBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  imageBase64 String            // base64 encoded image data
-  mediaType   String            @default("image/jpeg")
-  status      String            @default("pending") // pending | saved | skipped
-  sortOrder   Int               @default(0)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  batch       DyeingDraftBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  imageBase64 String // base64 encoded image data
+  mediaType   String           @default("image/jpeg")
+  status      String           @default("pending") // pending | saved | skipped
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 }
 
 // ─── Finish/Center Entry ─────────────────────────────────────────────────────
 
 model FinishEntry {
-  id         Int                  @id @default(autoincrement())
-  date       DateTime
-  slipNo     Int
-  lotNo      String               // backward compat: first lot
-  than       Int                  // backward compat: first lot's than
-  meter      Float?               // total meter
-  mandi      Float?               // mandi in liters (legacy)
-  opMandi      Float?               // opening mandi (litres)
-  newMandi     Float?               // new mandi added (litres)
-  stockMandi   Float?               // stock mandi remaining (litres)
-  finishThan   Int?                 // total than actually finished
-  finishMtr    Float?               // total finish meters
-  finishDespSlipNo String?           // finish despatch slip number
-  notes        String?
-  createdAt  DateTime             @default(now())
-  updatedAt  DateTime             @updatedAt
-  chemicals  FinishSlipChemical[]
-  lots       FinishEntryLot[]
-  additions  FinishAddition[]
+  id               Int                  @id @default(autoincrement())
+  date             DateTime
+  slipNo           Int
+  lotNo            String // backward compat: first lot
+  than             Int // backward compat: first lot's than
+  meter            Float? // total meter
+  mandi            Float? // mandi in liters (legacy)
+  opMandi          Float? // opening mandi (litres)
+  newMandi         Float? // new mandi added (litres)
+  stockMandi       Float? // stock mandi remaining (litres)
+  finishThan       Int? // total than actually finished
+  finishMtr        Float? // total finish meters
+  finishDespSlipNo String? // finish despatch slip number
+  notes            String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  chemicals        FinishSlipChemical[]
+  lots             FinishEntryLot[]
+  additions        FinishAddition[]
 }
 
 model FinishEntryLot {
-  id       Int          @id @default(autoincrement())
-  entryId  Int
-  entry    FinishEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  lotNo    String
-  than     Int
-  meter    Float?
-  doneThan Int          @default(0)
-  status   String       @default("pending") // pending | partial | done
+  id              Int              @id @default(autoincrement())
+  entryId         Int
+  entry           FinishEntry      @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  lotNo           String
+  than            Int
+  meter           Float?
+  doneThan        Int              @default(0)
+  status          String           @default("pending") // pending | partial | done
   foldingReceipts FoldingReceipt[]
 }
 
@@ -364,17 +365,17 @@ model FoldingReceipt {
 }
 
 model FinishSlipChemical {
-  id         Int          @id @default(autoincrement())
+  id         Int         @id @default(autoincrement())
   entryId    Int
-  entry      FinishEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entry      FinishEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
   chemicalId Int?
-  chemical   Chemical?    @relation(fields: [chemicalId], references: [id])
+  chemical   Chemical?   @relation(fields: [chemicalId], references: [id])
   name       String
   quantity   Float?
-  unit       String       @default("kg")
+  unit       String      @default("kg")
   rate       Float?
   cost       Float?
-  createdAt  DateTime     @default(now())
+  createdAt  DateTime    @default(now())
 }
 
 model FinishAddition {
@@ -387,48 +388,48 @@ model FinishAddition {
 }
 
 model FinishAdditionChemical {
-  id         Int             @id @default(autoincrement())
+  id         Int            @id @default(autoincrement())
   additionId Int
-  addition   FinishAddition  @relation(fields: [additionId], references: [id], onDelete: Cascade)
+  addition   FinishAddition @relation(fields: [additionId], references: [id], onDelete: Cascade)
   chemicalId Int?
-  chemical   Chemical?       @relation(fields: [chemicalId], references: [id])
+  chemical   Chemical?      @relation(fields: [chemicalId], references: [id])
   name       String
   quantity   Float?
-  unit       String          @default("kg")
+  unit       String         @default("kg")
 }
 
 // ─── Despatch Entry ────────────────────────────────────────────────────────────
 
 model DespatchEntry {
-  id          Int       @id @default(autoincrement())
-  date        DateTime
-  challanNo   Int
-  partyId     Int
-  party       Party     @relation(fields: [partyId], references: [id])
-  qualityId   Int
-  quality     Quality   @relation(fields: [qualityId], references: [id])
-  grayInwDate DateTime?
-  lotNo       String
-  jobDelivery String?
-  than        Int
-  billNo      String?
-  rate        Float?
-  pTotal      Float?    // Auto: than × rate
-  lrNo        String?
-  transportId Int?
-  transport   Transport? @relation(fields: [transportId], references: [id])
-  bale        Int?
-  narration   String?   // descriptive text from despatch sheet quality column
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  changeLogs  DespatchChangeLog[]
+  id           Int                 @id @default(autoincrement())
+  date         DateTime
+  challanNo    Int
+  partyId      Int
+  party        Party               @relation(fields: [partyId], references: [id])
+  qualityId    Int
+  quality      Quality             @relation(fields: [qualityId], references: [id])
+  grayInwDate  DateTime?
+  lotNo        String
+  jobDelivery  String?
+  than         Int
+  billNo       String?
+  rate         Float?
+  pTotal       Float? // Auto: than × rate
+  lrNo         String?
+  transportId  Int?
+  transport    Transport?          @relation(fields: [transportId], references: [id])
+  bale         Int?
+  narration    String? // descriptive text from despatch sheet quality column
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  changeLogs   DespatchChangeLog[]
   despatchLots DespatchEntryLot[]
 }
 
 model DespatchEntryLot {
-  id          Int            @id @default(autoincrement())
+  id          Int           @id @default(autoincrement())
   entryId     Int
-  entry       DespatchEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entry       DespatchEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
   lotNo       String
   than        Int
   meter       Float?
@@ -436,17 +437,17 @@ model DespatchEntryLot {
   amount      Float?
   description String?
   qualityId   Int?
-  quality     Quality?       @relation(fields: [qualityId], references: [id])
+  quality     Quality?      @relation(fields: [qualityId], references: [id])
 }
 
 model DespatchChangeLog {
   id        Int           @id @default(autoincrement())
   entryId   Int
   entry     DespatchEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  field     String        // "than" | "lotNo" | "rate" | "billNo"
+  field     String // "than" | "lotNo" | "rate" | "billNo"
   oldValue  String
   newValue  String
-  changedBy String        // user email
+  changedBy String // user email
   createdAt DateTime      @default(now())
 }
 
@@ -465,52 +466,53 @@ model DespatchNotification {
 
 model VaultConfig {
   id           Int      @id @default(autoincrement())
-  passwordHash String   // bcrypt hash of vault password
-  salt         String   // salt for key derivation
+  passwordHash String // bcrypt hash of vault password
+  salt         String // salt for key derivation
   createdAt    DateTime @default(now())
 }
 
 model VaultEntity {
   id         Int             @id @default(autoincrement())
-  type       String          // company | person | huf | property
-  encName    String          // AES encrypted name
-  encDetails String          // AES encrypted JSON (PAN, GST, etc.)
-  iv         String          // initialization vector for encryption
+  type       String // company | person | huf | property
+  encName    String // AES encrypted name
+  encDetails String // AES encrypted JSON (PAN, GST, etc.)
+  iv         String // initialization vector for encryption
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
   documents  VaultDocument[]
 }
 
 model VaultDocument {
-  id             Int          @id @default(autoincrement())
+  id             Int                 @id @default(autoincrement())
   entityId       Int
-  entity         VaultEntity  @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  encFileName    String       // AES encrypted original filename
-  encFileData    String?      // AES encrypted file data (base64) — for small files in DB
-  blobUrl        String?      // For large files stored externally (future)
-  fileSize       Int          // original file size in bytes
-  mimeType       String       // application/pdf, image/jpeg, etc.
-  iv             String       // initialization vector
-  encTags        String?      // AES encrypted comma-separated tags (e.g. "aadhaar,id proof")
-  encDescription String?      // AES encrypted description/notes
-  expiryDate     DateTime?    // plain — needed for expiry queries
-  createdAt      DateTime     @default(now())
+  entity         VaultEntity         @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  encFileName    String // AES encrypted original filename
+  encFileData    String? // AES encrypted file data (base64) — for small files in DB
+  blobUrl        String? // For large files stored externally (future)
+  fileSize       Int // original file size in bytes
+  mimeType       String // application/pdf, image/jpeg, etc.
+  iv             String // initialization vector
+  encTags        String? // AES encrypted comma-separated tags (e.g. "aadhaar,id proof")
+  encDescription String? // AES encrypted description/notes
+  expiryDate     DateTime? // plain — needed for expiry queries
+  createdAt      DateTime            @default(now())
   notifications  VaultNotification[]
 }
 
 model VaultNotification {
-  id           Int            @id @default(autoincrement())
-  documentId   Int
-  document     VaultDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  userEmail    String
-  entityName   String         // plain text copy for notification display
-  entityType   String         // company/person/huf/property
-  docName      String         // plain text copy of filename for notification
-  expiryDate   DateTime       // copy of expiry date
-  dismissed    Boolean        @default(false)
-  lastEmailed  DateTime?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id          Int           @id @default(autoincrement())
+  documentId  Int
+  document    VaultDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userEmail   String
+  entityName  String // plain text copy for notification display
+  entityType  String // company/person/huf/property
+  docName     String // plain text copy of filename for notification
+  expiryDate  DateTime // copy of expiry date
+  dismissed   Boolean       @default(false)
+  lastEmailed DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
   @@unique([documentId, userEmail])
 }
 
@@ -531,7 +533,7 @@ model ShadeRecipeItem {
   shade      Shade    @relation(fields: [shadeId], references: [id], onDelete: Cascade)
   chemicalId Int
   chemical   Chemical @relation(fields: [chemicalId], references: [id])
-  quantity   Float    // per 100 kg fabric or %
+  quantity   Float // per 100 kg fabric or %
   isPercent  Boolean  @default(false)
 }
 
@@ -549,13 +551,13 @@ model FoldProgram {
 }
 
 model FoldBatch {
-  id            Int            @id @default(autoincrement())
-  foldProgramId Int
-  foldProgram   FoldProgram    @relation(fields: [foldProgramId], references: [id], onDelete: Cascade)
+  id               Int            @id @default(autoincrement())
+  foldProgramId    Int
+  foldProgram      FoldProgram    @relation(fields: [foldProgramId], references: [id], onDelete: Cascade)
   batchNo          Int
   shadeId          Int?
   shade            Shade?         @relation(fields: [shadeId], references: [id])
-  shadeName        String?        // free-text shade name (if not in master)
+  shadeName        String? // free-text shade name (if not in master)
   shadeDescription String?
   marka            String?
   lots             FoldBatchLot[]
@@ -596,14 +598,14 @@ model FoldingSlipLot {
 }
 
 model PackingEntry {
-  id         Int          @id @default(autoincrement())
-  packingNo  String       @unique
-  date       DateTime
-  status     String       @default("draft") // draft | confirmed
-  notes      String?
-  lots       PackingLot[]
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id        Int          @id @default(autoincrement())
+  packingNo String       @unique
+  date      DateTime
+  status    String       @default("draft") // draft | confirmed
+  notes     String?
+  lots      PackingLot[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 }
 
 model PackingLot {
@@ -619,21 +621,21 @@ model PackingLot {
 // ─── Carry-Forward / Opening Balance ─────────────────────────────────────────
 
 model LotOpeningBalance {
-  id              Int      @id @default(autoincrement())
-  lotNo           String   @unique
-  financialYear   String   // "2025-26"
-  openingThan     Int      // carry-forward stock
-  greyThan        Int?     // original grey than from last year
-  totalDespatched Int?     // total despatched last year
-  party           String?  // party name for reference
-  quality         String?  // quality for reference
-  weight          String?  // e.g. "90g", ".98g"
-  grayMtr         Float?   // total gray meters
+  id              Int                           @id @default(autoincrement())
+  lotNo           String                        @unique
+  financialYear   String // "2025-26"
+  openingThan     Int // carry-forward stock
+  greyThan        Int? // original grey than from last year
+  totalDespatched Int? // total despatched last year
+  party           String? // party name for reference
+  quality         String? // quality for reference
+  weight          String? // e.g. "90g", ".98g"
+  grayMtr         Float? // total gray meters
   greyDate        DateTime? // original grey inward date
-  lrNo            String?   // original transport LR number
+  lrNo            String? // original transport LR number
   marka           String?
   notes           String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime                      @default(now())
   despatchHistory LotCarryForwardDespatch[]
   allocations     LotOpeningBalanceAllocation[]
 }
@@ -642,7 +644,7 @@ model LotOpeningBalanceAllocation {
   id        Int               @id @default(autoincrement())
   balanceId Int
   balance   LotOpeningBalance @relation(fields: [balanceId], references: [id], onDelete: Cascade)
-  stage     String            // 'dyed' | 'finished' | 'packed'
+  stage     String // 'dyed' | 'finished' | 'packed'
   than      Int
   notes     String?
   createdAt DateTime          @default(now())
@@ -656,23 +658,23 @@ model LotCarryForwardDespatch {
   than      Int?
   billNo    String?
   rate      Float?
-  setNo     Int               // 1, 2, 3, or 4
+  setNo     Int // 1, 2, 3, or 4
   date      DateTime?
 }
 
 // ─── Delete audit log ────────────────────────────────────────────────────────
 
 model DeleteLog {
-  id         Int      @id @default(autoincrement())
-  module     String   // 'grey' | 'despatch' | 'finish' | 'dyeing' | 'fold' | 'folding-receipt' | 'packing' | 'reprocess'
-  slipType   String?  // 'FP' | 'FR' | 'Fold' | 'Dye' | 'Grey' | 'Despatch' | 'Packing'
-  slipNo     String?  // challan / FP / FR / fold number etc.
-  lotNo      String?  // primary lot (or comma-joined list)
-  than       Int?     // primary than if applicable
-  recordId   Int?     // the deleted row's primary id
-  userEmail  String
-  details    Json?    // extra context (e.g. full lot list, child FRs etc.)
-  deletedAt  DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  module    String // 'grey' | 'despatch' | 'finish' | 'dyeing' | 'fold' | 'folding-receipt' | 'packing' | 'reprocess'
+  slipType  String? // 'FP' | 'FR' | 'Fold' | 'Dye' | 'Grey' | 'Despatch' | 'Packing'
+  slipNo    String? // challan / FP / FR / fold number etc.
+  lotNo     String? // primary lot (or comma-joined list)
+  than      Int? // primary than if applicable
+  recordId  Int? // the deleted row's primary id
+  userEmail String
+  details   Json? // extra context (e.g. full lot list, child FRs etc.)
+  deletedAt DateTime @default(now())
 
   @@index([module, deletedAt])
   @@index([lotNo])
@@ -682,30 +684,30 @@ model DeleteLog {
 
 model PetpoojaToken {
   id         Int      @id @default(autoincrement())
-  token      String   // JWT from Petpooja's authUser
+  token      String // JWT from Petpooja's authUser
   userId     Int
-  username   String?  // sessionStorage.authUser.data.username (e.g. "OFFICE")
+  username   String? // sessionStorage.authUser.data.username (e.g. "OFFICE")
   userEmail  String?
   hoId       Int
   orgId      Int
   orgName    String?
-  uniqueCode String?  // e.g. "d4zkshb9"
+  uniqueCode String? // e.g. "d4zkshb9"
   expiresAt  DateTime // decoded from JWT exp
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
 
 model AttendanceEmployee {
-  id            Int      @id @default(autoincrement())
-  petpoojaEmpId Int      @unique // Petpooja's employee_id (stable across code changes)
-  code          String?  // human-readable ID like "27"
+  id            Int       @id @default(autoincrement())
+  petpoojaEmpId Int       @unique // Petpooja's employee_id (stable across code changes)
+  code          String? // human-readable ID like "27"
   name          String
   department    String?
   designation   String?
-  status        String   @default("active") // 'active' | 'left'
+  status        String    @default("active") // 'active' | 'left'
   leftDate      DateTime?
   notes         String?
-  updatedAt     DateTime @updatedAt
+  updatedAt     DateTime  @updatedAt
 
   @@index([status])
   @@index([department])
@@ -714,89 +716,93 @@ model AttendanceEmployee {
 // ─── Tally Integration ──────────────────────────────────────────────────────
 
 model TallyLedger {
-  id             Int      @id @default(autoincrement())
-  firmCode       String   // "VI", "VCF", "VF"
+  id             Int       @id @default(autoincrement())
+  firmCode       String // "VI", "VCF", "VF"
   name           String
   parent         String?
   address        String?
   gstNo          String?
   panNo          String?
-  mobileNos      String?  // original comma-separated
-  mobileNo1      String?  // parsed first number
-  mobileNo2      String?  // parsed second number
-  mobileNo3      String?  // parsed third number
+  mobileNos      String? // original comma-separated
+  mobileNo1      String? // parsed first number
+  mobileNo2      String? // parsed second number
+  mobileNo3      String? // parsed third number
   state          String?
   stateCode      String?
   openingBalance Float?
   closingBalance Float?
-  tags           String[] @default([])
+  tags           String[]  @default([])
   lastSynced     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
   @@unique([firmCode, name])
 }
 
 // ─── Tally Outstanding ───────────────────────────────────────────────────────
 
 model TallyOutstanding {
-  id             Int      @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   firmCode       String
   partyName      String
-  parent         String?  // Sundry Debtors / Sundry Creditors
-  type           String   // "receivable" | "payable"
-  billRef        String   // invoice/bill reference
+  parent         String? // Sundry Debtors / Sundry Creditors
+  type           String // "receivable" | "payable"
+  billRef        String // invoice/bill reference
   billDate       DateTime?
   dueDate        DateTime?
-  overdueDays    Int      @default(0)
-  closingBalance Float    @default(0)
-  vchType        String?  // Sales, Receipt, Journal, Purchase
+  overdueDays    Int       @default(0)
+  closingBalance Float     @default(0)
+  vchType        String? // Sales, Receipt, Journal, Purchase
   vchNumber      String?
   vchAmount      Float?
   lastSynced     DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
+
   @@unique([firmCode, partyName, billRef, type])
 }
 
 // ─── Tally Sales ────────────────────────────────────────────────────────────
 
 model TallySales {
-  id           Int      @id @default(autoincrement())
-  firmCode     String
-  date         DateTime?
-  vchNumber    String?
-  partyName    String?
-  itemName     String?
-  quantity     Float?
-  unit         String?
-  rate         Float?
-  amount       Float?
-  vchType      String?  // Sales, Credit Note etc
-  narration    String?
-  lastSynced   DateTime?
-  createdAt    DateTime @default(now())
+  id         Int       @id @default(autoincrement())
+  firmCode   String
+  date       DateTime?
+  vchNumber  String?
+  partyName  String?
+  itemName   String?
+  quantity   Float?
+  unit       String?
+  rate       Float?
+  amount     Float?
+  vchType    String? // Sales, Credit Note etc
+  narration  String?
+  lastSynced DateTime?
+  createdAt  DateTime  @default(now())
+
   @@index([firmCode, partyName])
 }
 
 // ─── Tally Receipt/Payment ──────────────────────────────────────────────────
 
 model TallyReceipt {
-  id         Int      @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   firmCode   String
   date       DateTime?
   vchNumber  String?
   partyName  String?
   amount     Float?
-  vchType    String?  // Receipt, Payment
+  vchType    String? // Receipt, Payment
   narration  String?
   lastSynced DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
+
   @@index([firmCode, partyName])
 }
 
 // ─── Sales Orders (Google Sheets) ─────────────────────────────────────────────
 
 model SalesOrder {
-  id           Int      @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   firmCode     String
   date         String?
   orderNo      String?
@@ -813,7 +819,8 @@ model SalesOrder {
   remark       String?
   status       String?
   lastSynced   DateTime?
-  createdAt    DateTime @default(now())
+  createdAt    DateTime  @default(now())
+
   @@index([firmCode, partyName])
   @@index([firmCode, agentName])
 }
@@ -821,7 +828,7 @@ model SalesOrder {
 // ─── Contacts ─────────────────────────────────────────────────────────────────
 
 model Contact {
-  id            Int      @id @default(autoincrement())
+  id            Int       @id @default(autoincrement())
   firmCode      String
   name          String
   mobile1       String?
@@ -835,7 +842,8 @@ model Contact {
   gstNo         String?
   source        String?
   lastSynced    DateTime?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
+
   @@unique([firmCode, name])
   @@index([firmCode, tag])
 }
@@ -843,67 +851,69 @@ model Contact {
 // ─── Call Log ─────────────────────────────────────────────────────────────────
 
 model CallLog {
-  id            Int      @id @default(autoincrement())
-  partyName     String
-  firmCode      String?
-  callDate      DateTime
-  note          String?
-  promiseDate   DateTime?
-  promiseAmt    Float?
-  nextFollowUp  DateTime?
-  calledBy      String?
-  createdAt     DateTime @default(now())
+  id           Int       @id @default(autoincrement())
+  partyName    String
+  firmCode     String?
+  callDate     DateTime
+  note         String?
+  promiseDate  DateTime?
+  promiseAmt   Float?
+  nextFollowUp DateTime?
+  calledBy     String?
+  createdAt    DateTime  @default(now())
+
   @@index([partyName])
 }
 
 // ─── Bank Payments ────────────────────────────────────────────────────────────
 
 model BankPayment {
-  id           Int      @id @default(autoincrement())
-  firmCode     String
-  voucherDate  String?
-  description  String?
-  instNo       String?
-  partyName    String?
-  withdrawal   Float?
-  deposit      Float?
-  narration    String?
-  paymentDays  Int?
-  source       String?
-  lastSynced   DateTime?
-  createdAt    DateTime @default(now())
+  id          Int       @id @default(autoincrement())
+  firmCode    String
+  voucherDate String?
+  description String?
+  instNo      String?
+  partyName   String?
+  withdrawal  Float?
+  deposit     Float?
+  narration   String?
+  paymentDays Int?
+  source      String?
+  lastSynced  DateTime?
+  createdAt   DateTime  @default(now())
+
   @@index([firmCode, partyName])
 }
 
 // ─── Lot Manual Reservation ───────────────────────────────────────────────────
 
 model LotManualReservation {
-  id          Int      @id @default(autoincrement())
-  lotNo       String   @unique
-  usedThan    Int      // how many than are manually marked as used
-  note        String?  // optional reason (e.g. "dyeing batch march")
-  updatedBy   String   // user email
-  updatedAt   DateTime @updatedAt
-  createdAt   DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  lotNo     String   @unique
+  usedThan  Int // how many than are manually marked as used
+  note      String? // optional reason (e.g. "dyeing batch march")
+  updatedBy String // user email
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
 
 // ─── Shade Import Queue ───────────────────────────────────────────────────────
 
 model ShadeImportQueue {
-  id           Int      @id @default(autoincrement())
-  userId       String   // user email
-  imageBase64  String   // base64 encoded image
-  mediaType    String   @default("image/jpeg")
-  driveFileId  String?  // Google Drive file ID (once uploaded)
-  driveUrl     String?  // Google Drive view URL
-  pageLabel    String?  // "Page 1", "Page 2" etc
-  status       String   @default("pending") // pending | processing | reviewing | done | skipped
-  ocrRaw       String?  // raw GPT-4 Vision response
-  recipes      Json?    // extracted recipes array
-  savedCount   Int      @default(0)
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id          Int      @id @default(autoincrement())
+  userId      String // user email
+  imageBase64 String // base64 encoded image
+  mediaType   String   @default("image/jpeg")
+  driveFileId String? // Google Drive file ID (once uploaded)
+  driveUrl    String? // Google Drive view URL
+  pageLabel   String? // "Page 1", "Page 2" etc
+  status      String   @default("pending") // pending | processing | reviewing | done | skipped
+  ocrRaw      String? // raw GPT-4 Vision response
+  recipes     Json? // extracted recipes array
+  savedCount  Int      @default(0)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // ─── Finish Recipe Master ───────────────────────────────────────────────────
@@ -924,106 +934,109 @@ model FinishRecipe {
   tags        FinishRecipeTag[]
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
+
   @@unique([partyId, qualityId, variant])
 }
 
 model FinishRecipeItem {
-  id         Int           @id @default(autoincrement())
+  id         Int          @id @default(autoincrement())
   recipeId   Int
-  recipe     FinishRecipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  recipe     FinishRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
   chemicalId Int?
-  chemical   Chemical?     @relation(fields: [chemicalId], references: [id])
+  chemical   Chemical?    @relation(fields: [chemicalId], references: [id])
   name       String
   quantity   Float
-  unit       String        @default("kg")
+  unit       String       @default("kg")
 }
 
 model FinishRecipeTag {
-  id         Int          @id @default(autoincrement())
-  partyId    Int
-  party      Party        @relation(fields: [partyId], references: [id])
-  qualityId  Int
-  quality    Quality      @relation(fields: [qualityId], references: [id])
-  recipeId   Int
-  recipe     FinishRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
-  createdAt  DateTime     @default(now())
+  id        Int          @id @default(autoincrement())
+  partyId   Int
+  party     Party        @relation(fields: [partyId], references: [id])
+  qualityId Int
+  quality   Quality      @relation(fields: [qualityId], references: [id])
+  recipeId  Int
+  recipe    FinishRecipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
   @@unique([partyId, qualityId])
 }
 
 // ─── Inventory Module ─────────────────────────────────────────────────────────
 
 model InventoryCategory {
-  id        Int              @id @default(autoincrement())
-  name      String           @unique // "Dyes & Auxiliary", "Packing Material", "Machinery Parts", "Fuel", "Interlock Service", "Motor Service", "Others"
+  id        Int             @id @default(autoincrement())
+  name      String          @unique // "Dyes & Auxiliary", "Packing Material", "Machinery Parts", "Fuel", "Interlock Service", "Motor Service", "Others"
   items     InventoryItem[]
-  createdAt DateTime         @default(now())
+  createdAt DateTime        @default(now())
 }
 
 model InventoryItem {
-  id           Int                    @id @default(autoincrement())
-  name         String
-  unit         String                 @default("kg")
-  categoryId   Int
-  category     InventoryCategory      @relation(fields: [categoryId], references: [id])
-  chemicalId   Int?                   // link to Chemical master (for dyes/auxiliary)
-  minStock     Float?                 // reorder level
-  isActive     Boolean                @default(true)
-  createdAt    DateTime               @default(now())
-  updatedAt    DateTime               @updatedAt
-  transactions InventoryTransaction[]
+  id            Int                    @id @default(autoincrement())
+  name          String
+  unit          String                 @default("kg")
+  categoryId    Int
+  category      InventoryCategory      @relation(fields: [categoryId], references: [id])
+  chemicalId    Int? // link to Chemical master (for dyes/auxiliary)
+  minStock      Float? // reorder level
+  isActive      Boolean                @default(true)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  transactions  InventoryTransaction[]
   physicalStock PhysicalStockEntry[]
-  aliases      InventoryItemAlias[]
-  poItems      PurchaseOrderItem[]
+  aliases       InventoryItemAlias[]
+  poItems       PurchaseOrderItem[]
   deliveryItems DeliveryChallanItem[]
+
   @@unique([name, categoryId])
 }
 
 model InventoryTransaction {
-  id         Int            @id @default(autoincrement())
-  itemId     Int
-  item       InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  type       String         // "purchase" | "consumed" | "adjustment" | "return"
-  quantity   Float
-  rate       Float?
-  amount     Float?
-  date       DateTime
-  reference  String?        // invoice no, slip no, memo no
-  notes      String?
-  createdAt  DateTime       @default(now())
+  id        Int           @id @default(autoincrement())
+  itemId    Int
+  item      InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type      String // "purchase" | "consumed" | "adjustment" | "return"
+  quantity  Float
+  rate      Float?
+  amount    Float?
+  date      DateTime
+  reference String? // invoice no, slip no, memo no
+  notes     String?
+  createdAt DateTime      @default(now())
 }
 
 model PhysicalStockEntry {
-  id         Int            @id @default(autoincrement())
-  itemId     Int
-  item       InventoryItem  @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  date       DateTime       // physical count date
-  quantity   Float          // actual quantity found
-  notes      String?
-  createdAt  DateTime       @default(now())
+  id        Int           @id @default(autoincrement())
+  itemId    Int
+  item      InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  date      DateTime // physical count date
+  quantity  Float // actual quantity found
+  notes     String?
+  createdAt DateTime      @default(now())
 }
 
 // ─── Purchase Order ───────────────────────────────────────────────────────────
 
 model PurchaseOrder {
-  id         Int                 @id @default(autoincrement())
-  poNo       String              @unique
-  date       DateTime
-  partyName  String
+  id          Int                 @id @default(autoincrement())
+  poNo        String              @unique
+  date        DateTime
+  partyName   String
   partyMobile String?
-  status     String              @default("draft") // draft | sent | partial | delivered | closed
-  notes      String?
-  items      PurchaseOrderItem[]
-  deliveries DeliveryChallan[]
-  createdAt  DateTime            @default(now())
-  updatedAt  DateTime            @updatedAt
+  status      String              @default("draft") // draft | sent | partial | delivered | closed
+  notes       String?
+  items       PurchaseOrderItem[]
+  deliveries  DeliveryChallan[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 }
 
 model PurchaseOrderItem {
-  id       Int            @id @default(autoincrement())
+  id       Int           @id @default(autoincrement())
   poId     Int
-  po       PurchaseOrder  @relation(fields: [poId], references: [id], onDelete: Cascade)
+  po       PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
   itemId   Int
-  item     InventoryItem  @relation(fields: [itemId], references: [id])
+  item     InventoryItem @relation(fields: [itemId], references: [id])
   quantity Float
   rate     Float?
   notes    String?
@@ -1032,24 +1045,24 @@ model PurchaseOrderItem {
 // ─── Delivery Challan (Inward) ────────────────────────────────────────────────
 
 model DeliveryChallan {
-  id          Int                   @id @default(autoincrement())
-  challanNo   String
-  date        DateTime
-  partyName   String
-  poId        Int?                  // optional link to PO
-  po          PurchaseOrder?        @relation(fields: [poId], references: [id])
-  notes       String?
-  items       DeliveryChallanItem[]
-  createdAt   DateTime              @default(now())
+  id        Int                   @id @default(autoincrement())
+  challanNo String
+  date      DateTime
+  partyName String
+  poId      Int? // optional link to PO
+  po        PurchaseOrder?        @relation(fields: [poId], references: [id])
+  notes     String?
+  items     DeliveryChallanItem[]
+  createdAt DateTime              @default(now())
 }
 
 model DeliveryChallanItem {
-  id              Int            @id @default(autoincrement())
+  id              Int             @id @default(autoincrement())
   challanId       Int
   challan         DeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
   itemId          Int
-  item            InventoryItem  @relation(fields: [itemId], references: [id])
-  itemDescription String?        // party's name for this item (alias)
+  item            InventoryItem   @relation(fields: [itemId], references: [id])
+  itemDescription String? // party's name for this item (alias)
   quantity        Float
   rate            Float?
   amount          Float?
@@ -1065,30 +1078,31 @@ model InventoryItemAlias {
   alias     String
   usedAt    DateTime      @default(now()) // for "most recently used" sorting
   createdAt DateTime      @default(now())
+
   @@unique([alias, partyName])
 }
 
 // ─── Tally Sync Log ───────────────────────────────────────────────────────────
 
 model TallyConfig {
-  id                  Int      @id @default(autoincrement())
-  firmCode            String   @unique
-  firmName            String
-  tallyCompanyName    String
-  tallyTunnelUrl      String?
-  cfAccessClientId    String?
+  id                   Int      @id @default(autoincrement())
+  firmCode             String   @unique
+  firmName             String
+  tallyCompanyName     String
+  tallyTunnelUrl       String?
+  cfAccessClientId     String?
   cfAccessClientSecret String?
-  tallyApiSecret      String?
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  tallyApiSecret       String?
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model TallySyncLog {
   id        Int      @id @default(autoincrement())
-  type      String   // "ledger" | "outstanding" | "sales"
-  company   String   // "KSI" | "VI"
-  status    String   // "success" | "failed"
+  type      String // "ledger" | "outstanding" | "sales"
+  company   String // "KSI" | "VI"
+  status    String // "success" | "failed"
   count     Int      @default(0)
   duration  Float?
   error     String?
@@ -1109,8 +1123,348 @@ model MachineStatus {
 model MachineActivityLog {
   id        Int      @id @default(autoincrement())
   channel   Int
-  event     String   // started | stopped
+  event     String // started | stopped
   timestamp DateTime @default(now())
-  duration  Int?     // seconds since last opposite event
+  duration  Int? // seconds since last opposite event
   movement  Float?
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// INVENTORY MODULE (KSI) — replaces legacy /inventory
+// All models prefixed `Inv` so they don't collide with the existing
+// schema. See PRD.md §3 for the full spec.
+// ═════════════════════════════════════════════════════════════════════
+
+model InvParty {
+  id                  Int       @id @default(autoincrement())
+  tallyLedger         String    @unique
+  tallyGuid           String?
+  displayName         String
+  gstin               String?
+  state               String?
+  city                String?
+  whatsapp            String?
+  email               String?
+  parentGroup         String?
+  // 'Regular' | 'Composition' | 'Unregistered'
+  gstRegistrationType String    @default("Regular")
+  active              Boolean   @default(true)
+  lastSyncedAt        DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  challans InvChallan[]
+  pos      InvPO[]
+  invoices InvPurchaseInvoice[]
+
+  @@index([displayName])
+  @@index([gstin])
+}
+
+model InvItemGroup {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  category String // 'Chemical' | 'Dye' | 'Auxiliary' | 'Spare'
+  items    InvItem[]
+}
+
+// LAYER 2 — Tally alias items (small, synced from Tally)
+model InvTallyAlias {
+  id                Int       @id @default(autoincrement())
+  tallyStockItem    String    @unique
+  tallyGuid         String?
+  displayName       String
+  category          String
+  hsn               String?
+  gstRate           Decimal   @db.Decimal(5, 2)
+  unit              String
+  defaultTrackStock Boolean   @default(false)
+  godownOverride    String?
+  active            Boolean   @default(true)
+  lastSyncedAt      DateTime?
+
+  items InvItem[]
+}
+
+// LAYER 1 — Real items (app-native, large catalog)
+model InvItem {
+  id              Int           @id @default(autoincrement())
+  displayName     String        @unique
+  aliasId         Int
+  alias           InvTallyAlias @relation(fields: [aliasId], references: [id])
+  groupId         Int?
+  group           InvItemGroup? @relation(fields: [groupId], references: [id])
+  unit            String
+  hsnOverride     String?
+  gstOverride     Decimal?      @db.Decimal(5, 2)
+  trackStock      Boolean
+  // 'approved' | 'pending_review' | 'rejected'
+  reviewStatus    String        @default("approved")
+  createdById     Int?
+  reviewedById    Int?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  active          Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  poLines        InvPOLine[]
+  challanLines   InvChallanLine[]
+  invoiceLines   InvPurchaseInvoiceLine[]
+  stockMovements InvStockMovement[]
+
+  @@index([displayName])
+  @@index([reviewStatus])
+}
+
+model InvSeriesCounter {
+  seriesType String // 'inward' (Phase 2: 'po','invoice')
+  fy         String // '2026-27'
+  lastNo     Int      @default(0)
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@id([seriesType, fy])
+}
+
+model InvPO {
+  id                 Int       @id @default(autoincrement())
+  partyId            Int
+  party              InvParty  @relation(fields: [partyId], references: [id])
+  poNo               String    @unique
+  poDate             DateTime
+  expectedDate       DateTime?
+  // 'Draft' | 'Approved' | 'Open' | 'Partial' | 'Closed' | 'Cancelled'
+  status             String    @default("Draft")
+  totalAmount        Decimal?  @db.Decimal(16, 2)
+  defaultDiscountPct Decimal?  @db.Decimal(6, 3)
+  terms              String?
+  notes              String?
+  pdfDriveUrl        String?
+  whatsappSentAt     DateTime?
+  approvedById       Int?
+  approvedAt         DateTime?
+  createdById        Int?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  lines    InvPOLine[]
+  challans InvChallan[]
+
+  @@index([partyId, poDate])
+  @@index([status])
+}
+
+model InvPOLine {
+  id             Int      @id @default(autoincrement())
+  poId           Int
+  po             InvPO    @relation(fields: [poId], references: [id], onDelete: Cascade)
+  lineNo         Int
+  itemId         Int
+  item           InvItem  @relation(fields: [itemId], references: [id])
+  qty            Decimal  @db.Decimal(14, 3)
+  unit           String
+  rate           Decimal  @db.Decimal(14, 4)
+  amount         Decimal  @db.Decimal(16, 2)
+  receivedQty    Decimal  @default(0) @db.Decimal(14, 3)
+  discountType   String? // 'PCT' | 'AMT'
+  discountValue  Decimal? @db.Decimal(10, 4)
+  discountAmount Decimal? @db.Decimal(14, 2)
+  remarks        String?
+
+  challanLines InvChallanLine[]
+}
+
+model InvChallan {
+  id                    Int      @id @default(autoincrement())
+  partyId               Int
+  party                 InvParty @relation(fields: [partyId], references: [id])
+  poId                  Int?
+  po                    InvPO?   @relation(fields: [poId], references: [id])
+  internalSeriesNo      Int
+  seriesFy              String
+  challanNo             String
+  challanDate           DateTime
+  biltyNo               String?
+  vehicleNo             String?
+  transporter           String?
+  defaultDiscountPct    Decimal? @db.Decimal(6, 3)
+  totalQty              Decimal? @db.Decimal(14, 3)
+  totalAmount           Decimal? @db.Decimal(16, 2)
+  // 'Draft' | 'Verified' | 'PendingApproval' | 'PendingInvoice' | 'Invoiced' | 'Cancelled'
+  status                String   @default("Draft")
+  varianceFlag          Boolean  @default(false)
+  hasPendingReviewItems Boolean  @default(false)
+  hasRatelessLines      Boolean  @default(false)
+  driveFolderUrl        String?
+  notes                 String?
+  cancelledReason       String?
+  createdById           Int?
+  verifiedById          Int?
+  cancelledById         Int?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  lines       InvChallanLine[]
+  attachments InvChallanAttachment[]
+  invoiceLink InvInvoiceChallan?
+
+  @@unique([partyId, challanNo])
+  @@unique([seriesFy, internalSeriesNo])
+  @@index([challanDate])
+  @@index([status])
+}
+
+model InvChallanLine {
+  id              Int        @id @default(autoincrement())
+  challanId       Int
+  challan         InvChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  lineNo          Int
+  itemId          Int
+  item            InvItem    @relation(fields: [itemId], references: [id])
+  poLineId        Int?
+  poLine          InvPOLine? @relation(fields: [poLineId], references: [id])
+  qty             Decimal    @db.Decimal(14, 3)
+  unit            String
+  rate            Decimal?   @db.Decimal(14, 4)
+  discountType    String?
+  discountValue   Decimal?   @db.Decimal(10, 4)
+  discountAmount  Decimal?   @db.Decimal(14, 2)
+  grossAmount     Decimal?   @db.Decimal(16, 2)
+  amount          Decimal?   @db.Decimal(16, 2)
+  damageQty       Decimal    @default(0) @db.Decimal(14, 3)
+  damageRemarks   String?
+  rateVariancePct Decimal?   @db.Decimal(6, 2)
+  varianceReason  String?
+
+  invoiceLines InvPurchaseInvoiceLine[]
+}
+
+model InvChallanAttachment {
+  id           Int        @id @default(autoincrement())
+  challanId    Int
+  challan      InvChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  kind         String // 'challan_photo' | 'lr' | 'weighing'
+  driveFileId  String
+  driveViewUrl String
+  filename     String?
+  uploadedById Int?
+  uploadedAt   DateTime   @default(now())
+}
+
+model InvPurchaseInvoice {
+  id                    Int       @id @default(autoincrement())
+  partyId               Int
+  party                 InvParty  @relation(fields: [partyId], references: [id])
+  supplierInvoiceNo     String
+  supplierInvoiceDate   DateTime
+  // 'IGST' | 'CGST_SGST' | 'NONE'
+  gstTreatment          String
+  defaultDiscountPct    Decimal?  @db.Decimal(6, 3)
+  taxableAmount         Decimal   @db.Decimal(16, 2)
+  igstAmount            Decimal   @default(0) @db.Decimal(14, 2)
+  cgstAmount            Decimal   @default(0) @db.Decimal(14, 2)
+  sgstAmount            Decimal   @default(0) @db.Decimal(14, 2)
+  freightAmount         Decimal   @default(0) @db.Decimal(14, 2)
+  totalDiscountAmount   Decimal   @default(0) @db.Decimal(14, 2)
+  otherCharges          Decimal   @default(0) @db.Decimal(14, 2)
+  roundOff              Decimal   @default(0) @db.Decimal(8, 2)
+  totalAmount           Decimal   @db.Decimal(16, 2)
+  // 'Draft' | 'Verified' | 'PushPending' | 'PushedToTally' | 'Voided'
+  status                String    @default("Draft")
+  hasPendingReviewItems Boolean   @default(false)
+  tallyVoucherNo        String?
+  tallyVoucherGuid      String?
+  tallyPushedAt         DateTime?
+  tallyPayload          Json?
+  tallyResponse         Json?
+  pushAttempts          Int       @default(0)
+  lastPushError         String?
+  notes                 String?
+  driveFolderUrl        String?
+  createdById           Int?
+  verifiedById          Int?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  lines    InvPurchaseInvoiceLine[]
+  challans InvInvoiceChallan[]
+
+  @@unique([partyId, supplierInvoiceNo])
+  @@index([supplierInvoiceDate])
+  @@index([status])
+}
+
+model InvPurchaseInvoiceLine {
+  id             Int                @id @default(autoincrement())
+  invoiceId      Int
+  invoice        InvPurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  lineNo         Int
+  itemId         Int?
+  item           InvItem?           @relation(fields: [itemId], references: [id])
+  challanLineId  Int?
+  challanLine    InvChallanLine?    @relation(fields: [challanLineId], references: [id])
+  description    String?
+  freeTextLabel  String?
+  qty            Decimal?           @db.Decimal(14, 3)
+  unit           String?
+  rate           Decimal?           @db.Decimal(14, 4)
+  discountType   String?
+  discountValue  Decimal?           @db.Decimal(10, 4)
+  discountAmount Decimal?           @db.Decimal(14, 2)
+  grossAmount    Decimal?           @db.Decimal(16, 2)
+  amount         Decimal            @db.Decimal(16, 2)
+  gstRate        Decimal?           @db.Decimal(5, 2)
+  gstAmount      Decimal?           @db.Decimal(14, 2)
+  total          Decimal?           @db.Decimal(16, 2)
+}
+
+model InvInvoiceChallan {
+  invoiceId Int
+  invoice   InvPurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  challanId Int                @unique
+  challan   InvChallan         @relation(fields: [challanId], references: [id])
+
+  @@id([invoiceId, challanId])
+}
+
+model InvStockMovement {
+  id           Int      @id @default(autoincrement())
+  itemId       Int
+  item         InvItem  @relation(fields: [itemId], references: [id])
+  movementDate DateTime
+  // 'IN' | 'OUT'
+  direction    String
+  qty          Decimal  @db.Decimal(14, 3)
+  unit         String?
+  // 'CHALLAN' | 'CONSUMPTION' | 'ADJUST'
+  refType      String?
+  refId        Int?
+  remarks      String?
+  createdAt    DateTime @default(now())
+
+  @@index([itemId, movementDate])
+}
+
+model InvTallyConfig {
+  id                Int      @id @default(1)
+  // {"Chemical":"Chemical Purchase","Dye":"Dye Purchase",...}
+  purchaseLedgerMap Json
+  godownMap         Json
+  gstLedgers        Json
+  roundOffLedger    String   @default("Round Off")
+  freightLedger     String   @default("Freight Inward (GST)")
+  discountLedger    String   @default("Discount (GST)")
+  updatedAt         DateTime @default(now()) @updatedAt
+}
+
+model InvAuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  action     String
+  entityType String?
+  entityId   Int?
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
 }
