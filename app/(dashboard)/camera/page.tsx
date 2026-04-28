@@ -94,7 +94,7 @@ export default function CameraPage() {
               }
               const diffPercent = totalSampled > 0 ? (diffCount / totalSampled) * 100 : 0
               setMovement(Math.round(diffPercent * 10) / 10)
-              if (diffPercent > 23) setLiveStatus('running')
+              if (diffPercent > 5) setLiveStatus('running')
               else setLiveStatus('stopped')
             } else {
               setLiveStatus('running')
@@ -320,7 +320,7 @@ export default function CameraPage() {
           <span className="text-xs text-gray-500">{movement}%</span>
         </div>
         <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div className={`h-full rounded-full transition-all duration-500 ${movement > 23 ? 'bg-green-500' : 'bg-red-500'}`}
+          <div className={`h-full rounded-full transition-all duration-500 ${movement > 5 ? 'bg-green-500' : 'bg-red-500'}`}
             style={{ width: `${Math.min(100, movement)}%` }} />
         </div>
         <div className="flex justify-between mt-1 text-[9px] text-gray-400">
