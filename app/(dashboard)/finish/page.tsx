@@ -1192,8 +1192,14 @@ export default function FinishStockPage() {
   }, [packingEntries])
 
   /* ── Packing expand state ──────────────────────────────────────── */
-  const [packExpandedParties, setPackExpandedParties] = useState<Set<string>>(new Set())
-  const [packExpandedQualities, setPackExpandedQualities] = useState<Set<string>>(new Set())
+  const [packExpandedParties, setPackExpandedParties] = useState<Set<string>>(() => {
+    const arr = readViewState(FINISH_VIEW_KEY).packExpandedParties
+    return new Set(Array.isArray(arr) ? arr : [])
+  })
+  const [packExpandedQualities, setPackExpandedQualities] = useState<Set<string>>(() => {
+    const arr = readViewState(FINISH_VIEW_KEY).packExpandedQualities
+    return new Set(Array.isArray(arr) ? arr : [])
+  })
   const [packView, setPackView] = useState<'party' | 'desp'>(
     () => (readViewState(FINISH_VIEW_KEY).packView === 'desp' ? 'desp' : 'party')
   )
@@ -1207,11 +1213,16 @@ export default function FinishStockPage() {
 
   // Persist collapse/tab state so it survives a nav to /lot/[id] and back.
   useEffect(() => {
-    persistViewState(FINISH_VIEW_KEY, { tab, packView, expandedDesp: [...expandedDesp] })
-  }, [tab, packView, expandedDesp])
+    persistViewState(FINISH_VIEW_KEY, {
+      tab, packView,
+      expandedDesp: [...expandedDesp],
+      packExpandedParties: [...packExpandedParties],
+      packExpandedQualities: [...packExpandedQualities],
+    })
+  }, [tab, packView, expandedDesp, packExpandedParties, packExpandedQualities])
 
-  // Restore scroll + ring-highlight the clicked lot card after back-nav.
-  useLotBackHighlight(FINISH_VIEW_KEY, tab === 'packing' && packView === 'desp')
+  // Restore scroll + ring-highlight the clicked lot card after back-nav (both views).
+  useLotBackHighlight(FINISH_VIEW_KEY, tab === 'packing' && (packView === 'desp' || packView === 'party'))
   const [despSearch, setDespSearch] = useState('')
 
   function toggleDespSelect(despNo: string) {
@@ -3293,12 +3304,22 @@ export default function FinishStockPage() {
                                           <div className="flex flex-wrap gap-1.5">
                                             {qLots.map((lot, li) => {
                                               const shade = shadeDisplay(lot.shadeName, lot.shadeDescription)
+                                              const recs = (lot as any).foldingReceipts || []
+                                              const received = recs.reduce((s: number, r: any) => s + r.than, 0)
+                                              const balance = lot.than - received
+                                              // Hide lots that have been fully received in folding (zero balance)
+                                              if (balance <= 0) return null
+                                              const partial = received > 0
                                               return (
-                                                <div key={li} className="inline-flex items-center gap-1">
-                                                  <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
-                                                    className="inline-flex items-center gap-0.5 text-[11px] text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30">
-                                                    {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span>
-                                                  </Link>
+                                                <div key={li} data-lot-card={lot.lotNo} className="inline-flex items-center gap-1">
+                                                  <LotLink lotNo={lot.lotNo} storageKey={FINISH_VIEW_KEY}
+                                                    className="inline-flex items-center gap-1 text-[11px] text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30">
+                                                    <span>{lot.lotNo}</span>
+                                                    <span className="font-bold text-emerald-700 dark:text-emerald-300">{balance}</span>
+                                                    {partial && (
+                                                      <span className="text-[9px] text-gray-500 dark:text-gray-400">/{lot.than}</span>
+                                                    )}
+                                                  </LotLink>
                                                   {shade && <span className="text-[10px] text-gray-400 dark:text-gray-500">{shade}</span>}
                                                   {lot.meter != null && <span className="text-[10px] text-gray-400 dark:text-gray-500">{lot.meter}m</span>}
                                                 </div>
