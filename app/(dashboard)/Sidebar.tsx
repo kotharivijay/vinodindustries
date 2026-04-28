@@ -74,9 +74,14 @@ const ksiNavGroups = [
   {
     label: 'Inventory',
     links: [
-      { href: '/inventory/dyes-auxiliary', label: 'Items Master', icon: '🧪' },
-      { href: '/inventory/purchase-orders', label: 'Purchase Orders', icon: '📝' },
-      { href: '/inventory/delivery', label: 'Delivery Challan', icon: '📥' },
+      { href: '/inventory', label: 'Hub', icon: '🏠' },
+      { href: '/inventory/challans', label: 'Inward Challans', icon: '📥' },
+      { href: '/inventory/po', label: 'Purchase Orders', icon: '📝' },
+      { href: '/inventory/invoices', label: 'Purchase Invoices', icon: '🧾' },
+      { href: '/inventory/items', label: 'Items Master', icon: '📦' },
+      { href: '/inventory/parties', label: 'Parties', icon: '👥' },
+      { href: '/inventory/aliases', label: 'Tally Aliases', icon: '🏷️' },
+      { href: '/inventory/config', label: 'Tally Config', icon: '⚙️' },
     ],
   },
   {
