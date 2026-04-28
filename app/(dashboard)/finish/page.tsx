@@ -1145,13 +1145,21 @@ export default function FinishStockPage() {
     const records: { party: string; quality: string; weight: string | null; slip: PackingSlipDetail; lotNo: string; than: number }[] = []
     for (const pe of packingEntries) {
       for (const l of pe.lots) {
+        // Show balance (= packed than − received in folding − despatched)
+        // so quality/party totals reflect what's still pending in folding,
+        // not the original finish-program allocation.
+        const recs = (l as any).foldingReceipts || []
+        const received = recs.reduce((s: number, r: any) => s + r.than, 0)
+        const despatched = (l as any).despatchedThan || 0
+        const balance = Math.max(0, l.than - received - despatched)
+        if (balance <= 0) continue
         records.push({
           party: l.party ?? 'Unknown',
           quality: l.quality ?? 'Unknown',
           weight: l.weight,
           slip: { id: pe.id, slipNo: pe.slipNo, date: pe.date, lots: pe.lots, totalThan: pe.totalThan, meter: pe.meter, finishDespSlipNo: pe.finishDespSlipNo },
           lotNo: l.lotNo,
-          than: l.than,
+          than: balance,
         })
       }
     }
@@ -3282,7 +3290,15 @@ export default function FinishStockPage() {
                                   <div className="border-t border-gray-50 dark:border-gray-700 divide-y divide-gray-50 dark:divide-gray-700">
                                     {qg.slips.map(slip => {
                                       const qLots = slip.lots.filter(l => (l.quality ?? 'Unknown') === qg.quality && (l.party ?? 'Unknown') === pg.party)
-                                      const slipQualityThan = qLots.reduce((s, l) => s + l.than, 0)
+                                      // Slip total mirrors the per-lot balance shown below: pack qty − received − despatched.
+                                      const slipQualityThan = qLots.reduce((s, l) => {
+                                        const recs = (l as any).foldingReceipts || []
+                                        const rec = recs.reduce((x: number, r: any) => x + r.than, 0)
+                                        const desp = (l as any).despatchedThan || 0
+                                        return s + Math.max(0, l.than - rec - desp)
+                                      }, 0)
+                                      // Hide whole slip row if every lot in it is fully done.
+                                      if (slipQualityThan <= 0) return null
                                       return (
                                         <div key={slip.id} className="px-3 py-2.5">
                                           <div className="flex items-center justify-between mb-1">
