@@ -20,6 +20,7 @@ interface PrintData {
   partyName: string | null
   qualityName: string | null
   foldGroups: FoldGroup[]
+  lotSummary: { lotNo: string; than: number }[]
   totalThan: number
   totalMeter: number | null
   chemicals: { name: string; quantity: number | null; unit: string }[]
@@ -38,6 +39,17 @@ function buildWhatsAppText(data: PrintData): string {
   if (data.qualityName) lines.push(`🏷️ Quality: ${data.qualityName}`)
   lines.push('')
   lines.push(`*Finish Prg No: ${data.slipNo}*`)
+
+  // Lot Summary — same block that appears at the top of the print page
+  if (data.lotSummary && data.lotSummary.length > 0) {
+    lines.push('')
+    lines.push('📋 *Lot Summary*')
+    const longest = data.lotSummary.reduce((m, l) => Math.max(m, l.lotNo.length), 0)
+    for (const l of data.lotSummary) {
+      lines.push(`  ${l.lotNo.padEnd(longest)}  ${l.than}`)
+    }
+    lines.push(`  ${'Total'.padEnd(longest)}  ${data.totalThan}`)
+  }
 
   for (const fg of data.foldGroups) {
     lines.push('')
@@ -97,6 +109,16 @@ function buildReceipt(data: PrintData, width = 32): string {
   if (data.partyName) lines.push(kv('Party:', data.partyName.substring(0, width - 8)))
   if (data.qualityName) lines.push(kv('Quality:', data.qualityName.substring(0, width - 10)))
   lines.push(div())
+
+  if (data.lotSummary && data.lotSummary.length > 0) {
+    lines.push('LOT SUMMARY')
+    lines.push(div())
+    for (const l of data.lotSummary) {
+      lines.push(kv(`  ${l.lotNo}`, `${l.than}T`))
+    }
+    lines.push(kv('  Total', `${data.totalThan}T`))
+    lines.push(div())
+  }
 
   for (const fg of data.foldGroups) {
     lines.push(`Fold: ${fg.foldNo}`)
@@ -180,6 +202,21 @@ export default function PrintActions({ data }: { data: PrintData }) {
       if (data.partyName) await printer.printText(`Party: ${data.partyName}`)
       if (data.qualityName) await printer.printText(`Quality: ${data.qualityName}`)
       await printer.printDivider('-', W)
+
+      // Lot Summary — printed before the fold/slip detail
+      if (data.lotSummary && data.lotSummary.length > 0) {
+        await printer.printLine('LOT SUMMARY', true, 'normal')
+        await printer.printDivider('-', W)
+        for (const l of data.lotSummary) {
+          const valStr = `${l.than}T`
+          const pad = Math.max(1, W - 2 - l.lotNo.length - valStr.length)
+          await printer.printLine(`  ${l.lotNo}${' '.repeat(pad)}${valStr}`, false, 'normal')
+        }
+        const tValStr = `${data.totalThan}T`
+        const tPad = Math.max(1, W - 2 - 'Total'.length - tValStr.length)
+        await printer.printLine(`  Total${' '.repeat(tPad)}${tValStr}`, true, 'normal')
+        await printer.printDivider('-', W)
+      }
 
       // Fold → Slip → Lots
       for (const fg of data.foldGroups) {

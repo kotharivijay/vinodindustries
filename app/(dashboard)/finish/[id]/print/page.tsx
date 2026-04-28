@@ -100,6 +100,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
     partyName,
     qualityName,
     foldGroups,
+    lotSummary,
     totalThan,
     totalMeter: entry.meter,
     chemicals,
