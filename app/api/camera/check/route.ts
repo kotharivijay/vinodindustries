@@ -6,7 +6,11 @@ import { createHash } from 'crypto'
 const NVR_BASE = 'https://nvr3.vinodindustries.co.in'
 const NVR_USER = 'admin'
 const NVR_PASS = 'admin1234'
-const MOVEMENT_THRESHOLD_RUNNING = 23
+// Camera noise level dropped after the recent firmware/lens cleanup, so we
+// can use a much tighter threshold without false-positive flapping.
+//   movement < 5%  → stopped
+//   movement > 5%  → running
+const MOVEMENT_THRESHOLD_RUNNING = 5
 
 async function fetchSnapshot(channel: number): Promise<Buffer | null> {
   const url = `${NVR_BASE}/cgi-bin/snapshot.cgi?channel=${channel}`
