@@ -62,6 +62,23 @@ export async function GET() {
   const { buildLotInfoMap } = await import('@/lib/lot-info')
   const lotNosArr = Array.from(allLotNos)
 
+  // Despatched per lot — combine legacy single-lot DespatchEntry rows (no
+  // children) with DespatchEntryLot rows so multi-lot challans don't get
+  // attributed entirely to the parent's first lot.
+  const [despParent, despChild] = await Promise.all([
+    prisma.despatchEntry.groupBy({
+      where: { lotNo: { in: lotNosArr }, despatchLots: { none: {} } },
+      by: ['lotNo'], _sum: { than: true },
+    }),
+    prisma.despatchEntryLot.groupBy({
+      where: { lotNo: { in: lotNosArr } },
+      by: ['lotNo'], _sum: { than: true },
+    }),
+  ])
+  const despMap = new Map<string, number>()
+  for (const d of despParent) despMap.set(d.lotNo.toLowerCase().trim(), (despMap.get(d.lotNo.toLowerCase().trim()) || 0) + (d._sum.than || 0))
+  for (const d of despChild)  despMap.set(d.lotNo.toLowerCase().trim(), (despMap.get(d.lotNo.toLowerCase().trim()) || 0) + (d._sum.than || 0))
+
   // Run lot info + dyeing queries in parallel
   const [lotInfoMap, dyeingEntries] = await Promise.all([
     buildLotInfoMap(lotNosArr),
@@ -115,6 +132,7 @@ export async function GET() {
         foldingReceipts: l.foldingReceipts || [],
         receivedThan: l.receivedThan || 0,
         foldingComplete: l.foldingComplete || false,
+        despatchedThan: despMap.get(l.lotNo.toLowerCase().trim()) || 0,
       }
     }),
   }))
@@ -163,6 +181,7 @@ export async function GET() {
           foldingReceipts: [],
           receivedThan: 0,
           foldingComplete: false,
+          despatchedThan: 0,
         }],
       })
     }

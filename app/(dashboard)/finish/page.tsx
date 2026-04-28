@@ -210,6 +210,7 @@ interface PackingLot {
   receivedThan?: number
   foldingComplete?: boolean
   foldNo?: string | null
+  despatchedThan?: number
 }
 
 interface PackingEntry {
@@ -3306,10 +3307,12 @@ export default function FinishStockPage() {
                                               const shade = shadeDisplay(lot.shadeName, lot.shadeDescription)
                                               const recs = (lot as any).foldingReceipts || []
                                               const received = recs.reduce((s: number, r: any) => s + r.than, 0)
-                                              const balance = lot.than - received
-                                              // Hide lots that have been fully received in folding (zero balance)
+                                              const despatched = (lot as any).despatchedThan || 0
+                                              // Balance = pack qty − received in folding − already despatched
+                                              const balance = lot.than - received - despatched
+                                              // Hide lots that have been fully received/despatched (zero or less balance)
                                               if (balance <= 0) return null
-                                              const partial = received > 0
+                                              const partial = received > 0 || despatched > 0
                                               return (
                                                 <div key={li} data-lot-card={lot.lotNo} className="inline-flex items-center gap-1">
                                                   <LotLink lotNo={lot.lotNo} storageKey={FINISH_VIEW_KEY}
