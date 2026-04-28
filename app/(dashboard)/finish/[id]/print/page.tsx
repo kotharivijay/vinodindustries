@@ -20,6 +20,13 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
   const lotNos = lots.map((l: any) => l.lotNo)
   const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
 
+  // Aggregate by lotNo for the top-of-print Lot Summary section.
+  const lotSummaryMap = new Map<string, number>()
+  for (const l of lots) lotSummaryMap.set(l.lotNo, (lotSummaryMap.get(l.lotNo) || 0) + (l.than || 0))
+  const lotSummary = Array.from(lotSummaryMap.entries())
+    .map(([lotNo, than]) => ({ lotNo, than }))
+    .sort((a, b) => a.lotNo.localeCompare(b.lotNo))
+
   // Get party + quality from lot info
   const lotInfoMap = await buildLotInfoMap(lotNos)
   const partyNames = [...new Set(Array.from(lotInfoMap.values()).map(v => v.party).filter(Boolean))]
@@ -142,6 +149,33 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
           <span className="font-semibold w-24">Quality:</span>
           <span>{qualityName || '\u2014'}</span>
         </div>
+      </div>
+
+      {/* Lot Summary — aggregated than per unique lot in this finish program */}
+      <div className="mb-4 border border-gray-300 rounded">
+        <h3 className="text-sm font-bold uppercase tracking-wide px-3 py-1.5 border-b border-gray-300 bg-gray-50">
+          Lot Summary
+        </h3>
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="border-b border-gray-300">
+              <th className="text-left py-1 px-3 font-semibold">Lot No</th>
+              <th className="text-right py-1 px-3 font-semibold w-32">Total Than</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lotSummary.map(l => (
+              <tr key={l.lotNo} className="border-b border-gray-200">
+                <td className="py-1 px-3 font-medium">{l.lotNo}</td>
+                <td className="py-1 px-3 text-right">{l.than}</td>
+              </tr>
+            ))}
+            <tr>
+              <td className="py-1 px-3 font-bold">Total</td>
+              <td className="py-1 px-3 text-right font-bold">{totalThan}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       {/* Fold → Slip → Lots */}
