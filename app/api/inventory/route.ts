@@ -34,8 +34,27 @@ export async function GET(req: NextRequest) {
   await ensureCategories()
 
   const categoryName = req.nextUrl.searchParams.get('category') || 'Dyes & Auxiliary'
+  const all = categoryName === 'all'
 
-  const category = await db.inventoryCategory.findUnique({
+  // 'all' returns active items from every category — used by Delivery Challan
+  // entry which now picks from a unified list (Dyes/Packing/Machinery/Fuel/etc.).
+  const categories = all
+    ? await db.inventoryCategory.findMany({
+        orderBy: { name: 'asc' },
+        include: {
+          items: {
+            where: { isActive: true },
+            include: {
+              transactions: { orderBy: { date: 'desc' } },
+              physicalStock: { orderBy: { date: 'desc' }, take: 1 },
+            },
+            orderBy: { name: 'asc' },
+          },
+        },
+      })
+    : null
+
+  const category = all ? null : await db.inventoryCategory.findUnique({
     where: { name: categoryName },
     include: {
       items: {
@@ -49,9 +68,13 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  if (!category) return NextResponse.json({ error: 'Category not found' }, { status: 404 })
+  if (!all && !category) return NextResponse.json({ error: 'Category not found' }, { status: 404 })
 
-  const items = category.items.map((item: any) => {
+  const flatItems = all
+    ? categories!.flatMap((c: any) => c.items.map((i: any) => ({ ...i, _categoryName: c.name, _categoryId: c.id })))
+    : (category!.items as any[])
+
+  const items = flatItems.map((item: any) => {
     const purchased = item.transactions
       .filter((t: any) => t.type === 'purchase')
       .reduce((s: number, t: any) => s + t.quantity, 0)
@@ -81,6 +104,8 @@ export async function GET(req: NextRequest) {
       unit: item.unit,
       chemicalId: item.chemicalId,
       minStock: item.minStock,
+      categoryName: item._categoryName,
+      categoryId: item._categoryId,
       openingStock: Math.round(openingStock * 1000) / 1000,
       purchased: Math.round(purchased * 1000) / 1000,
       consumed: Math.round(consumed * 1000) / 1000,
@@ -97,9 +122,14 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  const categories = await db.inventoryCategory.findMany({ orderBy: { name: 'asc' } })
+  const allCategories = await db.inventoryCategory.findMany({ orderBy: { name: 'asc' } })
 
-  return NextResponse.json({ category: category.name, categoryId: category.id, items, categories })
+  return NextResponse.json({
+    category: all ? 'all' : category!.name,
+    categoryId: all ? null : category!.id,
+    items,
+    categories: allCategories,
+  })
 }
 
 // POST — add item or transaction

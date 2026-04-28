@@ -7,11 +7,14 @@ import BackButton from '../../BackButton'
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 const fmtINR = (n: number) => '₹' + n.toLocaleString('en-IN')
 
-interface DCItem { itemId: string; itemName: string; unit: string; itemDescription: string; quantity: string; rate: string }
+interface DCItem { itemId: string; itemName: string; unit: string; itemDescription: string; quantity: string; rate: string; categoryName?: string }
 
 export default function DeliveryChallanPage() {
   const { data: deliveries = [], mutate } = useSWR('/api/inventory/delivery', fetcher, { revalidateOnFocus: false })
-  const { data: invData } = useSWR('/api/inventory?category=Dyes%20%26%20Auxiliary', fetcher, { revalidateOnFocus: false })
+  // Pull items from EVERY inventory category (Dyes, Packing, Machinery, Fuel,
+  // Interlock, Motor, Others) so this single Delivery Challan entry can issue
+  // any item.
+  const { data: invData } = useSWR('/api/inventory?category=all', fetcher, { revalidateOnFocus: false })
   const { data: pos = [] } = useSWR('/api/inventory/po', fetcher, { revalidateOnFocus: false })
   const { data: ledgers = [] } = useSWR('/api/inventory/po?action=ledgers', fetcher, { revalidateOnFocus: false })
   const items = invData?.items || []
@@ -94,6 +97,7 @@ export default function DeliveryChallanPage() {
     setDcItems(prev => [...prev, {
       itemId: String(item.id), itemName: item.name, unit: item.unit,
       itemDescription: alias?.alias || item.name, quantity: '', rate: '',
+      categoryName: item.categoryName,
     }])
     setItemDropOpen(false)
     setItemSearch('')
@@ -227,8 +231,13 @@ export default function DeliveryChallanPage() {
               <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-xl max-h-40 overflow-y-auto">
                 {filteredItems.filter((i: any) => !dcItems.some(d => d.itemId === String(i.id))).map((i: any) => (
                   <button key={i.id} onClick={() => addItem(i)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-gray-700 dark:text-gray-200">
-                    {i.name} <span className="text-[10px] text-gray-400">({i.unit})</span>
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-gray-700 dark:text-gray-200 flex items-center justify-between gap-2">
+                    <span className="truncate">{i.name} <span className="text-[10px] text-gray-400">({i.unit})</span></span>
+                    {i.categoryName && (
+                      <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 shrink-0">
+                        {i.categoryName}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -241,7 +250,14 @@ export default function DeliveryChallanPage() {
               {dcItems.map((item, idx) => (
                 <div key={idx} className="border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{item.itemName}</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-xs font-medium text-gray-700 dark:text-gray-200 truncate">{item.itemName}</span>
+                      {item.categoryName && (
+                        <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 shrink-0">
+                          {item.categoryName}
+                        </span>
+                      )}
+                    </div>
                     <button onClick={() => removeItem(idx)} className="text-red-400 text-sm">×</button>
                   </div>
                   <div className="flex gap-2">

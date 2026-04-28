@@ -74,15 +74,9 @@ const ksiNavGroups = [
   {
     label: 'Inventory',
     links: [
-      { href: '/inventory/dyes-auxiliary', label: 'Dyes & Auxiliary', icon: '🧪' },
+      { href: '/inventory/dyes-auxiliary', label: 'Items Master', icon: '🧪' },
       { href: '/inventory/purchase-orders', label: 'Purchase Orders', icon: '📝' },
       { href: '/inventory/delivery', label: 'Delivery Challan', icon: '📥' },
-      { href: '/inventory/packing', label: 'Packing Material', icon: '📦' },
-      { href: '/inventory/machinery', label: 'Machinery Parts', icon: '⚙️' },
-      { href: '/inventory/fuel', label: 'Fuel', icon: '⛽' },
-      { href: '/inventory/interlock', label: 'Interlock Service', icon: '🔧' },
-      { href: '/inventory/motor', label: 'Motor Service', icon: '🔌' },
-      { href: '/inventory/others', label: 'Others', icon: '📋' },
     ],
   },
   {
