@@ -3330,17 +3330,21 @@ export default function FinishStockPage() {
                                               if (balance <= 0) return null
                                               const partial = received > 0 || despatched > 0
                                               return (
-                                                <div key={li} data-lot-card={lot.lotNo} className="inline-flex items-center gap-1">
-                                                  <LotLink lotNo={lot.lotNo} storageKey={FINISH_VIEW_KEY}
-                                                    className="inline-flex items-center gap-1 text-[11px] text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30">
-                                                    <span>{lot.lotNo}</span>
-                                                    <span className="font-bold text-emerald-700 dark:text-emerald-300">{balance}</span>
-                                                    {partial && (
-                                                      <span className="text-[9px] text-gray-500 dark:text-gray-400">/{lot.than}</span>
-                                                    )}
-                                                  </LotLink>
-                                                  {shade && <span className="text-[10px] text-gray-400 dark:text-gray-500">{shade}</span>}
-                                                  {lot.meter != null && <span className="text-[10px] text-gray-400 dark:text-gray-500">{lot.meter}m</span>}
+                                                <div key={li} data-lot-card={lot.lotNo} className="inline-flex flex-col items-start gap-0.5">
+                                                  <div className="inline-flex items-center gap-1">
+                                                    <LotLink lotNo={lot.lotNo} storageKey={FINISH_VIEW_KEY}
+                                                      className="inline-flex items-center gap-1 text-[11px] text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/20 px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30">
+                                                      <span>{lot.lotNo}</span>
+                                                      <span className="font-bold text-emerald-700 dark:text-emerald-300">{balance}</span>
+                                                      {partial && (
+                                                        <span className="text-[9px] text-gray-500 dark:text-gray-400">/{lot.than}</span>
+                                                      )}
+                                                    </LotLink>
+                                                    {shade && <span className="text-[10px] text-gray-400 dark:text-gray-500">{shade}</span>}
+                                                  </div>
+                                                  {lot.meter != null && (
+                                                    <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-2">{Math.round(lot.meter)}m</span>
+                                                  )}
                                                 </div>
                                               )
                                             })}
