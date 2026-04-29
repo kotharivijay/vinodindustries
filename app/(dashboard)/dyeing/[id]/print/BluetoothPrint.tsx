@@ -94,7 +94,7 @@ function buildReceipt(data: SlipData, width = 32): string {
         qty = String(grams).padStart(4, '0') + ' gm'
       } else {
         // Auxiliary: show in kg
-        qty = c.quantity.toFixed(1) + ' kg'
+        qty = c.quantity.toFixed(3) + ' kg'
       }
     }
     return kv(`  ${c.name}`, qty)
@@ -360,7 +360,7 @@ export default function BluetoothPrint({ data, autoMode }: { data: SlipData; aut
           if (isDye) {
             qty = String(Math.round(c.quantity * 1000)).padStart(4, '0') + ' gm'
           } else {
-            qty = c.quantity.toFixed(1) + ' kg'
+            qty = c.quantity.toFixed(3) + ' kg'
           }
         }
 
