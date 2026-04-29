@@ -273,7 +273,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
                   <tr key={c.id} className="border-b border-gray-200">
                     <td className="py-1 text-gray-500">{i + 1}</td>
                     <td className="py-1">{c.name}</td>
-                    <td className="py-1 text-right">{c.quantity != null ? c.quantity : '\u2014'}</td>
+                    <td className="py-1 text-right">{c.quantity != null ? Number(c.quantity).toFixed(3) : '\u2014'}</td>
                     <td className="py-1 pl-2 text-gray-600">{c.unit}</td>
                   </tr>
                 ))}
@@ -315,7 +315,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
                     <tr key={c.id} className="border-b border-gray-200">
                       <td className="py-1 text-gray-500">{i + 1}</td>
                       <td className="py-1">{c.name}</td>
-                      <td className="py-1 text-right">{c.quantity != null ? c.quantity : '\u2014'}</td>
+                      <td className="py-1 text-right">{c.quantity != null ? Number(c.quantity).toFixed(3) : '\u2014'}</td>
                       <td className="py-1 pl-2 text-gray-600">{c.unit}</td>
                     </tr>
                   ))}

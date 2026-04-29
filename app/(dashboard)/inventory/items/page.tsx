@@ -1,9 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
+
+/** Title-case + collapse internal whitespace, e.g. "  reactive  yellow 145 " → "Reactive Yellow 145". */
+function normalizeDisplayName(s: string): string {
+  return s
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, c => c.toUpperCase())
+}
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -32,15 +40,61 @@ export default function ItemsPage() {
   const [form, setForm] = useState({ displayName: '', aliasId: '', autoApprove: false })
   const [saving, setSaving] = useState(false)
 
+  // Searchable alias combobox state
+  const [aliasQuery, setAliasQuery] = useState('')
+  const [aliasOpen, setAliasOpen] = useState(false)
+  const aliasBoxRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (aliasBoxRef.current && !aliasBoxRef.current.contains(e.target as Node)) {
+        setAliasOpen(false)
+      }
+    }
+    if (aliasOpen) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [aliasOpen])
+
+  const selectedAlias = useMemo(
+    () => aliases.find(a => String(a.id) === form.aliasId) || null,
+    [aliases, form.aliasId],
+  )
+
+  const filteredAliases = useMemo(() => {
+    const q = aliasQuery.trim().toLowerCase()
+    if (!q) return aliases.slice(0, 100)
+    return aliases.filter(a =>
+      a.tallyStockItem.toLowerCase().includes(q) ||
+      a.category.toLowerCase().includes(q) ||
+      a.unit.toLowerCase().includes(q),
+    ).slice(0, 100)
+  }, [aliases, aliasQuery])
+
+  function pickAlias(a: Alias) {
+    setForm(f => ({ ...f, aliasId: String(a.id) }))
+    setAliasQuery(a.tallyStockItem)
+    setAliasOpen(false)
+  }
+
+  function resetForm() {
+    setForm({ displayName: '', aliasId: '', autoApprove: false })
+    setAliasQuery('')
+    setAliasOpen(false)
+  }
+
   async function create() {
-    if (!form.displayName.trim() || !form.aliasId) return
+    const cleanName = normalizeDisplayName(form.displayName)
+    if (!cleanName || !form.aliasId) {
+      alert('Display name and alias are required.')
+      return
+    }
     setSaving(true)
     try {
       const res = await fetch('/api/inv/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          displayName: form.displayName.trim(),
+          displayName: cleanName,
           aliasId: Number(form.aliasId),
           autoApprove: form.autoApprove,
         }),
@@ -48,7 +102,7 @@ export default function ItemsPage() {
       const d = await res.json()
       if (!res.ok) { alert('Save failed: ' + (d.error || res.status)); return }
       setShowCreate(false)
-      setForm({ displayName: '', aliasId: '', autoApprove: false })
+      resetForm()
       mutate()
     } finally { setSaving(false) }
   }
@@ -125,31 +179,61 @@ export default function ItemsPage() {
       )}
 
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowCreate(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setShowCreate(false); resetForm() }}>
           <div onClick={e => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-5 w-full max-w-sm space-y-3">
             <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">New Item</h3>
+
             <label className="block text-xs">
               <span className="text-gray-500 dark:text-gray-400">Display name *</span>
-              <input value={form.displayName} onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))}
+              <input
+                value={form.displayName}
+                onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))}
+                onBlur={() => setForm(f => ({ ...f, displayName: normalizeDisplayName(f.displayName) }))}
                 placeholder="Reactive Yellow 145"
                 className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+              <span className="text-[10px] text-gray-400">Auto-trims and Title-Cases on blur. Saved as: <span className="font-mono">{normalizeDisplayName(form.displayName) || '—'}</span></span>
             </label>
-            <label className="block text-xs">
-              <span className="text-gray-500 dark:text-gray-400">Tally alias *</span>
-              <select value={form.aliasId} onChange={e => setForm(f => ({ ...f, aliasId: e.target.value }))}
-                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-                <option value="">— Select alias —</option>
-                {aliases.map(a => <option key={a.id} value={a.id}>{a.tallyStockItem} ({a.unit}, {Number(a.gstRate).toFixed(0)}%)</option>)}
-              </select>
-              <span className="text-[10px] text-gray-400">Drives unit, GST rate, and category</span>
-            </label>
+
+            <div ref={aliasBoxRef} className="relative">
+              <label className="block text-xs">
+                <span className="text-gray-500 dark:text-gray-400">Tally alias *</span>
+                <input
+                  value={aliasQuery}
+                  onChange={e => { setAliasQuery(e.target.value); setForm(f => ({ ...f, aliasId: '' })); setAliasOpen(true) }}
+                  onFocus={() => setAliasOpen(true)}
+                  placeholder="Search Tally stock items…"
+                  className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+              </label>
+              {aliasOpen && (
+                <div className="absolute z-10 left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                  {filteredAliases.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-gray-400">
+                      No aliases match. {aliases.length === 0 && <span>Sync from Tally first at <span className="font-mono">/inventory/aliases</span>.</span>}
+                    </div>
+                  ) : filteredAliases.map(a => (
+                    <button key={a.id} type="button" onClick={() => pickAlias(a)}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex justify-between items-center gap-2 ${form.aliasId === String(a.id) ? 'bg-indigo-50 dark:bg-indigo-900/20' : ''}`}>
+                      <span className="font-medium text-gray-800 dark:text-gray-100 truncate">{a.tallyStockItem}</span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 shrink-0">{a.category} · {a.unit} · {Number(a.gstRate).toFixed(0)}%</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedAlias && (
+                <p className="mt-1 text-[10px] text-gray-400">
+                  Drives unit ({selectedAlias.unit}), GST {Number(selectedAlias.gstRate).toFixed(0)}%, category {selectedAlias.category}
+                </p>
+              )}
+            </div>
+
             <label className="flex items-center gap-2 text-xs">
               <input type="checkbox" checked={form.autoApprove}
                 onChange={e => setForm(f => ({ ...f, autoApprove: e.target.checked }))} />
               <span className="text-gray-700 dark:text-gray-200">Approve immediately (skip review)</span>
             </label>
+
             <div className="flex gap-2 pt-2">
-              <button onClick={() => setShowCreate(false)} className="flex-1 px-3 py-2 rounded-lg text-xs bg-gray-200 dark:bg-gray-700">Cancel</button>
+              <button onClick={() => { setShowCreate(false); resetForm() }} className="flex-1 px-3 py-2 rounded-lg text-xs bg-gray-200 dark:bg-gray-700">Cancel</button>
               <button onClick={create} disabled={saving} className="flex-1 px-3 py-2 rounded-lg text-xs bg-indigo-600 text-white font-semibold disabled:opacity-50">
                 {saving ? 'Saving…' : 'Save'}
               </button>
