@@ -229,7 +229,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
                           qty = String(grams).padStart(4, '0')
                           unit = 'gm'
                         } else {
-                          qty = Number(c.quantity).toFixed(1)
+                          qty = Number(c.quantity).toFixed(3)
                           unit = 'kg'
                         }
                       }
