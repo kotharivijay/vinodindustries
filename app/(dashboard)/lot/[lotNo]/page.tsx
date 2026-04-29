@@ -7,6 +7,7 @@ import BackButton from '../../BackButton'
 import ShareDyeingPDFButton from './ShareDyeingPDFButton'
 import EditCarryForward from './EditCarryForward'
 import EditAllocations from './EditAllocations'
+import EditStartStage from './EditStartStage'
 
 export default async function LotTrackPage({ params }: { params: { lotNo: string } }) {
   const session = await getServerSession(authOptions)
@@ -250,11 +251,14 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
   const lotParty = greyEntries[0]?.party?.name ?? openingBalance?.party ?? null
   const lotQuality = greyEntries[0]?.quality?.name ?? openingBalance?.quality ?? null
 
+  // Start-stage override (only meaningful for current-year lots that have a GreyEntry)
+  const startStage = (greyEntries[0]?.startStage as 'finish' | 'folding' | null | undefined) ?? null
+
   return (
     <div className="p-4 md:p-8 max-w-3xl dark:text-gray-100">
       <div className="flex items-center gap-4 mb-6">
         <BackButton />
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-gray-800">Lot Track: <span className="text-indigo-600">{lotNo}</span></h1>
           {(lotParty || lotQuality) && (
             <p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">
@@ -265,6 +269,9 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
           )}
           <p className="text-xs text-gray-400 mt-0.5">Full process history for this lot</p>
         </div>
+        {greyEntries.length > 0 && (
+          <EditStartStage lotNo={lotNo} initial={startStage as any} />
+        )}
       </div>
 
       {/* RE-PRO banner — when this lot IS a re-process lot */}

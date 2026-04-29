@@ -75,6 +75,10 @@ model GreyEntry {
   lrNo          String?
   lotNo         String
   marka         String?
+  // 'finish' | 'folding' | null — lots that arrive already-processed and skip
+  // upstream stages (Grey/Fold/Dye/Finish). Used by lot tracking + stock chip
+  // math to count the lot at this stage upfront.
+  startStage    String?
   // stock & tDesp are calculated live — not stored
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

@@ -85,6 +85,22 @@ export async function GET() {
     }
   } catch {}
 
+  // Current-year start-stage override — when a GreyEntry has startStage set,
+  // the lot is treated as already at that stage. Pre-load its than into the
+  // matching map so stagesFor() drains correctly.
+  try {
+    const startStageRows = await prisma.greyEntry.findMany({
+      where: { startStage: { not: null } },
+      select: { lotNo: true, than: true, startStage: true },
+    })
+    for (const r of startStageRows) {
+      const k = r.lotNo.toLowerCase()
+      const t = r.than || 0
+      if (r.startStage === 'finish')       stageFinished.set(k, (stageFinished.get(k) || 0) + t)
+      else if (r.startStage === 'folding') stageFolding.set(k,  (stageFolding.get(k)  || 0) + t)
+    }
+  } catch {}
+
   // Fetch grey entries grouped by lot
   const greyByLot = await prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
 
