@@ -164,6 +164,84 @@ export async function GET() {
     }
   } catch {}
 
+  // Inject current-year lots tagged with startStage='finish'. These arrived
+  // already-processed and skip Grey/Fold/Dye → they should appear as
+  // ready-to-finish stock here. Same FIFO finish-deduction as dye slips.
+  try {
+    const startStageRows = await prisma.greyEntry.findMany({
+      where: { startStage: 'finish' },
+      select: {
+        id: true, lotNo: true, than: true, date: true, grayMtr: true, weight: true, marka: true,
+        party: { select: { name: true } },
+        quality: { select: { name: true } },
+      },
+      orderBy: { date: 'asc' },
+    })
+    // Aggregate by lotNo so multi-challan lots show as one virtual entry
+    const grouped = new Map<string, any>()
+    for (const r of startStageRows) {
+      const k = r.lotNo.toLowerCase().trim()
+      const existing = grouped.get(k)
+      if (existing) {
+        existing.totalThan += r.than
+        if (r.grayMtr) existing.meter = (existing.meter || 0) + r.grayMtr
+      } else {
+        grouped.set(k, {
+          firstId: r.id,
+          lotNo: r.lotNo,
+          totalThan: r.than,
+          meter: r.grayMtr || null,
+          date: r.date,
+          party: r.party?.name || null,
+          quality: r.quality?.name || null,
+          weight: r.weight,
+          marka: r.marka,
+        })
+      }
+    }
+    for (const [key, info] of grouped) {
+      const totalFinished = finishedThanMap.get(key) || 0
+      const alreadyDeducted = deductedMap.get(key) || 0
+      const remainingToDeduct = Math.max(0, totalFinished - alreadyDeducted)
+      const deductFromThis = Math.min(info.totalThan, remainingToDeduct)
+      deductedMap.set(key, alreadyDeducted + deductFromThis)
+      const remaining = info.totalThan - deductFromThis
+      if (remaining <= 0) continue
+
+      const mtrPerThan = info.meter && info.totalThan ? info.meter / info.totalThan : null
+      stock.push({
+        id: -info.firstId * 1000, // synthetic, distinct from OB injections
+        slipNo: 0,
+        date: info.date,
+        dyeingDoneAt: info.date,
+        shadeName: null,
+        shadeDescription: null,
+        foldNo: null,
+        batchNo: null,
+        lots: [{
+          lotNo: info.lotNo,
+          than: remaining,
+          originalThan: info.totalThan,
+          finishedThan: deductFromThis,
+          party: info.party,
+          quality: info.quality,
+          weight: info.weight,
+          mtrPerThan,
+        }],
+        totalThan: remaining,
+        party: info.party,
+        quality: info.quality,
+        weight: info.weight,
+        marka: info.marka,
+        isPcJob: false,
+        machineName: null,
+        operatorName: null,
+        isFromStartStage: true,
+        startStage: 'finish',
+      })
+    }
+  } catch {}
+
   return NextResponse.json({
     stock,
     totalSlips: stock.length,
