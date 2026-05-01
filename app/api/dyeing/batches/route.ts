@@ -61,17 +61,20 @@ export async function GET() {
       select: { lotNo: true, weight: true, grayMtr: true, than: true, quality: { select: { name: true } } },
     })
 
-    // Build quality map: lotNo → quality name
+    // Build quality map: lotNo → quality name. Keys upper-cased so lookups
+    // by FoldBatchLot.lotNo (which may differ in case) always match.
     const qualityMap = new Map<string, string>()
     for (const g of greyEntries) {
-      if (g.quality?.name && !qualityMap.has(g.lotNo)) qualityMap.set(g.lotNo, g.quality.name)
+      const k = g.lotNo.toUpperCase()
+      if (g.quality?.name && !qualityMap.has(k)) qualityMap.set(k, g.quality.name)
     }
 
     // Build a map: lotNo → aggregated weight data (sum across all grey entries for same lot)
     const greyMap = new Map<string, { weight: string | null; grayMtr: number; than: number }[]>()
     for (const g of greyEntries) {
-      if (!greyMap.has(g.lotNo)) greyMap.set(g.lotNo, [])
-      greyMap.get(g.lotNo)!.push({ weight: g.weight, grayMtr: g.grayMtr ?? 0, than: g.than })
+      const k = g.lotNo.toUpperCase()
+      if (!greyMap.has(k)) greyMap.set(k, [])
+      greyMap.get(k)!.push({ weight: g.weight, grayMtr: g.grayMtr ?? 0, than: g.than })
     }
 
     // Fetch opening balance weight data for carry-forward lots
@@ -81,12 +84,15 @@ export async function GET() {
     })
     const obMap = new Map<string, { weight: string | null; grayMtr: number; than: number; quality: string | null }>()
     for (const o of obEntries) {
-      obMap.set(o.lotNo, { weight: o.weight, grayMtr: o.grayMtr ?? 0, than: o.greyThan ?? 0, quality: o.quality })
+      const k = o.lotNo.toUpperCase()
+      obMap.set(k, { weight: o.weight, grayMtr: o.grayMtr ?? 0, than: o.greyThan ?? 0, quality: o.quality })
       // Also fill qualityMap from OB if not already set
-      if (o.quality && !qualityMap.has(o.lotNo)) qualityMap.set(o.lotNo, o.quality)
+      if (o.quality && !qualityMap.has(k)) qualityMap.set(k, o.quality)
     }
 
-    // Fetch RE-PRO lots for weight calc
+    // Fetch RE-PRO lots for weight calc. Keys normalized to upper-case so
+    // lookups don't miss when FoldBatchLot.lotNo and ReProcessLot.reproNo
+    // have different casing (e.g. 'Re-Pro-20' vs 'RE-PRO-20').
     const reproMap = new Map<string, { weight: string | null; grayMtr: number | null; totalThan: number; quality: string }>()
     try {
       const reproLotNos = Array.from(allLotNos).filter(l => l.toUpperCase().startsWith('RE-PRO-'))
@@ -96,16 +102,18 @@ export async function GET() {
           select: { reproNo: true, weight: true, grayMtr: true, totalThan: true, quality: true },
         })
         for (const r of reproEntries) {
-          reproMap.set(r.reproNo, { weight: r.weight, grayMtr: r.grayMtr, totalThan: r.totalThan, quality: r.quality })
-          if (!qualityMap.has(r.reproNo)) qualityMap.set(r.reproNo, r.quality)
+          const key = r.reproNo.toUpperCase()
+          reproMap.set(key, { weight: r.weight, grayMtr: r.grayMtr, totalThan: r.totalThan, quality: r.quality })
+          if (!qualityMap.has(key)) qualityMap.set(key, r.quality)
         }
       }
     } catch {}
 
     // Calculate weight per than for a lot
     function calcWeightPerThan(lotNo: string): number {
+      const key = lotNo.toUpperCase()
       // Try grey entries first
-      const entries = greyMap.get(lotNo)
+      const entries = greyMap.get(key)
       if (entries && entries.length > 0) {
         for (const e of entries) {
           const kgPerMtr = parseWeightKgPerMtr(e.weight)
@@ -115,7 +123,7 @@ export async function GET() {
         }
       }
       // Fallback: opening balance
-      const ob = obMap.get(lotNo)
+      const ob = obMap.get(key)
       if (ob) {
         const kgPerMtr = parseWeightKgPerMtr(ob.weight)
         if (kgPerMtr > 0 && ob.grayMtr > 0 && ob.than > 0) {
@@ -123,7 +131,7 @@ export async function GET() {
         }
       }
       // Fallback: RE-PRO lot
-      const repro = reproMap.get(lotNo)
+      const repro = reproMap.get(key)
       if (repro) {
         const kgPerMtr = parseWeightKgPerMtr(repro.weight)
         if (kgPerMtr > 0 && repro.grayMtr && repro.totalThan > 0) {
@@ -133,14 +141,17 @@ export async function GET() {
       return 0
     }
 
-    // Build marka map from grey + OB
+    // Build marka map from grey + OB (upper-cased keys)
     const greyMarkaMap = new Map<string, string>()
     const greyWithMarka = await prisma.greyEntry.findMany({
       where: { lotNo: { in: Array.from(allLotNos) }, marka: { not: null } },
       select: { lotNo: true, marka: true },
     })
-    for (const g of greyWithMarka) { if (g.marka) greyMarkaMap.set(g.lotNo, g.marka) }
-    for (const o of obEntries) { if (o.marka && !greyMarkaMap.has(o.lotNo)) greyMarkaMap.set(o.lotNo, o.marka) }
+    for (const g of greyWithMarka) { if (g.marka) greyMarkaMap.set(g.lotNo.toUpperCase(), g.marka) }
+    for (const o of obEntries) {
+      const k = o.lotNo.toUpperCase()
+      if (o.marka && !greyMarkaMap.has(k)) greyMarkaMap.set(k, o.marka)
+    }
 
     // Get Pali PC Job party IDs
     const paliParties = await prisma.party.findMany({ where: { tag: 'Pali PC Job' }, select: { id: true } })
@@ -153,13 +164,14 @@ export async function GET() {
         if (usedBatchIds.has(batch.id)) continue
         const isPali = batch.lots.some((l: any) => l.partyId && paliIds.has(l.partyId))
         const lots = batch.lots.map(lot => {
+          const lotKey = lot.lotNo.toUpperCase()
           const wpt = calcWeightPerThan(lot.lotNo)
           return {
             lotNo: lot.lotNo,
             than: lot.than,
             weightPerThan: Math.round(wpt * 100) / 100,
-            quality: qualityMap.get(lot.lotNo) ?? '',
-            marka: greyMarkaMap.get(lot.lotNo) ?? null,
+            quality: qualityMap.get(lotKey) ?? '',
+            marka: greyMarkaMap.get(lotKey) ?? null,
           }
         })
 
