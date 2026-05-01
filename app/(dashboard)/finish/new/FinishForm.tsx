@@ -763,14 +763,39 @@ export default function FinishForm() {
               )
             })}
           </div>
-          {markaEntries.length > 1 && (
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <span className="text-xs text-gray-500">Total</span>
-              <span className="text-sm font-bold text-emerald-600">
-                {markaEntries.reduce((s, l) => s + (parseInt(l.than) || 0), 0)} than
-                {' / '}
-                {markaEntries.reduce((s, l) => s + (parseFloat(l.meter) || 0), 0).toFixed(1)} m
-              </span>
+          {markaEntries.some(m => m.lotNo.trim() || m.than.trim() || m.meter.trim()) && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300">
+                  <tr>
+                    <th className="text-left px-2 py-1.5">Lot No</th>
+                    <th className="text-right px-2 py-1.5 w-20">Than</th>
+                    <th className="text-right px-2 py-1.5 w-24">Meter</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {markaEntries
+                    .filter(m => m.lotNo.trim() || m.than.trim() || m.meter.trim())
+                    .map((l, i) => (
+                      <tr key={i}>
+                        <td className="px-2 py-1 font-medium text-gray-700 dark:text-gray-200">{l.lotNo || '—'}</td>
+                        <td className="px-2 py-1 text-right text-gray-700 dark:text-gray-200">{l.than || '—'}</td>
+                        <td className="px-2 py-1 text-right text-gray-700 dark:text-gray-200">{l.meter ? Number(l.meter).toFixed(1) : '—'}</td>
+                      </tr>
+                    ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-300 dark:border-gray-600 font-bold text-emerald-700 dark:text-emerald-400">
+                    <td className="px-2 py-1.5">Total</td>
+                    <td className="px-2 py-1.5 text-right">
+                      {markaEntries.reduce((s, l) => s + (parseInt(l.than) || 0), 0)}
+                    </td>
+                    <td className="px-2 py-1.5 text-right">
+                      {markaEntries.reduce((s, l) => s + (parseFloat(l.meter) || 0), 0).toFixed(1)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           )}
         </div>
