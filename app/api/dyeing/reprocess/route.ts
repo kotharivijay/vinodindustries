@@ -153,7 +153,7 @@ export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, addSources, updateSources, removeSources, reason, notes, grayMtr, status, acceptMixedQuality } = await req.json()
+  const { id, addSources, updateSources, removeSources, reason, notes, grayMtr, weight, status, acceptMixedQuality } = await req.json()
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
   const existing = await db.reProcessLot.findUnique({ where: { id: parseInt(id) }, include: { sources: true } })
@@ -184,13 +184,16 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Top-level fields
-  if (reason !== undefined || notes !== undefined || grayMtr !== undefined) {
+  if (reason !== undefined || notes !== undefined || grayMtr !== undefined || weight !== undefined) {
     const data: any = {}
     if (reason !== undefined) data.reason = reason
     if (notes !== undefined) data.notes = notes || null
     if (grayMtr !== undefined) {
       const n = grayMtr === '' || grayMtr === null ? null : parseFloat(String(grayMtr))
       data.grayMtr = Number.isFinite(n as number) ? n : null
+    }
+    if (weight !== undefined) {
+      data.weight = weight === '' || weight === null ? null : String(weight).trim()
     }
     await db.reProcessLot.update({ where: { id: existing.id }, data })
   }
