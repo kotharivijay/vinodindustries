@@ -2889,29 +2889,70 @@ export default function FinishStockPage() {
                       </div>
                     </div>
 
-                    {/* Total Meter */}
+                    {/* Per-lot summary + Total Meter (Sample E table) */}
                     <div className="bg-gray-50 dark:bg-gray-700/30 rounded-lg p-3">
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Total Meter</label>
                       {(() => {
-                        const autoMeter = Object.values(finishMeters).reduce((s, v) => s + (parseFloat(v) || 0), 0)
+                        // Aggregate by lotNo: total than + entered meter
+                        const lotMap = new Map<string, { than: number; meter: number }>()
+                        for (const lot of selectedLots.values()) {
+                          const key = `${lot.slipNo}::${lot.lotNo}`
+                          const ovr = finishThanOverrides[key]
+                          const than = ovr ? parseInt(ovr) || 0 : lot.than
+                          const existing = lotMap.get(lot.lotNo)
+                          if (existing) existing.than += than
+                          else lotMap.set(lot.lotNo, { than, meter: parseFloat(finishMeters[lot.lotNo] || '0') || 0 })
+                        }
+                        const rows = Array.from(lotMap.entries())
+                        const totalThan = rows.reduce((s, [, v]) => s + v.than, 0)
+                        const totalMeter = rows.reduce((s, [, v]) => s + v.meter, 0)
                         return (
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm text-gray-600 dark:text-gray-300">
-                              Auto: <strong className="text-emerald-600 dark:text-emerald-400">{autoMeter || 0} mtr</strong>
-                            </span>
-                            <span className="text-gray-300 dark:text-gray-600">|</span>
-                            <input
-                              type="number"
-                              step="0.1"
-                              placeholder="Override total"
-                              value={finishTotalMeterOverride}
-                              onChange={e => setFinishTotalMeterOverride(e.target.value)}
-                              className="w-28 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
-                            />
-                            {finishTotalMeterOverride && (
-                              <span className="text-xs text-amber-600 dark:text-amber-400">(override)</span>
-                            )}
-                          </div>
+                          <>
+                            <table className="w-full text-xs mb-3">
+                              <thead className="bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                <tr>
+                                  <th className="text-left px-2 py-1.5">Lot No</th>
+                                  <th className="text-right px-2 py-1.5 w-20">Than</th>
+                                  <th className="text-right px-2 py-1.5 w-24">Meter</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                {rows.map(([lotNo, v]) => (
+                                  <tr key={lotNo}>
+                                    <td className="px-2 py-1 font-medium text-teal-700 dark:text-teal-300">{lotNo}</td>
+                                    <td className="px-2 py-1 text-right text-gray-700 dark:text-gray-200">{v.than}</td>
+                                    <td className="px-2 py-1 text-right text-gray-700 dark:text-gray-200">{v.meter ? v.meter.toFixed(1) : '—'}</td>
+                                  </tr>
+                                ))}
+                                {rows.length === 0 && (
+                                  <tr><td colSpan={3} className="px-2 py-3 text-center text-gray-400 italic">No lots selected.</td></tr>
+                                )}
+                              </tbody>
+                              {rows.length > 0 && (
+                                <tfoot>
+                                  <tr className="border-t-2 border-gray-300 dark:border-gray-600 font-bold text-emerald-700 dark:text-emerald-400">
+                                    <td className="px-2 py-1.5">Total</td>
+                                    <td className="px-2 py-1.5 text-right">{totalThan}</td>
+                                    <td className="px-2 py-1.5 text-right">{totalMeter ? totalMeter.toFixed(1) : '—'}</td>
+                                  </tr>
+                                </tfoot>
+                              )}
+                            </table>
+                            {/* Override total meter (carried over from previous design) */}
+                            <div className="flex items-center gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+                              <span className="text-xs text-gray-500 dark:text-gray-400">Override total meter:</span>
+                              <input
+                                type="number"
+                                step="0.1"
+                                placeholder="Override total"
+                                value={finishTotalMeterOverride}
+                                onChange={e => setFinishTotalMeterOverride(e.target.value)}
+                                className="w-28 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm bg-white dark:bg-gray-700 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-teal-400"
+                              />
+                              {finishTotalMeterOverride && (
+                                <span className="text-xs text-amber-600 dark:text-amber-400">(override active)</span>
+                              )}
+                            </div>
+                          </>
                         )
                       })()}
                     </div>
