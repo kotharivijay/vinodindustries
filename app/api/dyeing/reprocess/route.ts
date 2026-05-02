@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { sources, reason, notes, acceptMixedQuality, confirmedWeight, confirmedQuality, confirmed } = await req.json()
+  const { sources, reason, notes, acceptMixedQuality, confirmedWeight, confirmedQuality, confirmed, manualReproNo } = await req.json()
   if (!Array.isArray(sources) || sources.length === 0) {
     return NextResponse.json({ error: 'At least one source lot required' }, { status: 400 })
   }
@@ -114,14 +114,25 @@ export async function POST(req: NextRequest) {
   const quality = (confirmedQuality && String(confirmedQuality).trim()) || computedQuality || 'Unknown'
   const finalWeight: string | null = (confirmedWeight !== undefined ? (String(confirmedWeight).trim() || null) : totalWeight)
 
-  // Generate next RE-PRO number
-  const maxRepro = await db.reProcessLot.findFirst({ orderBy: { id: 'desc' }, select: { reproNo: true } })
-  let nextNum = 1
-  if (maxRepro?.reproNo) {
-    const match = maxRepro.reproNo.match(/RE-PRO-(\d+)/)
-    if (match) nextNum = parseInt(match[1]) + 1
+  // Generate next RE-PRO number — or use the user's manual override if
+  // provided. Manual must match RE-PRO-<digits> and not already exist.
+  let reproNo: string
+  if (manualReproNo && String(manualReproNo).trim()) {
+    const trimmed = String(manualReproNo).trim().toUpperCase()
+    const m = trimmed.match(/^RE-PRO-(\d+)$/)
+    if (!m) return NextResponse.json({ error: 'manualReproNo must be in format RE-PRO-<number>' }, { status: 400 })
+    const existing = await db.reProcessLot.findUnique({ where: { reproNo: trimmed } })
+    if (existing) return NextResponse.json({ error: `${trimmed} already exists` }, { status: 409 })
+    reproNo = trimmed
+  } else {
+    const maxRepro = await db.reProcessLot.findFirst({ orderBy: { id: 'desc' }, select: { reproNo: true } })
+    let nextNum = 1
+    if (maxRepro?.reproNo) {
+      const match = maxRepro.reproNo.match(/RE-PRO-(\d+)/)
+      if (match) nextNum = parseInt(match[1]) + 1
+    }
+    reproNo = `RE-PRO-${nextNum}`
   }
-  const reproNo = `RE-PRO-${nextNum}`
 
   const lot = await db.reProcessLot.create({
     data: {

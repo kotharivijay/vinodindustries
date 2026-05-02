@@ -65,6 +65,7 @@ export default function ReProcessPage() {
   // Create form state
   const [reason, setReason] = useState('patchy')
   const [notes, setNotes] = useState('')
+  const [manualReproNo, setManualReproNo] = useState('') // optional override (e.g. RE-PRO-22)
   const [sourceLots, setSourceLots] = useState<{ lotNo: string; than: string; reason: string }[]>([
     { lotNo: '', than: '', reason: 'patchy' },
   ])
@@ -100,11 +101,12 @@ export default function ReProcessPage() {
     }
 
     try {
-      const basePayload = {
+      const basePayload: any = {
         reason,
         notes: notes || null,
         sources: validSources.map(s => ({ lotNo: s.lotNo.trim(), than: parseInt(s.than), reason: s.reason })),
       }
+      if (manualReproNo.trim()) basePayload.manualReproNo = manualReproNo.trim().toUpperCase()
       let extras: any = {}
       let { res, data } = await post(basePayload)
 
@@ -121,7 +123,7 @@ export default function ReProcessPage() {
           for (const l of data.lots || []) if (l.quality) counts.set(l.quality, (counts.get(l.quality) || 0) + 1)
           const winner = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
           const keptLots = (data.lots || []).filter((l: any) => l.quality === winner).map((l: any) => l.lotNo.toLowerCase())
-          const filteredSources = basePayload.sources.filter(s => keptLots.includes(s.lotNo.toLowerCase()))
+          const filteredSources = (basePayload.sources as { lotNo: string; than: number; reason: string }[]).filter(s => keptLots.includes(s.lotNo.toLowerCase()))
           if (filteredSources.length === 0) { setCreateError('No lots left after excluding mismatched quality'); setCreating(false); return }
           basePayload.sources = filteredSources
           extras = { acceptMixedQuality: true }
@@ -151,6 +153,7 @@ export default function ReProcessPage() {
       if (!res.ok || data?.error) { setCreateError(data.error || 'Failed'); setCreating(false); return }
       setShowCreate(false)
       setSourceLots([{ lotNo: '', than: '', reason: 'patchy' }])
+      setManualReproNo('')
       setNotes('')
       mutate()
     } catch {
@@ -313,6 +316,22 @@ export default function ReProcessPage() {
                   <input type="text" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional"
                     className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Manual RE-PRO No. <span className="text-gray-400 font-normal">(optional override)</span>
+                </label>
+                <input
+                  type="text"
+                  value={manualReproNo}
+                  onChange={e => setManualReproNo(e.target.value)}
+                  placeholder="leave blank for auto · e.g. RE-PRO-22"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono uppercase"
+                />
+                <p className="mt-1 text-[10px] text-gray-400">
+                  Use only when fixing a numbering mismatch. Format: <span className="font-mono">RE-PRO-N</span>. Will fail if that number already exists.
+                </p>
               </div>
 
               <div>
