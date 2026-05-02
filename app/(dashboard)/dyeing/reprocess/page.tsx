@@ -66,6 +66,15 @@ export default function ReProcessPage() {
   const [reason, setReason] = useState('patchy')
   const [notes, setNotes] = useState('')
   const [manualReproNo, setManualReproNo] = useState('') // optional override (e.g. RE-PRO-22)
+
+  // Preview the next auto-assigned RE-PRO number — matches API logic
+  // (latest by createdAt; lots arrive in createdAt-desc order from GET).
+  const nextAutoReproNo = useMemo(() => {
+    const last = lots?.[0]?.reproNo
+    const m = last?.match(/RE-PRO-(\d+)/)
+    const n = m ? parseInt(m[1], 10) + 1 : 1
+    return `RE-PRO-${n}`
+  }, [lots])
   const [sourceLots, setSourceLots] = useState<{ lotNo: string; than: string; reason: string }[]>([
     { lotNo: '', than: '', reason: 'patchy' },
   ])
@@ -320,17 +329,17 @@ export default function ReProcessPage() {
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Manual RE-PRO No. <span className="text-gray-400 font-normal">(optional override)</span>
+                  RE-PRO No. <span className="text-gray-400 font-normal">— auto: <span className="font-mono text-purple-600 dark:text-purple-400">{nextAutoReproNo}</span></span>
                 </label>
                 <input
                   type="text"
                   value={manualReproNo}
                   onChange={e => setManualReproNo(e.target.value)}
-                  placeholder="leave blank for auto · e.g. RE-PRO-22"
+                  placeholder={`leave blank for ${nextAutoReproNo}`}
                   className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono uppercase"
                 />
                 <p className="mt-1 text-[10px] text-gray-400">
-                  Use only when fixing a numbering mismatch. Format: <span className="font-mono">RE-PRO-N</span>. Will fail if that number already exists.
+                  Override only if you need a specific number (e.g. fixing a gap). Format: <span className="font-mono">RE-PRO-N</span>. Will fail if that number already exists.
                 </p>
               </div>
 
