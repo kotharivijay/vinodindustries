@@ -105,6 +105,13 @@ export default function InvoiceDetailPage() {
           {Number(inv.cgstAmount) > 0 && <><span className="text-gray-500">CGST</span><span className="text-right">₹{Number(inv.cgstAmount).toLocaleString('en-IN')}</span></>}
           {Number(inv.sgstAmount) > 0 && <><span className="text-gray-500">SGST</span><span className="text-right">₹{Number(inv.sgstAmount).toLocaleString('en-IN')}</span></>}
           {Number(inv.freightAmount) > 0 && <><span className="text-gray-500">Freight</span><span className="text-right">₹{Number(inv.freightAmount).toLocaleString('en-IN')}</span></>}
+          {Number(inv.otherCharges) > 0 && <><span className="text-gray-500">Other charges</span><span className="text-right">₹{Number(inv.otherCharges).toLocaleString('en-IN')}</span></>}
+          {Number(inv.totalDiscountAmount) > 0 && (
+            <>
+              <span className="text-rose-600 dark:text-rose-400">Discount</span>
+              <span className="text-right text-rose-600 dark:text-rose-400">− ₹{Number(inv.totalDiscountAmount).toLocaleString('en-IN')}</span>
+            </>
+          )}
           <span className="text-gray-500 font-bold border-t border-gray-200 dark:border-gray-700 pt-1">Total</span>
           <span className="text-right font-bold border-t border-gray-200 dark:border-gray-700 pt-1">₹{Number(inv.totalAmount).toLocaleString('en-IN')}</span>
         </div>
