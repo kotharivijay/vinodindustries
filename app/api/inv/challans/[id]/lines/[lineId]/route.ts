@@ -34,7 +34,10 @@ export async function PUT(
 
   const existingLine = await db.invChallanLine.findUnique({
     where: { id: lineId },
-    select: { id: true, challanId: true, qty: true, rate: true, gstRate: true, discountAmount: true, unit: true },
+    select: {
+      id: true, challanId: true, qty: true, rate: true, gstRate: true,
+      discountAmount: true, unit: true, notes: true,
+    },
   })
   if (!existingLine || existingLine.challanId !== challanId) {
     return NextResponse.json({ error: 'Line not found' }, { status: 404 })
@@ -53,6 +56,9 @@ export async function PUT(
     discountAmount: body.discountAmount !== undefined
       ? (body.discountAmount === '' || body.discountAmount == null ? null : Number(body.discountAmount))
       : (existingLine.discountAmount != null ? Number(existingLine.discountAmount) : null),
+    notes: body.notes !== undefined
+      ? (body.notes === '' || body.notes == null ? null : String(body.notes))
+      : (existingLine.notes ?? null),
   }
 
   const m = computeLineMath(next, !!challan.ratesIncludeGst)
@@ -66,6 +72,7 @@ export async function PUT(
         rate: next.rate,
         gstRate: next.gstRate,
         discountAmount: next.discountAmount,
+        notes: next.notes,
         grossAmount: m.grossAmount,
         amount: m.amount,
         gstAmount: m.gstAmount,

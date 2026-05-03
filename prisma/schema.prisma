@@ -1350,6 +1350,7 @@ model InvChallanLine {
   damageRemarks   String?
   rateVariancePct Decimal?   @db.Decimal(6, 2)
   varianceReason  String?
+  notes           String?
 
   invoiceLines InvPurchaseInvoiceLine[]
 }

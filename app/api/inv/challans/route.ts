@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { allocateSeries } from '@/lib/inv/series'
 import { resolvePartyIdByLedger } from '@/lib/inv/party-resolver'
+import { ITEM_USAGE_TAGS, labelForUsageTag } from '@/lib/inv/item-usage-tags'
 
 const db = prisma as any
 
@@ -27,11 +28,27 @@ export async function GET(req: NextRequest) {
     if (from) where.challanDate.gte = new Date(from)
     if (to) where.challanDate.lte = new Date(to)
   }
-  if (q) where.OR = [
-    { challanNo: { contains: q, mode: 'insensitive' } },
-    { biltyNo: { contains: q, mode: 'insensitive' } },
-    { vehicleNo: { contains: q, mode: 'insensitive' } },
-  ]
+  if (q) {
+    // Tag matching: resolve user input to the set of usageTag codes whose
+    // code OR label contains the query (case-insensitive). E.g. "boil" →
+    // ["oil_boiler", "steam_boiler"].
+    const ql = q.toLowerCase()
+    const matchedTags = ITEM_USAGE_TAGS.filter(t =>
+      t.toLowerCase().includes(ql) || labelForUsageTag(t).toLowerCase().includes(ql),
+    )
+    where.OR = [
+      { challanNo: { contains: q, mode: 'insensitive' } },
+      { biltyNo: { contains: q, mode: 'insensitive' } },
+      { vehicleNo: { contains: q, mode: 'insensitive' } },
+      { party: { displayName: { contains: q, mode: 'insensitive' } } },
+      { invoiceLink: { invoice: { supplierInvoiceNo: { contains: q, mode: 'insensitive' } } } },
+      { lines: { some: { item: { OR: [
+        { displayName: { contains: q, mode: 'insensitive' } },
+        { alias: { tallyStockItem: { contains: q, mode: 'insensitive' } } },
+        ...(matchedTags.length ? [{ usageTags: { hasSome: matchedTags } }] : []),
+      ] } } } },
+    ]
+  }
 
   const challans = await db.invChallan.findMany({
     where,

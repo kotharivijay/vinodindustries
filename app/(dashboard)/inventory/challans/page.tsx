@@ -23,6 +23,7 @@ interface Line {
   amount: string | null
   gstAmount: string | null
   totalWithGst: string | null
+  notes: string | null
   item: Item
 }
 interface Challan {
@@ -173,8 +174,8 @@ export default function ChallansListPage() {
           </button>
         )}
         <input type="search" value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search challan no…"
-          className="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs" />
+          placeholder="Search challan, party, item, alias, tag, invoice no…"
+          className="flex-1 min-w-[260px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs" />
       </div>
 
       {isLoading ? <div className="p-12 text-center text-gray-400">Loading…</div>
@@ -502,42 +503,19 @@ function ChallanCard(props: {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-[11px]">
-              <thead className="text-gray-500 dark:text-gray-400">
-                <tr>
-                  <th className="text-left pb-1.5">Item</th>
-                  <th className="text-right pb-1.5 w-16">Qty</th>
-                  <th className="text-left pb-1.5 w-12">Unit</th>
-                  <th className="text-right pb-1.5 w-20">Rate</th>
-                  <th className="text-right pb-1.5 w-12">GST%</th>
-                  <th className="text-right pb-1.5 w-20">Amount</th>
-                  <th className="text-right pb-1.5 w-20">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {c.lines.map(l => (
-                  <LineRow key={l.id} line={l} disabled={linked} onSave={patch => patchLine(l.id, patch)} />
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-gray-200 dark:border-gray-600 font-bold text-gray-800 dark:text-gray-100">
-                  <td colSpan={2} className="pt-2 text-right">Subtotal</td>
-                  <td colSpan={3}></td>
-                  <td className="pt-2 text-right">{fmtMoney(c.totalAmount)}</td>
-                  <td></td>
-                </tr>
-                <tr className="text-gray-600 dark:text-gray-300">
-                  <td colSpan={5} className="text-right">GST</td>
-                  <td className="text-right">{fmtMoney(c.totalGstAmount)}</td>
-                  <td></td>
-                </tr>
-                <tr className="font-bold text-gray-900 dark:text-gray-50">
-                  <td colSpan={5} className="text-right pt-1">Total with GST</td>
-                  <td colSpan={2} className="text-right pt-1">₹{fmtMoney(c.totalWithGst)}</td>
-                </tr>
-              </tfoot>
-            </table>
+          <div className="space-y-3">
+            {c.lines.map(l => (
+              <LineCard key={l.id} line={l} disabled={linked} onSave={patch => patchLine(l.id, patch)} />
+            ))}
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-600 pt-2 mt-2 text-[11px] grid grid-cols-2 gap-y-0.5">
+            <span className="text-gray-500 dark:text-gray-400">Subtotal (taxable)</span>
+            <span className="text-right font-semibold">₹{fmtMoney(c.totalAmount)}</span>
+            <span className="text-gray-500 dark:text-gray-400">GST</span>
+            <span className="text-right">₹{fmtMoney(c.totalGstAmount)}</span>
+            <span className="font-bold text-gray-900 dark:text-gray-50 pt-0.5">Total with GST</span>
+            <span className="text-right font-bold text-gray-900 dark:text-gray-50 pt-0.5">₹{fmtMoney(c.totalWithGst)}</span>
           </div>
 
           {linked && (
@@ -551,7 +529,7 @@ function ChallanCard(props: {
   )
 }
 
-function LineRow({ line, disabled, onSave }: {
+function LineCard({ line, disabled, onSave }: {
   line: Line
   disabled: boolean
   onSave: (patch: Record<string, any>) => void | Promise<void>
@@ -559,54 +537,150 @@ function LineRow({ line, disabled, onSave }: {
   const [qty, setQty] = useState(line.qty)
   const [unit, setUnit] = useState(line.unit)
   const [rate, setRate] = useState(line.rate ?? '')
+  const [discount, setDiscount] = useState(line.discountAmount ?? '')
   const [gstRate, setGstRate] = useState(line.gstRate ?? '')
+  const [notes, setNotes] = useState(line.notes ?? '')
+  const [historyOpen, setHistoryOpen] = useState(false)
 
-  // Re-sync from server when the parent challan reloads after a save
+  // Re-sync local state from server after each save round-trip
   useEffect(() => {
-    setQty(line.qty); setUnit(line.unit)
-    setRate(line.rate ?? ''); setGstRate(line.gstRate ?? '')
-  }, [line.id, line.qty, line.unit, line.rate, line.gstRate])
+    setQty(line.qty)
+    setUnit(line.unit)
+    setRate(line.rate ?? '')
+    setDiscount(line.discountAmount ?? '')
+    setGstRate(line.gstRate ?? '')
+    setNotes(line.notes ?? '')
+  }, [line.id, line.qty, line.unit, line.rate, line.discountAmount, line.gstRate, line.notes])
 
   function commit(field: string, value: any) {
     onSave({ [field]: value })
   }
 
-  const cell = 'w-full bg-transparent border border-transparent hover:border-gray-300 focus:border-indigo-400 focus:outline-none rounded px-1 py-0.5 text-right disabled:cursor-not-allowed'
-  const cellLeft = cell.replace('text-right', 'text-left')
+  const inp = 'w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 focus:border-indigo-400 focus:outline-none rounded px-1.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60'
+  const lbl = 'block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5'
 
   return (
-    <tr className="text-gray-800 dark:text-gray-100">
-      <td className="py-1 align-top">
-        <span className="block leading-tight">{line.item.displayName}</span>
-        <span className="block text-[10px] text-gray-400">{line.item.alias.tallyStockItem}</span>
-      </td>
-      <td className="py-1">
-        <input type="number" step="0.001" disabled={disabled}
-          value={qty} onChange={e => setQty(e.target.value)}
-          onBlur={() => qty !== line.qty && commit('qty', qty)}
-          className={cell} />
-      </td>
-      <td className="py-1">
-        <input type="text" disabled={disabled}
-          value={unit} onChange={e => setUnit(e.target.value)}
-          onBlur={() => unit !== line.unit && commit('unit', unit)}
-          className={cellLeft} />
-      </td>
-      <td className="py-1">
-        <input type="number" step="0.0001" disabled={disabled}
-          value={rate} onChange={e => setRate(e.target.value)}
-          onBlur={() => String(rate) !== String(line.rate ?? '') && commit('rate', rate === '' ? null : rate)}
-          className={cell} />
-      </td>
-      <td className="py-1">
-        <input type="number" step="0.01" disabled={disabled}
-          value={gstRate} onChange={e => setGstRate(e.target.value)}
-          onBlur={() => String(gstRate) !== String(line.gstRate ?? '') && commit('gstRate', gstRate === '' ? null : gstRate)}
-          className={cell} />
-      </td>
-      <td className="py-1 text-right">{fmtMoney(line.amount)}</td>
-      <td className="py-1 text-right font-semibold">{fmtMoney(line.totalWithGst)}</td>
-    </tr>
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 space-y-2">
+      {/* Row 1 — Item name + alias (click name → last-5 buys popup) */}
+      <div>
+        <button type="button" onClick={() => setHistoryOpen(true)}
+          className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:underline leading-tight text-left">
+          {line.item.displayName}
+        </button>
+        <p className="text-[10px] text-gray-500 dark:text-gray-400">{line.item.alias.tallyStockItem}</p>
+      </div>
+
+      {historyOpen && (
+        <ItemHistoryModal itemId={line.item.id} itemName={line.item.displayName}
+          onClose={() => setHistoryOpen(false)} />
+      )}
+
+      {/* Row 2 — Qty / Unit / Rate / Discount */}
+      <div className="grid grid-cols-4 gap-2">
+        <div>
+          <span className={lbl}>Qty</span>
+          <input type="number" step="0.001" disabled={disabled} className={inp}
+            value={qty} onChange={e => setQty(e.target.value)}
+            onBlur={() => qty !== line.qty && commit('qty', qty)} />
+        </div>
+        <div>
+          <span className={lbl}>Unit</span>
+          <input type="text" disabled={disabled} className={inp}
+            value={unit} onChange={e => setUnit(e.target.value)}
+            onBlur={() => unit !== line.unit && commit('unit', unit)} />
+        </div>
+        <div>
+          <span className={lbl}>Rate</span>
+          <input type="number" step="0.0001" disabled={disabled} className={inp}
+            value={rate} onChange={e => setRate(e.target.value)}
+            onBlur={() => String(rate) !== String(line.rate ?? '')
+              && commit('rate', rate === '' ? null : rate)} />
+        </div>
+        <div>
+          <span className={lbl}>Discount</span>
+          <input type="number" step="0.01" disabled={disabled} className={inp}
+            value={discount} onChange={e => setDiscount(e.target.value)}
+            onBlur={() => String(discount) !== String(line.discountAmount ?? '')
+              && commit('discountAmount', discount === '' ? null : discount)} />
+        </div>
+      </div>
+
+      {/* Row 3 — GST / Amount / Total / Notes */}
+      <div className="grid grid-cols-4 gap-2">
+        <div>
+          <span className={lbl}>GST %</span>
+          <input type="number" step="0.01" disabled={disabled} className={inp}
+            value={gstRate} onChange={e => setGstRate(e.target.value)}
+            onBlur={() => String(gstRate) !== String(line.gstRate ?? '')
+              && commit('gstRate', gstRate === '' ? null : gstRate)} />
+        </div>
+        <div>
+          <span className={lbl}>Amount</span>
+          <p className="px-1.5 py-1 text-xs text-gray-700 dark:text-gray-200 font-medium">₹{fmtMoney(line.amount)}</p>
+        </div>
+        <div>
+          <span className={lbl}>Total</span>
+          <p className="px-1.5 py-1 text-xs font-bold text-gray-900 dark:text-gray-50">₹{fmtMoney(line.totalWithGst)}</p>
+        </div>
+        <div>
+          <span className={lbl}>Notes</span>
+          <input type="text" disabled={disabled} className={inp} placeholder="—"
+            value={notes} onChange={e => setNotes(e.target.value)}
+            onBlur={() => notes !== (line.notes ?? '') && commit('notes', notes)} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ItemHistoryModal({ itemId, itemName, onClose }: {
+  itemId: number; itemName: string; onClose: () => void
+}) {
+  const { data, isLoading } = useSWR<any[]>(`/api/inv/items/${itemId}/recent-rates?n=5`, fetcher)
+  const rows = data ?? []
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Last 5 buys</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{itemName}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
+        </div>
+        <div className="p-3">
+          {isLoading ? (
+            <p className="p-6 text-center text-xs text-gray-400">Loading…</p>
+          ) : rows.length === 0 ? (
+            <p className="p-6 text-center text-xs text-gray-400">No prior purchases of this item.</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <tr>
+                  <th className="text-left pb-1.5">Date</th>
+                  <th className="text-left pb-1.5">Party</th>
+                  <th className="text-right pb-1.5">Qty</th>
+                  <th className="text-right pb-1.5">Rate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {rows.map((r, i) => (
+                  <tr key={i}>
+                    <td className="py-1.5 text-gray-500 dark:text-gray-400">
+                      {new Date(r.challanDate).toLocaleDateString('en-IN')}
+                    </td>
+                    <td className="py-1.5 text-gray-800 dark:text-gray-100">{r.partyName}</td>
+                    <td className="py-1.5 text-right">{Number(r.qty)} {r.unit}</td>
+                    <td className="py-1.5 text-right font-semibold">₹{Number(r.rate).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
