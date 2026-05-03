@@ -64,6 +64,26 @@ export default function ChallansListPage() {
 
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [selected, setSelected] = useState<Set<number>>(new Set())
+  // Hide invoiced challans by default — they're rarely the working set
+  const [hideInvoiced, setHideInvoiced] = useState(true)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('inv-challans-hide-invoiced')
+      if (saved !== null) setHideInvoiced(saved === 'true')
+    } catch {}
+  }, [])
+  useEffect(() => {
+    try { localStorage.setItem('inv-challans-hide-invoiced', String(hideInvoiced)) } catch {}
+  }, [hideInvoiced])
+
+  const visibleChallans = useMemo(
+    () => hideInvoiced ? challans.filter(c => c.status !== 'Invoiced') : challans,
+    [challans, hideInvoiced],
+  )
+  const invoicedCount = useMemo(
+    () => challans.filter(c => c.status === 'Invoiced').length,
+    [challans],
+  )
   function toggleExpand(id: number) {
     setExpanded(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   }
@@ -117,7 +137,9 @@ export default function ChallansListPage() {
         <BackButton />
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Inward Challans</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{challans.length} matching</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {visibleChallans.length} of {challans.length} matching
+          </p>
         </div>
         <Link href="/inventory/challans/new"
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">
@@ -140,16 +162,31 @@ export default function ChallansListPage() {
             {s}
           </button>
         ))}
+        {invoicedCount > 0 && (
+          <button onClick={() => setHideInvoiced(v => !v)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+              hideInvoiced
+                ? 'bg-purple-100 dark:bg-purple-900/40 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300'
+                : 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+            }`}>
+            {hideInvoiced ? `Hide Invoiced (${invoicedCount})` : 'Show All'}
+          </button>
+        )}
         <input type="search" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search challan no…"
           className="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs" />
       </div>
 
       {isLoading ? <div className="p-12 text-center text-gray-400">Loading…</div>
-        : !challans.length ? <div className="p-12 text-center text-gray-400">No challans yet.</div>
-        : (
+        : !visibleChallans.length ? (
+          <div className="p-12 text-center text-gray-400">
+            {challans.length === 0
+              ? 'No challans yet.'
+              : `All ${challans.length} matching challans are invoiced — toggle "Show All" to view.`}
+          </div>
+        ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {challans.map(c => (
+          {visibleChallans.map(c => (
             <ChallanCard
               key={c.id}
               challan={c}
