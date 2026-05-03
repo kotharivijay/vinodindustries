@@ -43,6 +43,13 @@ export default function NewChallanPage() {
   const [itemQ, setItemQ] = useState('')
   const [itemOpen, setItemOpen] = useState(false)
   const { data: catalog = [] } = useSWR<Item[]>(itemQ ? `/api/inv/items?q=${encodeURIComponent(itemQ)}` : null, fetcher)
+  // Inline "create new item" state — opens when no existing item matches the search
+  const [createForm, setCreateForm] = useState<{ aliasId: string } | null>(null)
+  const [creating, setCreating] = useState(false)
+  const { data: aliases = [] } = useSWR<{ id: number; tallyStockItem: string; gstRate: string | number; unit: string }[]>(
+    createForm ? `/api/inv/aliases${itemQ ? `?q=${encodeURIComponent(itemQ)}` : ''}` : null,
+    fetcher,
+  )
   const itemList = useMemo(() => {
     const seen = new Set<number>()
     const out: Item[] = []
@@ -70,7 +77,30 @@ export default function NewChallanPage() {
 
   function addItem(it: Item) {
     setLines(prev => [...prev, { itemId: String(it.id), itemName: it.displayName, unit: it.unit, qty: '', rate: '', reviewStatus: it.reviewStatus }])
-    setItemQ(''); setItemOpen(false)
+    setItemQ(''); setItemOpen(false); setCreateForm(null)
+  }
+
+  async function createItem() {
+    if (!itemQ.trim() || !createForm?.aliasId || creating) return
+    setCreating(true)
+    try {
+      const res = await fetch('/api/inv/items', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          displayName: itemQ.trim(),
+          aliasId: Number(createForm.aliasId),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert('Create failed: ' + (d.error || res.status)); return }
+      addItem({
+        id: d.id,
+        displayName: d.displayName,
+        unit: d.unit,
+        reviewStatus: d.reviewStatus,
+        alias: { gstRate: d.alias?.gstRate ?? '0', tallyStockItem: d.alias?.tallyStockItem ?? '' },
+      })
+    } finally { setCreating(false) }
   }
 
   function updateLine(i: number, k: keyof Line, v: string) {
@@ -234,11 +264,11 @@ export default function NewChallanPage() {
           </div>
           {/* Add-line picker */}
           <div className="relative mt-2">
-            <input value={itemQ} onChange={e => { setItemQ(e.target.value); setItemOpen(true) }}
+            <input value={itemQ} onChange={e => { setItemQ(e.target.value); setItemOpen(true); setCreateForm(null) }}
               onFocus={() => setItemOpen(true)}
               placeholder="🔍 Search item to add (Tier A items appear first when party is selected)…"
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
-            {itemOpen && itemList.length > 0 && (
+            {itemOpen && itemList.length > 0 && !createForm && (
               <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-64 overflow-y-auto">
                 {itemList.slice(0, 30).map(it => (
                   <button key={it.id} onClick={() => addItem(it)}
@@ -247,6 +277,57 @@ export default function NewChallanPage() {
                     {it.reviewStatus === 'pending_review' && <span className="text-[10px] font-bold px-1 rounded bg-amber-100 text-amber-700">Pending</span>}
                   </button>
                 ))}
+                {itemQ.trim() && (
+                  <button type="button" onClick={() => setCreateForm({ aliasId: '' })}
+                    className="w-full text-left px-3 py-2 text-xs border-t border-gray-100 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+                    + Create &ldquo;{itemQ}&rdquo; as a new item
+                  </button>
+                )}
+              </div>
+            )}
+            {itemOpen && itemList.length === 0 && itemQ.trim() && !createForm && (
+              <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl px-3 py-3 space-y-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  No item named <span className="font-semibold">&ldquo;{itemQ}&rdquo;</span>.
+                </p>
+                <button type="button" onClick={() => setCreateForm({ aliasId: '' })}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">
+                  + Create &ldquo;{itemQ}&rdquo; as a new item
+                </button>
+              </div>
+            )}
+            {itemOpen && createForm && (
+              <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-indigo-300 dark:border-indigo-700 rounded-lg shadow-xl p-3 space-y-2">
+                <p className="text-xs text-gray-700 dark:text-gray-200">
+                  Creating: <span className="font-semibold">{itemQ}</span>
+                </p>
+                <label className="block text-[11px]">
+                  <span className="text-gray-500 dark:text-gray-400">Tally alias *</span>
+                  <select value={createForm.aliasId}
+                    onChange={e => setCreateForm({ aliasId: e.target.value })}
+                    className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
+                    <option value="">— pick alias —</option>
+                    {aliases.map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.tallyStockItem} · GST {Number(a.gstRate).toFixed(0)}% · {a.unit}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                  Unit, GST rate and HSN will be inherited from the alias. The item will be marked
+                  <span className="font-semibold"> Pending Review</span> for the manager to approve.
+                </p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={createItem} disabled={!createForm.aliasId || creating}
+                    className="flex-1 px-2 py-1.5 rounded bg-indigo-600 text-white text-xs font-semibold disabled:opacity-50">
+                    {creating ? 'Creating…' : 'Create + Add to Challan'}
+                  </button>
+                  <button type="button" onClick={() => setCreateForm(null)}
+                    className="px-2 py-1.5 rounded bg-gray-200 dark:bg-gray-700 text-xs">
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
           </div>
