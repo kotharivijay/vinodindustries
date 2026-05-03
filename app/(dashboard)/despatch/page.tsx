@@ -486,6 +486,9 @@ export default function DespatchListPage() {
                               <span className="text-gray-600 dark:text-gray-400">({l.than})</span>
                               {lotQuality && <span className="text-gray-700 dark:text-gray-300 font-medium">{lotQuality}</span>}
                               {l.description && <span className="text-gray-500 dark:text-gray-400 italic">{l.description}</span>}
+                              {l.meter != null && <span className="text-gray-500 dark:text-gray-400">· {l.meter}m</span>}
+                              {l.rate != null && <span className="text-gray-500 dark:text-gray-400">· ₹{l.rate}</span>}
+                              {l.amount != null && <span className="font-medium text-orange-700 dark:text-orange-400">· ₹{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>}
                             </div>
                             )
                           })}
@@ -583,11 +586,14 @@ export default function DespatchListPage() {
                                 {lots.map((l, li) => {
                                   const lotQuality = l.quality?.name ?? e.quality?.name ?? null
                                   return (
-                                  <div key={li} className="flex items-center gap-1.5 text-xs">
+                                  <div key={li} className="flex flex-wrap items-center gap-1.5 text-xs">
                                     <Link href={`/lot/${encodeURIComponent(l.lotNo)}`} className="font-medium text-indigo-700 dark:text-indigo-400 hover:underline">{l.lotNo}</Link>
                                     <span className="text-gray-500 dark:text-gray-400">({l.than})</span>
                                     {lotQuality && <span className="text-gray-600 dark:text-gray-300">{lotQuality}</span>}
                                     {l.description && <span className="text-gray-400 dark:text-gray-500 italic">{l.description}</span>}
+                                    {l.meter != null && <span className="text-gray-500 dark:text-gray-400">· {l.meter}m</span>}
+                                    {l.rate != null && <span className="text-gray-500 dark:text-gray-400">· ₹{l.rate}</span>}
+                                    {l.amount != null && <span className="font-medium text-orange-700 dark:text-orange-400">· ₹{l.amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>}
                                   </div>
                                   )
                                 })}
