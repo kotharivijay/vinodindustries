@@ -638,14 +638,22 @@ function ItemHistoryModal({ itemId, itemName, onClose }: {
 }) {
   const { data, isLoading } = useSWR<any[]>(`/api/inv/items/${itemId}/recent-rates?n=5`, fetcher)
   const rows = data ?? []
+  const aliasBucketed = rows[0]?.aliasBucketed === true
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div onClick={e => e.stopPropagation()}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg">
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl">
         <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
           <div>
             <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Last 5 buys</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{itemName}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              {itemName}
+              {aliasBucketed && (
+                <span className="ml-2 text-[10px] font-semibold text-purple-600 dark:text-purple-400">
+                  · also showing sibling items under the same alias
+                </span>
+              )}
+            </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
         </div>
@@ -660,6 +668,7 @@ function ItemHistoryModal({ itemId, itemName, onClose }: {
                 <tr>
                   <th className="text-left pb-1.5">Date</th>
                   <th className="text-left pb-1.5">Party</th>
+                  {aliasBucketed && <th className="text-left pb-1.5">Item</th>}
                   <th className="text-right pb-1.5">Qty</th>
                   <th className="text-right pb-1.5">Rate</th>
                 </tr>
@@ -671,6 +680,13 @@ function ItemHistoryModal({ itemId, itemName, onClose }: {
                       {new Date(r.challanDate).toLocaleDateString('en-IN')}
                     </td>
                     <td className="py-1.5 text-gray-800 dark:text-gray-100">{r.partyName}</td>
+                    {aliasBucketed && (
+                      <td className="py-1.5 text-gray-700 dark:text-gray-200">
+                        {r.itemId === itemId
+                          ? <span className="font-semibold">{r.itemName}</span>
+                          : <span className="text-gray-500 dark:text-gray-400">{r.itemName}</span>}
+                      </td>
+                    )}
                     <td className="py-1.5 text-right">{Number(r.qty)} {r.unit}</td>
                     <td className="py-1.5 text-right font-semibold">₹{Number(r.rate).toFixed(2)}</td>
                   </tr>
