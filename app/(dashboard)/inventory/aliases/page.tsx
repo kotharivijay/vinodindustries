@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
 
@@ -28,16 +28,42 @@ export default function AliasesPage() {
   const [syncing, setSyncing] = useState(false)
   const [editId, setEditId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState<Partial<Alias>>({})
+  const [syncLog, setSyncLog] = useState<{ ts: string; type: 'progress' | 'complete' | 'error'; message: string }[]>([])
+  const [showLog, setShowLog] = useState(false)
+  const logEndRef = useRef<HTMLDivElement>(null)
 
-  async function syncFromTally() {
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [syncLog])
+
+  function appendLog(type: 'progress' | 'complete' | 'error', message: string) {
+    const ts = new Date().toLocaleTimeString('en-IN', { hour12: false })
+    setSyncLog(prev => [...prev, { ts, type, message }])
+  }
+
+  function syncFromTally() {
+    if (syncing) return
     setSyncing(true)
-    try {
-      const res = await fetch('/api/inv/aliases/sync', { method: 'POST' })
-      const d = await res.json()
-      if (!res.ok) alert('Sync failed: ' + (d.error || res.status))
-      else alert(`Synced — ${d.inserted} new, ${d.updated} updated`)
-      mutate()
-    } finally { setSyncing(false) }
+    setSyncLog([])
+    setShowLog(true)
+    appendLog('progress', 'Connecting to Tally…')
+    const es = new EventSource('/api/inv/aliases/sync')
+    es.onmessage = e => {
+      try {
+        const ev = JSON.parse(e.data)
+        appendLog(ev.type, ev.message)
+        if (ev.type === 'complete' || ev.type === 'error') {
+          es.close()
+          setSyncing(false)
+          mutate()
+        }
+      } catch {}
+    }
+    es.onerror = () => {
+      es.close()
+      setSyncing(false)
+      appendLog('error', 'Connection lost.')
+    }
   }
 
   async function saveEdit() {
@@ -62,6 +88,37 @@ export default function AliasesPage() {
           {syncing ? '⏳ Syncing…' : '🔄 Sync from Tally'}
         </button>
       </div>
+
+      {showLog && (
+        <div className="mb-4 bg-gray-900 text-gray-100 rounded-xl border border-gray-700 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 bg-gray-800 border-b border-gray-700 text-xs">
+            <span className="font-semibold">Tally Sync Log</span>
+            <div className="flex gap-2">
+              {!syncing && (
+                <button onClick={() => setSyncLog([])} className="text-gray-400 hover:text-gray-200">Clear</button>
+              )}
+              <button onClick={() => setShowLog(false)} className="text-gray-400 hover:text-gray-200">Hide ✕</button>
+            </div>
+          </div>
+          <div className="px-3 py-2 max-h-56 overflow-y-auto font-mono text-[11px] leading-snug space-y-0.5">
+            {syncLog.length === 0 ? (
+              <p className="text-gray-500">Waiting for first message…</p>
+            ) : (
+              syncLog.map((l, i) => (
+                <div key={i} className="flex gap-2">
+                  <span className="text-gray-500 shrink-0">{l.ts}</span>
+                  <span className={
+                    l.type === 'error' ? 'text-red-400' :
+                    l.type === 'complete' ? 'text-emerald-400' :
+                    'text-gray-200'
+                  }>{l.message}</span>
+                </div>
+              ))
+            )}
+            <div ref={logEndRef} />
+          </div>
+        </div>
+      )}
 
       <input type="search" value={search} onChange={e => setSearch(e.target.value)}
         placeholder="Search alias…"
