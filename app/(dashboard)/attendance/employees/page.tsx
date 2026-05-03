@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
 
@@ -22,11 +22,23 @@ interface Employee {
 type Filter = 'all' | 'active' | 'left'
 
 export default function AttendanceEmployeesPage() {
-  const { data, mutate, isLoading } = useSWR<{ employees: Employee[]; tokenError?: string }>('/api/attendance/employees', fetcher)
+  const { data, mutate, isLoading, isValidating } = useSWR<{ employees: Employee[]; tokenError?: string }>(
+    '/api/attendance/employees', fetcher,
+  )
   const employees = data?.employees || []
   const [filter, setFilter] = useState<Filter>('all')
   const [search, setSearch] = useState('')
   const [updating, setUpdating] = useState<number | null>(null)
+  const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null)
+
+  // Mark a successful sync the moment fresh data lands
+  useEffect(() => {
+    if (data && !data.tokenError) setLastSyncAt(new Date())
+  }, [data])
+
+  function fmtTime(d: Date) {
+    return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  }
 
   async function toggleStatus(emp: Employee) {
     const next = emp.status === 'active' ? 'left' : 'active'
@@ -67,10 +79,21 @@ export default function AttendanceEmployeesPage() {
     <div className="p-4 md:p-8 max-w-4xl">
       <div className="flex items-center gap-3 mb-5">
         <BackButton />
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Employees</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">Tag employees who have left so they stop appearing in the No Punch list.</p>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+            {isValidating
+              ? '⏳ Syncing from Petpooja…'
+              : lastSyncAt
+                ? `✓ ${employees.length} employees · last sync ${fmtTime(lastSyncAt)}`
+                : '—'}
+          </p>
         </div>
+        <button onClick={() => mutate()} disabled={isValidating}
+          className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-semibold">
+          {isValidating ? '⏳ Syncing…' : '🔄 Sync from Petpooja'}
+        </button>
       </div>
 
       {data?.tokenError && (
