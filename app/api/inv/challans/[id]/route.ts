@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { computeLineMath } from '@/lib/inv/challan-line-math'
 
 const db = prisma as any
 
@@ -45,33 +46,57 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
   if (body.challanDate) data.challanDate = new Date(body.challanDate)
 
-  // Line edits — body.lines = [{id?,itemId,qty,rate,...}]
+  // ratesIncludeGst toggle — flip the flag and recompute every line's money
+  // columns so the displayed amounts stay consistent with the new mode.
+  let ratesIncludeGstChanged = false
+  let nextRatesIncludeGst = !!existing.ratesIncludeGst
+  if (body.ratesIncludeGst !== undefined && !!body.ratesIncludeGst !== !!existing.ratesIncludeGst) {
+    nextRatesIncludeGst = !!body.ratesIncludeGst
+    data.ratesIncludeGst = nextRatesIncludeGst
+    ratesIncludeGstChanged = true
+  }
+
+  // Line edits — body.lines = [{id?,itemId,qty,rate,gstRate,...}]
   if (Array.isArray(body.lines)) {
-    // Strategy: full replace within a transaction. Simple + safe for the
-    // small line counts a challan has.
     const lineRows: any[] = []
-    let totalQty = 0, totalAmount = 0
+    let totalQty = 0, totalAmount = 0, totalGstAmount = 0, totalWithGst = 0
     let hasRatelessLines = false
     let hasPendingReviewItems = false
     for (let i = 0; i < body.lines.length; i++) {
       const l = body.lines[i]
-      const item = await db.invItem.findUnique({ where: { id: Number(l.itemId) } })
+      const item = await db.invItem.findUnique({
+        where: { id: Number(l.itemId) },
+        include: { alias: { select: { gstRate: true } } },
+      })
       if (!item) return NextResponse.json({ error: `Item ${l.itemId} not found` }, { status: 404 })
       if (item.reviewStatus === 'pending_review') hasPendingReviewItems = true
       const qty = Number(l.qty || 0)
       const rate = l.rate != null && l.rate !== '' ? Number(l.rate) : null
       if (rate == null) hasRatelessLines = true
-      const gross = rate != null ? qty * rate : null
+      const gstRate = l.gstRate != null && l.gstRate !== ''
+        ? Number(l.gstRate)
+        : (item.alias?.gstRate != null ? Number(item.alias.gstRate) : 0)
+      const discountAmount = l.discountAmount != null ? Number(l.discountAmount) : null
+      const m = computeLineMath({ qty, rate, gstRate, discountAmount }, nextRatesIncludeGst)
       totalQty += qty
-      if (gross != null) totalAmount += gross
+      totalAmount += m.amount ?? 0
+      totalGstAmount += m.gstAmount ?? 0
+      totalWithGst += m.totalWithGst ?? 0
       lineRows.push({
         lineNo: i + 1,
         itemId: item.id,
         poLineId: l.poLineId ? Number(l.poLineId) : null,
-        qty, unit: l.unit || item.unit, rate, grossAmount: gross, amount: gross,
+        qty,
+        unit: l.unit || item.unit,
+        rate,
+        gstRate,
+        grossAmount: m.grossAmount,
+        amount: m.amount,
+        gstAmount: m.gstAmount,
+        totalWithGst: m.totalWithGst,
         discountType: l.discountType || null,
         discountValue: l.discountValue != null ? Number(l.discountValue) : null,
-        discountAmount: l.discountAmount != null ? Number(l.discountAmount) : null,
+        discountAmount,
       })
     }
     await db.$transaction([
@@ -80,10 +105,53 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     ])
     data.totalQty = totalQty
     data.totalAmount = totalAmount
+    data.totalGstAmount = totalGstAmount
+    data.totalWithGst = totalWithGst
     data.hasRatelessLines = hasRatelessLines
     data.hasPendingReviewItems = hasPendingReviewItems
+  } else if (ratesIncludeGstChanged) {
+    // Toggle flipped without a line replacement — recompute existing lines.
+    const lines = await db.invChallanLine.findMany({
+      where: { challanId: id },
+      include: { item: { include: { alias: { select: { gstRate: true } } } } },
+    })
+    let totalQty = 0, totalAmount = 0, totalGstAmount = 0, totalWithGst = 0
+    const ops: any[] = []
+    for (const l of lines) {
+      const gstRate = l.gstRate != null
+        ? Number(l.gstRate)
+        : (l.item?.alias?.gstRate != null ? Number(l.item.alias.gstRate) : 0)
+      const m = computeLineMath({
+        qty: Number(l.qty),
+        rate: l.rate != null ? Number(l.rate) : null,
+        gstRate,
+        discountAmount: l.discountAmount != null ? Number(l.discountAmount) : null,
+      }, nextRatesIncludeGst)
+      totalQty += Number(l.qty || 0)
+      totalAmount += m.amount ?? 0
+      totalGstAmount += m.gstAmount ?? 0
+      totalWithGst += m.totalWithGst ?? 0
+      ops.push(db.invChallanLine.update({
+        where: { id: l.id },
+        data: {
+          gstRate,
+          grossAmount: m.grossAmount,
+          amount: m.amount,
+          gstAmount: m.gstAmount,
+          totalWithGst: m.totalWithGst,
+        },
+      }))
+    }
+    if (ops.length) await db.$transaction(ops)
+    data.totalQty = totalQty
+    data.totalAmount = totalAmount
+    data.totalGstAmount = totalGstAmount
+    data.totalWithGst = totalWithGst
   }
 
-  const updated = await db.invChallan.update({ where: { id }, data, include: { lines: true } })
+  const updated = await db.invChallan.update({
+    where: { id }, data,
+    include: { lines: { include: { item: { include: { alias: true } } }, orderBy: { lineNo: 'asc' } } },
+  })
   return NextResponse.json(updated)
 }

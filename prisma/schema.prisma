@@ -1293,8 +1293,11 @@ model InvChallan {
   vehicleNo             String?
   transporter           String?
   defaultDiscountPct    Decimal? @db.Decimal(6, 3)
+  ratesIncludeGst       Boolean  @default(false)
   totalQty              Decimal? @db.Decimal(14, 3)
   totalAmount           Decimal? @db.Decimal(16, 2)
+  totalGstAmount        Decimal? @db.Decimal(14, 2)
+  totalWithGst          Decimal? @db.Decimal(16, 2)
   // 'Draft' | 'Verified' | 'PendingApproval' | 'PendingInvoice' | 'Invoiced' | 'Cancelled'
   status                String   @default("Draft")
   varianceFlag          Boolean  @default(false)
@@ -1336,6 +1339,9 @@ model InvChallanLine {
   discountAmount  Decimal?   @db.Decimal(14, 2)
   grossAmount     Decimal?   @db.Decimal(16, 2)
   amount          Decimal?   @db.Decimal(16, 2)
+  gstRate         Decimal?   @db.Decimal(5, 2)
+  gstAmount       Decimal?   @db.Decimal(14, 2)
+  totalWithGst    Decimal?   @db.Decimal(16, 2)
   damageQty       Decimal    @default(0) @db.Decimal(14, 3)
   damageRemarks   String?
   rateVariancePct Decimal?   @db.Decimal(6, 2)

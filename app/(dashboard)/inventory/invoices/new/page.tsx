@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import useSWR from 'swr'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import BackButton from '../../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -11,9 +11,11 @@ interface InvLine { itemId: string | null; description: string; qty: string; uni
 
 export default function NewInvoicePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { data: parties = [] } = useSWR<any[]>('/api/inv/parties', fetcher)
 
   const [partyId, setPartyId] = useState('')
+  const [preloadDone, setPreloadDone] = useState(false)
   const [supplierInvoiceNo, setInvNo] = useState('')
   const [supplierInvoiceDate, setInvDate] = useState(new Date().toISOString().slice(0, 10))
   const [freightAmount, setFreight] = useState('')
@@ -38,13 +40,16 @@ export default function NewInvoicePage() {
         if (!res.ok) continue
         const c = await res.json()
         for (const cl of c.lines) {
+          // Prefer the line's saved gstRate (set on the challan card),
+          // fall back to alias master.
+          const gst = cl.gstRate != null ? cl.gstRate : cl.item.alias?.gstRate
           newLines.push({
             itemId: String(cl.item.id),
             description: cl.item.displayName,
             qty: String(cl.qty),
             unit: cl.unit,
             rate: cl.rate ? String(cl.rate) : '',
-            gstRate: cl.item.alias?.gstRate ? String(cl.item.alias.gstRate) : '',
+            gstRate: gst != null ? String(gst) : '',
             challanLineId: String(cl.id),
           })
         }
@@ -53,6 +58,25 @@ export default function NewInvoicePage() {
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [Array.from(selectedChallans).join(',')])
+
+  // Preload from ?challans=1,2,3 — set party from the first challan, mark all as selected.
+  useEffect(() => {
+    if (preloadDone) return
+    const csv = searchParams?.get('challans')
+    if (!csv) { setPreloadDone(true); return }
+    const ids = csv.split(',').map(s => parseInt(s, 10)).filter(n => Number.isFinite(n) && n > 0)
+    if (ids.length === 0) { setPreloadDone(true); return }
+    ;(async () => {
+      try {
+        const first = await fetch(`/api/inv/challans/${ids[0]}`).then(r => r.ok ? r.json() : null)
+        if (first?.partyId) setPartyId(String(first.partyId))
+        setSelectedChallans(new Set(ids))
+      } finally {
+        setPreloadDone(true)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
   function toggleChallan(id: number) {
     setSelectedChallans(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })

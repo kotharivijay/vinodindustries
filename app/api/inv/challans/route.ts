@@ -36,8 +36,14 @@ export async function GET(req: NextRequest) {
   const challans = await db.invChallan.findMany({
     where,
     include: {
-      party: { select: { id: true, displayName: true } },
-      lines: { select: { id: true, qty: true, rate: true } },
+      party: { select: { id: true, displayName: true, parentGroup: true } },
+      lines: {
+        orderBy: { lineNo: 'asc' },
+        include: {
+          item: { include: { alias: { select: { id: true, tallyStockItem: true, gstRate: true } } } },
+        },
+      },
+      invoiceLink: { select: { invoiceId: true } },
     },
     orderBy: { challanDate: 'desc' },
     take: 200,
