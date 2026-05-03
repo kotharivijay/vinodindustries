@@ -46,8 +46,10 @@ export default function NewChallanPage() {
   // Inline "create new item" state — opens when no existing item matches the search
   const [createForm, setCreateForm] = useState<{ aliasId: string } | null>(null)
   const [creating, setCreating] = useState(false)
+  // Aliases are a small list of coarse buckets (Dye 18%, XNI, Machinery Parts 18%, …),
+  // so we load them all instead of filtering by the item's specific name.
   const { data: aliases = [] } = useSWR<{ id: number; tallyStockItem: string; gstRate: string | number; unit: string }[]>(
-    createForm ? `/api/inv/aliases${itemQ ? `?q=${encodeURIComponent(itemQ)}` : ''}` : null,
+    createForm ? '/api/inv/aliases' : null,
     fetcher,
   )
   const itemList = useMemo(() => {
