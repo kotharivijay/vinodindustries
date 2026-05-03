@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const q = (req.nextUrl.searchParams.get('q') || '').trim().toLowerCase()
+  const withTags = req.nextUrl.searchParams.get('withTags') === 'true'
   const where: any = { active: true }
   if (q) {
     where.OR = [
@@ -23,7 +24,28 @@ export async function GET(req: NextRequest) {
     orderBy: { displayName: 'asc' },
     take: 200,
   })
-  return NextResponse.json(parties)
+
+  // Enrich each party with tags from TallyLedger (KSI firm) by name match.
+  // When withTags=true, filter to only parties that have at least one tag.
+  const names = parties.map((p: any) => p.tallyLedger)
+  const ledgers = names.length
+    ? await db.tallyLedger.findMany({
+        where: { firmCode: 'KSI', name: { in: names } },
+        select: { name: true, tags: true, parent: true },
+      })
+    : []
+  const ledgerByName = new Map(ledgers.map((l: any) => [l.name, l]))
+  const enriched = parties.map((p: any) => {
+    const led = ledgerByName.get(p.tallyLedger) as { tags?: string[]; parent?: string | null } | undefined
+    return {
+      ...p,
+      tags: led?.tags || [],
+      // Prefer the live parent from ledger master; fall back to synced parentGroup
+      parentGroup: led?.parent ?? p.parentGroup,
+    }
+  })
+  const filtered = withTags ? enriched.filter((p: any) => p.tags.length > 0) : enriched
+  return NextResponse.json(filtered)
 }
 
 export async function PATCH(req: NextRequest) {

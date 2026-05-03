@@ -8,13 +8,13 @@ import BackButton from '../../../BackButton'
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 interface Item { id: number; displayName: string; unit: string; reviewStatus: string; alias: { gstRate: string; tallyStockItem: string } }
-interface Party { id: number; displayName: string }
+interface Party { id: number; displayName: string; parentGroup: string | null; tags: string[] }
 
 interface Line { itemId: string; itemName: string; unit: string; qty: string; rate: string; reviewStatus?: string }
 
 export default function NewChallanPage() {
   const router = useRouter()
-  const { data: parties = [] } = useSWR<Party[]>('/api/inv/parties', fetcher)
+  const { data: parties = [] } = useSWR<Party[]>('/api/inv/parties?withTags=true', fetcher)
   const { data: nextSeries } = useSWR<{ no: number; fy: string }>('/api/inv/series/next?type=inward', fetcher)
 
   const [partyId, setPartyId] = useState('')
@@ -22,9 +22,6 @@ export default function NewChallanPage() {
   const [partyOpen, setPartyOpen] = useState(false)
   const [challanNo, setChallanNo] = useState('')
   const [challanDate, setChallanDate] = useState(new Date().toISOString().slice(0, 10))
-  const [biltyNo, setBiltyNo] = useState('')
-  const [vehicleNo, setVehicleNo] = useState('')
-  const [transporter, setTransporter] = useState('')
   const [defaultDiscountPct, setDefaultDiscountPct] = useState('')
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<Line[]>([])
@@ -49,6 +46,11 @@ export default function NewChallanPage() {
     const q = partyQ.toLowerCase()
     return (parties || []).filter(p => !q || p.displayName.toLowerCase().includes(q)).slice(0, 30)
   }, [parties, partyQ])
+
+  const selectedParty = useMemo(() => {
+    if (!partyId) return null
+    return (parties || []).find(p => String(p.id) === partyId) || null
+  }, [parties, partyId])
 
   function pickParty(p: Party) {
     setPartyId(String(p.id))
@@ -94,7 +96,7 @@ export default function NewChallanPage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           partyId: Number(partyId),
-          challanNo, challanDate, biltyNo, vehicleNo, transporter,
+          challanNo, challanDate,
           defaultDiscountPct: defaultDiscountPct || null,
           notes,
           lines: lines.map(l => ({ itemId: l.itemId, qty: l.qty, rate: l.rate || null, unit: l.unit })),
@@ -127,14 +129,39 @@ export default function NewChallanPage() {
               onFocus={() => setPartyOpen(true)}
               placeholder="Search supplier…"
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            {partyId && selectedParty && (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                {selectedParty.parentGroup && (
+                  <span className="text-gray-500 dark:text-gray-400">Group: <span className="font-medium text-gray-700 dark:text-gray-300">{selectedParty.parentGroup}</span></span>
+                )}
+                {selectedParty.tags?.map(t => (
+                  <span key={t} className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1.5 py-0.5 rounded-full">{t}</span>
+                ))}
+              </div>
+            )}
             {partyOpen && filteredParties.length > 0 && !partyId && (
               <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-56 overflow-y-auto">
                 {filteredParties.map(p => (
                   <button key={p.id} onClick={() => pickParty(p)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
-                    {p.displayName}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between gap-2">
+                    <span className="flex flex-col min-w-0">
+                      <span className="truncate">{p.displayName}</span>
+                      {p.tags?.length > 0 && (
+                        <span className="flex flex-wrap gap-1 mt-0.5">
+                          {p.tags.map(t => (
+                            <span key={t} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1 py-0.5 rounded">{t}</span>
+                          ))}
+                        </span>
+                      )}
+                    </span>
+                    {p.parentGroup && <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{p.parentGroup}</span>}
                   </button>
                 ))}
+              </div>
+            )}
+            {partyOpen && filteredParties.length === 0 && (
+              <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                No tagged parties found. Tag suppliers in Accounts → Ledgers to make them appear here.
               </div>
             )}
           </div>
@@ -157,20 +184,13 @@ export default function NewChallanPage() {
           </div>
         )}
 
-        {/* Transport row */}
+        {/* Discount row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            ['Bilty/LR No', biltyNo, setBiltyNo],
-            ['Vehicle No', vehicleNo, setVehicleNo],
-            ['Transporter', transporter, setTransporter],
-            ['Discount %', defaultDiscountPct, setDefaultDiscountPct],
-          ].map(([label, val, set]: any) => (
-            <div key={label}>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{label}</label>
-              <input value={val} onChange={e => set(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
-            </div>
-          ))}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Discount %</label>
+            <input value={defaultDiscountPct} onChange={e => setDefaultDiscountPct(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+          </div>
         </div>
 
         {/* Items */}
