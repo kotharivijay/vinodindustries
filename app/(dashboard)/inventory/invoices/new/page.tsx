@@ -20,6 +20,7 @@ export default function NewInvoicePage() {
   const [supplierInvoiceDate, setInvDate] = useState(new Date().toISOString().slice(0, 10))
   const [freightAmount, setFreight] = useState('')
   const [otherCharges, setOther] = useState('')
+  const [discountAmount, setDiscount] = useState('')
   const [notes, setNotes] = useState('')
 
   const { data: pendingChallans = [] } = useSWR<any[]>(
@@ -99,8 +100,13 @@ export default function NewInvoicePage() {
       const lineGst = lineNet * (Number(l.gstRate) || 0) / 100
       net += lineNet; gst += lineGst
     }
-    return { net, gst, freight: Number(freightAmount) || 0, other: Number(otherCharges) || 0 }
-  }, [lines, freightAmount, otherCharges])
+    return {
+      net, gst,
+      freight: Number(freightAmount) || 0,
+      other: Number(otherCharges) || 0,
+      discount: Number(discountAmount) || 0,
+    }
+  }, [lines, freightAmount, otherCharges, discountAmount])
 
   async function save() {
     if (!partyId || !supplierInvoiceNo || !supplierInvoiceDate || !lines.length) {
@@ -112,7 +118,7 @@ export default function NewInvoicePage() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           partyId: Number(partyId), supplierInvoiceNo, supplierInvoiceDate,
-          freightAmount, otherCharges, notes,
+          freightAmount, otherCharges, discountAmount, notes,
           challanIds: Array.from(selectedChallans),
           lines,
         }),
@@ -197,10 +203,12 @@ export default function NewInvoicePage() {
         <div className="grid md:grid-cols-2 gap-3">
           <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes…" rows={2}
             className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <input type="number" step="0.01" value={freightAmount} onChange={e => setFreight(e.target.value)} placeholder="Freight"
               className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
             <input type="number" step="0.01" value={otherCharges} onChange={e => setOther(e.target.value)} placeholder="Other charges"
+              className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            <input type="number" step="0.01" value={discountAmount} onChange={e => setDiscount(e.target.value)} placeholder="Discount"
               className="px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
           </div>
         </div>
@@ -209,7 +217,15 @@ export default function NewInvoicePage() {
           <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Taxable</span><span>₹{totals.net.toLocaleString('en-IN')}</span></div>
           <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">GST</span><span>₹{totals.gst.toLocaleString('en-IN')}</span></div>
           <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Freight + other</span><span>₹{(totals.freight + totals.other).toLocaleString('en-IN')}</span></div>
-          <div className="flex justify-between font-bold border-t border-gray-200 dark:border-gray-700 pt-1"><span>Total</span><span>₹{(totals.net + totals.gst + totals.freight + totals.other).toLocaleString('en-IN')}</span></div>
+          {totals.discount > 0 && (
+            <div className="flex justify-between text-rose-600 dark:text-rose-400">
+              <span>Discount</span><span>− ₹{totals.discount.toLocaleString('en-IN')}</span>
+            </div>
+          )}
+          <div className="flex justify-between font-bold border-t border-gray-200 dark:border-gray-700 pt-1">
+            <span>Total</span>
+            <span>₹{(totals.net + totals.gst + totals.freight + totals.other - totals.discount).toLocaleString('en-IN')}</span>
+          </div>
         </div>
 
         <div className="flex gap-2 justify-end pt-2 border-t border-gray-200 dark:border-gray-700">

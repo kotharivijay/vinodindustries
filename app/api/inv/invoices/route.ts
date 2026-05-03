@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const {
     partyId, supplierInvoiceNo, supplierInvoiceDate,
-    challanIds, lines, freightAmount, otherCharges, defaultDiscountPct, notes,
+    challanIds, lines, freightAmount, otherCharges, defaultDiscountPct, discountAmount, notes,
   } = body
   if (!partyId || !supplierInvoiceNo || !supplierInvoiceDate || !Array.isArray(lines)) {
     return NextResponse.json({ error: 'partyId, supplierInvoiceNo, supplierInvoiceDate, lines required' }, { status: 400 })
@@ -48,7 +48,8 @@ export async function POST(req: NextRequest) {
 
   const gstTreatment = decideGstTreatment(party)
 
-  let taxableAmount = 0, igstAmount = 0, cgstAmount = 0, sgstAmount = 0, totalDiscountAmount = 0
+  let taxableAmount = 0, igstAmount = 0, cgstAmount = 0, sgstAmount = 0
+  let lineDiscountTotal = 0
   const lineRows: any[] = []
   let hasPendingReviewItems = false
   for (let i = 0; i < lines.length; i++) {
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
 
     taxableAmount += net
-    totalDiscountAmount += discount
+    lineDiscountTotal += discount
     if (gstTreatment === 'IGST') igstAmount += gstAmt
     else if (gstTreatment === 'CGST_SGST') {
       cgstAmount += gstAmt / 2
@@ -97,7 +98,15 @@ export async function POST(req: NextRequest) {
 
   const freight = Number(freightAmount || 0)
   const other = Number(otherCharges || 0)
-  const totalAmount = taxableAmount + igstAmount + cgstAmount + sgstAmount + freight + other - totalDiscountAmount
+  // Header-level flat discount (separate from per-line). Subtracted once
+  // at the bottom — does NOT reduce taxableAmount or GST.
+  const headerDiscount = Number(discountAmount || 0)
+  // Per-line discount is already baked into taxableAmount via `net`, so the
+  // grand total only subtracts the header discount. (Was previously double-
+  // subtracting per-line discounts; the totalDiscountAmount field is now
+  // purely informational — sum of per-line + header.)
+  const totalAmount = taxableAmount + igstAmount + cgstAmount + sgstAmount + freight + other - headerDiscount
+  const totalDiscountAmount = lineDiscountTotal + headerDiscount
 
   try {
     const created = await db.$transaction(async (tx: any) => {

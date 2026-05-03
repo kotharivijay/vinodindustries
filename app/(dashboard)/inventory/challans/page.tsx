@@ -125,10 +125,10 @@ export default function ChallansListPage() {
 
   function clearSelection() { setSelected(new Set()) }
 
-  function createInvoiceFromSelection() {
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+  function openInvoiceModal() {
     if (selected.size === 0) return
-    const ids = [...selected].join(',')
-    router.push(`/inventory/invoices/new?challans=${ids}`)
+    setInvoiceModalOpen(true)
   }
 
   return (
@@ -219,12 +219,192 @@ export default function ChallansListPage() {
             className="text-xs text-gray-300 hover:text-white px-3 py-1.5 rounded-lg border border-gray-600">
             Clear
           </button>
-          <button onClick={createInvoiceFromSelection}
+          <button onClick={openInvoiceModal}
             className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold">
             Create Purchase Invoice
           </button>
         </div>
       )}
+
+      {invoiceModalOpen && selectedChallans.length > 0 && (
+        <CreateInvoiceModal
+          challans={selectedChallans}
+          totals={selectedTotals}
+          onClose={() => setInvoiceModalOpen(false)}
+          onCreated={invoiceId => {
+            setInvoiceModalOpen(false)
+            clearSelection()
+            mutate()
+            router.push(`/inventory/invoices/${invoiceId}`)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function CreateInvoiceModal(props: {
+  challans: Challan[]
+  totals: { qty: number; amount: number; gst: number; total: number }
+  onClose: () => void
+  onCreated: (invoiceId: number) => void
+}) {
+  const { challans, totals, onClose, onCreated } = props
+  const party = challans[0].party
+  const today = new Date().toISOString().slice(0, 10)
+
+  const [supplierInvoiceNo, setInvNo] = useState('')
+  const [supplierInvoiceDate, setInvDate] = useState(today)
+  const [freightAmount, setFreight] = useState('')
+  const [otherCharges, setOther] = useState('')
+  const [discountAmount, setDiscount] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const freight = Number(freightAmount) || 0
+  const other = Number(otherCharges) || 0
+  const discount = Number(discountAmount) || 0
+  const grandTotal = totals.amount + totals.gst + freight + other - discount
+
+  // Flatten all selected challans' lines into the invoice payload
+  const lines = useMemo(() => challans.flatMap(c => c.lines.map(l => ({
+    itemId: l.item.id,
+    description: l.item.displayName,
+    qty: l.qty,
+    unit: l.unit,
+    rate: l.rate,
+    gstRate: l.gstRate,
+    discountAmount: l.discountAmount,
+    challanLineId: l.id,
+  }))), [challans])
+
+  async function save() {
+    if (!supplierInvoiceNo.trim() || !supplierInvoiceDate) {
+      setError('Supplier Invoice No and Date are required.')
+      return
+    }
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/inv/invoices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partyId: party.id,
+          supplierInvoiceNo: supplierInvoiceNo.trim(),
+          supplierInvoiceDate,
+          challanIds: challans.map(c => c.id),
+          lines,
+          freightAmount: freight, otherCharges: other, discountAmount: discount,
+          notes: notes || null,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || `Save failed (${res.status})`); return }
+      onCreated(d.id)
+    } catch (e: any) {
+      setError(e?.message || 'Save failed')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto"
+      onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl my-6">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Create Purchase Invoice</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              {party.displayName} · {challans.length} challan{challans.length === 1 ? '' : 's'}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Selected challans summary */}
+          <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Selected challans</p>
+            <div className="flex flex-wrap gap-1.5 text-[11px]">
+              {challans.map(c => (
+                <span key={c.id} className="font-mono bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded">
+                  KSI/IN/{c.seriesFy}/{String(c.internalSeriesNo).padStart(4, '0')}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Supplier Invoice No *</span>
+              <input value={supplierInvoiceNo} onChange={e => setInvNo(e.target.value)} autoFocus
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Invoice Date *</span>
+              <input type="date" value={supplierInvoiceDate} onChange={e => setInvDate(e.target.value)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Freight</span>
+              <input type="number" step="0.01" value={freightAmount} onChange={e => setFreight(e.target.value)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Other charges</span>
+              <input type="number" step="0.01" value={otherCharges} onChange={e => setOther(e.target.value)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Discount</span>
+              <input type="number" step="0.01" value={discountAmount} onChange={e => setDiscount(e.target.value)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+          </div>
+
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Notes</span>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+          </label>
+
+          <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-sm space-y-1">
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Taxable</span><span>₹{fmtMoney(totals.amount)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">GST</span><span>₹{fmtMoney(totals.gst)}</span></div>
+            {(freight + other) > 0 && (
+              <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Freight + other</span><span>₹{fmtMoney(freight + other)}</span></div>
+            )}
+            {discount > 0 && (
+              <div className="flex justify-between text-rose-600 dark:text-rose-400">
+                <span>Discount</span><span>− ₹{fmtMoney(discount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold text-base border-t border-gray-200 dark:border-gray-700 pt-1">
+              <span>Total</span><span>₹{fmtMoney(grandTotal)}</span>
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 rounded-lg px-3 py-2 text-xs">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving}
+            className="px-5 py-2 rounded-lg text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save Invoice'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
