@@ -53,18 +53,50 @@ function buildStockItemsXML(): string {
 </ENVELOPE>`
 }
 
+/**
+ * XML envelope to export Stock Groups so we can fall back on group-level
+ * HSN / GST when the stock item itself has it blank.
+ */
+function buildStockGroupsXML(): string {
+  return `<ENVELOPE>
+<HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Collection</TYPE><ID>InvStockGroupsExport</ID></HEADER>
+<BODY>
+<DESC>
+<STATICVARIABLES>
+<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+<SVCURRENTCOMPANY>${KSI.tallyName}</SVCURRENTCOMPANY>
+</STATICVARIABLES>
+<TDL><TDLMESSAGE>
+<COLLECTION NAME="InvStockGroupsExport" ISMODIFY="No">
+<TYPE>StockGroup</TYPE>
+<FETCH>Name,Parent,HSNCode,GSTDetails,GSTRateDetailsList</FETCH>
+</COLLECTION>
+</TDLMESSAGE></TDL>
+</DESC>
+</BODY>
+</ENVELOPE>`
+}
+
+// Word boundary `\\b` is critical — without it `<GSTRATE` would also match
+// `<GSTRATEDUTYHEAD>` and similar, swallowing nested content and breaking
+// the rate extraction.
 const xml = (s: string, tag: string): string => {
-  const m = s.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))
+  const m = s.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`))
   return m ? m[1].trim() : ''
 }
 
 const xmlAll = (s: string, tag: string): string[] => {
-  const re = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'g')
+  const re = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'g')
   const out: string[] = []
   let m
   while ((m = re.exec(s)) !== null) out.push(m[1].trim())
   return out
 }
+
+// Strip Tally end-of-text marker that occasionally appears as an XML entity
+// in string fields (e.g. "&#4; Applicable", "&#4; Any").
+const cleanTallyText = (s: string | null | undefined): string =>
+  (s ?? '').replace(/&#4;/g, '').replace(/&amp;/g, '&').trim()
 
 export interface FetchedParty {
   tallyLedger: string
@@ -114,20 +146,92 @@ export interface FetchedAlias {
   defaultTrackStock: boolean
 }
 
+/**
+ * Pull the total GST rate from a STOCKITEM block. Tally emits one
+ * <RATEDETAILS.LIST> per duty head (CGST, SGST/UTGST, IGST, Cess, …).
+ * The "real" rate is the IGST one (= CGST + SGST). We prefer that, fall
+ * back to summing CGST + SGST/UTGST, and finally to the highest non-zero
+ * <GSTRATE> we can find.
+ */
+function extractGstRate(block: string): number {
+  const rateBlocks = xmlAll(block, 'RATEDETAILS.LIST')
+  let cgst = 0
+  let sgst = 0
+  let igst = 0
+  for (const rb of rateBlocks) {
+    const head = xml(rb, 'GSTRATEDUTYHEAD').toUpperCase()
+    const rateRaw = xml(rb, 'GSTRATE')
+    const rate = parseFloat(rateRaw)
+    if (!Number.isFinite(rate)) continue
+    if (head === 'IGST') igst = Math.max(igst, rate)
+    else if (head === 'CGST') cgst = Math.max(cgst, rate)
+    else if (head.startsWith('SGST') || head.startsWith('UTGST')) sgst = Math.max(sgst, rate)
+  }
+  if (igst > 0) return igst
+  if (cgst + sgst > 0) return cgst + sgst
+  // Fallback: scan every GSTRATE in the block, take max
+  const all = xmlAll(block, 'GSTRATE').map(s => parseFloat(s)).filter(n => Number.isFinite(n))
+  return all.length ? Math.max(...all) : 0
+}
+
+/**
+ * Fetch every Stock Group and read off HSN + total GST rate. Used to
+ * backfill items whose own HSN/GST are blank (common when the user
+ * configures these at the group level in Tally).
+ */
+async function fetchStockGroupHsnGstMap(): Promise<Map<string, { hsn: string | null; gstRate: number }>> {
+  const map = new Map<string, { hsn: string | null; gstRate: number }>()
+  try {
+    const raw = await queryTally(buildStockGroupsXML())
+    const groups = raw.match(/<STOCKGROUP\s[^>]*>[\s\S]*?<\/STOCKGROUP>/g) || []
+    for (const block of groups) {
+      const name = cleanTallyText((block.match(/<STOCKGROUP\s[^>]*NAME="([^"]+)"/) || [])[1])
+      if (!name) continue
+      const gstDetails = xml(block, 'GSTDETAILS\\.LIST')
+      const hsn = cleanTallyText(
+        xml(block, 'HSNCODE') ||
+        xml(block, 'HSN') ||
+        xml(gstDetails, 'HSNCODE') ||
+        xml(gstDetails, 'HSN')
+      )
+      const gstRate = extractGstRate(block)
+      map.set(name, { hsn: hsn || null, gstRate })
+    }
+  } catch {
+    // Swallow — group fetch is best-effort. Items just won't get the fallback.
+  }
+  return map
+}
+
 export async function fetchAliasesFromTally(): Promise<FetchedAlias[]> {
-  const raw = await queryTally(buildStockItemsXML())
+  // Fire both queries in parallel — groups are best-effort, items are required.
+  const [raw, groupMap] = await Promise.all([
+    queryTally(buildStockItemsXML()),
+    fetchStockGroupHsnGstMap(),
+  ])
   const items = raw.match(/<STOCKITEM\s[^>]*>[\s\S]*?<\/STOCKITEM>/g) || []
   return items.map(block => {
-    const tallyStockItem = (block.match(/<STOCKITEM\s[^>]*NAME="([^"]+)"/) || [])[1]?.trim() || ''
+    const tallyStockItem = cleanTallyText((block.match(/<STOCKITEM\s[^>]*NAME="([^"]+)"/) || [])[1])
     const guid = xml(block, 'GUID')
-    const parent = xml(block, 'PARENT') // category-ish (e.g. "Dyes", "Chemicals", "Spare")
-    const unit = xml(block, 'BASEUNITS') || 'kg'
-    const hsn = xml(block, 'HSNCODE') || xml(block, 'HSN')
-    const ratesXml = xmlAll(block, 'GSTRATE')
-    const gstRate = ratesXml.length ? parseFloat(ratesXml[0]) : 0
+    const parent = cleanTallyText(xml(block, 'PARENT'))
+    const unit = cleanTallyText(xml(block, 'BASEUNITS')) || 'kg'
+    // HSN can sit at item level OR inside <GSTDETAILS.LIST>
+    const gstDetails = xml(block, 'GSTDETAILS\\.LIST')
+    const itemHsn = cleanTallyText(
+      xml(block, 'HSNCODE') ||
+      xml(block, 'HSN') ||
+      xml(gstDetails, 'HSNCODE') ||
+      xml(gstDetails, 'HSN')
+    )
+    const itemGstRate = extractGstRate(block)
+
+    // Fall back to the parent group when the item itself has no HSN / GST
+    const groupFallback = groupMap.get(parent)
+    const hsn = itemHsn || groupFallback?.hsn || null
+    const gstRate = itemGstRate > 0 ? itemGstRate : (groupFallback?.gstRate ?? 0)
 
     // Map Tally parent group to our internal category
-    const cat = (parent || '').toLowerCase()
+    const cat = parent.toLowerCase()
     const category = cat.includes('dye') ? 'Dye'
       : cat.includes('chem') ? 'Chemical'
       : cat.includes('aux') ? 'Auxiliary'
@@ -139,8 +243,8 @@ export async function fetchAliasesFromTally(): Promise<FetchedAlias[]> {
       tallyGuid: guid || null,
       category,
       unit,
-      gstRate: isNaN(gstRate) ? 0 : gstRate,
-      hsn: hsn || null,
+      gstRate: Number.isFinite(gstRate) ? gstRate : 0,
+      hsn,
       defaultTrackStock: category === 'Chemical' || category === 'Dye',
     }
   }).filter(a => a.tallyStockItem)
