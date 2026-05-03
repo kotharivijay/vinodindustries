@@ -46,12 +46,22 @@ export default function NewChallanPage() {
   // Inline "create new item" state — opens when no existing item matches the search
   const [createForm, setCreateForm] = useState<{ aliasId: string } | null>(null)
   const [creating, setCreating] = useState(false)
-  // Aliases are a small list of coarse buckets (Dye 18%, XNI, Machinery Parts 18%, …),
-  // so we load them all instead of filtering by the item's specific name.
-  const { data: aliases = [] } = useSWR<{ id: number; tallyStockItem: string; gstRate: string | number; unit: string }[]>(
+  const [aliasQ, setAliasQ] = useState('')
+  const [aliasOpen, setAliasOpen] = useState(false)
+  type AliasRow = { id: number; tallyStockItem: string; gstRate: string | number; hsn: string | null; unit: string }
+  // Load the full alias master once when the create form opens.
+  const { data: aliases = [] } = useSWR<AliasRow[]>(
     createForm ? '/api/inv/aliases' : null,
     fetcher,
   )
+  const filteredAliases = useMemo(() => {
+    const q = aliasQ.toLowerCase()
+    return aliases.filter(a => !q || a.tallyStockItem.toLowerCase().includes(q)).slice(0, 50)
+  }, [aliases, aliasQ])
+  const selectedAlias = useMemo(() => {
+    if (!createForm?.aliasId) return null
+    return aliases.find(a => String(a.id) === createForm.aliasId) || null
+  }, [aliases, createForm?.aliasId])
   const itemList = useMemo(() => {
     const seen = new Set<number>()
     const out: Item[] = []
@@ -303,21 +313,49 @@ export default function NewChallanPage() {
                 <p className="text-xs text-gray-700 dark:text-gray-200">
                   Creating: <span className="font-semibold">{itemQ}</span>
                 </p>
-                <label className="block text-[11px]">
+                <div className="block text-[11px] relative">
                   <span className="text-gray-500 dark:text-gray-400">Tally alias *</span>
-                  <select value={createForm.aliasId}
-                    onChange={e => setCreateForm({ aliasId: e.target.value })}
-                    className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-                    <option value="">— pick alias —</option>
-                    {aliases.map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.tallyStockItem} · GST {Number(a.gstRate).toFixed(0)}% · {a.unit}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  <input
+                    type="text"
+                    value={selectedAlias ? selectedAlias.tallyStockItem : aliasQ}
+                    onChange={e => {
+                      setAliasQ(e.target.value)
+                      setAliasOpen(true)
+                      // Clear selection while user types a new query
+                      if (createForm?.aliasId) setCreateForm({ aliasId: '' })
+                    }}
+                    onFocus={() => setAliasOpen(true)}
+                    placeholder={`Search alias master (${aliases.length} items)…`}
+                    className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+                  />
+                  {selectedAlias && (
+                    <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+                      GST {Number(selectedAlias.gstRate).toFixed(0)}% · {selectedAlias.unit}
+                      {selectedAlias.hsn ? ` · HSN ${selectedAlias.hsn}` : ''}
+                    </p>
+                  )}
+                  {aliasOpen && !selectedAlias && filteredAliases.length > 0 && (
+                    <div className="absolute z-40 top-full mt-1 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                      {filteredAliases.map(a => (
+                        <button key={a.id} type="button"
+                          onClick={() => { setCreateForm({ aliasId: String(a.id) }); setAliasOpen(false); setAliasQ('') }}
+                          className="w-full text-left px-2 py-1.5 text-xs hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between gap-2">
+                          <span className="truncate">{a.tallyStockItem}</span>
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">
+                            {Number(a.gstRate).toFixed(0)}% · {a.unit}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {aliasOpen && !selectedAlias && filteredAliases.length === 0 && aliasQ.trim() && (
+                    <div className="absolute z-40 top-full mt-1 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl px-2 py-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                      No alias matches &ldquo;{aliasQ}&rdquo;. Try a shorter search.
+                    </div>
+                  )}
+                </div>
                 <p className="text-[10px] text-gray-500 dark:text-gray-400">
-                  Unit, GST rate and HSN will be inherited from the alias. The item will be marked
+                  Unit, GST rate and HSN will be inherited from the picked alias. The item will be marked
                   <span className="font-semibold"> Pending Review</span> for the manager to approve.
                 </p>
                 <div className="flex gap-2">
@@ -325,7 +363,7 @@ export default function NewChallanPage() {
                     className="flex-1 px-2 py-1.5 rounded bg-indigo-600 text-white text-xs font-semibold disabled:opacity-50">
                     {creating ? 'Creating…' : 'Create + Add to Challan'}
                   </button>
-                  <button type="button" onClick={() => setCreateForm(null)}
+                  <button type="button" onClick={() => { setCreateForm(null); setAliasQ(''); setAliasOpen(false) }}
                     className="px-2 py-1.5 rounded bg-gray-200 dark:bg-gray-700 text-xs">
                     Cancel
                   </button>

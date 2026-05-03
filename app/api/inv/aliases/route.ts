@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     { displayName: { contains: q, mode: 'insensitive' } },
   ]
 
-  const aliases = await db.invTallyAlias.findMany({ where, orderBy: { tallyStockItem: 'asc' }, take: 500 })
+  const aliases = await db.invTallyAlias.findMany({ where, orderBy: { tallyStockItem: 'asc' }, take: 5000 })
   return NextResponse.json(aliases)
 }
 
