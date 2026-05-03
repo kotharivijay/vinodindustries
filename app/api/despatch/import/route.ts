@@ -6,10 +6,15 @@ import { authOptions } from '@/lib/auth'
 import { readDespatchSheet } from '@/lib/sheets'
 
 // Column indices (0-based). Row 3 = header, Row 4+ = data
+// Sheet header order:
+// A Challan No | B Month | C Date | D A-Job Party | E DESCRIPTION | F A-Lot no | G Than |
+// H Meter | I Bill n. | J Rate | K P.total | L Lr.no | M Transport | N Bale | O Gray Dt |
+// P Name of Party | Q Than | R D.Total | S Bale | T web_status   (P–T ignored)
 const COL = {
-  CHALLAN: 0, MONTH: 1, DATE: 2, PARTY: 3, QUALITY: 4, GRAY_INW_DATE: 5,
-  LOT_NO: 6, JOB_DELIVERY: 7, THAN: 8, BILL_NO: 9, RATE: 10, P_TOTAL: 11,
-  LR_NO: 12, TRANSPORT: 13, BALE: 14,
+  CHALLAN: 0, MONTH: 1, DATE: 2, PARTY: 3, QUALITY: 4,
+  LOT_NO: 5, THAN: 6, METER: 7,
+  BILL_NO: 8, RATE: 9, P_TOTAL: 10,
+  LR_NO: 11, TRANSPORT: 12, BALE: 13, GRAY_INW_DATE: 14,
 }
 
 function norm(s: string): string {
@@ -107,7 +112,7 @@ export async function POST(req: NextRequest) {
       transportName: row[COL.TRANSPORT]?.trim() ?? '',
       lotNo: row[COL.LOT_NO]?.trim() ?? '',
       than: parseInt(row[COL.THAN]) || 0,
-      billNo: '', rate: null, pTotal: null, lrNo: '',
+      meter: null, billNo: '', rate: null, pTotal: null, lrNo: '',
       bale: null, narration: '', grayInwDate: '', jobDelivery: '',
       partyId: null, qualityId: null, qualityName2: null, transportId: null,
       lotInGrey: false, missingMasters: [],
@@ -136,7 +141,11 @@ export async function POST(req: NextRequest) {
     const narration = row[COL.QUALITY]?.trim() ?? ''  // sheet quality col → narration
     const transportName = row[COL.TRANSPORT]?.trim() ?? ''
     const rate = parseFloat(row[COL.RATE]) || null
-    const pTotal = rate && than ? parseFloat((than * rate).toFixed(2)) : (parseFloat(row[COL.P_TOTAL]) || null)
+    const meter = parseFloat(row[COL.METER]) || null
+    // Amount = meter × rate when meter is present, else than × rate. Falls back to sheet's P.total.
+    const pTotal = rate
+      ? parseFloat((((meter && meter > 0) ? meter : than) * rate).toFixed(2))
+      : (parseFloat(row[COL.P_TOTAL]) || null)
 
     sheetTotalThan += than
 
@@ -174,8 +183,9 @@ export async function POST(req: NextRequest) {
       qualityName: greyInfo?.qualityName ?? (narration || null),
       lotInGrey,
       grayInwDate: row[COL.GRAY_INW_DATE]?.trim() ?? '',
-      jobDelivery: row[COL.JOB_DELIVERY]?.trim() ?? '',
+      jobDelivery: challanNo ? String(challanNo) : '',
       than,
+      meter,
       billNo: row[COL.BILL_NO]?.trim() ?? '',
       rate, pTotal,
       lrNo: row[COL.LR_NO]?.trim() ?? '',
@@ -254,8 +264,9 @@ export async function PUT(req: NextRequest) {
           date, challanNo: row.challanNo ?? 0,
           partyId: row.partyId, qualityId,
           grayInwDate, lotNo: row.lotNo,
-          jobDelivery: row.jobDelivery || null,
+          jobDelivery: row.challanNo ? String(row.challanNo) : null,
           than: row.than,
+          meter: row.meter ?? null,
           billNo: row.billNo || null,
           rate: row.rate ?? null,
           pTotal: row.pTotal ?? null,

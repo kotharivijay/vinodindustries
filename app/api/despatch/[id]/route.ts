@@ -43,6 +43,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (data.lots?.length) {
     const lots = data.lots as { lotNo: string; qualityId: number | null; than: number; meter: number | null; rate: number | null; amount: number | null; description: string | null }[]
     const totalThan = lots.reduce((s: number, l: any) => s + (l.than || 0), 0)
+    const totalMeter = lots.reduce((s: number, l: any) => s + (l.meter || 0), 0)
     const totalAmount = lots.reduce((s: number, l: any) => s + (l.amount || 0), 0)
 
     // Delete old despatch lots
@@ -58,6 +59,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         qualityId: lots[0]?.qualityId ? parseInt(String(lots[0].qualityId)) : existing.qualityId,
         lotNo: lots[0]?.lotNo || existing.lotNo,
         than: totalThan,
+        meter: totalMeter > 0 ? totalMeter : null,
         rate: lots[0]?.rate ?? null,
         pTotal: totalAmount || null,
         billNo: data.billNo || null,
@@ -85,7 +87,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // Legacy single-lot mode
   const newThan = parseInt(data.than)
   const rate = data.rate ? parseFloat(data.rate) : null
-  const pTotal = rate && newThan ? parseFloat((newThan * rate).toFixed(2)) : null
+  const newMeter = data.meter ? parseFloat(data.meter) : null
+  // Amount = meter × rate when meter is provided, else than × rate
+  const pTotal = rate
+    ? parseFloat((((newMeter && newMeter > 0) ? newMeter : newThan) * rate).toFixed(2))
+    : null
   const newLotNo = data.lotNo
   const newRate = rate
   const newBillNo = data.billNo || null
@@ -101,6 +107,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       lotNo: newLotNo,
       jobDelivery: data.jobDelivery || null,
       than: newThan,
+      meter: newMeter,
       billNo: newBillNo,
       rate: newRate,
       pTotal,

@@ -49,8 +49,8 @@ export async function GET() {
       }
 
       // 2. Try range without quotes
-      const range2 = encodeURIComponent(`${DESPATCH_SHEET_NAME}!A1:P5`)
-      info.RANGE_NO_QUOTES = `${DESPATCH_SHEET_NAME}!A1:P5`
+      const range2 = encodeURIComponent(`${DESPATCH_SHEET_NAME}!A1:T5`)
+      info.RANGE_NO_QUOTES = `${DESPATCH_SHEET_NAME}!A1:T5`
       const url2 = `https://sheets.googleapis.com/v4/spreadsheets/${DESPATCH_SHEET_ID}/values/${range2}`
       const res2 = await fetch(url2, { headers })
       info.NO_QUOTES_STATUS = res2.status

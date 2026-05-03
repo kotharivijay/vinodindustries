@@ -8,8 +8,10 @@ export const maxDuration = 60
 
 const SHEET_ID = '1QEWGeKg7XyGRT693nkO4vXz0IUDhJHskp5-Wr1fCXHc'
 const TAB = 'Sheet1'
+// Header order: A Challan No | C Date | E DESCRIPTION | F A-Lot no | G Than | H Meter |
+// I Bill n. | J Rate | L Lr.no | M Transport | T web_status
 const COL = {
-  CHALLAN: 0, DATE: 2, DESCRIPTION: 4, LOT_NO: 5, THAN: 7,
+  CHALLAN: 0, DATE: 2, DESCRIPTION: 4, LOT_NO: 5, THAN: 6, METER: 7,
   BILL_NO: 8, RATE: 9, LR_NO: 11, TRANSPORT: 12, WEB_STATUS: 19,
 }
 

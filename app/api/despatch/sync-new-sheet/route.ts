@@ -9,9 +9,12 @@ export const maxDuration = 60
 const SHEET_ID = '1QEWGeKg7XyGRT693nkO4vXz0IUDhJHskp5-Wr1fCXHc'
 const TAB = 'Sheet1'
 
-// Columns within A:T range (0-based)
+// Columns within A:T range (0-based) — header order:
+// A Challan No | B Month | C Date | D A-Job Party | E DESCRIPTION | F A-Lot no |
+// G Than | H Meter | I Bill n. | J Rate | K P.total | L Lr.no | M Transport |
+// N Bale | O Gray Dt | P-S overflow | T web_status
 const COL = {
-  CHALLAN: 0, DATE: 2, DESCRIPTION: 4, LOT_NO: 5, THAN: 7,
+  CHALLAN: 0, DATE: 2, DESCRIPTION: 4, LOT_NO: 5, THAN: 6, METER: 7,
   BILL_NO: 8, RATE: 9, LR_NO: 11, TRANSPORT: 12, WEB_STATUS: 19,
 }
 
@@ -125,6 +128,7 @@ export async function POST(req: NextRequest) {
     sheetLot: string
     resolvedLot: string
     than: number
+    meter: number | null
     billNo: string | null
     rate: number | null
     lrNo: string | null
@@ -159,12 +163,15 @@ export async function POST(req: NextRequest) {
       skipped.push({ row: i + 4, reason: 'lot not found (tried direct + trailing 0)', lot: lotRaw, challan: challanRaw })
       continue
     }
+    const meterRaw = (r[COL.METER] || '').toString().trim()
+    const meter = meterRaw ? (parseFloat(meterRaw.replace(/,/g, '')) || null) : null
     parsed.push({
       rowIndex: i,
       challan, date, than,
       description: (r[COL.DESCRIPTION] || '').toString().trim() || null,
       sheetLot: lotRaw,
       resolvedLot: lookup.resolvedLot,
+      meter,
       billNo: (r[COL.BILL_NO] || '').toString().trim() || null,
       rate: r[COL.RATE] ? parseFloat(String(r[COL.RATE]).replace(/,/g, '')) : null,
       lrNo: (r[COL.LR_NO] || '').toString().trim() || null,
@@ -222,10 +229,17 @@ export async function POST(req: NextRequest) {
     const parentQualityId = first.lotInfo.qualityId
     const transportId = first.transportName ? await findOrCreateTransport(first.transportName) : null
 
+    const lineAmount = (r: ParsedRow) => {
+      if (r.rate == null) return null
+      const qty = (r.meter && r.meter > 0) ? r.meter : r.than
+      return qty * r.rate
+    }
     const totalThan = g.rows.reduce((s, r) => s + r.than, 0)
-    const pTotal = g.rows.reduce((s, r) => s + (r.rate != null ? r.than * r.rate : 0), 0) || null
+    const totalMeter = g.rows.reduce((s, r) => s + (r.meter ?? 0), 0)
+    const pTotal = g.rows.reduce((s, r) => s + (lineAmount(r) ?? 0), 0) || null
+    const db = prisma as any
 
-    const entry = await prisma.despatchEntry.create({
+    const entry = await db.despatchEntry.create({
       data: {
         date: g.date,
         challanNo: g.challan,
@@ -233,6 +247,7 @@ export async function POST(req: NextRequest) {
         qualityId: parentQualityId,
         lotNo: first.resolvedLot,
         than: totalThan,
+        meter: totalMeter > 0 ? totalMeter : null,
         billNo: first.billNo,
         rate: first.rate,
         pTotal,
@@ -245,14 +260,14 @@ export async function POST(req: NextRequest) {
 
     for (const r of g.rows) {
       const lotQualityId = r.lotInfo.qualityId !== parentQualityId ? r.lotInfo.qualityId : null
-      const amount = r.rate != null ? r.than * r.rate : null
       const lot = await prisma.despatchEntryLot.create({
         data: {
           entryId: entry.id,
           lotNo: r.resolvedLot,
           than: r.than,
+          meter: r.meter,
           rate: r.rate,
-          amount,
+          amount: lineAmount(r),
           description: r.description,
           qualityId: lotQualityId,
         },

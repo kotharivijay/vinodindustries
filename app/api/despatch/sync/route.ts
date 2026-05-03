@@ -5,10 +5,15 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { readDespatchSheet } from '@/lib/sheets'
 
+// Sheet header order:
+// A Challan No | B Month | C Date | D A-Job Party | E DESCRIPTION | F A-Lot no |
+// G Than | H Meter | I Bill n. | J Rate | K P.total | L Lr.no | M Transport |
+// N Bale | O Gray Dt | P-T (ignored)
 const COL = {
   CHALLAN: 0, MONTH: 1, DATE: 2, PARTY: 3, QUALITY: 4,
-  GRAY_INW_DATE: 5, LOT_NO: 6, JOB_DELIVERY: 7, THAN: 8,
-  BILL_NO: 9, RATE: 10, P_TOTAL: 11, LR_NO: 12, TRANSPORT: 13, BALE: 14,
+  LOT_NO: 5, THAN: 6, METER: 7,
+  BILL_NO: 8, RATE: 9, P_TOTAL: 10,
+  LR_NO: 11, TRANSPORT: 12, BALE: 13, GRAY_INW_DATE: 14,
 }
 
 function norm(s: string) {
@@ -93,7 +98,10 @@ export async function GET(req: NextRequest) {
     const lotNo = row[COL.LOT_NO]?.trim() ?? ''
     const than = parseInt(row[COL.THAN]) || 0
     const rate = parseFloat(row[COL.RATE]) || null
-    const pTotal = rate && than ? parseFloat((than * rate).toFixed(2)) : (parseFloat(row[COL.P_TOTAL]) || null)
+    const meter = parseFloat(row[COL.METER]) || null
+    const pTotal = rate
+      ? parseFloat((((meter && meter > 0) ? meter : than) * rate).toFixed(2))
+      : (parseFloat(row[COL.P_TOTAL]) || null)
 
     if (!lotNo) continue // skip rows with no lot no
 

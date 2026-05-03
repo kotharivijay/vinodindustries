@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
     if (!qualityId) return NextResponse.json({ error: 'Quality not found for first lot' }, { status: 400 })
 
     const totalThan = data.lots.reduce((s: number, l: any) => s + (parseInt(l.than) || 0), 0)
+    const totalMeter = data.lots.reduce((s: number, l: any) => s + (parseFloat(l.meter) || 0), 0)
     const totalAmount = data.lots.reduce((s: number, l: any) => s + (parseFloat(l.amount) || 0), 0)
 
     const entry = await db.despatchEntry.create({
@@ -84,6 +85,7 @@ export async function POST(req: NextRequest) {
         qualityId,
         lotNo: firstLot.lotNo,
         than: totalThan,
+        meter: totalMeter > 0 ? totalMeter : null,
         rate: firstLot.rate ? parseFloat(firstLot.rate) : null,
         pTotal: totalAmount || null,
         billNo: data.billNo || null,
@@ -113,7 +115,11 @@ export async function POST(req: NextRequest) {
   // Legacy single-lot mode (backward compat for imports/sync)
   const than = parseInt(data.than)
   const rate = data.rate ? parseFloat(data.rate) : null
-  const pTotal = rate && than ? parseFloat((than * rate).toFixed(2)) : null
+  const meter = data.meter ? parseFloat(data.meter) : null
+  // Amount = meter × rate when meter is provided, else than × rate
+  const pTotal = rate
+    ? parseFloat((((meter && meter > 0) ? meter : than) * rate).toFixed(2))
+    : null
 
   let qualityId = data.qualityId ? parseInt(data.qualityId) : null
   if (!qualityId && data.lotNo) {
@@ -135,6 +141,7 @@ export async function POST(req: NextRequest) {
       lotNo: data.lotNo,
       jobDelivery: data.jobDelivery || null,
       than,
+      meter,
       billNo: data.billNo || null,
       rate,
       pTotal,

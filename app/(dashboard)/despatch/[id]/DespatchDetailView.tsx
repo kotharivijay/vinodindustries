@@ -10,6 +10,7 @@ interface Entry {
   challanNo: number
   lotNo: string
   than: number
+  meter: number | null
   billNo: string | null
   rate: number | null
   pTotal: number | null
@@ -106,22 +107,26 @@ export default function DespatchDetailView({ id }: { id: string }) {
               </div>
               <p className="text-xs text-gray-500 mb-2">{e.quality.name}</p>
               {e.narration && <p className="text-xs text-gray-400 mb-2 italic">{e.narration}</p>}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                 <div>
                   <span className="text-gray-400">Than</span>
                   <p className="font-bold text-gray-800">{e.than}</p>
+                </div>
+                <div>
+                  <span className="text-gray-400">Meter</span>
+                  <p className="font-medium">{e.meter ? e.meter : '—'}</p>
                 </div>
                 <div>
                   <span className="text-gray-400">Rate</span>
                   <p className="font-medium">{e.rate ? `₹${e.rate}` : '—'}</p>
                 </div>
                 <div>
-                  <span className="text-gray-400">Bill No</span>
-                  <p>{e.billNo || '—'}</p>
+                  <span className="text-gray-400">Amount</span>
+                  <p className="font-medium text-orange-700">{e.pTotal ? `₹${e.pTotal.toFixed(2)}` : '—'}</p>
                 </div>
                 <div>
-                  <span className="text-gray-400">P.Total</span>
-                  <p className="font-medium text-orange-700">{e.pTotal ? `₹${e.pTotal.toFixed(2)}` : '—'}</p>
+                  <span className="text-gray-400">Bill No</span>
+                  <p>{e.billNo || '—'}</p>
                 </div>
               </div>
               {(e.lrNo || e.bale || e.transport) && (

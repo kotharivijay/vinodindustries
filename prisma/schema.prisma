@@ -416,6 +416,7 @@ model DespatchEntry {
   lotNo        String
   jobDelivery  String?
   than         Int
+  meter        Float?
   billNo       String?
   rate         Float?
   pTotal       Float? // Auto: than × rate

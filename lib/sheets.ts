@@ -67,7 +67,7 @@ export async function readDespatchSheet(): Promise<{ values: string[][] | null; 
   const token = await getAccessToken()
   if (!token) return { values: null, error: 'GOOGLE_SERVICE_ACCOUNT_KEY not configured' }
 
-  const range = encodeURIComponent(`${DESPATCH_SHEET_NAME}!A3:P`)
+  const range = encodeURIComponent(`${DESPATCH_SHEET_NAME}!A3:T`)
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${DESPATCH_SHEET_ID}/values/${range}`
 
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
@@ -83,7 +83,7 @@ export async function appendDespatchRowToSheet(row: (string | number | null)[]):
   const token = await getAccessToken()
   if (!token) return false
 
-  const range = encodeURIComponent(`${DESPATCH_SHEET_NAME}!A:P`)
+  const range = encodeURIComponent(`${DESPATCH_SHEET_NAME}!A:T`)
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${DESPATCH_SHEET_ID}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`
 
   const res = await fetch(url, {
@@ -101,8 +101,8 @@ export function despatchEntryToSheetRow(entry: {
   quality: { name: string }
   grayInwDate?: Date | null
   lotNo: string
-  jobDelivery?: string | null
   than: number
+  meter?: number | null
   billNo?: string | null
   rate?: number | null
   pTotal?: number | null
@@ -117,22 +117,26 @@ export function despatchEntryToSheetRow(entry: {
     return `${m}/${day}/${y}`
   }
   const d = new Date(entry.date)
+  // Header order:
+  // A Challan No | B Month | C Date | D A-Job Party | E DESCRIPTION | F A-Lot no |
+  // G Than | H Meter | I Bill n. | J Rate | K P.total | L Lr.no | M Transport |
+  // N Bale | O Gray Dt | P-T (Name of Party / Than / D.Total / Bale / web_status — left blank)
   return [
-    entry.challanNo,                      // A: Challan No
-    d.getMonth() + 1,                     // B: Month
-    fmt(d),                               // C: Date
-    entry.party.name,                     // D: A-Job Party
-    entry.quality.name,                   // E: A/Quality
-    entry.grayInwDate ? fmt(new Date(entry.grayInwDate)) : '', // F: Gray Inw Date
-    entry.lotNo,                          // G: A-Lot No
-    entry.jobDelivery ?? '',              // H: Job Delivery
-    entry.than,                           // I: Than
-    entry.billNo ?? '',                   // J: Bill No
-    entry.rate ?? '',                     // K: Rate
-    entry.pTotal ?? '',                   // L: P.Total
-    entry.lrNo ?? '',                     // M: LR No
-    entry.transport?.name ?? '',          // N: Transport
-    entry.bale ?? '',                     // O: Bale
+    entry.challanNo,                                              // A: Challan No
+    d.getMonth() + 1,                                             // B: Month
+    fmt(d),                                                       // C: Date
+    entry.party.name,                                             // D: A-Job Party
+    entry.quality.name,                                           // E: DESCRIPTION
+    entry.lotNo,                                                  // F: A-Lot no
+    entry.than,                                                   // G: Than
+    entry.meter ?? '',                                            // H: Meter
+    entry.billNo ?? '',                                           // I: Bill n.
+    entry.rate ?? '',                                             // J: Rate
+    entry.pTotal ?? '',                                           // K: P.total
+    entry.lrNo ?? '',                                             // L: Lr.no
+    entry.transport?.name ?? '',                                  // M: Transport
+    entry.bale ?? '',                                             // N: Bale
+    entry.grayInwDate ? fmt(new Date(entry.grayInwDate)) : '',    // O: Gray Dt
   ]
 }
 
