@@ -7,7 +7,7 @@ import BackButton from '../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-const STATUSES = ['Draft', 'Verified', 'PendingApproval', 'PendingInvoice', 'Invoiced', 'Cancelled']
+const STATUSES = ['Draft', 'PendingInvoice', 'Invoiced', 'Cancelled']
 
 export default function ChallansListPage() {
   const [status, setStatus] = useState<string>('')
