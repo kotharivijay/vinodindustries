@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
+import { ITEM_USAGE_TAG_GROUPS, ITEM_USAGE_TAGS, labelForUsageTag } from '@/lib/inv/item-usage-tags'
 
 /** Title-case + collapse internal whitespace, e.g. "  reactive  yellow 145 " → "Reactive Yellow 145". */
 function normalizeDisplayName(s: string): string {
@@ -21,6 +22,7 @@ interface Item {
   unit: string
   reviewStatus: 'approved' | 'pending_review' | 'rejected'
   trackStock: boolean
+  usageTags: string[]
   alias: { id: number; tallyStockItem: string; category: string; gstRate: string }
   group?: { id: number; name: string } | null
 }
@@ -39,6 +41,8 @@ export default function ItemsPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [form, setForm] = useState({ displayName: '', aliasId: '', autoApprove: false })
   const [saving, setSaving] = useState(false)
+  const [tagFilter, setTagFilter] = useState<string>('') // '' = all
+  const [editTagsForId, setEditTagsForId] = useState<number | null>(null)
 
   // Searchable alias combobox state
   const [aliasQuery, setAliasQuery] = useState('')
@@ -139,11 +143,43 @@ export default function ItemsPage() {
           className="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs" />
       </div>
 
+      {/* Usage-tag filter row */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-3">
+        <span className="text-[11px] text-gray-500 dark:text-gray-400">Tag:</span>
+        <button onClick={() => setTagFilter('')}
+          className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+            !tagFilter ? 'bg-purple-600 text-white border-purple-600'
+              : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+          }`}>
+          Any
+        </button>
+        {ITEM_USAGE_TAGS.map(t => (
+          <button key={t} onClick={() => setTagFilter(prev => prev === t ? '' : t)}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+              tagFilter === t ? 'bg-purple-600 text-white border-purple-600'
+                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+            }`}>
+            {labelForUsageTag(t)}
+          </button>
+        ))}
+      </div>
+
       {isLoading ? (
         <div className="p-12 text-center text-gray-400">Loading…</div>
       ) : !data?.length ? (
         <div className="p-12 text-center text-gray-400">No items match.</div>
-      ) : (
+      ) : (() => {
+        const visible = tagFilter
+          ? (data || []).filter(it => (it.usageTags || []).includes(tagFilter))
+          : (data || [])
+        if (!visible.length) {
+          return (
+            <div className="p-12 text-center text-gray-400">
+              No items tagged <span className="font-semibold">{labelForUsageTag(tagFilter)}</span>. Pick another tag or click Any.
+            </div>
+          )
+        }
+        return (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
           <table className="w-full text-xs">
             <thead className="bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300">
@@ -154,11 +190,12 @@ export default function ItemsPage() {
                 <th className="px-3 py-2 text-left">Unit</th>
                 <th className="px-3 py-2 text-right">GST%</th>
                 <th className="px-3 py-2 text-center">Track</th>
+                <th className="px-3 py-2 text-left">Used at</th>
                 <th className="px-3 py-2 text-left">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {data.map(it => (
+              {visible.map(it => (
                 <tr key={it.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
                   <td className="px-3 py-1.5 font-medium text-gray-800 dark:text-gray-100">{it.displayName}</td>
                   <td className="px-3 py-1.5 text-gray-500">{it.alias.tallyStockItem}</td>
@@ -166,6 +203,19 @@ export default function ItemsPage() {
                   <td className="px-3 py-1.5 text-gray-500">{it.unit}</td>
                   <td className="px-3 py-1.5 text-gray-500 text-right">{Number(it.alias.gstRate).toFixed(0)}</td>
                   <td className="px-3 py-1.5 text-center">{it.trackStock ? '✅' : '—'}</td>
+                  <td className="px-3 py-1.5">
+                    <div className="flex flex-wrap items-center gap-1">
+                      {(it.usageTags || []).map(t => (
+                        <span key={t} className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300">
+                          {labelForUsageTag(t)}
+                        </span>
+                      ))}
+                      <button onClick={() => setEditTagsForId(it.id)}
+                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline px-1">
+                        {(it.usageTags || []).length === 0 ? '+ tag' : 'Edit'}
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-3 py-1.5">
                     {it.reviewStatus === 'approved' && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Approved</span>}
                     {it.reviewStatus === 'pending_review' && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Pending</span>}
@@ -176,7 +226,20 @@ export default function ItemsPage() {
             </tbody>
           </table>
         </div>
-      )}
+        )
+      })()}
+
+      {editTagsForId !== null && (() => {
+        const item = (data || []).find(i => i.id === editTagsForId)
+        if (!item) return null
+        return (
+          <UsageTagEditor
+            item={item}
+            onClose={() => setEditTagsForId(null)}
+            onSaved={() => { setEditTagsForId(null); mutate() }}
+          />
+        )
+      })()}
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setShowCreate(false); resetForm() }}>
@@ -241,6 +304,77 @@ export default function ItemsPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function UsageTagEditor({ item, onClose, onSaved }: {
+  item: Item
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set(item.usageTags || []))
+  const [saving, setSaving] = useState(false)
+
+  function toggle(tag: string) {
+    setPicked(prev => { const s = new Set(prev); s.has(tag) ? s.delete(tag) : s.add(tag); return s })
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/inv/items/${item.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usageTags: Array.from(picked) }),
+      })
+      if (res.ok) onSaved()
+      else { const d = await res.json().catch(() => ({})); alert('Save failed: ' + (d.error || res.status)) }
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-5 w-full max-w-md space-y-3">
+        <div>
+          <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Used at</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{item.displayName}</p>
+        </div>
+
+        {ITEM_USAGE_TAG_GROUPS.map(group => (
+          <div key={group.label}>
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1.5">{group.label}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {group.tags.map(tag => {
+                const on = picked.has(tag)
+                return (
+                  <button key={tag} type="button" onClick={() => toggle(tag)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                      on
+                        ? 'bg-purple-600 text-white border-purple-600'
+                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+                    }`}>
+                    {labelForUsageTag(tag)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+
+        <p className="text-[10px] text-gray-400">
+          {picked.size} selected · click to toggle. New tag values can be added in
+          <span className="font-mono"> lib/inv/item-usage-tags.ts</span>.
+        </p>
+
+        <div className="flex gap-2 pt-2">
+          <button onClick={onClose} className="flex-1 px-3 py-2 rounded-lg text-xs bg-gray-200 dark:bg-gray-700">Cancel</button>
+          <button onClick={save} disabled={saving}
+            className="flex-1 px-3 py-2 rounded-lg text-xs bg-indigo-600 text-white font-semibold disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save tags'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

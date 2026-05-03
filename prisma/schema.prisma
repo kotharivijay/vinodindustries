@@ -1203,6 +1203,10 @@ model InvItem {
   hsnOverride     String?
   gstOverride     Decimal?      @db.Decimal(5, 2)
   trackStock      Boolean
+  // Free-form usage location tags (e.g. ['oil_boiler','steam_boiler','jet']).
+  // Allowed values defined in lib/inv/item-usage-tags.ts; the DB doesn't enforce
+  // them so new locations can be added there without a migration.
+  usageTags       String[]      @default([])
   // 'approved' | 'pending_review' | 'rejected'
   reviewStatus    String        @default("approved")
   createdById     Int?

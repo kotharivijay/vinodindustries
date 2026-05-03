@@ -37,6 +37,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     data.gstOverride = body.gstOverride != null ? Number(body.gstOverride) : null
   }
   if (body.trackStock !== undefined) data.trackStock = !!body.trackStock
+  if (Array.isArray(body.usageTags)) {
+    // Normalise: trim, drop empties, dedupe. Allowed-value enforcement is
+    // intentionally left to the UI so floor changes don't need a migration.
+    const seen = new Set<string>()
+    const cleaned: string[] = []
+    for (const t of body.usageTags) {
+      const v = String(t || '').trim()
+      if (!v || seen.has(v)) continue
+      seen.add(v); cleaned.push(v)
+    }
+    data.usageTags = cleaned
+  }
 
   // Alias re-mapping: blocked if item already used in a pushed invoice.
   if (body.aliasId && Number(body.aliasId) !== item.aliasId) {
