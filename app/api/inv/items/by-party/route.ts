@@ -17,9 +17,22 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const partyId = Number(req.nextUrl.searchParams.get('partyId'))
+  const partyIdParam = req.nextUrl.searchParams.get('partyId')
+  const tallyLedger = req.nextUrl.searchParams.get('tallyLedger')
   const days = Math.max(1, Math.min(365, Number(req.nextUrl.searchParams.get('days') || 90)))
-  if (!partyId) return NextResponse.json({ error: 'partyId required' }, { status: 400 })
+
+  let partyId: number | null = partyIdParam ? Number(partyIdParam) : null
+  if (!partyId && tallyLedger) {
+    // Resolve via InvParty.tallyLedger; if no InvParty exists yet (party not
+    // used on a challan before), there are no past lines to return.
+    const ip = await db.invParty.findUnique({
+      where: { tallyLedger: tallyLedger.trim() },
+      select: { id: true },
+    })
+    if (!ip) return NextResponse.json([])
+    partyId = ip.id
+  }
+  if (!partyId) return NextResponse.json({ error: 'partyId or tallyLedger required' }, { status: 400 })
 
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 

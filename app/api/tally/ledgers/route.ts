@@ -11,9 +11,10 @@ export async function GET(req: NextRequest) {
   const firm = req.nextUrl.searchParams.get('firm') || ''
   const search = req.nextUrl.searchParams.get('search') || ''
   const parent = req.nextUrl.searchParams.get('parent') || ''
+  const hasTags = req.nextUrl.searchParams.get('hasTags') === 'true'
   const sortParam = req.nextUrl.searchParams.get('sort') || 'name-asc'
   const page = parseInt(req.nextUrl.searchParams.get('page') || '1') || 1
-  const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '50') || 50, 200)
+  const limit = Math.min(parseInt(req.nextUrl.searchParams.get('limit') || '50') || 50, 500)
 
   const db = (firm === 'KSI' ? prisma : viPrisma) as any
   try {
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
       ]
     }
     if (parent) where.parent = { contains: parent, mode: 'insensitive' }
+    if (hasTags) where.NOT = { tags: { isEmpty: true } }
 
     let orderBy: any = { name: 'asc' }
     if (sortParam === 'name-desc') orderBy = { name: 'desc' }

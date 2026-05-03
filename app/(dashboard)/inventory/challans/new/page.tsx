@@ -8,16 +8,23 @@ import BackButton from '../../../BackButton'
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 interface Item { id: number; displayName: string; unit: string; reviewStatus: string; alias: { gstRate: string; tallyStockItem: string } }
-interface Party { id: number; displayName: string; parentGroup: string | null; tags: string[] }
+// Sourced from /api/tally/ledgers — firm KSI + hasTags. The "ledger name" is the
+// stable identity we send to the challan API; InvParty is find-or-created server-side.
+interface Ledger { id: number; name: string; parent: string | null; tags: string[] }
 
 interface Line { itemId: string; itemName: string; unit: string; qty: string; rate: string; reviewStatus?: string }
 
 export default function NewChallanPage() {
   const router = useRouter()
-  const { data: parties = [] } = useSWR<Party[]>('/api/inv/parties?withTags=true', fetcher)
+  const { data: ledgerResp } = useSWR<{ ledgers: Ledger[] }>(
+    '/api/tally/ledgers?firm=KSI&hasTags=true&limit=500',
+    fetcher,
+  )
+  const ledgers = ledgerResp?.ledgers ?? []
   const { data: nextSeries } = useSWR<{ no: number; fy: string }>('/api/inv/series/next?type=inward', fetcher)
 
-  const [partyId, setPartyId] = useState('')
+  // ledgerName is the stable identity of the picked party.
+  const [ledgerName, setLedgerName] = useState('')
   const [partyQ, setPartyQ] = useState('')
   const [partyOpen, setPartyOpen] = useState(false)
   const [challanNo, setChallanNo] = useState('')
@@ -29,7 +36,10 @@ export default function NewChallanPage() {
   const [dupCheck, setDupCheck] = useState<any>(null)
 
   // Tier-A items for selected party (last 90 days). Falls back to /items search.
-  const { data: tierA = [] } = useSWR<Item[]>(partyId ? `/api/inv/items/by-party?partyId=${partyId}&days=90` : null, fetcher)
+  const { data: tierA = [] } = useSWR<Item[]>(
+    ledgerName ? `/api/inv/items/by-party?tallyLedger=${encodeURIComponent(ledgerName)}&days=90` : null,
+    fetcher,
+  )
   const [itemQ, setItemQ] = useState('')
   const [itemOpen, setItemOpen] = useState(false)
   const { data: catalog = [] } = useSWR<Item[]>(itemQ ? `/api/inv/items?q=${encodeURIComponent(itemQ)}` : null, fetcher)
@@ -42,19 +52,19 @@ export default function NewChallanPage() {
     return itemQ ? out.filter(i => i.displayName.toLowerCase().includes(itemQ.toLowerCase())) : out
   }, [tierA, catalog, itemQ])
 
-  const filteredParties = useMemo(() => {
+  const filteredLedgers = useMemo(() => {
     const q = partyQ.toLowerCase()
-    return (parties || []).filter(p => !q || p.displayName.toLowerCase().includes(q)).slice(0, 30)
-  }, [parties, partyQ])
+    return ledgers.filter(l => !q || l.name.toLowerCase().includes(q)).slice(0, 30)
+  }, [ledgers, partyQ])
 
-  const selectedParty = useMemo(() => {
-    if (!partyId) return null
-    return (parties || []).find(p => String(p.id) === partyId) || null
-  }, [parties, partyId])
+  const selectedLedger = useMemo(() => {
+    if (!ledgerName) return null
+    return ledgers.find(l => l.name === ledgerName) || null
+  }, [ledgers, ledgerName])
 
-  function pickParty(p: Party) {
-    setPartyId(String(p.id))
-    setPartyQ(p.displayName)
+  function pickLedger(l: Ledger) {
+    setLedgerName(l.name)
+    setPartyQ(l.name)
     setPartyOpen(false)
   }
 
@@ -72,10 +82,10 @@ export default function NewChallanPage() {
   }
 
   async function checkDup() {
-    if (!partyId || !challanNo) return
+    if (!ledgerName || !challanNo) return
     const res = await fetch('/api/inv/challans/check-duplicate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ partyId: Number(partyId), challanNo, date: challanDate }),
+      body: JSON.stringify({ tallyLedger: ledgerName, challanNo, date: challanDate }),
     })
     const d = await res.json()
     setDupCheck(d.duplicate ? d.dup : null)
@@ -86,7 +96,7 @@ export default function NewChallanPage() {
   const ratelessLines = lines.filter(l => !l.rate).length
 
   async function save() {
-    if (!partyId || !challanNo || !challanDate || !lines.length) {
+    if (!ledgerName || !challanNo || !challanDate || !lines.length) {
       alert('Party, Challan No, Date, and at least one line are required.')
       return
     }
@@ -95,7 +105,7 @@ export default function NewChallanPage() {
       const res = await fetch('/api/inv/challans', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          partyId: Number(partyId),
+          tallyLedger: ledgerName,
           challanNo, challanDate,
           defaultDiscountPct: defaultDiscountPct || null,
           notes,
@@ -125,43 +135,43 @@ export default function NewChallanPage() {
         <div className="grid md:grid-cols-2 gap-3">
           <div className="relative">
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Party *</label>
-            <input value={partyQ} onChange={e => { setPartyQ(e.target.value); setPartyId(''); setPartyOpen(true) }}
+            <input value={partyQ} onChange={e => { setPartyQ(e.target.value); setLedgerName(''); setPartyOpen(true) }}
               onFocus={() => setPartyOpen(true)}
-              placeholder="Search supplier…"
+              placeholder="Search supplier (Accounts → Ledgers, tagged only)…"
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
-            {partyId && selectedParty && (
+            {ledgerName && selectedLedger && (
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                {selectedParty.parentGroup && (
-                  <span className="text-gray-500 dark:text-gray-400">Group: <span className="font-medium text-gray-700 dark:text-gray-300">{selectedParty.parentGroup}</span></span>
+                {selectedLedger.parent && (
+                  <span className="text-gray-500 dark:text-gray-400">Group: <span className="font-medium text-gray-700 dark:text-gray-300">{selectedLedger.parent}</span></span>
                 )}
-                {selectedParty.tags?.map(t => (
+                {selectedLedger.tags?.map(t => (
                   <span key={t} className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1.5 py-0.5 rounded-full">{t}</span>
                 ))}
               </div>
             )}
-            {partyOpen && filteredParties.length > 0 && !partyId && (
+            {partyOpen && filteredLedgers.length > 0 && !ledgerName && (
               <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-56 overflow-y-auto">
-                {filteredParties.map(p => (
-                  <button key={p.id} onClick={() => pickParty(p)}
+                {filteredLedgers.map(l => (
+                  <button key={l.id} onClick={() => pickLedger(l)}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between gap-2">
                     <span className="flex flex-col min-w-0">
-                      <span className="truncate">{p.displayName}</span>
-                      {p.tags?.length > 0 && (
+                      <span className="truncate">{l.name}</span>
+                      {l.tags?.length > 0 && (
                         <span className="flex flex-wrap gap-1 mt-0.5">
-                          {p.tags.map(t => (
+                          {l.tags.map(t => (
                             <span key={t} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1 py-0.5 rounded">{t}</span>
                           ))}
                         </span>
                       )}
                     </span>
-                    {p.parentGroup && <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{p.parentGroup}</span>}
+                    {l.parent && <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{l.parent}</span>}
                   </button>
                 ))}
               </div>
             )}
-            {partyOpen && filteredParties.length === 0 && (
+            {partyOpen && filteredLedgers.length === 0 && (
               <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                No tagged parties found. Tag suppliers in Accounts → Ledgers to make them appear here.
+                No tagged ledgers found. Tag suppliers in Accounts → Ledgers to make them appear here.
               </div>
             )}
           </div>

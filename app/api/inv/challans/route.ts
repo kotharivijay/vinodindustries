@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { allocateSeries } from '@/lib/inv/series'
+import { resolvePartyIdByLedger } from '@/lib/inv/party-resolver'
 
 const db = prisma as any
 
@@ -50,13 +51,18 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   const {
-    partyId, poId, challanNo, challanDate, biltyNo, vehicleNo, transporter,
+    partyId: rawPartyId, tallyLedger, poId, challanNo, challanDate, biltyNo, vehicleNo, transporter,
     defaultDiscountPct, lines, notes,
   } = body
 
-  if (!partyId || !challanNo || !challanDate || !Array.isArray(lines)) {
-    return NextResponse.json({ error: 'partyId, challanNo, challanDate, lines required' }, { status: 400 })
+  if ((!rawPartyId && !tallyLedger) || !challanNo || !challanDate || !Array.isArray(lines)) {
+    return NextResponse.json({ error: '(partyId or tallyLedger), challanNo, challanDate, lines required' }, { status: 400 })
   }
+
+  // Resolve ledger name → InvParty.id (find-or-create) when caller sends tallyLedger
+  let partyId: number
+  if (rawPartyId) partyId = Number(rawPartyId)
+  else partyId = await resolvePartyIdByLedger(String(tallyLedger))
 
   // Duplicate guard: same (partyId, challanNo) within ±3 days
   const date = new Date(challanDate)
@@ -103,7 +109,7 @@ export async function POST(req: NextRequest) {
 
   const created = await db.invChallan.create({
     data: {
-      partyId: Number(partyId),
+      partyId,
       poId: poId ? Number(poId) : null,
       internalSeriesNo: no,
       seriesFy: fy,
