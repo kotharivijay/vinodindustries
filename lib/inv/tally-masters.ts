@@ -3,9 +3,10 @@ import { queryTally, getFirm } from '@/lib/tally'
 const KSI = getFirm('KSI')!
 
 /**
- * XML envelope to export Ledgers (Sundry Creditors + Sundry Debtors).
- * Reuses the same TDL shape as `lib/tally.ts:buildLedgerExportXML` but
- * filters to creditor-side groups so only suppliers come back.
+ * XML envelope to export Ledgers under Sundry Creditors / Sundry Debtors,
+ * including any sub-group beneath them. $$IsBeneath walks the group chain;
+ * the equality tests catch ledgers parked at the top-level group itself
+ * ($$IsBeneath returns NO for the group's own ledgers).
  */
 function buildPartiesXML(): string {
   return `<ENVELOPE>
@@ -22,7 +23,7 @@ function buildPartiesXML(): string {
 <FETCH>Name,Parent,GUID,Address,LedStateName,GSTRegistrationType,PartyGSTIN,LedgerPhone,LedgerMobile,Email,IsBillWiseOn</FETCH>
 <FILTER>SundryParty</FILTER>
 </COLLECTION>
-<SYSTEM TYPE="Formulae" NAME="SundryParty">$Parent = "Sundry Creditors" OR $Parent = "Sundry Debtors"</SYSTEM>
+<SYSTEM TYPE="Formulae" NAME="SundryParty">$$IsBeneath:$Parent:"Sundry Creditors" OR $Parent = "Sundry Creditors" OR $$IsBeneath:$Parent:"Sundry Debtors" OR $Parent = "Sundry Debtors"</SYSTEM>
 </TDLMESSAGE></TDL>
 </DESC>
 </BODY>
