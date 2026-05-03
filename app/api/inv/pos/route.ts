@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getCurrentFy } from '@/lib/inv/series'
+import { resolvePartyIdByLedger } from '@/lib/inv/party-resolver'
 
 const db = prisma as any
 
@@ -48,10 +49,16 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { partyId, poNo, poDate, expectedDate, terms, notes, defaultDiscountPct, lines } = body
-  if (!partyId || !poDate || !Array.isArray(lines) || lines.length === 0) {
-    return NextResponse.json({ error: 'partyId, poDate, lines required' }, { status: 400 })
+  const { partyId: rawPartyId, tallyLedger, poNo, poDate, expectedDate, terms, notes, defaultDiscountPct, lines } = body
+  if ((!rawPartyId && !tallyLedger) || !poDate || !Array.isArray(lines) || lines.length === 0) {
+    return NextResponse.json({ error: '(partyId or tallyLedger), poDate, lines required' }, { status: 400 })
   }
+
+  // Resolve ledger name → InvParty.id (find-or-create) when caller sends tallyLedger
+  let partyId: number
+  if (rawPartyId) partyId = Number(rawPartyId)
+  else partyId = await resolvePartyIdByLedger(String(tallyLedger))
+
   const finalPoNo = poNo?.trim() || await generatePoNo()
 
   let totalAmount = 0
@@ -73,7 +80,7 @@ export async function POST(req: NextRequest) {
 
   const po = await db.invPO.create({
     data: {
-      partyId: Number(partyId),
+      partyId,
       poNo: finalPoNo,
       poDate: new Date(poDate),
       expectedDate: expectedDate ? new Date(expectedDate) : null,

@@ -7,30 +7,55 @@ import BackButton from '../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+interface Ledger { id: number; name: string; parent: string | null; tags: string[] }
+
 export default function POListPage() {
   const { data, mutate } = useSWR<any[]>('/api/inv/pos', fetcher)
-  const { data: parties = [] } = useSWR<any[]>('/api/inv/parties', fetcher)
+  // Sourced from KSI ledger master (tagged only) — same picker as Inward Challan / new
+  const { data: ledgerResp } = useSWR<{ ledgers: Ledger[] }>(
+    '/api/tally/ledgers?firm=KSI&hasTags=true&limit=500',
+    fetcher,
+  )
+  const ledgers = ledgerResp?.ledgers ?? []
   const { data: items = [] } = useSWR<any[]>('/api/inv/items', fetcher)
 
   const [show, setShow] = useState(false)
-  const [partyId, setPartyId] = useState('')
+  const [ledgerName, setLedgerName] = useState('')
+  const [partyQ, setPartyQ] = useState('')
+  const [partyOpen, setPartyOpen] = useState(false)
   const [poDate, setPoDate] = useState(new Date().toISOString().slice(0, 10))
   const [expectedDate, setExpectedDate] = useState('')
   const [terms, setTerms] = useState('')
   const [lines, setLines] = useState<any[]>([])
   const [saving, setSaving] = useState(false)
 
+  const filteredLedgers = useMemo(() => {
+    const q = partyQ.toLowerCase()
+    return ledgers.filter(l => !q || l.name.toLowerCase().includes(q)).slice(0, 30)
+  }, [ledgers, partyQ])
+
+  const selectedLedger = useMemo(() => {
+    if (!ledgerName) return null
+    return ledgers.find(l => l.name === ledgerName) || null
+  }, [ledgers, ledgerName])
+
+  function pickLedger(l: Ledger) {
+    setLedgerName(l.name)
+    setPartyQ(l.name)
+    setPartyOpen(false)
+  }
+
   function addLine() { setLines(prev => [...prev, { itemId: '', qty: '', rate: '', unit: '' }]) }
   function rmLine(i: number) { setLines(prev => prev.filter((_, idx) => idx !== i)) }
   function setLine(i: number, k: string, v: any) { setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [k]: v } : l)) }
 
   async function save() {
-    if (!partyId || !poDate || !lines.length) { alert('Party, date and at least one line required'); return }
+    if (!ledgerName || !poDate || !lines.length) { alert('Party, date and at least one line required'); return }
     setSaving(true)
     try {
       const res = await fetch('/api/inv/pos', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ partyId: Number(partyId), poDate, expectedDate: expectedDate || null, terms,
+        body: JSON.stringify({ tallyLedger: ledgerName, poDate, expectedDate: expectedDate || null, terms,
           lines: lines.map(l => {
             const item = items.find((it: any) => it.id === Number(l.itemId))
             return { ...l, unit: item?.unit || l.unit || 'kg' }
@@ -39,7 +64,7 @@ export default function POListPage() {
       })
       const d = await res.json()
       if (!res.ok) { alert('Save failed: ' + (d.error || res.status)); return }
-      setShow(false); setPartyId(''); setLines([])
+      setShow(false); setLedgerName(''); setPartyQ(''); setLines([])
       mutate()
     } finally { setSaving(false) }
   }
@@ -90,14 +115,49 @@ export default function POListPage() {
           <div onClick={e => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-5 w-full max-w-2xl space-y-3 my-8">
             <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">New Purchase Order</h3>
             <div className="grid md:grid-cols-3 gap-3">
-              <label className="block text-xs">
+              <div className="block text-xs relative">
                 <span className="text-gray-500 dark:text-gray-400">Party *</span>
-                <select value={partyId} onChange={e => setPartyId(e.target.value)}
-                  className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-                  <option value="">— select —</option>
-                  {parties.map((p: any) => <option key={p.id} value={p.id}>{p.displayName}</option>)}
-                </select>
-              </label>
+                <input value={partyQ}
+                  onChange={e => { setPartyQ(e.target.value); setLedgerName(''); setPartyOpen(true) }}
+                  onFocus={() => setPartyOpen(true)}
+                  placeholder="Search supplier (Accounts → Ledgers, tagged only)…"
+                  className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+                {ledgerName && selectedLedger && (
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                    {selectedLedger.parent && (
+                      <span className="text-gray-500 dark:text-gray-400">Group: <span className="font-medium text-gray-700 dark:text-gray-300">{selectedLedger.parent}</span></span>
+                    )}
+                    {selectedLedger.tags?.map(t => (
+                      <span key={t} className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1.5 py-0.5 rounded-full">{t}</span>
+                    ))}
+                  </div>
+                )}
+                {partyOpen && filteredLedgers.length > 0 && !ledgerName && (
+                  <div className="absolute z-30 top-full mt-1 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                    {filteredLedgers.map(l => (
+                      <button key={l.id} type="button" onClick={() => pickLedger(l)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between gap-2">
+                        <span className="flex flex-col min-w-0">
+                          <span className="truncate">{l.name}</span>
+                          {l.tags?.length > 0 && (
+                            <span className="flex flex-wrap gap-1 mt-0.5">
+                              {l.tags.map(t => (
+                                <span key={t} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1 py-0.5 rounded">{t}</span>
+                              ))}
+                            </span>
+                          )}
+                        </span>
+                        {l.parent && <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{l.parent}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {partyOpen && filteredLedgers.length === 0 && (
+                  <div className="absolute z-30 top-full mt-1 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                    No tagged ledgers found. Tag suppliers in Accounts → Ledgers.
+                  </div>
+                )}
+              </div>
               <label className="block text-xs">
                 <span className="text-gray-500 dark:text-gray-400">PO Date *</span>
                 <input type="date" value={poDate} onChange={e => setPoDate(e.target.value)}
