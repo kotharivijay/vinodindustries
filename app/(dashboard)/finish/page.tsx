@@ -126,15 +126,6 @@ interface FinishSlipEntry {
   additions?: { id: number; reason: string | null; chemicals: { name: string; quantity: number | null; unit: string; chemicalId: number | null }[] }[]
   partyName: string | null
   fpStatus: string
-  despatchInfo: {
-    typedSlipNo: string | null
-    matched: Array<{
-      challanNo: number
-      date: string
-      totalThan: number
-      lots: { lotNo: string; than: number }[]
-    }>
-  } | null
 }
 
 type SlipSortField = 'date' | 'slipNo' | 'lotNo' | 'party' | 'than'
@@ -1973,31 +1964,11 @@ export default function FinishStockPage() {
                               {fpQualities.length > 0 && <span className="text-[10px] text-gray-500 dark:text-gray-400">· {fpQualities.join(', ')}</span>}
                               {fpFolds.length > 0 && <span className="text-[10px] text-indigo-500 dark:text-indigo-400">· F{fpFolds.join(', F')}</span>}
                             </div>
-                            {entry.despatchInfo && (
-                              <div className="mt-1.5 space-y-0.5">
-                                {entry.despatchInfo.typedSlipNo && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">
-                                      🚚 Slip {entry.despatchInfo.typedSlipNo}
-                                    </span>
-                                    {entry.despatchInfo.matched.length === 0 && (
-                                      <span className="text-[10px] text-gray-400 italic">no in-app despatch yet</span>
-                                    )}
-                                  </div>
-                                )}
-                                {entry.despatchInfo.matched.map(m => (
-                                  <div key={m.challanNo} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px]">
-                                    <span className="text-purple-600 dark:text-purple-400">📦 ch#{m.challanNo}</span>
-                                    <span className="text-gray-500 dark:text-gray-400">
-                                      {new Date(m.date).toLocaleDateString('en-IN')} · {m.totalThan}t
-                                    </span>
-                                    {m.lots.map(dl => (
-                                      <span key={dl.lotNo} className="text-gray-600 dark:text-gray-300">
-                                        {dl.lotNo}<span className="text-gray-400">({dl.than})</span>
-                                      </span>
-                                    ))}
-                                  </div>
-                                ))}
+                            {entry.finishDespSlipNo && (
+                              <div className="mt-1.5">
+                                <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">
+                                  🚚 Slip {entry.finishDespSlipNo}
+                                </span>
                               </div>
                             )}
                           </button>
