@@ -480,7 +480,24 @@ function ChallanCard(props: {
               {expanded ? 'Hide ▴' : `${c.lines.length} line${c.lines.length === 1 ? '' : 's'} ▾`}
             </button>
           </div>
-          <div className="mt-1 flex justify-between text-xs">
+
+          {/* Items summary — name + qty/unit per row, wraps cleanly on phones */}
+          {c.lines.length > 0 && (
+            <ul className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 space-y-0.5">
+              {c.lines.map(l => (
+                <li key={l.id} className="flex items-baseline justify-between gap-2 text-xs">
+                  <span className="flex-1 min-w-0 break-words text-gray-700 dark:text-gray-300">
+                    {l.item.displayName}
+                  </span>
+                  <span className="shrink-0 font-medium text-gray-600 dark:text-gray-300">
+                    {Number(l.qty)} <span className="text-gray-400 dark:text-gray-500">{l.unit}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex justify-between text-xs">
             <span className="text-gray-500 dark:text-gray-400">Total</span>
             <span className="font-bold text-gray-800 dark:text-gray-100">
               ₹{fmtMoney(c.totalWithGst ?? c.totalAmount)}
