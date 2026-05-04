@@ -2161,7 +2161,7 @@ export default function FinishStockPage() {
                 </button>
                 <button onClick={() => setPackView('party')}
                   className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${packView === 'party' ? 'bg-teal-100 dark:bg-teal-900/30 border-teal-300 dark:border-teal-700 text-teal-700 dark:text-teal-300' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500'}`}>
-                  Party → Quality → Fold → Desp → Lot
+                  Party → Quality → Desp → Lot
                 </button>
               </div>
 
@@ -2292,28 +2292,35 @@ export default function FinishStockPage() {
                 )
               })()}
 
-              {/* Party → Quality → Fold → Desp → Lot → Receipts (6-level) */}
+              {/* Party → Quality → Desp → Lot (4-level, fold removed, completed lots hidden) */}
               {packView === 'party' && (() => {
-                // Build 6-level hierarchy from packing entries
-                type L6 = { party: string; qualities: Map<string, { folds: Map<string, { desps: Map<string, { lots: any[] }> }> }> }
-                const partyMap = new Map<string, L6['qualities']>()
+                // Build 4-level hierarchy. Skip lots that have already been
+                // fully received in folding (or despatched) — the user only
+                // cares about what's still pending in this view.
+                const partyMap = new Map<string, Map<string, Map<string, any[]>>>()
 
                 for (const pe of packingEntries) {
                   for (const l of pe.lots) {
+                    const recs = (l as any).foldingReceipts || []
+                    const received = recs.reduce((s: number, r: any) => s + r.than, 0)
+                    const despatched = (l as any).despatchedThan || 0
+                    if (received + despatched >= l.than) continue // hide completed
+
                     const party = (l as any).party || 'Unknown'
                     const quality = (l as any).quality || 'Unknown'
-                    const fold = (l as any).foldNo || 'No Fold'
                     const desp = pe.finishDespSlipNo || 'No Desp'
 
                     if (!partyMap.has(party)) partyMap.set(party, new Map())
                     const qMap = partyMap.get(party)!
-                    if (!qMap.has(quality)) qMap.set(quality, { folds: new Map() })
-                    const fMap = qMap.get(quality)!.folds
-                    if (!fMap.has(fold)) fMap.set(fold, { desps: new Map() })
-                    const dMap = fMap.get(fold)!.desps
-                    if (!dMap.has(desp)) dMap.set(desp, { lots: [] })
-                    dMap.get(desp)!.lots.push({ ...l, fpSlipNo: pe.slipNo })
+                    if (!qMap.has(quality)) qMap.set(quality, new Map())
+                    const dMap = qMap.get(quality)!
+                    if (!dMap.has(desp)) dMap.set(desp, [])
+                    dMap.get(desp)!.push({ ...l, fpSlipNo: pe.slipNo, _received: received, _despatched: despatched })
                   }
+                }
+
+                if (partyMap.size === 0) {
+                  return <div className="p-12 text-center text-gray-400 dark:text-gray-500">No pending lots — everything received in folding.</div>
                 }
 
                 return (
@@ -2326,7 +2333,7 @@ export default function FinishStockPage() {
                         </button>
                         {packExpandedParties.has(party) && (
                           <div className="border-t border-gray-100 dark:border-gray-700 px-3 pb-3 pt-1 space-y-1.5">
-                            {Array.from(qMap.entries()).map(([quality, qData]) => {
+                            {Array.from(qMap.entries()).map(([quality, dMap]) => {
                               const qKey = `${party}::${quality}`
                               return (
                                 <div key={qKey} className="border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
@@ -2337,51 +2344,35 @@ export default function FinishStockPage() {
                                   </button>
                                   {packExpandedQualities.has(qKey) && (
                                     <div className="border-t border-gray-50 dark:border-gray-700 px-2 pb-2 pt-1 space-y-1">
-                                      {Array.from(qData.folds.entries()).map(([fold, fData]) => {
-                                        const fKey = `${qKey}::${fold}`
+                                      {Array.from(dMap.entries()).map(([desp, lots]) => {
+                                        const dKey = `${qKey}::${desp}`
                                         return (
-                                          <div key={fKey} className="border border-gray-100 dark:border-gray-600 rounded-lg overflow-hidden">
-                                            <button onClick={() => { setExpandedFolds(prev => { const n = new Set(prev); if (n.has(fKey)) n.delete(fKey); else n.add(fKey); return n }) }}
+                                          <div key={dKey} className="border border-gray-100 dark:border-gray-600 rounded-lg overflow-hidden">
+                                            <button onClick={() => { setExpandedDesp(prev => { const n = new Set(prev); if (n.has(dKey)) n.delete(dKey); else n.add(dKey); return n }) }}
                                               className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                                              <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">📁 Fold {fold}</span>
-                                              <span className={`text-gray-400 text-[10px] ${expandedFolds.has(fKey) ? 'rotate-90' : ''}`}>▶</span>
+                                              <span className={`text-[11px] font-bold ${desp !== 'No Desp' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400'}`}>📋 {desp}</span>
+                                              <span className={`text-gray-400 text-[10px] ${expandedDesp.has(dKey) ? 'rotate-90' : ''}`}>▶</span>
                                             </button>
-                                            {expandedFolds.has(fKey) && (
+                                            {expandedDesp.has(dKey) && (
                                               <div className="border-t border-gray-50 dark:border-gray-700 px-2 pb-1 pt-1 space-y-1">
-                                                {Array.from(fData.desps.entries()).map(([desp, dData]) => {
-                                                  const dKey = `${fKey}::${desp}`
+                                                {lots.map((lot: any, li: number) => {
+                                                  const recs = lot.foldingReceipts || []
+                                                  const received = lot._received as number
+                                                  const balance = lot.than - received - (lot._despatched as number)
                                                   return (
-                                                    <div key={dKey} className="border border-gray-100 dark:border-gray-600 rounded-lg overflow-hidden">
-                                                      <button onClick={() => { setExpandedDesp(prev => { const n = new Set(prev); if (n.has(dKey)) n.delete(dKey); else n.add(dKey); return n }) }}
-                                                        className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                                                        <span className={`text-[11px] font-bold ${desp !== 'No Desp' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-400'}`}>📋 {desp}</span>
-                                                        <span className={`text-gray-400 text-[10px] ${expandedDesp.has(dKey) ? 'rotate-90' : ''}`}>▶</span>
-                                                      </button>
-                                                      {expandedDesp.has(dKey) && (
-                                                        <div className="border-t border-gray-50 dark:border-gray-700 px-2 pb-1 pt-1 space-y-1">
-                                                          {dData.lots.map((lot: any, li: number) => {
-                                                            const recs = lot.foldingReceipts || []
-                                                            const received = recs.reduce((s: number, r: any) => s + r.than, 0)
-                                                            const complete = received >= lot.than
-                                                            return (
-                                                              <div key={li} className={`rounded-lg p-2 ${complete ? 'bg-green-50 dark:bg-green-900/10' : 'bg-gray-50 dark:bg-gray-900/50'}`}>
-                                                                <div className="flex items-center justify-between mb-1">
-                                                                  <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">{lot.lotNo}</span>
-                                                                  <span className="text-xs">{received}/{lot.than} {complete ? '✅' : '⏳'}</span>
-                                                                </div>
-                                                                {recs.length > 0 && (
-                                                                  <div className="space-y-0.5">
-                                                                    {recs.map((r: any) => (
-                                                                      <div key={r.id} className="flex items-center justify-between text-[10px] text-gray-500">
-                                                                        <span>Folding_recpt {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
-                                                                        <span className="font-medium">{r.than}</span>
-                                                                      </div>
-                                                                    ))}
-                                                                  </div>
-                                                                )}
-                                                              </div>
-                                                            )
-                                                          })}
+                                                    <div key={li} className="rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50">
+                                                      <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">{lot.lotNo}</span>
+                                                        <span className="text-xs">{received}/{lot.than} ⏳ <span className="font-bold text-emerald-600 dark:text-emerald-400">·{balance}</span></span>
+                                                      </div>
+                                                      {recs.length > 0 && (
+                                                        <div className="space-y-0.5">
+                                                          {recs.map((r: any) => (
+                                                            <div key={r.id} className="flex items-center justify-between text-[10px] text-gray-500">
+                                                              <span>Folding_recpt {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
+                                                              <span className="font-medium">{r.than}</span>
+                                                            </div>
+                                                          ))}
                                                         </div>
                                                       )}
                                                     </div>
