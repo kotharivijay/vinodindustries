@@ -7,7 +7,7 @@ import useSWR from 'swr'
 import GreyImportModal from './GreyImportModal'
 import UnallocatedStockModal from './UnallocatedStockModal'
 import BackButton from '../BackButton'
-import { LotLink, useLotBackHighlight } from '@/lib/viewStatePersist'
+import { LotLink, useLotBackHighlight, persistViewState, readViewState } from '@/lib/viewStatePersist'
 
 const GREY_VIEW_KEY = 'grey-view-state'
 
@@ -64,8 +64,13 @@ export default function GreyListPage() {
     dedupingInterval: 30_000,
   })
 
-  const [search, setSearchRaw] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useDebounce('')
+  // Restore filter/search state from sessionStorage so a back-nav from
+  // /lot/[lotNo] keeps everything the operator typed. saveLotClick (in
+  // LotLink) already records scrollY + lastClickedLot — we just append
+  // the form state below.
+  const initial = typeof window !== 'undefined' ? readViewState(GREY_VIEW_KEY) : {}
+  const [search, setSearchRaw] = useState<string>(() => initial.search ?? '')
+  const [debouncedSearch, setDebouncedSearch] = useDebounce(initial.search ?? '')
   const [showImport, setShowImport] = useState(false)
   const [showUnallocated, setShowUnallocated] = useState(false)
 
@@ -93,19 +98,32 @@ export default function GreyListPage() {
     }
   }, [])
   const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [sortField, setSortField] = useState<SortField>('date')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
-  const [tab, setTab] = useState<Tab>('entries')
-  const [stockFilter, setStockFilter] = useState<StockFilter>('all')
-  const [stockPartySearch, setStockPartySearch] = useState('')
-  const [debouncedStockPartySearch, setDebouncedStockPartySearch] = useDebounce('')
-  const [stockLotQSearch, setStockLotQSearch] = useState('')
-  const [debouncedStockLotQSearch, setDebouncedStockLotQSearch] = useDebounce('')
-  const [filters, setFilters] = useState({ party: '', quality: '', lotNo: '', lrNo: '' })
+  const [sortField, setSortField] = useState<SortField>(() => initial.sortField ?? 'date')
+  const [sortDir, setSortDir] = useState<SortDir>(() => initial.sortDir ?? 'desc')
+  const [tab, setTab] = useState<Tab>(() => initial.tab ?? 'entries')
+  const [stockFilter, setStockFilter] = useState<StockFilter>(() => initial.stockFilter ?? 'all')
+  const [stockPartySearch, setStockPartySearch] = useState<string>(() => initial.stockPartySearch ?? '')
+  const [debouncedStockPartySearch, setDebouncedStockPartySearch] = useDebounce(initial.stockPartySearch ?? '')
+  const [stockLotQSearch, setStockLotQSearch] = useState<string>(() => initial.stockLotQSearch ?? '')
+  const [debouncedStockLotQSearch, setDebouncedStockLotQSearch] = useDebounce(initial.stockLotQSearch ?? '')
+  const [filters, setFilters] = useState<{ party: string; quality: string; lotNo: string; lrNo: string }>(
+    () => initial.filters ?? { party: '', quality: '', lotNo: '', lrNo: '' }
+  )
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [cfImporting, setCfImporting] = useState(false)
   const [cfResult, setCfResult] = useState<{ imported: number; totalThan: number } | null>(null)
   const toggleExpand = (id: number) => setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+
+  // Persist filter/search state on every change so back-nav from /lot/[id]
+  // restores the operator's view. The keys here mirror the useState
+  // initialisers above; LotLink + saveLotClick handle scrollY + lastClickedLot.
+  useEffect(() => {
+    persistViewState(GREY_VIEW_KEY, {
+      tab, sortField, sortDir, search,
+      stockFilter, stockPartySearch, stockLotQSearch,
+      filters,
+    })
+  }, [tab, sortField, sortDir, search, stockFilter, stockPartySearch, stockLotQSearch, filters])
 
   // Restore scroll + highlight the clicked lot card after returning from /lot/[id]
   useLotBackHighlight(GREY_VIEW_KEY, true)
