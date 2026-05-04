@@ -105,6 +105,38 @@ export default function LedgerTagsPage() {
 
         {filteredLedgers.length > 0 && (
           <div className="mt-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+            {/* Select-all-visible row — always shown so power users can bulk-tag fast */}
+            {(() => {
+              const visibleIds = filteredLedgers.map((l: any) => l.id).filter(Boolean) as number[]
+              const allChecked = visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id))
+              const someChecked = visibleIds.some(id => selectedIds.has(id))
+              return (
+                <div className="px-4 py-2 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={allChecked}
+                      ref={el => { if (el) el.indeterminate = !allChecked && someChecked }}
+                      onChange={() => {
+                        setSelectedIds(prev => {
+                          const n = new Set(prev)
+                          if (allChecked) for (const id of visibleIds) n.delete(id)
+                          else for (const id of visibleIds) n.add(id)
+                          return n
+                        })
+                      }}
+                      className="w-4 h-4 rounded border-gray-300 text-purple-600" />
+                    <span className="text-gray-600 dark:text-gray-300 font-medium">
+                      Select all {filteredLedgers.length} visible
+                    </span>
+                  </label>
+                  {selectedIds.size > 0 && (
+                    <button type="button" onClick={() => setSelectedIds(new Set())}
+                      className="text-rose-600 dark:text-rose-400 font-medium">
+                      Clear ({selectedIds.size})
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
             {selectedIds.size > 0 && (
               <div className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-purple-700 dark:text-purple-300 font-medium">{selectedIds.size} selected — Add tag:</span>
@@ -117,21 +149,24 @@ export default function LedgerTagsPage() {
               </div>
             )}
             <div className="divide-y divide-gray-50 dark:divide-gray-700 max-h-80 overflow-y-auto">
-              {filteredLedgers.map((l: any, i: number) => (
-                <label key={i} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer">
-                  <input type="checkbox" checked={selectedIds.has(l.id || i)} onChange={() => toggleSelect(l.id || i)}
-                    className="w-4 h-4 rounded border-gray-300 text-purple-600" />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm text-gray-700 dark:text-gray-200">{l.name}</span>
-                    {l.parent && <span className="text-[9px] text-gray-400 ml-2">({l.parent})</span>}
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    {(l.tags || []).map((t: string) => (
-                      <span key={t} className={`text-[9px] px-1.5 py-0.5 rounded border ${TAG_COLORS[t] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>{t}</span>
-                    ))}
-                  </div>
-                </label>
-              ))}
+              {filteredLedgers.map((l: any) => {
+                if (!l.id) return null
+                return (
+                  <label key={l.id} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 cursor-pointer">
+                    <input type="checkbox" checked={selectedIds.has(l.id)} onChange={() => toggleSelect(l.id)}
+                      className="w-4 h-4 rounded border-gray-300 text-purple-600" />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm text-gray-700 dark:text-gray-200">{l.name}</span>
+                      {l.parent && <span className="text-[9px] text-gray-400 ml-2">({l.parent})</span>}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {(l.tags || []).map((t: string) => (
+                        <span key={t} className={`text-[9px] px-1.5 py-0.5 rounded border ${TAG_COLORS[t] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>{t}</span>
+                      ))}
+                    </div>
+                  </label>
+                )
+              })}
             </div>
           </div>
         )}

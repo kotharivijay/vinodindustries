@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     if (tagFilter) where.tags = { has: tagFilter }
     const ledgers = await db.tallyLedger.findMany({
       where,
-      select: { name: true, parent: true, mobileNos: true, tags: true },
+      select: { id: true, name: true, parent: true, mobileNos: true, tags: true },
       orderBy: { name: 'asc' },
     })
     return NextResponse.json(ledgers)
