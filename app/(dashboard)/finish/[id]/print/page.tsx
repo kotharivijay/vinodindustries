@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import { buildLotInfoMap } from '@/lib/lot-info'
+import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
 import PrintActions from './PrintActions'
 
 export default async function FinishPrintPage({ params }: { params: Promise<{ id: string }> }) {
@@ -34,13 +35,9 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
   const partyName = partyNames.join(', ') || null
   const qualityName = qualityNames.join(', ') || null
 
-  // Map this FP's lots → than (source of truth — using the dyeing entry's
-  // own than would over-count when a lot was dyed in multiple batches).
-  const fpLotThan = new Map<string, number>()
-  for (const l of lots) fpLotThan.set(l.lotNo.toLowerCase(), Number(l.than))
-
-  // Get dyeing info (shade, fold) for these lots. Order desc so the most
-  // recent dyeing slip wins when the same lot was dyed multiple times.
+  // Get dyeing info (shade, fold) for these lots. The allocator decides
+  // which slips actually contributed to THIS FP and how much each one
+  // contributed; see lib/finish-slip-allocator.ts for the algorithm.
   const dyeingEntries = await db.dyeingEntry.findMany({
     where: {
       OR: [
@@ -65,43 +62,26 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
     distinct: ['id'],
   })
 
-  // Build fold → slips grouping. Each FP lot is shown under exactly ONE
-  // dyeing slip (the most recent one that contained it) so the
-  // slip-wise totals match the FP header total by construction.
   type SlipInfo = { slipNo: number; shadeName: string | null; shadeDesc: string | null; lots: { lotNo: string; than: number }[] }
   type FoldGroup = { foldNo: string; slips: SlipInfo[] }
-  const foldMap = new Map<string, SlipInfo[]>()
-  const placedLots = new Set<string>() // lotNo lowercase — already shown under some slip
 
-  for (const de of dyeingEntries) {
-    const foldNo = de.foldBatch?.foldProgram?.foldNo || 'No Fold'
-    const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
-    const shadeDesc = de.foldBatch?.shade?.description || null
-    const dLots = de.lots?.length ? de.lots : [{ lotNo: de.lotNo, than: de.than }]
-    // Keep only FP lots not yet placed under another slip
-    const relevantLots = dLots.filter((dl: any) => {
-      const k = dl.lotNo.toLowerCase()
-      return fpLotThan.has(k) && !placedLots.has(k)
-    })
-    if (relevantLots.length === 0) continue
-
-    if (!foldMap.has(foldNo)) foldMap.set(foldNo, [])
-    foldMap.get(foldNo)!.push({
+  const foldGroups: FoldGroup[] = allocateFpToDyeingSlips(
+    lots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than) })),
+    dyeingEntries.map((de: any) => ({
       slipNo: de.slipNo,
-      shadeName,
-      shadeDesc,
-      // Use FP's lot than, not the dyeing entry's than
-      lots: relevantLots.map((l: any) => {
-        const k = l.lotNo.toLowerCase()
-        placedLots.add(k)
-        return { lotNo: l.lotNo, than: fpLotThan.get(k) ?? Number(l.than) }
-      }),
-    })
-  }
-
-  const foldGroups: FoldGroup[] = Array.from(foldMap.entries())
-    .map(([foldNo, slips]) => ({ foldNo, slips }))
-    .sort((a, b) => a.foldNo.localeCompare(b.foldNo))
+      shadeName: de.shadeName ?? null,
+      lots: de.lots,
+      foldBatch: de.foldBatch ?? null,
+    })),
+  ).map(fg => ({
+    foldNo: fg.foldNo,
+    slips: fg.slips.map(s => ({
+      slipNo: s.slipNo,
+      shadeName: s.shadeName,
+      shadeDesc: s.shadeDesc,
+      lots: s.lots,
+    })),
+  }))
 
   const chemicals = (entry.chemicals || []).map((c: any) => ({
     name: c.name || c.chemical?.name || '',

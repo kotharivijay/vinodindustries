@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const apiKey = _req.headers.get('x-api-key')
@@ -29,15 +30,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const partyName = [...new Set(lotInfos.map(v => v.party).filter(Boolean))].join(', ') || ''
   const qualityName = [...new Set(lotInfos.map(v => v.quality).filter(Boolean))].join(', ') || ''
 
-  // Build map of THIS FP's lot → than. This is the source of truth for what
-  // ends up under each slip in the hierarchy — using the dyeing entry's own
-  // than would over-count any lot that was dyed in multiple batches.
+  // FP's per-lot than allocation — source of truth for the hierarchy totals.
   const fpLots = entry.lots?.length ? entry.lots : (entry.lotNo ? [{ lotNo: entry.lotNo, than: entry.than }] : [])
-  const fpLotThan = new Map<string, number>()
-  for (const fl of fpLots) fpLotThan.set(fl.lotNo.toLowerCase(), Number(fl.than))
 
-  // Get dyeing info for each lot (fold, shade, dye slip). Order desc so the
-  // most recent dyeing slip wins when a lot was dyed multiple times.
+  // Pull every dyeing entry that touched any of these lots; the allocator
+  // figures out which subset (and what amount) actually contributed to THIS FP.
   const dyeingEntries = await db.dyeingEntry.findMany({
     where: {
       OR: [
@@ -59,60 +56,35 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     orderBy: { slipNo: 'desc' },
   })
 
-  // Build fold → quality → slip → lots hierarchy
+  const foldGroups = allocateFpToDyeingSlips(
+    fpLots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than) })),
+    dyeingEntries.map((de: any) => ({
+      slipNo: de.slipNo,
+      shadeName: de.shadeName ?? null,
+      lots: de.lots,
+      foldBatch: de.foldBatch ?? null,
+    })),
+  )
+
+  // Re-shape into the existing fold→quality→slip→lots structure the printer
+  // expects. (Quality is the single FP-level quality name — we don't split.)
   type SlipInfo = { slipNo: number; shadeName: string; shadeDesc: string; lots: { lotNo: string; than: number }[] }
-  type QualityInfo = { quality: string; slips: Map<number, SlipInfo> }
-  type FoldInfo = { foldNo: string; qualities: Map<string, QualityInfo> }
-
-  const foldMap = new Map<string, FoldInfo>()
-  const placedLots = new Set<string>() // lots already placed under a slip — prevents duplicates
-
-  for (const de of dyeingEntries) {
-    const foldNo = de.foldBatch?.foldProgram?.foldNo || 'No Fold'
-    const shadeName = de.shadeName || de.foldBatch?.shade?.name || ''
-    const shadeDesc = de.foldBatch?.shade?.description || ''
-    const deLots = de.lots?.length ? de.lots : []
-
-    // Only include FP lots not yet shown under another slip. Each FP lot
-    // ends up under exactly the most recent dyeing slip that contained it.
-    const matchingLots = deLots.filter((l: any) => {
-      const k = l.lotNo.toLowerCase()
-      return fpLotThan.has(k) && !placedLots.has(k)
-    })
-    if (matchingLots.length === 0) continue
-
-    if (!foldMap.has(foldNo)) foldMap.set(foldNo, { foldNo, qualities: new Map() })
-    const fold = foldMap.get(foldNo)!
-
-    const q = qualityName || 'Unknown'
-    if (!fold.qualities.has(q)) fold.qualities.set(q, { quality: q, slips: new Map() })
-    const quality = fold.qualities.get(q)!
-
-    if (!quality.slips.has(de.slipNo)) {
-      quality.slips.set(de.slipNo, { slipNo: de.slipNo, shadeName, shadeDesc, lots: [] })
-    }
-    const slip = quality.slips.get(de.slipNo)!
-    for (const ml of matchingLots) {
-      const k = ml.lotNo.toLowerCase()
-      // Use THIS FP's than for the lot (not the dyeing entry's than)
-      slip.lots.push({ lotNo: ml.lotNo, than: fpLotThan.get(k) ?? Number(ml.than) })
-      placedLots.add(k)
-    }
-  }
-
-  // Convert maps to arrays
-  const hierarchy = Array.from(foldMap.values()).map(f => ({
-    foldNo: f.foldNo,
-    qualities: Array.from(f.qualities.values()).map(q => ({
-      quality: q.quality,
-      slips: Array.from(q.slips.values()).map(s => ({
+  type QualityInfo = { quality: string; slips: SlipInfo[] }
+  type FoldInfo = { foldNo: string; qualities: QualityInfo[] }
+  const foldMapShaped: FoldInfo[] = foldGroups.map(fg => ({
+    foldNo: fg.foldNo,
+    qualities: [{
+      quality: qualityName || 'Unknown',
+      slips: fg.slips.map(s => ({
         slipNo: s.slipNo,
-        shadeName: s.shadeName,
-        shadeDesc: s.shadeDesc,
+        shadeName: s.shadeName ?? '',
+        shadeDesc: s.shadeDesc ?? '',
         lots: s.lots,
       })),
-    })),
+    }],
   }))
+
+  const hierarchy = foldMapShaped
 
   // Finish recipe
   const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo, than: entry.than }]
