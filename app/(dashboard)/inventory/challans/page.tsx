@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import BackButton from '../../BackButton'
+import { computeInvoiceTotals } from '@/lib/inv/invoice-totals'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -18,6 +19,8 @@ interface Line {
   unit: string
   rate: string | null
   gstRate: string | null
+  discountType: string | null
+  discountValue: string | null
   discountAmount: string | null
   grossAmount: string | null
   amount: string | null
@@ -41,7 +44,7 @@ interface Challan {
   totalWithGst: string | null
   hasRatelessLines: boolean
   hasPendingReviewItems: boolean
-  party: { id: number; displayName: string; parentGroup: string | null }
+  party: { id: number; displayName: string; parentGroup: string | null; state: string | null; gstRegistrationType: string }
   lines: Line[]
   invoiceLink: { invoiceId: number } | null
 }
@@ -230,7 +233,6 @@ export default function ChallansListPage() {
       {invoiceModalOpen && selectedChallans.length > 0 && (
         <CreateInvoiceModal
           challans={selectedChallans}
-          totals={selectedTotals}
           onClose={() => setInvoiceModalOpen(false)}
           onCreated={invoiceId => {
             setInvoiceModalOpen(false)
@@ -246,11 +248,10 @@ export default function ChallansListPage() {
 
 function CreateInvoiceModal(props: {
   challans: Challan[]
-  totals: { qty: number; amount: number; gst: number; total: number }
   onClose: () => void
   onCreated: (invoiceId: number) => void
 }) {
-  const { challans, totals, onClose, onCreated } = props
+  const { challans, onClose, onCreated } = props
   const party = challans[0].party
   const today = new Date().toISOString().slice(0, 10)
 
@@ -266,7 +267,6 @@ function CreateInvoiceModal(props: {
   const freight = Number(freightAmount) || 0
   const other = Number(otherCharges) || 0
   const discount = Number(discountAmount) || 0
-  const grandTotal = totals.amount + totals.gst + freight + other - discount
 
   // Flatten all selected challans' lines into the invoice payload
   const lines = useMemo(() => challans.flatMap(c => c.lines.map(l => ({
@@ -279,6 +279,21 @@ function CreateInvoiceModal(props: {
     discountAmount: l.discountAmount,
     challanLineId: l.id,
   }))), [challans])
+
+  // Recompute totals client-side using the same helper the server uses.
+  const isIntra = (party.state || '').toLowerCase() === 'rajasthan'
+  const isUnreg = ['Unregistered', 'Composition'].includes(party.gstRegistrationType || '')
+  const linesForCalc = useMemo(() =>
+    lines.map(l => {
+      const qty = Number(l.qty || 0)
+      const rate = Number(l.rate || 0)
+      const lineDisc = Number(l.discountAmount || 0)
+      return { amount: qty * rate - lineDisc, gstRate: Number(l.gstRate || 0) }
+    }),
+  [lines])
+  const calc = useMemo(() => computeInvoiceTotals(linesForCalc, freight, discount, isIntra, isUnreg),
+    [linesForCalc, freight, discount, isIntra, isUnreg])
+  const grandTotal = calc.total + other
 
   async function save() {
     if (!supplierInvoiceNo.trim() || !supplierInvoiceDate) {
@@ -373,14 +388,32 @@ function CreateInvoiceModal(props: {
           </label>
 
           <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-sm space-y-1">
-            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Taxable</span><span>₹{fmtMoney(totals.amount)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">GST</span><span>₹{fmtMoney(totals.gst)}</span></div>
-            {(freight + other) > 0 && (
-              <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Freight + other</span><span>₹{fmtMoney(freight + other)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Taxable</span><span>₹{fmtMoney(calc.taxable)}</span></div>
+            {freight > 0 && (
+              <div className="flex justify-between text-gray-500 dark:text-gray-400 text-[11px]">
+                <span>+ Freight @ {calc.majorityRate}% GST</span><span>+ ₹{fmtMoney(freight)}</span>
+              </div>
             )}
             {discount > 0 && (
-              <div className="flex justify-between text-rose-600 dark:text-rose-400">
-                <span>Discount</span><span>− ₹{fmtMoney(discount)}</span>
+              <div className="flex justify-between text-rose-500 dark:text-rose-400 text-[11px]">
+                <span>− Discount @ {calc.majorityRate}% GST</span><span>− ₹{fmtMoney(discount)}</span>
+              </div>
+            )}
+            {!isUnreg && isIntra && calc.totalGst > 0 && (
+              <>
+                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">CGST</span><span>₹{fmtMoney(calc.cgst)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">SGST</span><span>₹{fmtMoney(calc.sgst)}</span></div>
+              </>
+            )}
+            {!isUnreg && !isIntra && calc.totalGst > 0 && (
+              <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">IGST</span><span>₹{fmtMoney(calc.igst)}</span></div>
+            )}
+            {other > 0 && (
+              <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Other (no GST)</span><span>₹{fmtMoney(other)}</span></div>
+            )}
+            {Math.abs(calc.roundOff) > 0.001 && (
+              <div className="flex justify-between text-gray-500 dark:text-gray-400 text-[11px]">
+                <span>Round-off</span><span>{calc.roundOff > 0 ? '+' : '−'} ₹{fmtMoney(Math.abs(calc.roundOff))}</span>
               </div>
             )}
             <div className="flex justify-between font-bold text-base border-t border-gray-200 dark:border-gray-700 pt-1">
@@ -551,11 +584,23 @@ function LineCard({ line, disabled, onSave }: {
   disabled: boolean
   onSave: (patch: Record<string, any>) => void | Promise<void>
 }) {
+  // Discount display: percent if discountType=PCT, else flat amount.
+  // The input accepts both formats: "5" → flat ₹5, "5%" → 5 percent.
+  const initialDiscountText = (() => {
+    if (line.discountType === 'PCT' && line.discountValue != null) {
+      return `${line.discountValue}%`
+    }
+    return line.discountAmount ?? ''
+  })()
+  const aliasGst = line.item?.alias?.gstRate != null ? String(Number(line.item.alias.gstRate)) : ''
+
   const [qty, setQty] = useState(line.qty)
   const [unit, setUnit] = useState(line.unit)
   const [rate, setRate] = useState(line.rate ?? '')
-  const [discount, setDiscount] = useState(line.discountAmount ?? '')
-  const [gstRate, setGstRate] = useState(line.gstRate ?? '')
+  const [discount, setDiscount] = useState(initialDiscountText)
+  // GST autofill: empty stored gstRate falls back to alias rate so the user
+  // doesn't retype it on every line.
+  const [gstRate, setGstRate] = useState(line.gstRate ?? aliasGst)
   const [notes, setNotes] = useState(line.notes ?? '')
   const [historyOpen, setHistoryOpen] = useState(false)
 
@@ -564,14 +609,41 @@ function LineCard({ line, disabled, onSave }: {
     setQty(line.qty)
     setUnit(line.unit)
     setRate(line.rate ?? '')
-    setDiscount(line.discountAmount ?? '')
-    setGstRate(line.gstRate ?? '')
+    setDiscount(line.discountType === 'PCT' && line.discountValue != null
+      ? `${line.discountValue}%`
+      : (line.discountAmount ?? ''))
+    setGstRate(line.gstRate ?? aliasGst)
     setNotes(line.notes ?? '')
-  }, [line.id, line.qty, line.unit, line.rate, line.discountAmount, line.gstRate, line.notes])
+  }, [line.id, line.qty, line.unit, line.rate, line.discountAmount, line.discountType, line.discountValue, line.gstRate, line.notes, aliasGst])
 
   function commit(field: string, value: any) {
     onSave({ [field]: value })
   }
+
+  // Parse the discount input — trailing `%` switches to percent mode.
+  function commitDiscount(raw: string) {
+    const trimmed = raw.trim()
+    if (trimmed === '') {
+      // Clear all three discount fields together
+      onSave({ discountType: null, discountValue: null, discountAmount: null })
+      return
+    }
+    const isPct = trimmed.endsWith('%')
+    const numStr = isPct ? trimmed.slice(0, -1).trim() : trimmed
+    const num = Number(numStr)
+    if (!Number.isFinite(num) || num < 0) return // ignore garbage; keep current
+    if (isPct) {
+      onSave({ discountType: 'PCT', discountValue: num })
+    } else {
+      onSave({ discountType: 'AMT', discountValue: num, discountAmount: num })
+    }
+  }
+  const discountChanged = (() => {
+    const stored = line.discountType === 'PCT' && line.discountValue != null
+      ? `${line.discountValue}%`
+      : (line.discountAmount ?? '')
+    return String(discount).trim() !== String(stored).trim()
+  })()
 
   const inp = 'w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 focus:border-indigo-400 focus:outline-none rounded px-1.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60'
   const lbl = 'block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5'
@@ -614,18 +686,22 @@ function LineCard({ line, disabled, onSave }: {
               && commit('rate', rate === '' ? null : rate)} />
         </div>
         <div>
-          <span className={lbl}>Discount</span>
-          <input type="number" step="0.01" disabled={disabled} className={inp}
+          <span className={lbl}>Discount <span className="text-gray-400 normal-case">(₹ or %)</span></span>
+          <input type="text" inputMode="decimal" disabled={disabled} className={inp}
+            placeholder="0 or 5%"
             value={discount} onChange={e => setDiscount(e.target.value)}
-            onBlur={() => String(discount) !== String(line.discountAmount ?? '')
-              && commit('discountAmount', discount === '' ? null : discount)} />
+            onBlur={() => discountChanged && commitDiscount(discount)} />
         </div>
       </div>
 
       {/* Row 3 — GST / Amount / Total / Notes */}
       <div className="grid grid-cols-4 gap-2">
         <div>
-          <span className={lbl}>GST %</span>
+          <span className={lbl}>
+            GST %{line.gstRate == null && aliasGst && (
+              <span className="ml-1 text-indigo-500 normal-case">(from item)</span>
+            )}
+          </span>
           <input type="number" step="0.01" disabled={disabled} className={inp}
             value={gstRate} onChange={e => setGstRate(e.target.value)}
             onBlur={() => String(gstRate) !== String(line.gstRate ?? '')

@@ -36,7 +36,8 @@ export async function PUT(
     where: { id: lineId },
     select: {
       id: true, challanId: true, qty: true, rate: true, gstRate: true,
-      discountAmount: true, unit: true, notes: true,
+      discountType: true, discountValue: true, discountAmount: true,
+      unit: true, notes: true,
     },
   })
   if (!existingLine || existingLine.challanId !== challanId) {
@@ -53,15 +54,33 @@ export async function PUT(
     gstRate: body.gstRate !== undefined
       ? (body.gstRate === '' || body.gstRate == null ? null : Number(body.gstRate))
       : (existingLine.gstRate != null ? Number(existingLine.gstRate) : null),
-    discountAmount: body.discountAmount !== undefined
-      ? (body.discountAmount === '' || body.discountAmount == null ? null : Number(body.discountAmount))
-      : (existingLine.discountAmount != null ? Number(existingLine.discountAmount) : null),
     notes: body.notes !== undefined
       ? (body.notes === '' || body.notes == null ? null : String(body.notes))
       : (existingLine.notes ?? null),
   }
 
-  const m = computeLineMath(next, !!challan.ratesIncludeGst)
+  // Discount: client may send any subset of {discountType, discountValue, discountAmount}.
+  // PCT means discountValue is a percent of gross; AMT (or null type with discountAmount) is a flat amount.
+  let discountType: string | null = body.discountType !== undefined
+    ? (body.discountType === '' || body.discountType == null ? null : String(body.discountType))
+    : (existingLine.discountType ?? null)
+  let discountValue: number | null = body.discountValue !== undefined
+    ? (body.discountValue === '' || body.discountValue == null ? null : Number(body.discountValue))
+    : (existingLine.discountValue != null ? Number(existingLine.discountValue) : null)
+  let discountAmount: number | null = body.discountAmount !== undefined
+    ? (body.discountAmount === '' || body.discountAmount == null ? null : Number(body.discountAmount))
+    : (existingLine.discountAmount != null ? Number(existingLine.discountAmount) : null)
+
+  if (discountType === 'PCT') {
+    // Recompute flat amount from gross × pct
+    const gross = (next.qty || 0) * (next.rate ?? 0)
+    discountAmount = discountValue != null ? round2(gross * Number(discountValue) / 100) : null
+  } else if (discountType === 'AMT' && discountValue != null && body.discountAmount === undefined) {
+    // Client sent AMT with value but no explicit amount — mirror them
+    discountAmount = Number(discountValue)
+  }
+
+  const m = computeLineMath({ ...next, discountAmount }, !!challan.ratesIncludeGst)
 
   await db.$transaction(async (tx: any) => {
     await tx.invChallanLine.update({
@@ -71,7 +90,9 @@ export async function PUT(
         unit: next.unit,
         rate: next.rate,
         gstRate: next.gstRate,
-        discountAmount: next.discountAmount,
+        discountType,
+        discountValue,
+        discountAmount,
         notes: next.notes,
         grossAmount: m.grossAmount,
         amount: m.amount,
@@ -107,4 +128,8 @@ export async function PUT(
     include: { lines: { include: { item: { include: { alias: true } } }, orderBy: { lineNo: 'asc' } } },
   })
   return NextResponse.json(fresh)
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
 }
