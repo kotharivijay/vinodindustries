@@ -153,19 +153,28 @@ export default function GreyListPage() {
     return Array.from(map.values())
   }, [entries])
 
-  const filteredStock = useMemo(() =>
-    stockSummary
+  const filteredStock = useMemo(() => {
+    // Split the query by whitespace and require every token to appear in
+    // at least one of the searchable fields (lotNo / party / quality / weaver).
+    // This means typing "prakash citra" finds rows whose party contains
+    // "prakash" AND whose quality contains "citra" — one query, two columns.
+    const tokens = debouncedStockSearch.toLowerCase().split(/\s+/).filter(Boolean)
+    return stockSummary
       .filter(r => {
-        const q = debouncedStockSearch.toLowerCase()
-        const matchSearch = !q || r.lotNo.toLowerCase().includes(q) || r.party.toLowerCase().includes(q) || r.quality.toLowerCase().includes(q)
+        const matchSearch = tokens.length === 0 || tokens.every(t => {
+          return r.lotNo.toLowerCase().includes(t)
+              || r.party.toLowerCase().includes(t)
+              || r.quality.toLowerCase().includes(t)
+              || (r.weaver || '').toLowerCase().includes(t)
+        })
         const matchFilter =
           stockFilter === 'all' ? true :
           stockFilter === 'instock' ? r.stock > 0 :
           r.stock === 0
         return matchSearch && matchFilter
       })
-      .sort((a, b) => a.lotNo.localeCompare(b.lotNo)),
-  [stockSummary, debouncedStockSearch, stockFilter])
+      .sort((a, b) => a.lotNo.localeCompare(b.lotNo))
+  }, [stockSummary, debouncedStockSearch, stockFilter])
 
   function toggleSort(field: SortField) {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -318,7 +327,7 @@ export default function GreyListPage() {
           <div className="flex flex-wrap items-center gap-3 mb-4">
             <input
               type="text"
-              placeholder="Search lot no, party, quality..."
+              placeholder="Search lot, party, quality (e.g. 'prakash citra')…"
               className="w-full max-w-sm border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               value={stockSearch}
               onChange={e => { setStockSearch(e.target.value); setDebouncedStockSearch(e.target.value) }}
