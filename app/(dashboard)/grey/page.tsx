@@ -63,6 +63,11 @@ export default function GreyListPage() {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
   })
+  type StageBreakdown = { fold: number; dye: number; finish: number; pack: number }
+  const { data: stagesByLot = {} } = useSWR<Record<string, StageBreakdown>>('/api/grey/stages', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  })
 
   // Restore filter/search state from sessionStorage so a back-nav from
   // /lot/[lotNo] keeps everything the operator typed. saveLotClick (in
@@ -451,13 +456,9 @@ export default function GreyListPage() {
                         {r.stock}
                       </span>
                     </div>
+                    <StageChips lotNo={r.lotNo} greyThan={r.greyThan} tDesp={r.tDesp} stages={stagesByLot} />
                     <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">
                       <span>{new Date(r.lastDate).toLocaleDateString('en-IN')} · {r.entries} entr{r.entries === 1 ? 'y' : 'ies'}</span>
-                      <span>
-                        Grey <span className="font-semibold text-gray-700 dark:text-gray-200">{r.greyThan}</span>
-                        <span className="mx-1 text-gray-300 dark:text-gray-600">·</span>
-                        T_DESP <span className="font-medium text-orange-600 dark:text-orange-400">{r.tDesp}</span>
-                      </span>
                     </div>
                   </div>
                 ))}
@@ -497,6 +498,7 @@ export default function GreyListPage() {
                           <td className="px-4 py-3 font-semibold text-indigo-700 dark:text-indigo-400">
                             <LotLink lotNo={r.lotNo} storageKey={GREY_VIEW_KEY} className="hover:underline">{r.lotNo}</LotLink>
                             {r.openingBalance > 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
+                            <StageChips lotNo={r.lotNo} greyThan={r.greyThan} tDesp={r.tDesp} stages={stagesByLot} />
                           </td>
                           <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{r.party}</td>
                           <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.quality}</td>
@@ -720,6 +722,38 @@ export default function GreyListPage() {
           sessionStorage.removeItem('unallocated-search')
         } catch {}
       }} />
+    </div>
+  )
+}
+
+/**
+ * Stage chips strip — shows where this lot's than currently sits across the
+ * production pipeline. Each chip is colored per stage and only renders when
+ * its than > 0, so cards stay compact for early-stage lots.
+ */
+function StageChips({ lotNo, greyThan, tDesp, stages }: {
+  lotNo: string
+  greyThan: number
+  tDesp: number
+  stages: Record<string, { fold: number; dye: number; finish: number; pack: number }>
+}) {
+  const s = stages[lotNo.toUpperCase()] || { fold: 0, dye: 0, finish: 0, pack: 0 }
+  const all: { key: string; label: string; than: number; cls: string }[] = [
+    { key: 'grey',   label: 'Grey',   than: greyThan, cls: 'bg-gray-100 dark:bg-gray-700/60 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-600' },
+    { key: 'fold',   label: 'Fold',   than: s.fold,   cls: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' },
+    { key: 'dye',    label: 'Dye',    than: s.dye,    cls: 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800' },
+    { key: 'finish', label: 'Finish', than: s.finish, cls: 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800' },
+    { key: 'pack',   label: 'Pack',   than: s.pack,   cls: 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800' },
+    { key: 'desp',   label: 'Desp',   than: tDesp,    cls: 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800' },
+  ].filter(c => c.than > 0)
+  if (all.length === 0) return null
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {all.map(c => (
+        <span key={c.key} className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${c.cls}`}>
+          {c.label} <span className="font-bold">{c.than}</span>
+        </span>
+      ))}
     </div>
   )
 }
