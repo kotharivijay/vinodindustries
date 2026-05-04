@@ -2339,9 +2339,12 @@ export default function FinishStockPage() {
                                                   const received = lot._received as number
                                                   const balance = lot.than - received - (lot._despatched as number)
                                                   return (
-                                                    <div key={li} className="rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50">
+                                                    <div key={li} data-lot-card={lot.lotNo} className="rounded-lg p-2 bg-gray-50 dark:bg-gray-900/50">
                                                       <div className="flex items-center justify-between mb-1">
-                                                        <span className="text-xs font-semibold text-teal-700 dark:text-teal-300">{lot.lotNo}</span>
+                                                        <LotLink lotNo={lot.lotNo} storageKey={FINISH_VIEW_KEY}
+                                                          className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">
+                                                          {lot.lotNo}
+                                                        </LotLink>
                                                         <span className="text-xs">{received}/{lot.than} ⏳ <span className="font-bold text-emerald-600 dark:text-emerald-400">·{balance}</span></span>
                                                       </div>
                                                       {recs.length > 0 && (
