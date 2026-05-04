@@ -34,7 +34,13 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
   const partyName = partyNames.join(', ') || null
   const qualityName = qualityNames.join(', ') || null
 
-  // Get dyeing info (shade, fold) for these lots
+  // Map this FP's lots → than (source of truth — using the dyeing entry's
+  // own than would over-count when a lot was dyed in multiple batches).
+  const fpLotThan = new Map<string, number>()
+  for (const l of lots) fpLotThan.set(l.lotNo.toLowerCase(), Number(l.than))
+
+  // Get dyeing info (shade, fold) for these lots. Order desc so the most
+  // recent dyeing slip wins when the same lot was dyed multiple times.
   const dyeingEntries = await db.dyeingEntry.findMany({
     where: {
       OR: [
@@ -55,21 +61,28 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
         },
       },
     },
+    orderBy: { slipNo: 'desc' },
     distinct: ['id'],
   })
 
-  // Build fold → slips grouping
+  // Build fold → slips grouping. Each FP lot is shown under exactly ONE
+  // dyeing slip (the most recent one that contained it) so the
+  // slip-wise totals match the FP header total by construction.
   type SlipInfo = { slipNo: number; shadeName: string | null; shadeDesc: string | null; lots: { lotNo: string; than: number }[] }
   type FoldGroup = { foldNo: string; slips: SlipInfo[] }
   const foldMap = new Map<string, SlipInfo[]>()
+  const placedLots = new Set<string>() // lotNo lowercase — already shown under some slip
 
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || 'No Fold'
     const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
     const shadeDesc = de.foldBatch?.shade?.description || null
     const dLots = de.lots?.length ? de.lots : [{ lotNo: de.lotNo, than: de.than }]
-    // Only include lots that are in this finish entry
-    const relevantLots = dLots.filter((dl: any) => lotNos.includes(dl.lotNo))
+    // Keep only FP lots not yet placed under another slip
+    const relevantLots = dLots.filter((dl: any) => {
+      const k = dl.lotNo.toLowerCase()
+      return fpLotThan.has(k) && !placedLots.has(k)
+    })
     if (relevantLots.length === 0) continue
 
     if (!foldMap.has(foldNo)) foldMap.set(foldNo, [])
@@ -77,7 +90,12 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
       slipNo: de.slipNo,
       shadeName,
       shadeDesc,
-      lots: relevantLots.map((l: any) => ({ lotNo: l.lotNo, than: l.than })),
+      // Use FP's lot than, not the dyeing entry's than
+      lots: relevantLots.map((l: any) => {
+        const k = l.lotNo.toLowerCase()
+        placedLots.add(k)
+        return { lotNo: l.lotNo, than: fpLotThan.get(k) ?? Number(l.than) }
+      }),
     })
   }
 
