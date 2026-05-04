@@ -79,5 +79,13 @@ export async function prePushValidate(invoiceId: number): Promise<ValidationFail
     }
   }
 
+  // Freight/discount ledgers — needed when those amounts are non-zero
+  if (Number(inv.freightAmount) > 0 && !cfg.freightLedger) {
+    failures.push({ code: 'NO_FREIGHT_LEDGER', message: 'freightLedger not configured' })
+  }
+  if (Number(inv.totalDiscountAmount) > 0 && !cfg.discountLedger) {
+    failures.push({ code: 'NO_DISCOUNT_LEDGER', message: 'discountLedger not configured' })
+  }
+
   return failures
 }

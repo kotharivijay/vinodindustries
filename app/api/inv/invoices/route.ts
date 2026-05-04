@@ -4,6 +4,9 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { decideGstTreatment } from '@/lib/inv/gst'
+import { computeInvoiceTotals } from '@/lib/inv/invoice-totals'
+
+const KSI_STATE = process.env.KSI_STATE || 'Rajasthan'
 
 const db = prisma as any
 
@@ -47,11 +50,14 @@ export async function POST(req: NextRequest) {
   if (!party) return NextResponse.json({ error: 'Party not found' }, { status: 404 })
 
   const gstTreatment = decideGstTreatment(party)
+  const isIntra = (party.state || '').toLowerCase() === KSI_STATE.toLowerCase()
+  const isUnreg = gstTreatment === 'NONE'
 
-  let taxableAmount = 0, igstAmount = 0, cgstAmount = 0, sgstAmount = 0
   let lineDiscountTotal = 0
   const lineRows: any[] = []
   let hasPendingReviewItems = false
+  const linesForTotals: { amount: number; gstRate: number }[] = []
+
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]
     const qty = Number(l.qty || 0)
@@ -60,21 +66,16 @@ export async function POST(req: NextRequest) {
     const discount = Number(l.discountAmount || 0)
     const net = gross - discount
     const gstRate = Number(l.gstRate || 0)
-    const gstAmt = gstTreatment === 'NONE' ? 0 : (net * gstRate) / 100
-    const total = net + gstAmt
+    const lineGstAmt = isUnreg ? 0 : (net * gstRate) / 100
+    const lineTotal = net + lineGstAmt
 
     if (l.itemId) {
       const item = await db.invItem.findUnique({ where: { id: Number(l.itemId) } })
       if (item?.reviewStatus === 'pending_review') hasPendingReviewItems = true
     }
 
-    taxableAmount += net
     lineDiscountTotal += discount
-    if (gstTreatment === 'IGST') igstAmount += gstAmt
-    else if (gstTreatment === 'CGST_SGST') {
-      cgstAmount += gstAmt / 2
-      sgstAmount += gstAmt / 2
-    }
+    linesForTotals.push({ amount: net, gstRate })
 
     lineRows.push({
       lineNo: i + 1,
@@ -90,22 +91,25 @@ export async function POST(req: NextRequest) {
       discountAmount: discount || null,
       grossAmount: gross || null,
       amount: net,
-      gstRate: gstTreatment === 'NONE' ? null : gstRate,
-      gstAmount: gstAmt || null,
-      total,
+      gstRate: isUnreg ? null : gstRate,
+      gstAmount: lineGstAmt || null,
+      total: lineTotal,
     })
   }
 
   const freight = Number(freightAmount || 0)
   const other = Number(otherCharges || 0)
-  // Header-level flat discount (separate from per-line). Subtracted once
-  // at the bottom — does NOT reduce taxableAmount or GST.
+  // Header-level flat discount applies BEFORE GST at the majority rate
+  // (computeInvoiceTotals folds freight/discount into the majority bucket).
   const headerDiscount = Number(discountAmount || 0)
-  // Per-line discount is already baked into taxableAmount via `net`, so the
-  // grand total only subtracts the header discount. (Was previously double-
-  // subtracting per-line discounts; the totalDiscountAmount field is now
-  // purely informational — sum of per-line + header.)
-  const totalAmount = taxableAmount + igstAmount + cgstAmount + sgstAmount + freight + other - headerDiscount
+  const totals = computeInvoiceTotals(linesForTotals, freight, headerDiscount, isIntra, isUnreg)
+  const taxableAmount = totals.taxable
+  const igstAmount = totals.igst
+  const cgstAmount = totals.cgst
+  const sgstAmount = totals.sgst
+  // `other` is a residual extra (no GST, no roundoff effect on majority calc);
+  // it adds at the end like in the old model.
+  const totalAmount = totals.total + other
   const totalDiscountAmount = lineDiscountTotal + headerDiscount
 
   try {
@@ -122,6 +126,7 @@ export async function POST(req: NextRequest) {
           freightAmount: freight,
           totalDiscountAmount,
           otherCharges: other,
+          roundOff: totals.roundOff,
           totalAmount,
           hasPendingReviewItems,
           notes: notes || null,

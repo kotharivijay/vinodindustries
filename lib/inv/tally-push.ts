@@ -1,4 +1,5 @@
 import { fmtDate, neg } from './tally-helpers'
+import { computeInvoiceTotals } from './invoice-totals'
 
 const KSI_STATE = process.env.KSI_STATE || 'Rajasthan'
 const KSI_TALLY = process.env.KSI_TALLY_COMPANY || 'Kothari Synthetic Industries -( from 2023)'
@@ -110,21 +111,28 @@ export function buildPurchaseVoucherJSON(
     }
   })
 
+  // ── Centralized totals (lines + freight/discount at majority rate) ──
+  const totals = computeInvoiceTotals(
+    lines.map(l => ({ amount: l.amount, gstRate: Number(l.alias.gstRate) })),
+    invoice.freightAmount,
+    invoice.totalDiscountAmount,
+    isIntra,
+    isUnreg,
+  )
+
   // ── Ledger entries ──────────────────────────────────────────────
   const ledgerentries: any[] = [
     { ledgername: party.tallyLedger, isdeemedpositive: false, ispartyledger: true, amount: '0.00' },
   ]
 
+  // Per-rate GST ledgers — amounts already include the freight/discount fold
+  // for the majority rate (see computeInvoiceTotals).
   if (!isUnreg) {
-    const linesByRate: Record<string, number> = {}
-    for (const l of lines) {
-      const r = String(Number(l.alias.gstRate))
-      linesByRate[r] = (linesByRate[r] || 0) + l.amount
-    }
-    for (const [rate, taxable] of Object.entries(linesByRate)) {
-      const totalGst = +(taxable * (parseFloat(rate) / 100)).toFixed(2)
+    for (const [rate, gstAmt] of Object.entries(totals.gstByRate)) {
+      if (gstAmt === 0) continue
       if (isIntra) {
-        const half = +(totalGst / 2).toFixed(2)
+        const half = +(gstAmt / 2).toFixed(2)
+        const otherHalf = +(gstAmt - half).toFixed(2)
         const halfRate = String(parseFloat(rate) / 2)
         ledgerentries.push({
           ledgername: cfg.gstLedgers.CGST[halfRate],
@@ -134,58 +142,46 @@ export function buildPurchaseVoucherJSON(
         ledgerentries.push({
           ledgername: cfg.gstLedgers.SGST[halfRate],
           isdeemedpositive: true, ispartyledger: false,
-          amount: neg(half), vatexpamount: neg(half),
+          amount: neg(otherHalf), vatexpamount: neg(otherHalf),
         })
       } else {
         ledgerentries.push({
           ledgername: cfg.gstLedgers.IGST[rate],
           isdeemedpositive: true, ispartyledger: false,
-          amount: neg(totalGst), vatexpamount: neg(totalGst),
+          amount: neg(gstAmt), vatexpamount: neg(gstAmt),
         })
       }
     }
   }
 
+  // Freight & discount as bare expense/contra ledgers — GST on them is
+  // already inside the CGST/SGST/IGST entries above. No `appropriatefor`
+  // tag, so Tally won't re-apportion GST itself.
   if (invoice.freightAmount > 0) {
     ledgerentries.push({
       ledgername: cfg.freightLedger,
-      appropriatefor: 'GST', gstappropriateto: 'Goods and Services',
-      excisealloctype: 'Based on Value',
       isdeemedpositive: true, ispartyledger: false,
-      amount: neg(invoice.freightAmount), vatexpamount: neg(invoice.freightAmount),
+      amount: neg(invoice.freightAmount),
     })
   }
   if (invoice.totalDiscountAmount > 0) {
     ledgerentries.push({
       ledgername: cfg.discountLedger,
-      appropriatefor: 'GST', gstappropriateto: 'Goods and Services',
-      excisealloctype: 'Based on Value',
       isdeemedpositive: true, ispartyledger: false,
       amount: invoice.totalDiscountAmount.toFixed(2),
-      vatexpamount: invoice.totalDiscountAmount.toFixed(2),
     })
   }
 
   // ── Round-off ───────────────────────────────────────────────────
-  const taxableSum = lines.reduce((s, l) => s + l.amount, 0)
-  let dr = taxableSum
-  for (const e of ledgerentries) {
-    if (e.ispartyledger) continue
-    const a = parseFloat(String(e.amount))
-    if (a < 0) dr += -a; else dr -= a
-  }
-  const exactFinal = +dr.toFixed(2)
-  const roundedFinal = Math.round(exactFinal)
-  const shortfall = +(exactFinal - roundedFinal).toFixed(2)
-  if (Math.abs(shortfall) > 0.001) {
-    const roundAmt = shortfall > 0 ? shortfall.toFixed(2) : neg(Math.abs(shortfall))
+  if (Math.abs(totals.roundOff) > 0.001) {
+    const roundAmt = totals.roundOff > 0 ? neg(totals.roundOff) : Math.abs(totals.roundOff).toFixed(2)
     ledgerentries.push({
       ledgername: cfg.roundOffLedger,
-      isdeemedpositive: shortfall < 0, ispartyledger: false,
+      isdeemedpositive: totals.roundOff < 0, ispartyledger: false,
       amount: roundAmt, vatexpamount: roundAmt,
     })
   }
-  ledgerentries[0].amount = roundedFinal.toFixed(2)
+  ledgerentries[0].amount = totals.total.toFixed(2)
 
   // ── Voucher header ──────────────────────────────────────────────
   return {
@@ -262,10 +258,18 @@ export async function postPurchaseVoucher(payload: any) {
   let parsed: any = null
   try { parsed = JSON.parse(text) }
   catch {
-    const created = (text.match(/"created"\s*:\s*(\d+)/) || [])[1]
-    const lastvchid = (text.match(/"lastvchid"\s*:\s*"([^"]+)"/) || [])[1]
-    const vchkey = (text.match(/"vchkey"\s*:\s*"([^"]+)"/) || [])[1]
-    parsed = { fallback: true, created, lastvchid, vchkey, raw: text }
+    // Tally Prime emits unquoted numbers and bareword vchnumber, so JSON.parse fails.
+    // Each field can be quoted-string OR unquoted token — accept both.
+    const grab = (k: string) =>
+      (text.match(new RegExp(`"${k}"\\s*:\\s*"([^"]+)"`)) || [])[1] ??
+      (text.match(new RegExp(`"${k}"\\s*:\\s*([^,\\s}]+)`)) || [])[1]
+    const created = grab('created')
+    const lastvchid = grab('lastvchid')
+    const vchkey = grab('vchkey')
+    const vchnumber = grab('vchnumber')
+    const errors = grab('errors')
+    const exceptions = grab('exceptions')
+    parsed = { fallback: true, created, lastvchid, vchkey, vchnumber, errors, exceptions, raw: text }
   }
   return { http: res.status, body: text, parsed }
 }

@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
   const challans = await db.invChallan.findMany({
     where,
     include: {
-      party: { select: { id: true, displayName: true, parentGroup: true } },
+      party: { select: { id: true, displayName: true, parentGroup: true, state: true, gstRegistrationType: true } },
       lines: {
         orderBy: { lineNo: 'asc' },
         include: {
