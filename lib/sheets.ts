@@ -167,7 +167,9 @@ export function greyEntryToSheetRow(entry: {
   const month = d.getMonth() + 1
   const day = d.getDate()
   const year = String(d.getFullYear()).slice(-2)
-  const dateStr = `${month}/${day}/${year}`
+  // DD/MM/YY — must match parseSheetDate() in app/api/grey/import/route.ts.
+  // Was MM/DD/YY which round-tripped wrong: e.g. 1 May → "5/1/26" → re-imported as 5 Jan.
+  const dateStr = `${day}/${month}/${year}`
 
   return [
     entry.sn ?? entry.id,          // A: SN

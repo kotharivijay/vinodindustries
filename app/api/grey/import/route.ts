@@ -32,10 +32,20 @@ function parseSheetDate(val: string, monthCol?: string): Date | null {
     // Handle 2-digit year
     if (year < 100) year = 2000 + year
 
-    // Validate — if month > 12, might be M/D/YYYY (US format from some cells)
+    // If month > 12, it's clearly MM/DD — swap.
     if (month > 12 && day <= 12) {
-      // Swap: was actually MM/DD/YYYY
       const tmp = day; day = month; month = tmp
+    }
+
+    // Ambiguous when both day ≤ 12 and month ≤ 12 (e.g. "05/01/26" could be
+    // 5 Jan or 1 May). Use the explicit Month column (col B) as tie-breaker.
+    if (day <= 12 && month <= 12 && monthCol) {
+      const expectedMonth = parseInt(monthCol)
+      if (expectedMonth >= 1 && expectedMonth <= 12) {
+        if (month !== expectedMonth && day === expectedMonth) {
+          const tmp = day; day = month; month = tmp
+        }
+      }
     }
 
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
@@ -57,11 +67,11 @@ function parseSheetDate(val: string, monthCol?: string): Date | null {
 }
 
 // Build a unique key for duplicate detection
-function buildDupKey(row: { challanNo: number | null; sn: number | null; date: string; partyName: string; lotNo: string; than: number }): string {
+function buildDupKey(row: { challanNo: number | null; sn: number | null; date: string; month?: string; partyName: string; lotNo: string; than: number }): string {
   if (row.challanNo) return `ch:${row.challanNo}|lot:${norm(row.lotNo)}`
   if (row.sn) return `sn:${row.sn}|lot:${norm(row.lotNo)}`
   // Normalize sheet date to ISO for consistent matching
-  const parsed = parseSheetDate(row.date)
+  const parsed = parseSheetDate(row.date, row.month)
   const dateISO = parsed ? parsed.toISOString().split('T')[0] : row.date
   return `dt:${dateISO}|p:${norm(row.partyName)}|lot:${norm(row.lotNo)}|th:${row.than}`
 }
@@ -226,7 +236,7 @@ export async function POST(req: NextRequest) {
       missingMasters.push(`Transport: "${transportName}"`)
 
     // Multi-level duplicate detection
-    const dupKey = buildDupKey({ challanNo, sn, date, partyName, lotNo, than })
+    const dupKey = buildDupKey({ challanNo, sn, date, month: monthVal, partyName, lotNo, than })
     const isDuplicate = existingKeys.has(dupKey) || batchKeys.has(dupKey)
     batchKeys.add(dupKey)
 
