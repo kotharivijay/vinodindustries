@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import BackButton from '../../../BackButton'
+
+const TAG_PILL_KEY = 'ksi:newChallan:partyTag'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -21,7 +23,21 @@ export default function NewChallanPage() {
     fetcher,
   )
   const ledgers = ledgerResp?.ledgers ?? []
+  const { data: allTags = [] } = useSWR<string[]>('/api/tally/ledger-tags?action=all-tags', fetcher, { revalidateOnFocus: false })
   const { data: nextSeries } = useSWR<{ no: number; fy: string }>('/api/inv/series/next?type=inward', fetcher)
+
+  // Tag pill filter — persists across visits so the operator's most-used
+  // category (e.g. Dyes & Auxiliary) is pre-selected on next entry.
+  const [tagPill, setTagPill] = useState<string>('')
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const saved = localStorage.getItem(TAG_PILL_KEY)
+    if (saved !== null) setTagPill(saved)
+  }, [])
+  function selectTagPill(t: string) {
+    setTagPill(t)
+    if (typeof window !== 'undefined') localStorage.setItem(TAG_PILL_KEY, t)
+  }
 
   // ledgerName is the stable identity of the picked party.
   const [ledgerName, setLedgerName] = useState('')
@@ -71,10 +87,20 @@ export default function NewChallanPage() {
     return itemQ ? out.filter(i => i.displayName.toLowerCase().includes(itemQ.toLowerCase())) : out
   }, [tierA, catalog, itemQ])
 
+  // Tag counts so each pill shows how many ledgers it matches.
+  const tagCounts = useMemo(() => {
+    const m: Record<string, number> = {}
+    for (const l of ledgers) for (const t of l.tags ?? []) m[t] = (m[t] || 0) + 1
+    return m
+  }, [ledgers])
+
   const filteredLedgers = useMemo(() => {
     const q = partyQ.toLowerCase()
-    return ledgers.filter(l => !q || l.name.toLowerCase().includes(q)).slice(0, 30)
-  }, [ledgers, partyQ])
+    return ledgers
+      .filter(l => !tagPill || (l.tags ?? []).includes(tagPill))
+      .filter(l => !q || l.name.toLowerCase().includes(q))
+      .slice(0, 30)
+  }, [ledgers, partyQ, tagPill])
 
   const selectedLedger = useMemo(() => {
     if (!ledgerName) return null
@@ -177,6 +203,34 @@ export default function NewChallanPage() {
         <div className="grid md:grid-cols-2 gap-3">
           <div className="relative">
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Party *</label>
+            {/* Tag filter pills — selection persists across visits */}
+            {allTags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-1.5">
+                <button type="button" onClick={() => selectTagPill('')}
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition ${
+                    tagPill === ''
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}>
+                  All <span className="opacity-70">{ledgers.length}</span>
+                </button>
+                {allTags.map(t => {
+                  const n = tagCounts[t] || 0
+                  if (n === 0) return null
+                  const active = tagPill === t
+                  return (
+                    <button key={t} type="button" onClick={() => selectTagPill(t)}
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full border transition ${
+                        active
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}>
+                      {t} <span className="opacity-70">{n}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
             <input value={partyQ} onChange={e => { setPartyQ(e.target.value); setLedgerName(''); setPartyOpen(true) }}
               onFocus={() => setPartyOpen(true)}
               placeholder="Search supplier…"
@@ -219,7 +273,9 @@ export default function NewChallanPage() {
             )}
             {partyOpen && filteredLedgers.length === 0 && (
               <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
-                No tagged ledgers found. Tag suppliers in Accounts → Ledgers to make them appear here.
+                {tagPill
+                  ? <>No ledgers under <span className="font-semibold">{tagPill}</span>{partyQ && <> matching “{partyQ}”</>}. <button type="button" onClick={() => selectTagPill('')} className="text-indigo-600 dark:text-indigo-400 font-semibold">Clear pill</button>.</>
+                  : <>No tagged ledgers found. Tag suppliers at <a href="/ksi/ledger-tags" className="text-indigo-600 dark:text-indigo-400 font-semibold underline">Ledger Tags</a> to make them appear here.</>}
               </div>
             )}
           </div>
