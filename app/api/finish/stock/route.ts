@@ -61,6 +61,12 @@ export async function GET() {
     const shadeName = d.shadeName || d.foldBatch?.shade?.name || null
     const shadeDesc = d.foldBatch?.shade?.description || null
 
+    // Piece-color jobs use the customer/owner name as the lotNo and don't
+    // have grey/OB records — without explicit handling they fall through to
+    // 'Unknown' in the Stock Report. Label them so they group cleanly.
+    const pcJobParty = d.isPcJob ? 'PC Job' : null
+    const pcJobQuality = d.isPcJob ? (shadeName || 'PC Job') : null
+
     // Deduct finished than per lot (FIFO: deduct from oldest slips first)
     const adjustedLots: any[] = []
     for (const l of lots) {
@@ -80,8 +86,8 @@ export async function GET() {
           than: remaining,
           originalThan: l.than,
           finishedThan: deductFromThis,
-          party: li?.party || lotInfo?.party || null,
-          quality: li?.quality || lotInfo?.quality || null,
+          party: li?.party || lotInfo?.party || pcJobParty || null,
+          quality: li?.quality || lotInfo?.quality || pcJobQuality || null,
           weight: li?.weight || lotInfo?.weight || null,
           mtrPerThan: li?.mtrPerThan || lotInfo?.mtrPerThan || null,
         })
@@ -102,8 +108,8 @@ export async function GET() {
       batchNo: d.foldBatch?.batchNo || null,
       lots: adjustedLots,
       totalThan: adjustedLots.reduce((s: number, l: any) => s + l.than, 0),
-      party: lotInfo?.party || null,
-      quality: lotInfo?.quality || null,
+      party: lotInfo?.party || pcJobParty || null,
+      quality: lotInfo?.quality || pcJobQuality || null,
       weight: lotInfo?.weight || null,
       marka: d.marka || null,
       isPcJob: d.isPcJob || false,
