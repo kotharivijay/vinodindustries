@@ -110,3 +110,113 @@ export function attnHeaders(auth: PetpoojaAuth): Record<string, string> {
     'token': auth.token,
   }
 }
+
+/**
+ * Per-tenant AWS access token baked into the Petpooja SPA bundle.
+ * The /division/* and /get_employees endpoints on attendanceinfo
+ * require BOTH the Bearer JWT (header) AND this token (body).
+ *
+ * Single-firm setup right now (KSI/VI). When VI gets its own Petpooja
+ * tenant, lift this to per-firm config.
+ */
+export const PETPOOJA_AWS_ACCESS_TOKEN = '605ab775311eeee0ffa2c1d999e2968474f5381d'
+
+function attnInfoBody(auth: PetpoojaAuth, method: string, extra: Record<string, any> = {}) {
+  return {
+    is_web_req: 1,
+    method,
+    access_token: PETPOOJA_AWS_ACCESS_TOKEN,
+    username: auth.username || 'OFFICE',
+    user_id: auth.userId,
+    device_type: 'web',
+    ...extra,
+  }
+}
+
+function attnInfoHeaders(auth: PetpoojaAuth): Record<string, string> {
+  return {
+    'Accept': 'application/json, text/plain, */*',
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${auth.token}`,
+  }
+}
+
+export interface PetpoojaDepartment {
+  id: number
+  name: string
+  employee_count: number
+  active?: number
+  left?: number
+  inactive?: number
+  terminated?: number
+}
+
+/**
+ * Pull the full department master from attendanceinfo. Unlike
+ * attendance_master, this returns ALL departments regardless of branch
+ * or roster status.
+ */
+export async function fetchAllDepartments(auth: PetpoojaAuth): Promise<PetpoojaDepartment[]> {
+  const res = await fetch('https://attendanceinfo.petpooja.com/division/get_department', {
+    method: 'POST',
+    headers: attnInfoHeaders(auth),
+    body: JSON.stringify(attnInfoBody(auth, 'department_list')),
+  })
+  if (!res.ok) throw new Error(`get_department ${res.status}`)
+  const d = await res.json()
+  if (d.status !== 1 || !Array.isArray(d.data)) throw new Error(d.message || 'get_department: bad response')
+  return d.data.map((x: any) => {
+    let counts: any = {}
+    try { counts = JSON.parse(x.employee_status_counts || '{}') } catch {}
+    return {
+      id: Number(x.id),
+      name: String(x.name || '').trim(),
+      employee_count: Number(x.employee_count) || 0,
+      active: Number(counts.Active) || 0,
+      left: Number(counts.Left) || 0,
+      inactive: Number(counts.Inactive) || 0,
+      terminated: Number(counts.Terminated) || 0,
+    }
+  })
+}
+
+export interface PetpoojaFullEmployee {
+  petpoojaEmpId: number
+  code: string | null
+  name: string
+  department: string | null
+  designation: string | null
+  departmentId: number | null
+  designationId: number | null
+  mobileNumber: string | null
+  status: number | null
+  masterBranchId: number | null
+}
+
+/**
+ * Pull the full employee master (every active + left + inactive) from
+ * attendanceinfo. This replaces attendance_master for "give me all
+ * employees" use-cases — attendance_master is roster/branch-filtered.
+ */
+export async function fetchAllEmployees(auth: PetpoojaAuth): Promise<PetpoojaFullEmployee[]> {
+  const res = await fetch('https://attendanceinfo.petpooja.com/get_employees', {
+    method: 'POST',
+    headers: attnInfoHeaders(auth),
+    body: JSON.stringify(attnInfoBody(auth, 'employee_list_tmp', { active_tag_only: false })),
+  })
+  if (!res.ok) throw new Error(`get_employees ${res.status}`)
+  const d = await res.json()
+  if (d.status !== 1 || !Array.isArray(d.data)) throw new Error(d.message || 'get_employees: bad response')
+  return d.data.map((e: any) => ({
+    petpoojaEmpId: Number(e.id),
+    code: e.code != null ? String(e.code) : null,
+    name: String(e.name || '').trim(),
+    department: e.department ? String(e.department).trim() : null,
+    designation: e.designation ? String(e.designation).trim() : null,
+    departmentId: e.department_id != null ? Number(e.department_id) : null,
+    designationId: e.designation_id != null ? Number(e.designation_id) : null,
+    mobileNumber: e.mobile_number ? String(e.mobile_number).trim() : null,
+    status: e.status != null ? Number(e.status) : null,
+    masterBranchId: e.master_branch_id != null ? Number(e.master_branch_id) : null,
+  })).filter((e: PetpoojaFullEmployee) => Number.isFinite(e.petpoojaEmpId) && e.petpoojaEmpId > 0)
+}

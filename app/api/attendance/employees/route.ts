@@ -3,16 +3,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getPetpoojaAuth, payrollHeaders, PETPOOJA_PAYROLL_BASE } from '@/lib/petpooja'
+import { getPetpoojaAuth, fetchAllEmployees } from '@/lib/petpooja'
 
 /**
  * GET /api/attendance/employees
- *  - Fetches today's attendance_master so we discover every employee
- *  - Upserts any missing ones into AttendanceEmployee (status=active)
- *  - Returns all rows (active + left) merged with Petpooja details
+ *  - Pulls the FULL employee master from attendanceinfo.petpooja.com
+ *    (/get_employees with method=employee_list_tmp). This returns every
+ *    employee Petpooja knows — active, left, inactive, across all
+ *    branches — unlike `attendance_master` which is roster-filtered to
+ *    one branch.
+ *  - Upserts each row into AttendanceEmployee, then returns all rows.
  *
  * POST /api/attendance/employees  { petpoojaEmpId, status, notes?, leftDate? }
- *  - Toggles an employee's status between 'active' and 'left'
+ *  - Toggles an employee's status between 'active' and 'left'.
  */
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -22,48 +25,41 @@ export async function GET() {
   let auth
   try { auth = await getPetpoojaAuth() }
   catch (e: any) {
-    // If no token, still return whatever we have stored
     const stored = await db.attendanceEmployee.findMany({ orderBy: { petpoojaEmpId: 'asc' } })
     return NextResponse.json({ employees: stored, tokenError: e.message })
   }
 
-  // Pull today's attendance_master — that roster contains everyone the Petpooja
-  // org knows about. Upsert into our local table.
-  const today = new Date().toISOString().slice(0, 10)
-  let liveEmployees: any[] = []
+  let liveEmployees: Awaited<ReturnType<typeof fetchAllEmployees>> = []
+  let fetchError: string | null = null
   try {
-    const res = await fetch(`${PETPOOJA_PAYROLL_BASE}/reports/attendance_master`, {
-      method: 'POST',
-      headers: payrollHeaders(auth),
-      body: JSON.stringify({ filter_start_date: today, filter_end_date: today, filter_branch: null }),
-    })
-    const d = await res.json()
-    liveEmployees = Array.isArray(d?.data) ? d.data : []
-  } catch {}
+    liveEmployees = await fetchAllEmployees(auth)
+  } catch (e: any) {
+    fetchError = e?.message || 'fetchAllEmployees failed'
+  }
 
   for (const e of liveEmployees) {
-    const empId = Number(e.employee_id)
-    if (!Number.isFinite(empId) || !empId) continue
     await db.attendanceEmployee.upsert({
-      where: { petpoojaEmpId: empId },
+      where: { petpoojaEmpId: e.petpoojaEmpId },
       update: {
-        code: String(e.code ?? ''),
-        name: e.name || '',
-        department: e.department || null,
-        designation: e.designation || null,
+        code: e.code ?? '',
+        name: e.name,
+        department: e.department,
+        designation: e.designation,
       },
       create: {
-        petpoojaEmpId: empId,
-        code: String(e.code ?? ''),
-        name: e.name || '',
-        department: e.department || null,
-        designation: e.designation || null,
+        petpoojaEmpId: e.petpoojaEmpId,
+        code: e.code ?? '',
+        name: e.name,
+        department: e.department,
+        designation: e.designation,
       },
     })
   }
 
-  const stored = await db.attendanceEmployee.findMany({ orderBy: [{ status: 'asc' }, { department: 'asc' }, { petpoojaEmpId: 'asc' }] })
-  return NextResponse.json({ employees: stored })
+  const stored = await db.attendanceEmployee.findMany({
+    orderBy: [{ status: 'asc' }, { department: 'asc' }, { petpoojaEmpId: 'asc' }],
+  })
+  return NextResponse.json({ employees: stored, fetchError, syncedFromPetpooja: liveEmployees.length })
 }
 
 export async function POST(req: NextRequest) {
