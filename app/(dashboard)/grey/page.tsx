@@ -97,8 +97,10 @@ export default function GreyListPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [tab, setTab] = useState<Tab>('entries')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
-  const [stockSearch, setStockSearch] = useState('')
-  const [debouncedStockSearch, setDebouncedStockSearch] = useDebounce('')
+  const [stockPartySearch, setStockPartySearch] = useState('')
+  const [debouncedStockPartySearch, setDebouncedStockPartySearch] = useDebounce('')
+  const [stockLotQSearch, setStockLotQSearch] = useState('')
+  const [debouncedStockLotQSearch, setDebouncedStockLotQSearch] = useDebounce('')
   const [filters, setFilters] = useState({ party: '', quality: '', lotNo: '', lrNo: '' })
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [cfImporting, setCfImporting] = useState(false)
@@ -154,27 +156,24 @@ export default function GreyListPage() {
   }, [entries])
 
   const filteredStock = useMemo(() => {
-    // Split the query by whitespace and require every token to appear in
-    // at least one of the searchable fields (lotNo / party / quality / weaver).
-    // This means typing "prakash citra" finds rows whose party contains
-    // "prakash" AND whose quality contains "citra" — one query, two columns.
-    const tokens = debouncedStockSearch.toLowerCase().split(/\s+/).filter(Boolean)
+    // Two separate boxes — each accepts whitespace-separated tokens (AND
+    // within a box). Both boxes must match (AND across boxes).
+    const partyTokens = debouncedStockPartySearch.toLowerCase().split(/\s+/).filter(Boolean)
+    const lotQTokens = debouncedStockLotQSearch.toLowerCase().split(/\s+/).filter(Boolean)
     return stockSummary
       .filter(r => {
-        const matchSearch = tokens.length === 0 || tokens.every(t => {
-          return r.lotNo.toLowerCase().includes(t)
-              || r.party.toLowerCase().includes(t)
-              || r.quality.toLowerCase().includes(t)
-              || (r.weaver || '').toLowerCase().includes(t)
-        })
+        const partyHay = (r.party || '').toLowerCase()
+        const lotQHay = `${r.lotNo} ${r.quality} ${r.weaver || ''}`.toLowerCase()
+        const matchParty = partyTokens.every(t => partyHay.includes(t))
+        const matchLotQ = lotQTokens.every(t => lotQHay.includes(t))
         const matchFilter =
           stockFilter === 'all' ? true :
           stockFilter === 'instock' ? r.stock > 0 :
           r.stock === 0
-        return matchSearch && matchFilter
+        return matchParty && matchLotQ && matchFilter
       })
       .sort((a, b) => a.lotNo.localeCompare(b.lotNo))
-  }, [stockSummary, debouncedStockSearch, stockFilter])
+  }, [stockSummary, debouncedStockPartySearch, debouncedStockLotQSearch, stockFilter])
 
   function toggleSort(field: SortField) {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -324,14 +323,30 @@ export default function GreyListPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="flex flex-wrap items-center gap-2 mb-4">
             <input
               type="text"
-              placeholder="Search lot, party, quality (e.g. 'prakash citra')…"
-              className="w-full max-w-sm border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              value={stockSearch}
-              onChange={e => { setStockSearch(e.target.value); setDebouncedStockSearch(e.target.value) }}
+              placeholder="Party…"
+              className="flex-1 min-w-[140px] max-w-xs border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              value={stockPartySearch}
+              onChange={e => { setStockPartySearch(e.target.value); setDebouncedStockPartySearch(e.target.value) }}
             />
+            <input
+              type="text"
+              placeholder="Lot no / Quality…"
+              className="flex-1 min-w-[140px] max-w-xs border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              value={stockLotQSearch}
+              onChange={e => { setStockLotQSearch(e.target.value); setDebouncedStockLotQSearch(e.target.value) }}
+            />
+            {(stockPartySearch || stockLotQSearch) && (
+              <button
+                onClick={() => {
+                  setStockPartySearch(''); setDebouncedStockPartySearch('')
+                  setStockLotQSearch(''); setDebouncedStockLotQSearch('')
+                }}
+                className="text-xs text-gray-400 dark:text-gray-500 hover:text-red-500"
+              >Clear</button>
+            )}
             <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
               {(['all', 'instock', 'cleared'] as StockFilter[]).map(f => (
                 <button
