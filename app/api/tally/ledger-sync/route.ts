@@ -201,23 +201,36 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
   const now = new Date()
   const BATCH_SIZE = 2000
 
+  // Snapshot user-managed tags BEFORE the wipe so they survive the
+  // delete-and-recreate cycle. Keyed by ledger.name (the stable identity).
+  const tagSnapshotRows = await db.tallyLedger.findMany({
+    where: { firmCode: 'KSI', NOT: { tags: { isEmpty: true } } },
+    select: { name: true, tags: true },
+  })
+  const tagSnapshot = new Map<string, string[]>(
+    tagSnapshotRows.map((r: any) => [r.name, r.tags as string[]]),
+  )
+
   // Delete all existing KSI ledgers (fast clean slate)
   await db.tallyLedger.deleteMany({ where: { firmCode: 'KSI' } })
 
-  // Bulk insert in batches of 2000
+  // Bulk insert in batches of 2000 — re-apply tags from snapshot inline.
   let synced = 0
   const seen = new Set<string>()
   const deduped = ledgers.filter(l => { if (seen.has(l.name)) return false; seen.add(l.name); return true })
+
+  const buildRow = (l: any) => ({
+    firmCode: 'KSI', name: l.name, parent: l.parent, address: l.address,
+    gstNo: l.gstNo, panNo: l.panNo, mobileNos: l.mobileNos, state: l.state,
+    closingBalance: l.closingBalance, lastSynced: now,
+    tags: tagSnapshot.get(l.name) ?? [],
+  })
 
   for (let i = 0; i < deduped.length; i += BATCH_SIZE) {
     const batch = deduped.slice(i, i + BATCH_SIZE)
     try {
       const result = await db.tallyLedger.createMany({
-        data: batch.map(l => ({
-          firmCode: 'KSI', name: l.name, parent: l.parent, address: l.address,
-          gstNo: l.gstNo, panNo: l.panNo, mobileNos: l.mobileNos, state: l.state,
-          closingBalance: l.closingBalance, lastSynced: now,
-        })),
+        data: batch.map(buildRow),
         skipDuplicates: true,
       })
       synced += result.count
@@ -226,11 +239,7 @@ async function doSync(): Promise<{ count: number; duration: number; error?: stri
       for (let j = 0; j < batch.length; j += 200) {
         try {
           const r = await db.tallyLedger.createMany({
-            data: batch.slice(j, j + 200).map(l => ({
-              firmCode: 'KSI', name: l.name, parent: l.parent, address: l.address,
-              gstNo: l.gstNo, panNo: l.panNo, mobileNos: l.mobileNos, state: l.state,
-              closingBalance: l.closingBalance, lastSynced: now,
-            })),
+            data: batch.slice(j, j + 200).map(buildRow),
             skipDuplicates: true,
           })
           synced += r.count
