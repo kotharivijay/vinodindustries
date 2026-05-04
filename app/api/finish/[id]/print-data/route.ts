@@ -29,7 +29,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const partyName = [...new Set(lotInfos.map(v => v.party).filter(Boolean))].join(', ') || ''
   const qualityName = [...new Set(lotInfos.map(v => v.quality).filter(Boolean))].join(', ') || ''
 
-  // Get dyeing info for each lot (fold, shade, dye slip)
+  // Build map of THIS FP's lot → than. This is the source of truth for what
+  // ends up under each slip in the hierarchy — using the dyeing entry's own
+  // than would over-count any lot that was dyed in multiple batches.
+  const fpLots = entry.lots?.length ? entry.lots : (entry.lotNo ? [{ lotNo: entry.lotNo, than: entry.than }] : [])
+  const fpLotThan = new Map<string, number>()
+  for (const fl of fpLots) fpLotThan.set(fl.lotNo.toLowerCase(), Number(fl.than))
+
+  // Get dyeing info for each lot (fold, shade, dye slip). Order desc so the
+  // most recent dyeing slip wins when a lot was dyed multiple times.
   const dyeingEntries = await db.dyeingEntry.findMany({
     where: {
       OR: [
@@ -48,6 +56,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         },
       },
     },
+    orderBy: { slipNo: 'desc' },
   })
 
   // Build fold → quality → slip → lots hierarchy
@@ -56,6 +65,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   type FoldInfo = { foldNo: string; qualities: Map<string, QualityInfo> }
 
   const foldMap = new Map<string, FoldInfo>()
+  const placedLots = new Set<string>() // lots already placed under a slip — prevents duplicates
 
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || 'No Fold'
@@ -63,9 +73,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const shadeDesc = de.foldBatch?.shade?.description || ''
     const deLots = de.lots?.length ? de.lots : []
 
-    // Only include lots that are in this FP
-    const fpLotSet = new Set(lotNos.map((l: string) => l.toLowerCase()))
-    const matchingLots = deLots.filter((l: any) => fpLotSet.has(l.lotNo.toLowerCase()))
+    // Only include FP lots not yet shown under another slip. Each FP lot
+    // ends up under exactly the most recent dyeing slip that contained it.
+    const matchingLots = deLots.filter((l: any) => {
+      const k = l.lotNo.toLowerCase()
+      return fpLotThan.has(k) && !placedLots.has(k)
+    })
     if (matchingLots.length === 0) continue
 
     if (!foldMap.has(foldNo)) foldMap.set(foldNo, { foldNo, qualities: new Map() })
@@ -80,7 +93,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }
     const slip = quality.slips.get(de.slipNo)!
     for (const ml of matchingLots) {
-      slip.lots.push({ lotNo: ml.lotNo, than: ml.than })
+      const k = ml.lotNo.toLowerCase()
+      // Use THIS FP's than for the lot (not the dyeing entry's than)
+      slip.lots.push({ lotNo: ml.lotNo, than: fpLotThan.get(k) ?? Number(ml.than) })
+      placedLots.add(k)
     }
   }
 
