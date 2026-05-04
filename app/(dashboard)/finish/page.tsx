@@ -2335,9 +2335,17 @@ export default function FinishStockPage() {
                           <div className="border-t border-gray-100 dark:border-gray-700 px-3 pb-3 pt-1 space-y-1.5">
                             {Array.from(qMap.entries()).map(([quality, dMap]) => {
                               const qKey = `${party}::${quality}`
+                              const dKeysForQuality = Array.from(dMap.keys()).map(desp => `${qKey}::${desp}`)
                               return (
                                 <div key={qKey} className="border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
-                                  <button onClick={() => { setPackExpandedQualities(prev => { const n = new Set(prev); if (n.has(qKey)) n.delete(qKey); else n.add(qKey); return n }) }}
+                                  <button onClick={() => {
+                                      const isOpening = !packExpandedQualities.has(qKey)
+                                      setPackExpandedQualities(prev => { const n = new Set(prev); if (n.has(qKey)) n.delete(qKey); else n.add(qKey); return n })
+                                      // Auto-expand every desp under this quality when opening
+                                      if (isOpening) {
+                                        setExpandedDesp(prev => { const n = new Set(prev); for (const k of dKeysForQuality) n.add(k); return n })
+                                      }
+                                    }}
                                     className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40">
                                     <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">🏷️ {quality}{(() => { const rv = recipeVariantMap.get(`${party.toLowerCase().trim()}::${quality.toLowerCase().trim()}`); return rv ? ` (${rv})` : '' })()}</span>
                                     <span className={`text-gray-400 text-[10px] ${packExpandedQualities.has(qKey) ? 'rotate-90' : ''}`}>▶</span>
