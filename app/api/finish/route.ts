@@ -33,12 +33,12 @@ export async function GET() {
   const { buildLotInfoMap } = await import('@/lib/lot-info')
   const lotNosArr = Array.from(allLotNos)
 
-  // Run lot info + dyeing queries in parallel
+  // Run lot info + dyeing + despatch queries in parallel
   const db2 = prisma as any
   let dyeingByLot = new Map<string, { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }>()
   let dyeingAllByLot = new Map<string, any[]>()
 
-  const [lotInfoMap, dyeingEntries] = await Promise.all([
+  const [lotInfoMap, dyeingEntries, despatchEntries] = await Promise.all([
     buildLotInfoMap(lotNosArr),
     db2.dyeingEntry.findMany({
       where: {
@@ -59,7 +59,41 @@ export async function GET() {
         },
       },
     }).catch(() => []),
+    // Match despatch by LOT (not by finishDespSlipNo, which is operator-typed
+    // free text and doesn't correspond to DespatchEntry.challanNo in practice).
+    lotNosArr.length > 0
+      ? db2.despatchEntry.findMany({
+          where: {
+            OR: [
+              { lotNo: { in: lotNosArr } },
+              { despatchLots: { some: { lotNo: { in: lotNosArr } } } },
+            ],
+          },
+          select: {
+            challanNo: true,
+            date: true,
+            lotNo: true,
+            than: true,
+            despatchLots: { select: { lotNo: true, than: true } },
+          },
+          orderBy: { date: 'asc' },
+        }).catch(() => [])
+      : Promise.resolve([]),
   ])
+
+  // Index every despatch lot row by lotNo (lowercase). Each entry tracks the
+  // contributing despatch (challanNo + date) so we can cite it on the FP card.
+  const despByLotLower = new Map<string, { challanNo: number; date: Date; than: number }[]>()
+  for (const d of despatchEntries) {
+    const rows = d.despatchLots?.length
+      ? d.despatchLots.map((dl: any) => ({ lotNo: dl.lotNo, than: Number(dl.than) || 0 }))
+      : [{ lotNo: d.lotNo, than: Number(d.than) || 0 }]
+    for (const r of rows) {
+      const k = r.lotNo.toLowerCase()
+      if (!despByLotLower.has(k)) despByLotLower.set(k, [])
+      despByLotLower.get(k)!.push({ challanNo: d.challanNo, date: d.date, than: r.than })
+    }
+  }
 
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
@@ -103,7 +137,36 @@ export async function GET() {
     const anyDone = enrichedLots.some((l: any) => l.status === 'done' || l.status === 'partial')
     const fpStatus = allDone ? 'finished' : anyDone ? 'partial' : 'pending'
 
-    return { ...e, lots: enrichedLots, partyName: partyNames.join(', ') || null, fpStatus }
+    // Despatch info — match every DespatchEntry that contains any of THIS
+    // FP's lots, restricted to the FP-relevant lot rows. A single FP can
+    // legitimately span multiple despatch challans (split shipment), and a
+    // single challan can also serve multiple FPs — we just report what's
+    // there. The operator-typed `finishDespSlipNo` is preserved separately
+    // since it usually refers to an external customer slip number that
+    // doesn't correspond to DespatchEntry.challanNo at all.
+    type DespMatch = { challanNo: number; date: Date; totalThan: number; lots: { lotNo: string; than: number }[] }
+    const matchedByChallan = new Map<number, DespMatch>()
+    for (const fl of lots) {
+      const recs = despByLotLower.get(String(fl.lotNo).toLowerCase()) || []
+      for (const r of recs) {
+        if (!matchedByChallan.has(r.challanNo)) {
+          matchedByChallan.set(r.challanNo, { challanNo: r.challanNo, date: r.date, totalThan: 0, lots: [] })
+        }
+        const m = matchedByChallan.get(r.challanNo)!
+        m.lots.push({ lotNo: fl.lotNo, than: r.than })
+        m.totalThan += r.than
+      }
+    }
+    const matchedDespatches = Array.from(matchedByChallan.values()).sort((a, b) => +a.date - +b.date)
+
+    const despatchInfo = (e.finishDespSlipNo || matchedDespatches.length > 0)
+      ? {
+          typedSlipNo: e.finishDespSlipNo || null,
+          matched: matchedDespatches,
+        }
+      : null
+
+    return { ...e, lots: enrichedLots, partyName: partyNames.join(', ') || null, fpStatus, despatchInfo }
   })
 
   return NextResponse.json(enriched)
