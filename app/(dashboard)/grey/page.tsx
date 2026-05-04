@@ -106,6 +106,10 @@ export default function GreyListPage() {
   const [debouncedStockPartySearch, setDebouncedStockPartySearch] = useDebounce(initial.stockPartySearch ?? '')
   const [stockLotQSearch, setStockLotQSearch] = useState<string>(() => initial.stockLotQSearch ?? '')
   const [debouncedStockLotQSearch, setDebouncedStockLotQSearch] = useDebounce(initial.stockLotQSearch ?? '')
+  type StockSortField = 'date' | 'lotNo' | 'party' | 'quality'
+  type StockSortDir = 'asc' | 'desc'
+  const [stockSortField, setStockSortField] = useState<StockSortField>(() => initial.stockSortField ?? 'date')
+  const [stockSortDir, setStockSortDir] = useState<StockSortDir>(() => initial.stockSortDir ?? 'desc')
   const [filters, setFilters] = useState<{ party: string; quality: string; lotNo: string; lrNo: string }>(
     () => initial.filters ?? { party: '', quality: '', lotNo: '', lrNo: '' }
   )
@@ -121,9 +125,10 @@ export default function GreyListPage() {
     persistViewState(GREY_VIEW_KEY, {
       tab, sortField, sortDir, search,
       stockFilter, stockPartySearch, stockLotQSearch,
+      stockSortField, stockSortDir,
       filters,
     })
-  }, [tab, sortField, sortDir, search, stockFilter, stockPartySearch, stockLotQSearch, filters])
+  }, [tab, sortField, sortDir, search, stockFilter, stockPartySearch, stockLotQSearch, stockSortField, stockSortDir, filters])
 
   // Restore scroll + highlight the clicked lot card after returning from /lot/[id]
   useLotBackHighlight(GREY_VIEW_KEY, true)
@@ -190,8 +195,21 @@ export default function GreyListPage() {
           r.stock === 0
         return matchParty && matchLotQ && matchFilter
       })
-      .sort((a, b) => a.lotNo.localeCompare(b.lotNo))
-  }, [stockSummary, debouncedStockPartySearch, debouncedStockLotQSearch, stockFilter])
+      .sort((a, b) => {
+        const dir = stockSortDir === 'asc' ? 1 : -1
+        switch (stockSortField) {
+          case 'lotNo': return a.lotNo.localeCompare(b.lotNo) * dir
+          case 'party': return (a.party || '').localeCompare(b.party || '') * dir
+          case 'quality': return (a.quality || '').localeCompare(b.quality || '') * dir
+          case 'date':
+          default: {
+            const ta = new Date(a.lastDate).getTime() || 0
+            const tb = new Date(b.lastDate).getTime() || 0
+            return (ta - tb) * dir
+          }
+        }
+      })
+  }, [stockSummary, debouncedStockPartySearch, debouncedStockLotQSearch, stockFilter, stockSortField, stockSortDir])
 
   function toggleSort(field: SortField) {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -378,6 +396,31 @@ export default function GreyListPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Sort row */}
+          <div className="flex items-center flex-wrap gap-1.5 mb-4">
+            <span className="text-[11px] text-gray-500 dark:text-gray-400 mr-1">Sort:</span>
+            {(['date', 'lotNo', 'party', 'quality'] as StockSortField[]).map(f => {
+              const active = stockSortField === f
+              const label = f === 'date' ? 'Date' : f === 'lotNo' ? 'Lot' : f === 'party' ? 'Party' : 'Quality'
+              return (
+                <button
+                  key={f}
+                  onClick={() => {
+                    if (active) setStockSortDir(d => d === 'asc' ? 'desc' : 'asc')
+                    else { setStockSortField(f); setStockSortDir(f === 'date' ? 'desc' : 'asc') }
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                    active
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  {label}{active ? (stockSortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                </button>
+              )
+            })}
           </div>
 
           {loading ? (
