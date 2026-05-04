@@ -336,61 +336,109 @@ export default function GreyListPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            {loading ? (
-              <div className="p-12 text-center text-gray-400">Loading...</div>
-            ) : filteredStock.length === 0 ? (
-              <div className="p-12 text-center text-gray-400">No lots found.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-700 border-b dark:border-gray-600">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Lot No</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Party</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Quality</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Weaver</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Last Date</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Entries</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Grey Than</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">T_DESP</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {filteredStock.map(r => (
-                      <tr key={r.lotNo} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
-                        <td className="px-4 py-3 font-semibold text-indigo-700 dark:text-indigo-400">
-                          <LotLink lotNo={r.lotNo} storageKey={GREY_VIEW_KEY} className="hover:underline">{r.lotNo}</LotLink>
-                          {r.openingBalance > 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
-                        </td>
-                        <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{r.party}</td>
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.quality}</td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{r.weaver}</td>
-                        <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{new Date(r.lastDate).toLocaleDateString('en-IN')}</td>
-                        <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{r.entries}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{r.greyThan}</td>
-                        <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400 font-medium">{r.tDesp}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className={`font-bold text-base ${r.stock > 0 ? 'text-green-600' : r.stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                            {r.stock}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-gray-50 dark:bg-gray-700 border-t-2 border-gray-200 dark:border-gray-600">
-                    <tr>
-                      <td colSpan={6} className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total ({filteredStock.length} lots)</td>
-                      <td className="px-4 py-3 text-right font-bold text-gray-800 dark:text-gray-100">{filteredStock.reduce((s, r) => s + r.greyThan, 0)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-orange-600">{filteredStock.reduce((s, r) => s + r.tDesp, 0)}</td>
-                      <td className="px-4 py-3 text-right font-bold text-indigo-700 dark:text-indigo-400">{filteredStock.reduce((s, r) => s + r.stock, 0)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+          {loading ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-12 text-center text-gray-400 dark:text-gray-500">Loading...</div>
+          ) : filteredStock.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-12 text-center text-gray-400 dark:text-gray-500">No lots found.</div>
+          ) : (
+            <>
+              {/* Mobile card view */}
+              <div className="sm:hidden space-y-2">
+                {filteredStock.map(r => (
+                  <div key={r.lotNo} data-lot-card={r.lotNo}
+                    className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <LotLink lotNo={r.lotNo} storageKey={GREY_VIEW_KEY}
+                            className="text-base font-semibold text-indigo-700 dark:text-indigo-400 hover:underline break-words">
+                            {r.lotNo}
+                          </LotLink>
+                          {r.openingBalance > 0 && <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
+                        </div>
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-100 break-words">{r.party}</p>
+                        <p className="text-xs text-gray-600 dark:text-gray-300 break-words">{r.quality}</p>
+                        {r.weaver && <p className="text-[11px] text-gray-500 dark:text-gray-400 break-words">{r.weaver}</p>}
+                      </div>
+                      <span className={`shrink-0 text-2xl font-bold leading-none ${r.stock > 0 ? 'text-green-600 dark:text-green-400' : r.stock < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                        {r.stock}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                      <span>{new Date(r.lastDate).toLocaleDateString('en-IN')} · {r.entries} entr{r.entries === 1 ? 'y' : 'ies'}</span>
+                      <span>
+                        Grey <span className="font-semibold text-gray-700 dark:text-gray-200">{r.greyThan}</span>
+                        <span className="mx-1 text-gray-300 dark:text-gray-600">·</span>
+                        T_DESP <span className="font-medium text-orange-600 dark:text-orange-400">{r.tDesp}</span>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {/* Totals row */}
+                <div className="bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-xs">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total ({filteredStock.length} lots)</span>
+                    <span className="font-bold text-indigo-700 dark:text-indigo-400 text-base">{filteredStock.reduce((s, r) => s + r.stock, 0)}</span>
+                  </div>
+                  <div className="flex justify-end gap-3 text-gray-500 dark:text-gray-400">
+                    <span>Grey <span className="font-bold text-gray-800 dark:text-gray-100">{filteredStock.reduce((s, r) => s + r.greyThan, 0)}</span></span>
+                    <span>T_DESP <span className="font-bold text-orange-600 dark:text-orange-400">{filteredStock.reduce((s, r) => s + r.tDesp, 0)}</span></span>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* Desktop table view */}
+              <div className="hidden sm:block bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Lot No</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Party</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Quality</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Weaver</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Last Date</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Entries</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Grey Than</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">T_DESP</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                      {filteredStock.map(r => (
+                        <tr key={r.lotNo} data-lot-card={r.lotNo} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                          <td className="px-4 py-3 font-semibold text-indigo-700 dark:text-indigo-400">
+                            <LotLink lotNo={r.lotNo} storageKey={GREY_VIEW_KEY} className="hover:underline">{r.lotNo}</LotLink>
+                            {r.openingBalance > 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
+                          </td>
+                          <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{r.party}</td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{r.quality}</td>
+                          <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{r.weaver}</td>
+                          <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs">{new Date(r.lastDate).toLocaleDateString('en-IN')}</td>
+                          <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{r.entries}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{r.greyThan}</td>
+                          <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400 font-medium">{r.tDesp}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={`font-bold text-base ${r.stock > 0 ? 'text-green-600 dark:text-green-400' : r.stock < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                              {r.stock}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50 dark:bg-gray-700/50 border-t-2 border-gray-200 dark:border-gray-700">
+                      <tr>
+                        <td colSpan={6} className="px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total ({filteredStock.length} lots)</td>
+                        <td className="px-4 py-3 text-right font-bold text-gray-800 dark:text-gray-100">{filteredStock.reduce((s, r) => s + r.greyThan, 0)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-orange-600 dark:text-orange-400">{filteredStock.reduce((s, r) => s + r.tDesp, 0)}</td>
+                        <td className="px-4 py-3 text-right font-bold text-indigo-700 dark:text-indigo-400">{filteredStock.reduce((s, r) => s + r.stock, 0)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
