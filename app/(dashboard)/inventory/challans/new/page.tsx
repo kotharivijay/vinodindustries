@@ -179,34 +179,40 @@ export default function NewChallanPage() {
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Party *</label>
             <input value={partyQ} onChange={e => { setPartyQ(e.target.value); setLedgerName(''); setPartyOpen(true) }}
               onFocus={() => setPartyOpen(true)}
-              placeholder="Search supplier (Accounts → Ledgers, tagged only)…"
+              placeholder="Search supplier…"
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
             {ledgerName && selectedLedger && (
-              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                {selectedLedger.parent && (
-                  <span className="text-gray-500 dark:text-gray-400">Group: <span className="font-medium text-gray-700 dark:text-gray-300">{selectedLedger.parent}</span></span>
-                )}
-                {selectedLedger.tags?.map(t => (
-                  <span key={t} className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1.5 py-0.5 rounded-full">{t}</span>
-                ))}
+              <div className="mt-1.5 space-y-0.5">
+                {/* Show the full selected name as readable text — input value gets
+                    truncated on narrow phones, this gives a stable label. */}
+                <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 break-words">
+                  {selectedLedger.name}
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                  {selectedLedger.parent && (
+                    <span className="text-gray-500 dark:text-gray-400">Group: <span className="font-medium text-gray-700 dark:text-gray-300">{selectedLedger.parent}</span></span>
+                  )}
+                  {selectedLedger.tags?.map(t => (
+                    <span key={t} className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1.5 py-0.5 rounded-full">{t}</span>
+                  ))}
+                </div>
               </div>
             )}
             {partyOpen && filteredLedgers.length > 0 && !ledgerName && (
-              <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+              <div className="absolute z-30 top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-72 overflow-y-auto">
                 {filteredLedgers.map(l => (
                   <button key={l.id} onClick={() => pickLedger(l)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between gap-2">
-                    <span className="flex flex-col min-w-0">
-                      <span className="truncate">{l.name}</span>
-                      {l.tags?.length > 0 && (
-                        <span className="flex flex-wrap gap-1 mt-0.5">
-                          {l.tags.map(t => (
-                            <span key={t} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1 py-0.5 rounded">{t}</span>
-                          ))}
-                        </span>
+                    className="w-full text-left px-3 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border-b border-gray-50 dark:border-gray-700/40 last:border-b-0">
+                    {/* Name on its own line so long names always render in full */}
+                    <p className="text-sm text-gray-800 dark:text-gray-100 break-words">{l.name}</p>
+                    <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                      {l.parent && (
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500">{l.parent}</span>
                       )}
-                    </span>
-                    {l.parent && <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{l.parent}</span>}
+                      {l.tags?.map(t => (
+                        <span key={t} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1 py-0.5 rounded">{t}</span>
+                      ))}
+                    </div>
                   </button>
                 ))}
               </div>
