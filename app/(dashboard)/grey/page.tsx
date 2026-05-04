@@ -306,21 +306,23 @@ export default function GreyListPage() {
       </div>
 
       {/* ── STOCK SUMMARY TAB ── */}
-      {tab === 'stock' && (
+      {tab === 'stock' && (() => {
+        const filteredHasQuery = !!(debouncedStockPartySearch || debouncedStockLotQSearch || stockFilter !== 'all')
+        const filteredTotalThan = filteredStock.reduce((s, r) => s + r.stock, 0)
+        return (
         <div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
-              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total Lots</p>
-              <p className="text-2xl font-bold text-gray-800 dark:text-gray-100 mt-1">{stockSummary.length}</p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 mb-5 flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                {filteredHasQuery ? 'Filtered total (than)' : 'Total balance (than)'}
+              </p>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                {filteredStock.length} of {stockSummary.length} lot{stockSummary.length === 1 ? '' : 's'}
+              </p>
             </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
-              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Lots with Stock</p>
-              <p className="text-2xl font-bold text-green-600 mt-1">{lotsInStock}</p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4">
-              <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total Balance (Than)</p>
-              <p className="text-2xl font-bold text-indigo-600 mt-1">{totalStock}</p>
-            </div>
+            <p className="text-3xl font-bold text-indigo-600 dark:text-indigo-400 shrink-0">
+              {filteredTotalThan}
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -464,7 +466,8 @@ export default function GreyListPage() {
             </>
           )}
         </div>
-      )}
+        )
+      })()}
 
       {/* ── ALL ENTRIES TAB ── */}
       {tab === 'entries' && (
