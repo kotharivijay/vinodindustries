@@ -900,7 +900,7 @@ function CancelChallanModal({ challan, onClose, onDone }: {
         <div className="p-5 space-y-3">
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Soft-cancel: the series number stays on the books labelled <span className="font-semibold">Cancelled</span>.
-            Stock IN is reversed (only the qty still in stock — already-returned units aren't OUT'd twice).
+            Stock IN is reversed (only the qty still in stock — already-returned units are not OUT&apos;d twice).
           </p>
           <label className="block text-xs">
             <span className="text-gray-500 dark:text-gray-400">Reason (optional)</span>
