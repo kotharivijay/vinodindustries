@@ -2074,9 +2074,11 @@ export default function FinishStockPage() {
                                                     className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{row.lotNo}</Link>
                                                   <span className="text-xs text-gray-600 dark:text-gray-400">{row.allocatedThan}</span>
 
-                                                  {/* Status + actions — keyed on the FP lot id (lot status is FP-level not slip-level) */}
+                                                  {/* Status + actions — keyed on the FP lot id (lot status is FP-level not slip-level).
+                                                      Pill count shows THIS row's allocated than, not the FP-level doneThan
+                                                      (otherwise a 3-slip lot showed "Done (42)" on every row). */}
                                                   {row.status === 'done' ? (
-                                                    <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium ml-auto">✅ Done ({row.doneThan})</span>
+                                                    <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium ml-auto">✅ Done ({row.allocatedThan})</span>
                                                   ) : row.status === 'partial' ? (
                                                     <div className="flex items-center gap-1.5 ml-auto">
                                                       <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">🟡 {row.doneThan} done</span>
