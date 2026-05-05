@@ -9,7 +9,9 @@ import { computeInvoiceTotals } from '@/lib/inv/invoice-totals'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-const STATUSES = ['Draft', 'PendingInvoice', 'Invoiced', 'Cancelled']
+const STATUSES = ['Draft', 'PendingInvoice', 'Invoiced', 'Returned', 'CashPaid', 'Cancelled']
+const TERMINAL_STATUSES = new Set(['Invoiced', 'Returned', 'CashPaid', 'Cancelled'])
+const ACTIONS_PILL_KEY = 'ksi:invChallans:actionsOn'
 
 interface Item { id: number; displayName: string; alias: { id: number; tallyStockItem: string; gstRate: string | number } }
 interface Line {
@@ -27,6 +29,7 @@ interface Line {
   gstAmount: string | null
   totalWithGst: string | null
   notes: string | null
+  returnedQty: string | null
   item: Item
 }
 interface Challan {
@@ -44,6 +47,9 @@ interface Challan {
   totalWithGst: string | null
   hasRatelessLines: boolean
   hasPendingReviewItems: boolean
+  returnReason: string | null
+  cashPaidDate: string | null
+  cashPaidNote: string | null
   party: { id: number; displayName: string; parentGroup: string | null; state: string | null; gstRegistrationType: string }
   lines: Line[]
   invoiceLink: { invoiceId: number } | null
@@ -70,15 +76,23 @@ export default function ChallansListPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   // Hide invoiced challans by default — they're rarely the working set
   const [hideInvoiced, setHideInvoiced] = useState(true)
+  // Actions pill — when ON, a ⋯ menu appears on each card with Return /
+  // Cash Paid / Cancel. OFF by default so the list stays read-friendly.
+  const [actionsOn, setActionsOn] = useState(false)
   useEffect(() => {
     try {
       const saved = localStorage.getItem('inv-challans-hide-invoiced')
       if (saved !== null) setHideInvoiced(saved === 'true')
+      const savedActions = localStorage.getItem(ACTIONS_PILL_KEY)
+      if (savedActions !== null) setActionsOn(savedActions === 'true')
     } catch {}
   }, [])
   useEffect(() => {
     try { localStorage.setItem('inv-challans-hide-invoiced', String(hideInvoiced)) } catch {}
   }, [hideInvoiced])
+  useEffect(() => {
+    try { localStorage.setItem(ACTIONS_PILL_KEY, String(actionsOn)) } catch {}
+  }, [actionsOn])
 
   const visibleChallans = useMemo(
     () => hideInvoiced ? challans.filter(c => c.status !== 'Invoiced') : challans,
@@ -176,6 +190,15 @@ export default function ChallansListPage() {
             {hideInvoiced ? `Hide Invoiced (${invoicedCount})` : 'Show All'}
           </button>
         )}
+        <button onClick={() => setActionsOn(v => !v)}
+          title={actionsOn ? 'Click ⋯ on a card to Return / Cash Paid / Cancel' : 'Enable per-card action menus'}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+            actionsOn
+              ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+              : 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+          }`}>
+          {actionsOn ? '⚙ Actions: ON' : '⚙ Actions'}
+        </button>
         <input type="search" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search challan, party, item, alias, tag, invoice no…"
           className="flex-1 min-w-[260px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs" />
@@ -203,6 +226,8 @@ export default function ChallansListPage() {
                 // SWR cache patch — replace this challan in the list
                 mutate(prev => prev?.map(p => p.id === updated.id ? { ...p, ...updated } : p), { revalidate: false })
               }}
+              actionsOn={actionsOn}
+              onAfterStatusChange={() => mutate()}
             />
           ))}
         </div>
@@ -269,18 +294,25 @@ function CreateInvoiceModal(props: {
   const discount = Number(discountAmount) || 0
 
   // Flatten all selected challans' lines into the invoice payload.
-  // gstRate falls back to the item's alias rate when the line itself has
-  // no stored rate yet (matches the server-side fallback in /api/inv/invoices).
-  const lines = useMemo(() => challans.flatMap(c => c.lines.map(l => ({
-    itemId: l.item.id,
-    description: l.item.displayName,
-    qty: l.qty,
-    unit: l.unit,
-    rate: l.rate,
-    gstRate: l.gstRate ?? (l.item?.alias?.gstRate != null ? String(Number(l.item.alias.gstRate)) : null),
-    discountAmount: l.discountAmount,
-    challanLineId: l.id,
-  }))), [challans])
+  // Effective qty = qty - returnedQty (partial returns leave the rest invoiceable).
+  // gstRate falls back to alias when the line itself has no stored rate.
+  const lines = useMemo(() => challans.flatMap(c => c.lines
+    .map(l => {
+      const effectiveQty = Number(l.qty) - Number(l.returnedQty ?? 0)
+      return { l, effectiveQty }
+    })
+    .filter(x => x.effectiveQty > 0)
+    .map(({ l, effectiveQty }) => ({
+      itemId: l.item.id,
+      description: l.item.displayName,
+      qty: String(effectiveQty),
+      unit: l.unit,
+      rate: l.rate,
+      gstRate: l.gstRate ?? (l.item?.alias?.gstRate != null ? String(Number(l.item.alias.gstRate)) : null),
+      discountAmount: l.discountAmount,
+      challanLineId: l.id,
+    }))
+  ), [challans])
 
   // Recompute totals client-side using the same helper the server uses.
   const isIntra = (party.state || '').toLowerCase() === 'rajasthan'
@@ -453,11 +485,20 @@ function ChallanCard(props: {
   onToggleSelect: () => void
   selectableForParty: boolean
   onChange: (updated: Challan) => void
+  actionsOn: boolean
+  onAfterStatusChange: () => void
 }) {
-  const { challan, expanded, onToggleExpand, selected, onToggleSelect, selectableForParty, onChange } = props
+  const { challan, expanded, onToggleExpand, selected, onToggleSelect, selectableForParty, onChange, actionsOn, onAfterStatusChange } = props
   const c = challan
   const linked = c.status === 'Invoiced' || !!c.invoiceLink
-  const canSelect = !linked && c.status !== 'Cancelled' && selectableForParty
+  const isTerminal = TERMINAL_STATUSES.has(c.status)
+  const canSelect = !isTerminal && selectableForParty
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [returnOpen, setReturnOpen] = useState(false)
+  const [cashOpen, setCashOpen] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  // Lines lock when challan is terminal — same as the existing Invoiced lock.
+  const lineDisabled = isTerminal
 
   async function flipRatesIncludeGst() {
     const body = JSON.stringify({ ratesIncludeGst: !c.ratesIncludeGst })
@@ -498,7 +539,40 @@ function ChallanCard(props: {
               className="text-sm font-mono font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
               KSI/IN/{c.seriesFy}/{String(c.internalSeriesNo).padStart(4, '0')}
             </Link>
-            <StatusBadge status={c.status} />
+            <div className="flex items-center gap-1">
+              <StatusBadge status={c.status} />
+              {actionsOn && (
+                <div className="relative">
+                  <button onClick={() => setMenuOpen(v => !v)}
+                    className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-100 px-1.5 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 leading-none">
+                    ⋯
+                  </button>
+                  {menuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                      <div className="absolute right-0 top-full mt-1 z-20 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+                        <MenuItem
+                          label="↩ Return lines…"
+                          disabled={isTerminal}
+                          onClick={() => { setMenuOpen(false); setReturnOpen(true) }}
+                        />
+                        <MenuItem
+                          label="₹ Mark Cash Paid…"
+                          disabled={isTerminal || c.lines.some(l => Number(l.returnedQty ?? 0) > 0)}
+                          onClick={() => { setMenuOpen(false); setCashOpen(true) }}
+                        />
+                        <MenuItem
+                          label="✕ Cancel challan…"
+                          disabled={isTerminal}
+                          danger
+                          onClick={() => { setMenuOpen(false); setCancelOpen(true) }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
             {c.party.displayName}
@@ -545,7 +619,7 @@ function ChallanCard(props: {
         <div className="border-t border-gray-100 dark:border-gray-700 p-3 space-y-3 bg-gray-50/50 dark:bg-gray-900/30 rounded-b-xl">
           <div className="flex items-center gap-3">
             <span className="text-[11px] text-gray-500 dark:text-gray-400">Rates include GST?</span>
-            <button onClick={flipRatesIncludeGst} disabled={linked}
+            <button onClick={flipRatesIncludeGst} disabled={lineDisabled}
               className={`text-[11px] font-semibold rounded-full px-3 py-0.5 border transition ${
                 c.ratesIncludeGst
                   ? 'bg-amber-500 text-white border-amber-500'
@@ -557,7 +631,7 @@ function ChallanCard(props: {
 
           <div className="space-y-3">
             {c.lines.map(l => (
-              <LineCard key={l.id} line={l} disabled={linked} onSave={patch => patchLine(l.id, patch)} />
+              <LineCard key={l.id} line={l} disabled={lineDisabled} onSave={patch => patchLine(l.id, patch)} />
             ))}
           </div>
 
@@ -575,8 +649,277 @@ function ChallanCard(props: {
               Already invoiced — line edits disabled.
             </p>
           )}
+          {c.status === 'Returned' && (
+            <p className="text-[11px] text-rose-600 dark:text-rose-400">
+              Returned — {c.lines.reduce((s, l) => s + Number(l.returnedQty ?? 0), 0)} units sent back.
+            </p>
+          )}
+          {c.status === 'CashPaid' && (
+            <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+              Cash Paid{c.cashPaidNote ? ` · ${c.cashPaidNote}` : ''}.
+            </p>
+          )}
         </div>
       )}
+
+      {returnOpen && (
+        <ReturnLinesModal
+          challan={c}
+          onClose={() => setReturnOpen(false)}
+          onDone={() => { setReturnOpen(false); onAfterStatusChange() }}
+        />
+      )}
+      {cashOpen && (
+        <CashPaidModal
+          challan={c}
+          onClose={() => setCashOpen(false)}
+          onDone={() => { setCashOpen(false); onAfterStatusChange() }}
+        />
+      )}
+      {cancelOpen && (
+        <CancelChallanModal
+          challan={c}
+          onClose={() => setCancelOpen(false)}
+          onDone={() => { setCancelOpen(false); onAfterStatusChange() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function MenuItem({ label, onClick, disabled, danger }: {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  danger?: boolean
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className={`w-full text-left px-3 py-2 text-xs font-medium ${
+        disabled
+          ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+          : danger
+            ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20'
+            : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/40'
+      }`}>
+      {label}
+    </button>
+  )
+}
+
+function ReturnLinesModal({ challan, onClose, onDone }: {
+  challan: Challan
+  onClose: () => void
+  onDone: () => void
+}) {
+  // Each line: how many to return now? Bounded by (qty - returnedQty).
+  const initial = challan.lines.map(l => ({ lineId: l.id, qty: '' }))
+  const [rows, setRows] = useState(initial)
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const setQty = (i: number, v: string) =>
+    setRows(prev => prev.map((r, idx) => idx === i ? { ...r, qty: v } : r))
+
+  async function submit() {
+    const lines = rows
+      .map((r, i) => ({ lineId: r.lineId, qty: Number(r.qty || 0), line: challan.lines[i] }))
+      .filter(r => r.qty > 0)
+    if (lines.length === 0) { setError('Enter at least one return qty'); return }
+    for (const r of lines) {
+      const remaining = Number(r.line.qty) - Number(r.line.returnedQty ?? 0)
+      if (r.qty > remaining + 0.0001) {
+        setError(`Line ${r.line.lineNo}: ${r.qty} exceeds remaining ${remaining}`)
+        return
+      }
+    }
+    setSaving(true); setError('')
+    const res = await fetch(`/api/inv/challans/${challan.id}/return`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lines: lines.map(r => ({ lineId: r.lineId, qty: r.qty })),
+        reason: reason || undefined,
+      }),
+    })
+    setSaving(false)
+    if (!res.ok) { setError((await res.json()).error || 'Save failed'); return }
+    onDone()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Return Lines</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
+        </div>
+        <div className="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+          {challan.lines.map((l, i) => {
+            const already = Number(l.returnedQty ?? 0)
+            const remaining = Number(l.qty) - already
+            return (
+              <div key={l.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{l.item.displayName}</p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  Total {Number(l.qty)} {l.unit}
+                  {already > 0 && <span className="text-rose-500"> · already returned {already}</span>}
+                  <span> · remaining <strong>{remaining}</strong></span>
+                </p>
+                {remaining > 0 ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400">Return now:</span>
+                    <input type="number" step="0.001" min={0} max={remaining} value={rows[i].qty}
+                      onChange={e => setQty(i, e.target.value)}
+                      className="w-28 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-xs" />
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400">{l.unit}</span>
+                    <button type="button" onClick={() => setQty(i, String(remaining))}
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 underline">all</button>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] text-gray-400">Fully returned.</p>
+                )}
+              </div>
+            )
+          })}
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Reason (optional)</span>
+            <input value={reason} onChange={e => setReason(e.target.value)}
+              placeholder="e.g. damaged, wrong specs"
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+          </label>
+          {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving}
+            className="px-5 py-2 rounded-lg text-sm bg-rose-600 hover:bg-rose-700 text-white font-semibold disabled:opacity-50">
+            {saving ? 'Saving…' : 'Return'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CashPaidModal({ challan, onClose, onDone }: {
+  challan: Challan
+  onClose: () => void
+  onDone: () => void
+}) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [date, setDate] = useState(today)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    setSaving(true); setError('')
+    const res = await fetch(`/api/inv/challans/${challan.id}/cash-paid`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, note: note || undefined }),
+    })
+    setSaving(false)
+    if (!res.ok) { setError((await res.json()).error || 'Save failed'); return }
+    onDone()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Mark Cash Paid</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            No invoice will be created. Goods stay in stock; no Tally voucher is pushed
+            (you can record it manually if needed). This is final — not reversible.
+          </p>
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Date</span>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+          </label>
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Note (optional)</span>
+            <input value={note} onChange={e => setNote(e.target.value)}
+              placeholder="e.g. cash bill no, vendor receipt"
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+          </label>
+          {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving}
+            className="px-5 py-2 rounded-lg text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50">
+            {saving ? 'Saving…' : 'Mark Cash Paid'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CancelChallanModal({ challan, onClose, onDone }: {
+  challan: Challan
+  onClose: () => void
+  onDone: () => void
+}) {
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    setSaving(true); setError('')
+    const res = await fetch(`/api/inv/challans/${challan.id}/cancel`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason || undefined }),
+    })
+    setSaving(false)
+    if (!res.ok) { setError((await res.json()).error || 'Cancel failed'); return }
+    onDone()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Cancel Challan</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Soft-cancel: the series number stays on the books labelled <span className="font-semibold">Cancelled</span>.
+            Stock IN is reversed (only the qty still in stock — already-returned units aren't OUT'd twice).
+          </p>
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Reason (optional)</span>
+            <input value={reason} onChange={e => setReason(e.target.value)}
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+          </label>
+          {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+            Back
+          </button>
+          <button onClick={submit} disabled={saving}
+            className="px-5 py-2 rounded-lg text-sm bg-rose-600 hover:bg-rose-700 text-white font-semibold disabled:opacity-50">
+            {saving ? 'Saving…' : 'Cancel challan'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -666,10 +1009,17 @@ function LineCard({ line, disabled, onSave }: {
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 space-y-2">
       {/* Row 1 — Item name + alias (click name → last-5 buys popup) */}
       <div>
-        <button type="button" onClick={() => setHistoryOpen(true)}
-          className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:underline leading-tight text-left">
-          {line.item.displayName}
-        </button>
+        <div className="flex items-baseline justify-between gap-2">
+          <button type="button" onClick={() => setHistoryOpen(true)}
+            className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:underline leading-tight text-left">
+            {line.item.displayName}
+          </button>
+          {Number(line.returnedQty ?? 0) > 0 && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 shrink-0">
+              {Number(line.returnedQty) >= Number(line.qty) ? 'Returned' : `${Number(line.returnedQty)} returned`}
+            </span>
+          )}
+        </div>
         <p className="text-[10px] text-gray-500 dark:text-gray-400">{line.item.alias.tallyStockItem}</p>
       </div>
 
@@ -811,10 +1161,13 @@ function StatusBadge({ status }: { status: string }) {
   const palette: Record<string, string> = {
     Draft: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200',
     PendingInvoice: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-    Invoiced: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    Invoiced: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+    Returned: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+    CashPaid: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
     Cancelled: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
     Verified: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
     PendingApproval: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
   }
-  return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${palette[status] || palette.Draft}`}>{status}</span>
+  const label = status === 'CashPaid' ? 'Cash Paid' : status
+  return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${palette[status] || palette.Draft}`}>{label}</span>
 }
