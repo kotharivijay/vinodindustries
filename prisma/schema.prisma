@@ -1302,7 +1302,7 @@ model InvChallan {
   totalAmount           Decimal? @db.Decimal(16, 2)
   totalGstAmount        Decimal? @db.Decimal(14, 2)
   totalWithGst          Decimal? @db.Decimal(16, 2)
-  // 'Draft' | 'Verified' | 'PendingApproval' | 'PendingInvoice' | 'Invoiced' | 'Cancelled'
+  // 'Draft' | 'PendingInvoice' | 'Invoiced' | 'Returned' | 'CashPaid' | 'Cancelled'
   status                String   @default("Draft")
   varianceFlag          Boolean  @default(false)
   hasPendingReviewItems Boolean  @default(false)
@@ -1310,6 +1310,9 @@ model InvChallan {
   driveFolderUrl        String?
   notes                 String?
   cancelledReason       String?
+  returnReason          String?
+  cashPaidDate          DateTime?
+  cashPaidNote          String?
   createdById           Int?
   verifiedById          Int?
   cancelledById         Int?
@@ -1351,6 +1354,9 @@ model InvChallanLine {
   rateVariancePct Decimal?   @db.Decimal(6, 2)
   varianceReason  String?
   notes           String?
+  // Cumulative qty returned to supplier across one or more partial-return
+  // events. Effective qty for invoice + stock = qty - returnedQty.
+  returnedQty     Decimal?   @db.Decimal(14, 3)
 
   invoiceLines InvPurchaseInvoiceLine[]
 }

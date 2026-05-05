@@ -25,14 +25,22 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Cannot cancel — challan is on a pushed invoice' }, { status: 409 })
   }
 
+  // Effective qty = qty - returnedQty. Returns already issued OUT movements;
+  // cancel only needs to OUT what's still in stock (the unreturned remainder).
   const reversals = c.lines
-    .filter((l: any) => l.item.trackStock && l.qty > 0)
+    .filter((l: any) => l.item.trackStock)
     .map((l: any) => ({
       itemId: l.itemId,
+      effective: Math.max(0, Number(l.qty) - Number(l.returnedQty ?? 0)),
+      unit: l.unit,
+    }))
+    .filter((r: any) => r.effective > 0)
+    .map((r: any) => ({
+      itemId: r.itemId,
       movementDate: new Date(),
       direction: 'OUT',
-      qty: l.qty,
-      unit: l.unit,
+      qty: r.effective,
+      unit: r.unit,
       refType: 'CHALLAN',
       refId: c.id,
       remarks: `Cancel challan ${c.challanNo}`,
