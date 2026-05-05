@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -61,6 +62,9 @@ export async function GET() {
     }).catch(() => []),
   ])
 
+  // Index dyeing entries by lotNo so we can quickly pick the relevant subset
+  // for each FP's allocator pass below.
+  const dyeingByLotNo = new Map<string, any[]>()
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
@@ -73,6 +77,8 @@ export async function GET() {
       }
       if (!dyeingAllByLot.has(ln)) dyeingAllByLot.set(ln, [])
       dyeingAllByLot.get(ln)!.push({ slipNo: de.slipNo, shadeName, shadeDesc, foldNo, dyedThan: lot.than || 0 })
+      if (!dyeingByLotNo.has(ln)) dyeingByLotNo.set(ln, [])
+      dyeingByLotNo.get(ln)!.push(de)
     }
   }
 
@@ -103,7 +109,31 @@ export async function GET() {
     const anyDone = enrichedLots.some((l: any) => l.status === 'done' || l.status === 'partial')
     const fpStatus = allDone ? 'finished' : anyDone ? 'partial' : 'pending'
 
-    return { ...e, lots: enrichedLots, partyName: partyNames.join(', ') || null, fpStatus }
+    // Per-slip allocation: which dyeing slip contributed how much to THIS FP.
+    // Same fit-by-than algorithm the print page uses, so the list-page card
+    // expansion matches the printed slip exactly.
+    const fpLotNoSet: Set<string> = new Set(lots.map((l: any) => String(l.lotNo)))
+    const seenSlips = new Set<number>()
+    const relevantDyeings: any[] = []
+    for (const ln of fpLotNoSet) {
+      const des = dyeingByLotNo.get(ln) || []
+      for (const de of des) {
+        if (seenSlips.has(de.slipNo)) continue
+        seenSlips.add(de.slipNo)
+        relevantDyeings.push(de)
+      }
+    }
+    const allocations = allocateFpToDyeingSlips(
+      lots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than) })),
+      relevantDyeings.map((de: any) => ({
+        slipNo: de.slipNo,
+        shadeName: de.shadeName ?? null,
+        lots: de.lots,
+        foldBatch: de.foldBatch ?? null,
+      })),
+    )
+
+    return { ...e, lots: enrichedLots, partyName: partyNames.join(', ') || null, fpStatus, allocations }
   })
 
   return NextResponse.json(enriched)

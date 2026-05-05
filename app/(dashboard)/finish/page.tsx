@@ -2001,7 +2001,10 @@ export default function FinishStockPage() {
                             {entry.notes && <span className="text-[10px] text-gray-400 dark:text-gray-500 italic ml-auto">{entry.notes}</span>}
                           </div>
 
-                          {/* Party → Fold → Lots hierarchy */}
+                          {/* Party → Fold → Slip → allocated lots — uses entry.allocations
+                              from the slip allocator so a lot fed by multiple dyeing slips
+                              shows as separate rows (e.g. PS-43/42 = 318/15 + 314/15 + 201/12)
+                              instead of one slip with the FP-total than. */}
                           <div className="px-3 py-2 space-y-2">
                             {Array.from(partyMap.entries()).map(([partyName, foldMap]) => (
                               <div key={partyName}>
@@ -2009,16 +2012,54 @@ export default function FinishStockPage() {
                                 {Array.from(foldMap.entries()).map(([foldNo, lots]) => (
                                   <div key={foldNo} className="ml-3 mb-2">
                                     <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 mb-1">📁 Fold {foldNo}</div>
-                                    {/* Group lots by dyeSlipNo for shade display */}
                                     {(() => {
-                                      const slipMap = new Map<number, FinishLot[]>()
-                                      for (const lot of lots) {
-                                        const s = lot.dyeSlipNo || 0
-                                        if (!slipMap.has(s)) slipMap.set(s, [])
-                                        slipMap.get(s)!.push(lot)
+                                      type Row = {
+                                        slipNo: number; shade: string;
+                                        lotNo: string; allocatedThan: number;
+                                        lotId: number; status: string; doneThan: number;
                                       }
-                                      return Array.from(slipMap.entries()).map(([slipNo, sLots]) => {
-                                        const shade = [sLots[0]?.shadeName, sLots[0]?.shadeDesc].filter(Boolean).join(' — ')
+                                      const rows: Row[] = []
+                                      const lotById = new Map(lots.map(l => [l.lotNo, l]))
+                                      const allocatedHere = new Set<string>()
+                                      const foldAlloc = (entry as any).allocations?.find((a: any) => a.foldNo === foldNo)
+                                      if (foldAlloc) {
+                                        for (const slip of foldAlloc.slips) {
+                                          for (const al of slip.lots) {
+                                            const fpLot = lotById.get(al.lotNo)
+                                            if (!fpLot) continue   // belongs to a different (party,fold) cell
+                                            rows.push({
+                                              slipNo: slip.slipNo,
+                                              shade: [slip.shadeName, slip.shadeDesc].filter(Boolean).join(' — '),
+                                              lotNo: al.lotNo,
+                                              allocatedThan: al.than,
+                                              lotId: fpLot.id,
+                                              status: fpLot.status,
+                                              doneThan: fpLot.doneThan,
+                                            })
+                                            allocatedHere.add(al.lotNo)
+                                          }
+                                        }
+                                      }
+                                      // Lots in this (party,fold) that no dyeing slip claimed
+                                      // (e.g. came in via OB or startStage='finish') still need
+                                      // to render — under Slip 0 / no header.
+                                      for (const lot of lots) {
+                                        if (allocatedHere.has(lot.lotNo)) continue
+                                        rows.push({
+                                          slipNo: 0, shade: '',
+                                          lotNo: lot.lotNo, allocatedThan: lot.than,
+                                          lotId: lot.id, status: lot.status, doneThan: lot.doneThan,
+                                        })
+                                      }
+                                      // Group rows back by slipNo for display
+                                      const slipMap = new Map<number, Row[]>()
+                                      for (const r of rows) {
+                                        if (!slipMap.has(r.slipNo)) slipMap.set(r.slipNo, [])
+                                        slipMap.get(r.slipNo)!.push(r)
+                                      }
+                                      const slipsSorted = Array.from(slipMap.entries()).sort((a, b) => b[0] - a[0])
+                                      return slipsSorted.map(([slipNo, slipRows]) => {
+                                        const shade = slipRows[0]?.shade || ''
                                         return (
                                           <div key={slipNo} className="ml-3 mb-1.5">
                                             {slipNo > 0 && (
@@ -2027,41 +2068,41 @@ export default function FinishStockPage() {
                                               </div>
                                             )}
                                             <div className="space-y-1">
-                                              {sLots.map(lot => (
-                                                <div key={lot.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg px-3 py-2">
-                                                  <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
-                                                    className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{lot.lotNo}</Link>
-                                                  <span className="text-xs text-gray-600 dark:text-gray-400">{lot.than}</span>
+                                              {slipRows.map((row, i) => (
+                                                <div key={`${slipNo}-${row.lotNo}-${i}`} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900/50 rounded-lg px-3 py-2">
+                                                  <Link href={`/lot/${encodeURIComponent(row.lotNo)}`}
+                                                    className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{row.lotNo}</Link>
+                                                  <span className="text-xs text-gray-600 dark:text-gray-400">{row.allocatedThan}</span>
 
-                                                  {/* Status + actions */}
-                                                  {lot.status === 'done' ? (
-                                                    <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium ml-auto">✅ Done ({lot.doneThan})</span>
-                                                  ) : lot.status === 'partial' ? (
+                                                  {/* Status + actions — keyed on the FP lot id (lot status is FP-level not slip-level) */}
+                                                  {row.status === 'done' ? (
+                                                    <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium ml-auto">✅ Done ({row.doneThan})</span>
+                                                  ) : row.status === 'partial' ? (
                                                     <div className="flex items-center gap-1.5 ml-auto">
-                                                      <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">🟡 {lot.doneThan} done</span>
-                                                      {partialLotId === lot.id ? (
+                                                      <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">🟡 {row.doneThan} done</span>
+                                                      {partialLotId === row.lotId ? (
                                                         <div className="flex items-center gap-1">
                                                           <input type="number" value={partialThanInput} onChange={e => setPartialThanInput(e.target.value)}
                                                             placeholder="than" className="w-14 text-xs border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 bg-white dark:bg-gray-700 dark:text-gray-100" />
-                                                          <button onClick={() => updateLotStatus(lot.id, 'partial', parseInt(partialThanInput))}
-                                                            disabled={lotUpdating === lot.id} className="text-[10px] text-teal-600 font-bold">Save</button>
+                                                          <button onClick={() => updateLotStatus(row.lotId, 'partial', parseInt(partialThanInput))}
+                                                            disabled={lotUpdating === row.lotId} className="text-[10px] text-teal-600 font-bold">Save</button>
                                                           <button onClick={() => setPartialLotId(null)} className="text-[10px] text-gray-400">✕</button>
                                                         </div>
                                                       ) : (
-                                                        <button onClick={() => { setPartialLotId(lot.id); setPartialThanInput(String(lot.doneThan)) }}
+                                                        <button onClick={() => { setPartialLotId(row.lotId); setPartialThanInput(String(row.doneThan)) }}
                                                           className="text-[10px] text-indigo-500 hover:text-indigo-400 underline">Edit</button>
                                                       )}
-                                                      <button onClick={() => updateLotStatus(lot.id, 'done')}
-                                                        disabled={lotUpdating === lot.id} className="text-[10px] text-green-600 font-medium">Full Done</button>
+                                                      <button onClick={() => updateLotStatus(row.lotId, 'done')}
+                                                        disabled={lotUpdating === row.lotId} className="text-[10px] text-green-600 font-medium">Full Done</button>
                                                     </div>
                                                   ) : (
                                                     <div className="flex items-center gap-1.5 ml-auto">
-                                                      <button onClick={() => updateLotStatus(lot.id, 'done')}
-                                                        disabled={lotUpdating === lot.id}
+                                                      <button onClick={() => updateLotStatus(row.lotId, 'done')}
+                                                        disabled={lotUpdating === row.lotId}
                                                         className="text-[10px] bg-green-600 text-white px-2 py-0.5 rounded font-medium hover:bg-green-700 disabled:opacity-50">
-                                                        {lotUpdating === lot.id ? '...' : '✅ Done'}
+                                                        {lotUpdating === row.lotId ? '...' : '✅ Done'}
                                                       </button>
-                                                      <button onClick={() => { setPartialLotId(lot.id); setPartialThanInput('') }}
+                                                      <button onClick={() => { setPartialLotId(row.lotId); setPartialThanInput('') }}
                                                         className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded font-medium hover:bg-amber-700">
                                                         🟡 Partial
                                                       </button>
