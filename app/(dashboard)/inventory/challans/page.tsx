@@ -268,14 +268,16 @@ function CreateInvoiceModal(props: {
   const other = Number(otherCharges) || 0
   const discount = Number(discountAmount) || 0
 
-  // Flatten all selected challans' lines into the invoice payload
+  // Flatten all selected challans' lines into the invoice payload.
+  // gstRate falls back to the item's alias rate when the line itself has
+  // no stored rate yet (matches the server-side fallback in /api/inv/invoices).
   const lines = useMemo(() => challans.flatMap(c => c.lines.map(l => ({
     itemId: l.item.id,
     description: l.item.displayName,
     qty: l.qty,
     unit: l.unit,
     rate: l.rate,
-    gstRate: l.gstRate,
+    gstRate: l.gstRate ?? (l.item?.alias?.gstRate != null ? String(Number(l.item.alias.gstRate)) : null),
     discountAmount: l.discountAmount,
     challanLineId: l.id,
   }))), [challans])
@@ -615,6 +617,18 @@ function LineCard({ line, disabled, onSave }: {
     setGstRate(line.gstRate ?? aliasGst)
     setNotes(line.notes ?? '')
   }, [line.id, line.qty, line.unit, line.rate, line.discountAmount, line.discountType, line.discountValue, line.gstRate, line.notes, aliasGst])
+
+  // Auto-persist the alias GST rate the FIRST time the row appears with no
+  // stored rate. Without this, the field shows "18" but the DB holds null,
+  // and any invoice created from this challan inherits 0% (no GST math).
+  useEffect(() => {
+    if (disabled) return
+    if (line.gstRate == null && aliasGst && Number(aliasGst) > 0) {
+      onSave({ gstRate: aliasGst })
+    }
+    // Only depends on line.id + aliasGst — we want this to fire once per line.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [line.id, aliasGst, disabled])
 
   function commit(field: string, value: any) {
     onSave({ [field]: value })

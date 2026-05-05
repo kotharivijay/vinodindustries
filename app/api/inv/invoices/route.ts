@@ -65,14 +65,25 @@ export async function POST(req: NextRequest) {
     const gross = qty * rate
     const discount = Number(l.discountAmount || 0)
     const net = gross - discount
-    const gstRate = Number(l.gstRate || 0)
-    const lineGstAmt = isUnreg ? 0 : (net * gstRate) / 100
-    const lineTotal = net + lineGstAmt
 
+    // gstRate fallback chain: explicit on line → item.alias.gstRate.
+    // The challan inline-edit autofills the alias rate visually but only
+    // commits on blur; if the operator never touches the field, line.gstRate
+    // can arrive null. Falling back at invoice-create time keeps the
+    // computed GST honest.
+    let item: any = null
     if (l.itemId) {
-      const item = await db.invItem.findUnique({ where: { id: Number(l.itemId) } })
+      item = await db.invItem.findUnique({
+        where: { id: Number(l.itemId) },
+        include: { alias: { select: { gstRate: true } } },
+      })
       if (item?.reviewStatus === 'pending_review') hasPendingReviewItems = true
     }
+    const gstRate = l.gstRate != null && l.gstRate !== ''
+      ? Number(l.gstRate)
+      : (item?.alias?.gstRate != null ? Number(item.alias.gstRate) : 0)
+    const lineGstAmt = isUnreg ? 0 : (net * gstRate) / 100
+    const lineTotal = net + lineGstAmt
 
     lineDiscountTotal += discount
     linesForTotals.push({ amount: net, gstRate })
