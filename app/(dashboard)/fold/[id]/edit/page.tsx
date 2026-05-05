@@ -594,6 +594,13 @@ export default function EditFoldPage() {
                   .filter(l => l.foldAvailable > 0)
                 const filteredLots = availableLots.filter(l => matchesSearch(l, lotSearch))
                 const stockInfo = lot.lotNo ? lotLookup.get(lot.lotNo.toLowerCase()) : undefined
+                // Live remaining after every modal-side allocation of THIS lot
+                // (including this row). Updates in real time as batches are added,
+                // qtys edited, or rows removed.
+                const usedThisRow = parseInt(lot.than) || 0
+                const usedAcrossModal = (usedElsewhere.get(lot.lotNo) ?? 0) + usedThisRow
+                const liveAvail = stockInfo ? Math.max(0, stockInfo.foldAvailable - usedAcrossModal) : 0
+                const overAllocated = stockInfo ? usedAcrossModal > stockInfo.foldAvailable : false
                 return (
                   <div key={lotIdx} className="flex gap-2 items-start">
                     <div className="flex-1 relative">
@@ -616,10 +623,18 @@ export default function EditFoldPage() {
                         <span className="text-gray-400 text-xs">&#9662;</span>
                       </div>
 
-                      {/* Stock info */}
+                      {/* Stock info — Avail is LIVE (re-computes as you edit
+                          qtys or add batches; stops at 0; turns red on overflow). */}
                       {stockInfo && (
                         <p className="text-[10px] text-gray-400 mt-0.5">
-                          {stockInfo.party} &middot; {stockInfo.quality} &middot; Balance: {stockInfo.stock} &middot; Avail: <span className="text-emerald-600 font-medium">{stockInfo.foldAvailable}</span>
+                          {stockInfo.party} &middot; {stockInfo.quality} &middot; Balance: {stockInfo.stock} &middot; Avail:{' '}
+                          <span className={`font-medium ${overAllocated ? 'text-rose-600 dark:text-rose-400' : liveAvail === 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            {liveAvail}
+                          </span>
+                          <span className="text-gray-500 dark:text-gray-500"> / {stockInfo.foldAvailable}</span>
+                          {overAllocated && (
+                            <span className="ml-1 text-rose-600 dark:text-rose-400 font-bold">⚠ over by {usedAcrossModal - stockInfo.foldAvailable}</span>
+                          )}
                         </p>
                       )}
                       {!stockInfo && lot.lotNo && lot.partyName && (
