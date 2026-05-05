@@ -1,8 +1,11 @@
 import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import { buildLotInfoMap } from '@/lib/lot-info'
+import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
+
+export const dynamic = 'force-dynamic'
 
 export default async function FinishDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -27,37 +30,72 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
   const partyNames = [...new Set(Array.from(lotInfoMap.values()).map(v => v.party).filter(Boolean))]
   const qualityNames = [...new Set(Array.from(lotInfoMap.values()).map(v => v.quality).filter(Boolean))]
 
-  // Dyeing info per lot
+  // Dyeing info per lot — fetch + allocate. Same algorithm as the print page
+  // (lib/finish-slip-allocator.ts) so the UI agrees with the printed slip.
+  // Was previously using a "first dyeing slip per lot" lookup that pushed the
+  // entire FP lot than under one slip — wrong for lots fed by multiple
+  // dyeing slips (e.g. PS-43/42 = 318/15 + 314/15 + 201/12, was showing
+  // PS-43/42 under whichever slip won the dyeByLot Map race).
   const dyeingEntries = await db.dyeingEntry.findMany({
     where: { OR: [{ lotNo: { in: lotNos } }, { lots: { some: { lotNo: { in: lotNos } } } }] },
     select: {
       slipNo: true, shadeName: true,
-      lots: { select: { lotNo: true } },
+      lots: { select: { lotNo: true, than: true } },
       foldBatch: { select: { foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
     },
+    orderBy: { slipNo: 'desc' },
   })
+  const allocatedFolds = allocateFpToDyeingSlips(
+    lots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than) })),
+    dyeingEntries.map((de: any) => ({
+      slipNo: de.slipNo,
+      shadeName: de.shadeName ?? null,
+      lots: de.lots,
+      foldBatch: de.foldBatch ?? null,
+    })),
+  )
 
-  const dyeByLot = new Map<string, { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }>()
-  for (const de of dyeingEntries) {
-    const foldNo = de.foldBatch?.foldProgram?.foldNo || null
-    const shade = de.shadeName || de.foldBatch?.shade?.name || null
-    const shadeDesc = de.foldBatch?.shade?.description || null
-    for (const dl of (de.lots?.length ? de.lots : [])) {
-      if (!dyeByLot.has(dl.lotNo)) dyeByLot.set(dl.lotNo, { slipNo: de.slipNo, shadeName: shade, shadeDesc, foldNo })
+  // FP lot status (done / partial / pending) is keyed on lotNo regardless of
+  // which dyeing slip it came from, so look it up once per lotNo.
+  const lotStatusByName = new Map<string, any>()
+  for (const l of lots) lotStatusByName.set(l.lotNo, l)
+
+  // Reshape allocator output into the existing fold → slip → lots structure
+  // the renderer expects.
+  type SLot = { id: number; lotNo: string; than: number; meter: number | null; doneThan: number; status: string }
+  const foldMap = new Map<string, Map<number, { shade: string; lots: SLot[] }>>()
+  for (const fg of allocatedFolds) {
+    if (!foldMap.has(fg.foldNo)) foldMap.set(fg.foldNo, new Map())
+    const sMap = foldMap.get(fg.foldNo)!
+    for (const slip of fg.slips) {
+      const shade = [slip.shadeName, slip.shadeDesc].filter(Boolean).join(' — ')
+      if (!sMap.has(slip.slipNo)) sMap.set(slip.slipNo, { shade, lots: [] })
+      const bucket = sMap.get(slip.slipNo)!
+      for (const al of slip.lots) {
+        const fpLot = lotStatusByName.get(al.lotNo) || { id: 0, doneThan: 0, status: 'pending', meter: null }
+        bucket.lots.push({
+          id: fpLot.id,
+          lotNo: al.lotNo,
+          than: al.than,                 // allocated than from this slip, not FP total
+          meter: fpLot.meter ?? null,
+          doneThan: fpLot.doneThan ?? 0,
+          status: fpLot.status ?? 'pending',
+        })
+      }
     }
   }
-
-  // Group lots: fold → slip
-  const foldMap = new Map<string, Map<number, { shade: string; lots: any[] }>>()
-  for (const lot of lots) {
-    const dye = dyeByLot.get(lot.lotNo)
-    const foldNo = dye?.foldNo || 'No Fold'
-    const slipNo = dye?.slipNo || 0
-    const shade = [dye?.shadeName, dye?.shadeDesc].filter(Boolean).join(' — ')
-    if (!foldMap.has(foldNo)) foldMap.set(foldNo, new Map())
-    const sMap = foldMap.get(foldNo)!
-    if (!sMap.has(slipNo)) sMap.set(slipNo, { shade, lots: [] })
-    sMap.get(slipNo)!.lots.push(lot)
+  // Surface lots that no dyeing slip claimed (e.g. PS RF-8410 in FP-152).
+  const allocatedLotNos = new Set<string>()
+  for (const f of foldMap.values()) for (const s of f.values()) for (const l of s.lots) allocatedLotNos.add(l.lotNo.toLowerCase())
+  const orphanLots = lots.filter((l: any) => !allocatedLotNos.has(l.lotNo.toLowerCase()))
+  if (orphanLots.length > 0) {
+    if (!foldMap.has('No Fold')) foldMap.set('No Fold', new Map())
+    const sMap = foldMap.get('No Fold')!
+    if (!sMap.has(0)) sMap.set(0, { shade: '', lots: [] })
+    sMap.get(0)!.lots.push(...orphanLots.map((l: any) => ({
+      id: l.id, lotNo: l.lotNo, than: l.than, meter: l.meter ?? null,
+      doneThan: l.doneThan ?? 0, status: l.status ?? 'pending',
+    })))
   }
 
   const chemicals = (entry.chemicals || []).map((c: any) => ({
@@ -145,10 +183,10 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
               <div key={slipNo} className="ml-3 mb-2">
                 {slipNo > 0 && <p className="text-[10px] text-gray-500 dark:text-gray-400 mb-1">Slip {slipNo}{shade ? ` — ${shade}` : ''}</p>}
                 <div className="space-y-1">
-                  {sLots.map((lot: any) => {
+                  {sLots.map((lot: any, i: number) => {
                     const bg = lot.status === 'done' ? 'bg-green-50 dark:bg-green-900/20' : lot.status === 'partial' ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-gray-50 dark:bg-gray-900/50'
                     return (
-                      <div key={lot.id} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${bg}`}>
+                      <div key={`${slipNo}-${lot.lotNo}-${i}`} className={`flex items-center gap-2 rounded-lg px-3 py-2 ${bg}`}>
                         <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{lot.lotNo}</Link>
                         <span className="text-xs text-gray-600 dark:text-gray-400">{lot.than}</span>
                         {lot.status === 'done' && <span className="text-[10px] text-green-600 dark:text-green-400 ml-auto">✅ Done</span>}
