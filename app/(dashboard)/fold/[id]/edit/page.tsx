@@ -293,8 +293,28 @@ export default function EditFoldPage() {
     }
   }
 
+  // /api/stock's foldAvailable already subtracts THIS program's saved batches
+  // (they're persisted FoldBatchLot rows). On re-edit, the modal's running
+  // total would double-deduct them — pulling Avail below zero. Capture the
+  // saved usage per lot so we can add it back to foldAvailable everywhere we
+  // compute "headroom".
+  const savedUsageByLot = new Map<string, number>()
+  for (const b of existingProgram?.batches ?? []) {
+    for (const l of b.lots ?? []) {
+      const k = (l.lotNo ?? '').trim().toLowerCase()
+      if (!k) continue
+      savedUsageByLot.set(k, (savedUsageByLot.get(k) || 0) + (Number(l.than) || 0))
+    }
+  }
+  const baseAvailFor = (lotNo: string): number => {
+    const k = lotNo.trim().toLowerCase()
+    const info = lotLookup.get(k)
+    return (info?.foldAvailable ?? 0) + (savedUsageByLot.get(k) || 0)
+  }
+
   const allLots = (stockData?.parties ?? [])
     .flatMap(p => p.lots)
+    .map(l => ({ ...l, foldAvailable: l.foldAvailable + (savedUsageByLot.get(l.lotNo.toLowerCase()) || 0) }))
     .filter(l => l.foldAvailable > 0)
 
   function emptyLot(): LotRow {
@@ -350,17 +370,16 @@ export default function EditFoldPage() {
       }
 
       // Carry forward each lot from the previous batch, but cap at remaining
-      // foldAvailable - already-used. Skip lots with 0 remaining.
+      // headroom = baseAvail (foldAvailable + this program's saved usage,
+      // since /api/stock has already deducted those) minus modal usage.
       const carriedLots: LotRow[] = []
       for (const prevLot of last.lots) {
         const lotInfo = lotLookup.get(prevLot.lotNo.trim().toLowerCase())
         const desired = parseInt(prevLot.than) || 0
         if (!lotInfo || desired <= 0) continue
         const used = usedByLot.get(prevLot.lotNo.trim().toLowerCase()) || 0
-        // foldAvailable already excludes this fold program's persisted usage
-        // (per /api/fold/stock); subtract the modal's running total to get
-        // the headroom for the new batch.
-        const remaining = Math.max(0, lotInfo.foldAvailable - used)
+        const base = baseAvailFor(prevLot.lotNo)
+        const remaining = Math.max(0, base - used)
         if (remaining <= 0) continue
         const carryThan = Math.min(desired, remaining)
         carriedLots.push({
@@ -370,7 +389,7 @@ export default function EditFoldPage() {
           qualityId: prevLot.qualityId,
           partyName: prevLot.partyName,
           qualityName: prevLot.qualityName,
-          maxStock: lotInfo.foldAvailable,
+          maxStock: base,
         })
       }
 
@@ -423,10 +442,11 @@ export default function EditFoldPage() {
             updated.qualityId = quality?.id ?? null
             updated.partyName = lotInfo.party
             updated.qualityName = lotInfo.quality
-            updated.maxStock = lotInfo.foldAvailable
+            const base = baseAvailFor(value as string)
+            updated.maxStock = base
             if (!updated.than) {
               const used = lotUsedExcludingRow(prev, value as string, batchIdx, lotIdx)
-              const remaining = Math.max(0, lotInfo.foldAvailable - used)
+              const remaining = Math.max(0, base - used)
               updated.than = String(remaining)
             }
           }
@@ -437,8 +457,9 @@ export default function EditFoldPage() {
         if (field === 'than' && updated.lotNo) {
           const lotInfo = lotLookup.get(updated.lotNo.trim().toLowerCase())
           if (lotInfo) {
+            const base = baseAvailFor(updated.lotNo)
             const used = lotUsedExcludingRow(prev, updated.lotNo, batchIdx, lotIdx)
-            const remaining = Math.max(0, lotInfo.foldAvailable - used)
+            const remaining = Math.max(0, base - used)
             const requested = parseInt(String(value)) || 0
             if (requested > remaining) {
               updated.than = String(remaining)
@@ -589,18 +610,23 @@ export default function EditFoldPage() {
                     usedElsewhere.set(l.lotNo, (usedElsewhere.get(l.lotNo) ?? 0) + (parseInt(l.than) || 0))
                   }
                 }
+                // allLots already has saved-program usage added back. usedElsewhere
+                // counts modal usage of OTHER rows; subtract that to get the
+                // dropdown's live foldAvailable.
                 const availableLots = allLots
                   .map(l => ({ ...l, foldAvailable: l.foldAvailable - (usedElsewhere.get(l.lotNo) ?? 0) }))
                   .filter(l => l.foldAvailable > 0)
                 const filteredLots = availableLots.filter(l => matchesSearch(l, lotSearch))
                 const stockInfo = lot.lotNo ? lotLookup.get(lot.lotNo.toLowerCase()) : undefined
                 // Live remaining after every modal-side allocation of THIS lot
-                // (including this row). Updates in real time as batches are added,
-                // qtys edited, or rows removed.
+                // (including this row). Base = foldAvailable + this program's
+                // saved-usage-for-this-lot — otherwise re-editing a saved fold
+                // would double-deduct and show negative.
                 const usedThisRow = parseInt(lot.than) || 0
                 const usedAcrossModal = (usedElsewhere.get(lot.lotNo) ?? 0) + usedThisRow
-                const liveAvail = stockInfo ? Math.max(0, stockInfo.foldAvailable - usedAcrossModal) : 0
-                const overAllocated = stockInfo ? usedAcrossModal > stockInfo.foldAvailable : false
+                const baseAvail = stockInfo ? baseAvailFor(lot.lotNo) : 0
+                const liveAvail = Math.max(0, baseAvail - usedAcrossModal)
+                const overAllocated = baseAvail > 0 && usedAcrossModal > baseAvail
                 return (
                   <div key={lotIdx} className="flex gap-2 items-start">
                     <div className="flex-1 relative">
@@ -624,16 +650,19 @@ export default function EditFoldPage() {
                       </div>
 
                       {/* Stock info — Avail is LIVE (re-computes as you edit
-                          qtys or add batches; stops at 0; turns red on overflow). */}
+                          qtys or add batches; stops at 0; turns red on overflow).
+                          baseAvail is the true foldable headroom for this lot
+                          (foldAvailable from /api/stock + this program's
+                          saved usage that the API already netted out). */}
                       {stockInfo && (
                         <p className="text-[10px] text-gray-400 mt-0.5">
                           {stockInfo.party} &middot; {stockInfo.quality} &middot; Balance: {stockInfo.stock} &middot; Avail:{' '}
                           <span className={`font-medium ${overAllocated ? 'text-rose-600 dark:text-rose-400' : liveAvail === 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                             {liveAvail}
                           </span>
-                          <span className="text-gray-500 dark:text-gray-500"> / {stockInfo.foldAvailable}</span>
+                          <span className="text-gray-500 dark:text-gray-500"> / {baseAvail}</span>
                           {overAllocated && (
-                            <span className="ml-1 text-rose-600 dark:text-rose-400 font-bold">⚠ over by {usedAcrossModal - stockInfo.foldAvailable}</span>
+                            <span className="ml-1 text-rose-600 dark:text-rose-400 font-bold">⚠ over by {usedAcrossModal - baseAvail}</span>
                           )}
                         </p>
                       )}
