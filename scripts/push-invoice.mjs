@@ -339,10 +339,14 @@ async function main() {
   console.log('\n--- Parsed ---')
   console.log(JSON.stringify(result.parsed, null, 2).slice(0, 4000))
 
-  const created = Number(result.parsed?.created ?? result.parsed?.RESPONSE?.CREATED ?? 0)
-  const vchkey = result.parsed?.vchkey || result.parsed?.lastvchid || null
+  const importResult = result.parsed?.data?.import_result ?? result.parsed?.RESPONSE ?? result.parsed
+  const created = Number(importResult?.created ?? importResult?.CREATED ?? 0)
+  const errors = Number(importResult?.errors ?? 0)
+  const exceptions = Number(importResult?.exceptions ?? 0)
+  const vchkey = importResult?.vchkey ?? (importResult?.lastvchid != null ? String(importResult.lastvchid) : null)
+  const success = created > 0 && errors === 0 && exceptions === 0
 
-  if (created > 0) {
+  if (success) {
     await db.invPurchaseInvoice.update({
       where: { id },
       data: { status: 'PushedToTally', tallyPushedAt: new Date(), tallyVoucherGuid: vchkey, tallyResponse: result.parsed, lastPushError: null },
