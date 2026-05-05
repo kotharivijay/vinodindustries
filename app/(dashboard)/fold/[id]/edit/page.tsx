@@ -301,14 +301,89 @@ export default function EditFoldPage() {
     return { lotNo: '', than: '', partyId: null, qualityId: null, partyName: '', qualityName: '', maxStock: 0 }
   }
 
+  // Per-lot already-used count across a snapshot of batches (sum of
+  // `than` for the same lotNo across all batches). Used to cap auto-fill
+  // + manual edits so a single fold program never over-allocates a lot
+  // beyond its stock-side foldAvailable.
+  function lotUsedExcludingRow(
+    snapshot: BatchRow[],
+    lotNo: string,
+    excludeBatchIdx: number,
+    excludeLotIdx: number,
+  ): number {
+    let used = 0
+    const target = lotNo.trim().toLowerCase()
+    if (!target) return 0
+    snapshot.forEach((b, bi) => {
+      b.lots.forEach((l, li) => {
+        if (bi === excludeBatchIdx && li === excludeLotIdx) return
+        if (l.lotNo.trim().toLowerCase() === target) {
+          used += parseInt(l.than) || 0
+        }
+      })
+    })
+    return used
+  }
+
   function addBatch() {
-    setBatches(prev => [...prev, {
-      batchNo: prev.length + 1,
-      shadeId: null,
-      shadeName: '',
-      shadeDescription: '',
-      lots: [emptyLot()],
-    }])
+    setBatches(prev => {
+      const last = prev[prev.length - 1]
+      // First batch (or previous batch had no lots) → keep the original empty form
+      if (!last || last.lots.length === 0) {
+        return [...prev, {
+          batchNo: prev.length + 1,
+          shadeId: null,
+          shadeName: '',
+          shadeDescription: '',
+          lots: [emptyLot()],
+        }]
+      }
+
+      // Compute usage so far per lotNo (across ALL batches incl. last)
+      const usedByLot = new Map<string, number>()
+      for (const b of prev) {
+        for (const l of b.lots) {
+          const k = l.lotNo.trim().toLowerCase()
+          if (!k) continue
+          usedByLot.set(k, (usedByLot.get(k) || 0) + (parseInt(l.than) || 0))
+        }
+      }
+
+      // Carry forward each lot from the previous batch, but cap at remaining
+      // foldAvailable - already-used. Skip lots with 0 remaining.
+      const carriedLots: LotRow[] = []
+      for (const prevLot of last.lots) {
+        const lotInfo = lotLookup.get(prevLot.lotNo.trim().toLowerCase())
+        const desired = parseInt(prevLot.than) || 0
+        if (!lotInfo || desired <= 0) continue
+        const used = usedByLot.get(prevLot.lotNo.trim().toLowerCase()) || 0
+        // foldAvailable already excludes this fold program's persisted usage
+        // (per /api/fold/stock); subtract the modal's running total to get
+        // the headroom for the new batch.
+        const remaining = Math.max(0, lotInfo.foldAvailable - used)
+        if (remaining <= 0) continue
+        const carryThan = Math.min(desired, remaining)
+        carriedLots.push({
+          lotNo: prevLot.lotNo,
+          than: String(carryThan),
+          partyId: prevLot.partyId,
+          qualityId: prevLot.qualityId,
+          partyName: prevLot.partyName,
+          qualityName: prevLot.qualityName,
+          maxStock: lotInfo.foldAvailable,
+        })
+      }
+
+      return [...prev, {
+        batchNo: prev.length + 1,
+        // Carry the previous shade too, since the operator usually fills the
+        // same shade across consecutive batches; they can change it inline.
+        shadeId: last.shadeId,
+        shadeName: last.shadeName,
+        shadeDescription: last.shadeDescription,
+        lots: carriedLots.length > 0 ? carriedLots : [emptyLot()],
+      }]
+    })
   }
 
   function removeBatch(batchIdx: number) {
@@ -349,7 +424,25 @@ export default function EditFoldPage() {
             updated.partyName = lotInfo.party
             updated.qualityName = lotInfo.quality
             updated.maxStock = lotInfo.foldAvailable
-            if (!updated.than) updated.than = String(lotInfo.foldAvailable)
+            if (!updated.than) {
+              const used = lotUsedExcludingRow(prev, value as string, batchIdx, lotIdx)
+              const remaining = Math.max(0, lotInfo.foldAvailable - used)
+              updated.than = String(remaining)
+            }
+          }
+        }
+        // Clamp `than` to whatever's left of this lot's foldAvailable after
+        // accounting for usage in other rows of this modal. Prevents the
+        // operator from over-allocating beyond what's physically in stock.
+        if (field === 'than' && updated.lotNo) {
+          const lotInfo = lotLookup.get(updated.lotNo.trim().toLowerCase())
+          if (lotInfo) {
+            const used = lotUsedExcludingRow(prev, updated.lotNo, batchIdx, lotIdx)
+            const remaining = Math.max(0, lotInfo.foldAvailable - used)
+            const requested = parseInt(String(value)) || 0
+            if (requested > remaining) {
+              updated.than = String(remaining)
+            }
           }
         }
         return updated
