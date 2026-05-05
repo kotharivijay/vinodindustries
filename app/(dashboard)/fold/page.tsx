@@ -396,7 +396,7 @@ export default function FoldListPage() {
   }, [validations])
   const [search, setSearch] = useState('')
   const [showImport, setShowImport] = useState(false)
-  const [sortBy, setSortBy] = useState<'fold-asc' | 'fold-desc' | 'date-desc' | 'date-asc'>('fold-asc')
+  const [sortBy, setSortBy] = useState<'fold-asc' | 'fold-desc' | 'date-desc' | 'date-asc'>('fold-desc')
 
   // Sheet import state
   const [sheetImporting, setSheetImporting] = useState(false)
@@ -504,7 +504,7 @@ export default function FoldListPage() {
       {/* Sort */}
       <div className="flex gap-2 mb-4 flex-wrap items-center">
         <span className="text-[10px] text-gray-500 dark:text-gray-400">Sort:</span>
-        {([['fold-asc', 'Fold No ↑'], ['fold-desc', 'Fold No ↓'], ['date-desc', 'Date ↓'], ['date-asc', 'Date ↑']] as [typeof sortBy, string][]).map(([key, label]) => (
+        {([['fold-desc', 'Fold No ↓'], ['fold-asc', 'Fold No ↑'], ['date-desc', 'Date ↓'], ['date-asc', 'Date ↑']] as [typeof sortBy, string][]).map(([key, label]) => (
           <button key={key} onClick={() => setSortBy(key)}
             className={`text-xs px-3 py-1.5 rounded-full border transition ${
               sortBy === key
