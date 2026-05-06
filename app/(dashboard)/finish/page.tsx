@@ -1928,9 +1928,46 @@ export default function FinishStockPage() {
                     ? { label: 'Partial', cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800' }
                     : { label: 'Pending', cls: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600' }
 
-                  // Group lots by party → fold → dyeSlip
+                  // Build party → fold → list-of-FP-lots-rendered-here directly
+                  // from allocator output: each (slip, lot) tuple lands under its
+                  // FP-lot's party AND the allocator's foldNo for that slip.
+                  // This handles a single FP lot fed from multiple folds (common
+                  // for RE-PRO lots that span 5–7 dyeing programs) — the old
+                  // grouping pinned each lot to one foldNo and hid the rest.
                   const partyMap = new Map<string, Map<string, FinishLot[]>>()
+                  const lotByName = new Map<string, FinishLot>()
+                  for (const lot of entry.lots) lotByName.set(lot.lotNo, lot)
+                  const seenInAllocator = new Set<string>() // `${lotNo}|${foldNo}`
+                  for (const fg of (entry as any).allocations ?? []) {
+                    for (const slip of fg.slips ?? []) {
+                      for (const al of slip.lots ?? []) {
+                        const fpLot = lotByName.get(al.lotNo)
+                        if (!fpLot) continue
+                        const p = fpLot.party || 'Unknown'
+                        const f = fg.foldNo || 'No Fold'
+                        if (!partyMap.has(p)) partyMap.set(p, new Map())
+                        const fMap = partyMap.get(p)!
+                        if (!fMap.has(f)) {
+                          fMap.set(f, [])
+                          // Push the fpLot once per (party,fold) cell so the inner
+                          // lookup (lotById) finds it. Multiple slips inside the
+                          // same fold all reference the same fpLot for status.
+                          fMap.get(f)!.push(fpLot)
+                          seenInAllocator.add(`${al.lotNo}|${f}`)
+                        } else if (!seenInAllocator.has(`${al.lotNo}|${f}`)) {
+                          fMap.get(f)!.push(fpLot)
+                          seenInAllocator.add(`${al.lotNo}|${f}`)
+                        }
+                      }
+                    }
+                  }
+                  // Orphan FP lots — no dyeing slip claimed them (e.g. came in
+                  // via OB or startStage='finish'). Place them under their
+                  // FP-recorded (party, foldNo) so they remain visible.
+                  const allocLotNos = new Set<string>()
+                  for (const fm of partyMap.values()) for (const arr of fm.values()) for (const l of arr) allocLotNos.add(l.lotNo)
                   for (const lot of entry.lots) {
+                    if (allocLotNos.has(lot.lotNo)) continue
                     const p = lot.party || 'Unknown'
                     const f = lot.foldNo || 'No Fold'
                     if (!partyMap.has(p)) partyMap.set(p, new Map())
