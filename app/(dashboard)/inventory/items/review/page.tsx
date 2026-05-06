@@ -1,12 +1,16 @@
 'use client'
 
+import { useState } from 'react'
 import useSWR from 'swr'
 import BackButton from '../../../BackButton'
+import { EditNameModal, MergeIntoModal } from '../ItemFixModals'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 export default function ReviewQueuePage() {
   const { data, mutate, isLoading } = useSWR<any[]>('/api/inv/items/review-queue', fetcher)
+  const [editTarget, setEditTarget] = useState<any | null>(null)
+  const [mergeTarget, setMergeTarget] = useState<any | null>(null)
 
   async function approve(id: number) {
     await fetch(`/api/inv/items/${id}/approve`, { method: 'POST' })
@@ -51,11 +55,45 @@ export default function ReviewQueuePage() {
                   </div>
                 )}
               </div>
-              <button onClick={() => reject(it.id)} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 dark:border-red-800">Reject</button>
-              <button onClick={() => approve(it.id)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">Approve</button>
+              <button onClick={() => setEditTarget(it)}
+                className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 px-3 py-1.5 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-800">
+                Edit name
+              </button>
+              <button onClick={() => setMergeTarget(it)}
+                className="bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 px-3 py-1.5 rounded-lg text-xs font-semibold border border-purple-200 dark:border-purple-800">
+                Merge into…
+              </button>
+              <button onClick={() => reject(it.id)}
+                className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 px-3 py-1.5 rounded-lg text-xs font-semibold border border-red-200 dark:border-red-800">Reject</button>
+              <button onClick={() => approve(it.id)}
+                className="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-xs font-semibold">Approve</button>
             </div>
           ))}
         </div>
+      )}
+
+      {editTarget && (
+        <EditNameModal
+          item={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => { setEditTarget(null); mutate() }}
+        />
+      )}
+      {mergeTarget && (
+        <MergeIntoModal
+          source={mergeTarget}
+          onClose={() => setMergeTarget(null)}
+          onMerged={(c) => {
+            setMergeTarget(null)
+            mutate()
+            const parts = []
+            if (c.challanLines) parts.push(`${c.challanLines} challan line${c.challanLines === 1 ? '' : 's'}`)
+            if (c.invoiceLines) parts.push(`${c.invoiceLines} invoice line${c.invoiceLines === 1 ? '' : 's'}`)
+            if (c.poLines) parts.push(`${c.poLines} PO line${c.poLines === 1 ? '' : 's'}`)
+            if (c.stockMovements) parts.push(`${c.stockMovements} stock movement${c.stockMovements === 1 ? '' : 's'}`)
+            alert('Merged. Repointed: ' + (parts.join(', ') || 'nothing — no past references'))
+          }}
+        />
       )}
     </div>
   )

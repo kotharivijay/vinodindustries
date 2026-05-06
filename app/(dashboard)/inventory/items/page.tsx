@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useMemo, useRef, useEffect } from 'react'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
 import { ITEM_USAGE_TAG_GROUPS, ITEM_USAGE_TAGS, labelForUsageTag } from '@/lib/inv/item-usage-tags'
+import { EditNameModal, MergeIntoModal } from './ItemFixModals'
 
 /** Title-case + collapse internal whitespace, e.g. "  reactive  yellow 145 " → "Reactive Yellow 145". */
 function normalizeDisplayName(s: string): string {
@@ -43,6 +44,9 @@ export default function ItemsPage() {
   const [saving, setSaving] = useState(false)
   const [tagFilter, setTagFilter] = useState<string>('') // '' = all
   const [editTagsForId, setEditTagsForId] = useState<number | null>(null)
+  const [editNameTarget, setEditNameTarget] = useState<Item | null>(null)
+  const [mergeSource, setMergeSource] = useState<Item | null>(null)
+  const { mutate: globalMutate } = useSWRConfig()
 
   // Searchable alias combobox state
   const [aliasQuery, setAliasQuery] = useState('')
@@ -192,6 +196,7 @@ export default function ItemsPage() {
                 <th className="px-3 py-2 text-center">Track</th>
                 <th className="px-3 py-2 text-left">Used at</th>
                 <th className="px-3 py-2 text-left">Status</th>
+                <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -221,6 +226,12 @@ export default function ItemsPage() {
                     {it.reviewStatus === 'pending_review' && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Pending</span>}
                     {it.reviewStatus === 'rejected' && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">Rejected</span>}
                   </td>
+                  <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                    <button onClick={() => setEditNameTarget(it)}
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline mr-2">Rename</button>
+                    <button onClick={() => setMergeSource(it)}
+                      className="text-[10px] text-purple-600 dark:text-purple-400 hover:underline">Merge</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -240,6 +251,32 @@ export default function ItemsPage() {
           />
         )
       })()}
+
+      {editNameTarget && (
+        <EditNameModal
+          item={editNameTarget}
+          onClose={() => setEditNameTarget(null)}
+          onSaved={() => { setEditNameTarget(null); mutate() }}
+        />
+      )}
+      {mergeSource && (
+        <MergeIntoModal
+          source={mergeSource}
+          onClose={() => setMergeSource(null)}
+          onMerged={(c) => {
+            setMergeSource(null)
+            mutate()
+            // Other pages (challans/invoices) cache item lookups via SWR — bust them.
+            globalMutate(() => true, undefined, { revalidate: true })
+            const parts: string[] = []
+            if (c?.challanLines) parts.push(`${c.challanLines} challan line${c.challanLines === 1 ? '' : 's'}`)
+            if (c?.invoiceLines) parts.push(`${c.invoiceLines} invoice line${c.invoiceLines === 1 ? '' : 's'}`)
+            if (c?.poLines) parts.push(`${c.poLines} PO line${c.poLines === 1 ? '' : 's'}`)
+            if (c?.stockMovements) parts.push(`${c.stockMovements} stock movement${c.stockMovements === 1 ? '' : 's'}`)
+            alert('Merged. Repointed: ' + (parts.join(', ') || 'nothing — no past references'))
+          }}
+        />
+      )}
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setShowCreate(false); resetForm() }}>

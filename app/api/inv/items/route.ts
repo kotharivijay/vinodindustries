@@ -12,10 +12,15 @@ export async function GET(req: NextRequest) {
 
   const q = (req.nextUrl.searchParams.get('q') || '').trim().toLowerCase()
   const reviewStatus = req.nextUrl.searchParams.get('reviewStatus') // 'pending_review' / 'rejected' / 'approved'
+  const aliasIdRaw = req.nextUrl.searchParams.get('aliasId')
 
   const where: any = { active: true }
   if (q) where.displayName = { contains: q, mode: 'insensitive' }
   if (reviewStatus) where.reviewStatus = reviewStatus
+  if (aliasIdRaw) {
+    const aliasId = Number(aliasIdRaw)
+    if (Number.isFinite(aliasId)) where.aliasId = aliasId
+  }
 
   const items = await db.invItem.findMany({
     where,
