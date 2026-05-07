@@ -172,7 +172,7 @@ export function greyEntryToSheetRow(entry: {
   const dateStr = `${day}/${month}/${year}`
 
   return [
-    entry.sn ?? entry.id,          // A: SN
+    entry.sn ?? '',                 // A: SN (blank when not set; never the row id)
     month,                          // B: Month
     dateStr,                        // C: Date
     entry.challanNo,                // D: Challan No

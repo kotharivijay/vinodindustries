@@ -405,8 +405,13 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         <section className="mb-6">
           <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">📦 Grey Inward ({greyEntries.length})</h2>
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-50">
-            {greyEntries.map(e => (
+            {greyEntries.map((e: any) => (
               <div key={e.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                {e.sn != null && (
+                  <span className="text-gray-400 text-xs font-medium">
+                    SN {e.sn < 0 ? `O${Math.abs(e.sn)}` : e.sn}
+                  </span>
+                )}
                 <span className="text-gray-500 text-xs">{fmt(e.date)}</span>
                 <span className="font-medium text-gray-800">{e.party.name}</span>
                 <span className="text-gray-500">{e.quality.name}</span>

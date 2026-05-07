@@ -140,9 +140,20 @@ export async function POST(req: NextRequest) {
 
   const data = await req.json()
 
+  // SN: if the operator left it blank, allocate max(sn)+1 instead of leaving
+  // the column null (otherwise downstream displays fall back to the row id,
+  // which is in the thousands and looks like a runaway counter).
+  let resolvedSn: number | undefined
+  if (data.sn != null && data.sn !== '') {
+    resolvedSn = parseInt(data.sn)
+  } else {
+    const top = await prisma.greyEntry.aggregate({ where: { sn: { gt: 0 } }, _max: { sn: true } })
+    resolvedSn = (top._max.sn ?? 0) + 1
+  }
+
   const entry = await prisma.greyEntry.create({
     data: {
-      sn: data.sn ? parseInt(data.sn) : undefined,
+      sn: resolvedSn,
       date: new Date(data.date),
       challanNo: parseInt(data.challanNo),
       partyId: parseInt(data.partyId),
