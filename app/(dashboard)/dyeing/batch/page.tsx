@@ -92,7 +92,8 @@ interface SavedEntry {
   machine?: { name: string } | null
   operator?: { name: string } | null
   chemicals: { name: string; quantity: number | null; unit: string; cost: number | null }[]
-  lots: { lotNo: string; than: number; marka?: string | null }[]
+  lots: { lotNo: string; than: number; marka?: string | null; party?: string | null; quality?: string | null }[]
+  partyNames?: string[]
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -1124,7 +1125,7 @@ export default function BatchDyeingPage() {
                         <Link href={`/dyeing/${entry.id}`} className="text-sm font-bold text-purple-600 dark:text-purple-400 hover:underline">
                           Slip {entry.slipNo}
                         </Link>
-                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                        <span className="text-xs text-gray-500 dark:text-gray-200">
                           {new Date(entry.date).toLocaleDateString('en-IN')}
                         </span>
                       </div>
@@ -1138,7 +1139,15 @@ export default function BatchDyeingPage() {
                       </div>
                     </div>
 
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5 flex-wrap">
+                    {/* Party name(s) — derived from each lot's grey/OB origin
+                        so mixed-party slips (rare) all show. */}
+                    {(entry.partyNames?.length ?? 0) > 0 && (
+                      <div className="text-xs font-medium text-gray-700 dark:text-gray-100 mb-1">
+                        👤 {entry.partyNames!.join(', ')}
+                      </div>
+                    )}
+
+                    <div className="text-xs text-gray-600 dark:text-gray-200 mb-1.5 flex items-center gap-1.5 flex-wrap">
                       {entry.isPcJob && (
                         <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">PC</span>
                       )}
@@ -1148,13 +1157,13 @@ export default function BatchDyeingPage() {
                           🏷️ {entry.marka}
                         </span>
                       )}
-                      {entry.machine && <span>· {entry.machine.name}</span>}
-                      {entry.operator && <span>· {entry.operator.name}</span>}
+                      {entry.machine && <span className="text-gray-500 dark:text-gray-400">· {entry.machine.name}</span>}
+                      {entry.operator && <span className="text-gray-500 dark:text-gray-400">· {entry.operator.name}</span>}
                     </div>
 
                     <div className="flex flex-wrap gap-1.5 mb-1.5">
                       {lots.map((l: any, li: number) => (
-                        <span key={li} className="text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 px-2 py-0.5 rounded-full">
+                        <span key={li} className="text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-100 px-2 py-0.5 rounded-full">
                           {l.lotNo}{l.marka ? ` [${l.marka}]` : ''} ({l.than})
                         </span>
                       ))}

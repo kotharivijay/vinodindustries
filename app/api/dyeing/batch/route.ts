@@ -42,14 +42,17 @@ export async function GET() {
     const enriched = entries.map((e: any) => {
       const lots = (e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]).map((l: any) => {
         const info = lotInfoMap.get(l.lotNo.toLowerCase().trim())
-        return { ...l, marka: info?.marka || null }
+        return { ...l, marka: info?.marka || null, party: info?.party || null, quality: info?.quality || null }
       })
       const isPali = lots.some((l: any) => {
         const info = lotInfoMap.get(l.lotNo.toLowerCase().trim())
         return info?.party && paliNames.has(info.party.toLowerCase().trim())
       })
       const lotMarka = lots.find((l: any) => l.marka)?.marka || null
-      return { ...e, lots, isPcJob: e.isPcJob || isPali, marka: e.marka || lotMarka }
+      // Distinct party names across this slip's lots — usually one, sometimes
+      // two for mixed-party batches.
+      const partyNames = [...new Set(lots.map((l: any) => l.party).filter(Boolean))]
+      return { ...e, lots, isPcJob: e.isPcJob || isPali, marka: e.marka || lotMarka, partyNames }
     })
 
     return NextResponse.json(enriched)
