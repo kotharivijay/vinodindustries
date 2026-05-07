@@ -12,6 +12,24 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 const STATUSES = ['Draft', 'PendingInvoice', 'Invoiced', 'Returned', 'CashPaid', 'Cancelled']
 const TERMINAL_STATUSES = new Set(['Invoiced', 'Returned', 'CashPaid', 'Cancelled'])
 const ACTIONS_PILL_KEY = 'ksi:invChallans:actionsOn'
+const SORT_KEY = 'ksi:invChallans:sortBy'
+
+type SortBy =
+  | 'challan-desc' | 'challan-asc'
+  | 'date-desc' | 'date-asc'
+  | 'party-asc' | 'party-desc'
+  | 'item-asc' | 'item-desc'
+
+const SORT_OPTIONS: [SortBy, string][] = [
+  ['challan-desc', 'Challan ↓'],
+  ['challan-asc', 'Challan ↑'],
+  ['date-desc', 'Date ↓'],
+  ['date-asc', 'Date ↑'],
+  ['party-asc', 'Party A→Z'],
+  ['party-desc', 'Party Z→A'],
+  ['item-asc', 'Item A→Z'],
+  ['item-desc', 'Item Z→A'],
+]
 
 interface Item { id: number; displayName: string; alias: { id: number; tallyStockItem: string; gstRate: string | number } }
 interface Line {
@@ -79,12 +97,15 @@ export default function ChallansListPage() {
   // Actions pill — when ON, a ⋯ menu appears on each card with Return /
   // Cash Paid / Cancel. OFF by default so the list stays read-friendly.
   const [actionsOn, setActionsOn] = useState(false)
+  const [sortBy, setSortBy] = useState<SortBy>('challan-desc')
   useEffect(() => {
     try {
       const saved = localStorage.getItem('inv-challans-hide-invoiced')
       if (saved !== null) setHideInvoiced(saved === 'true')
       const savedActions = localStorage.getItem(ACTIONS_PILL_KEY)
       if (savedActions !== null) setActionsOn(savedActions === 'true')
+      const savedSort = localStorage.getItem(SORT_KEY)
+      if (savedSort && SORT_OPTIONS.some(([k]) => k === savedSort)) setSortBy(savedSort as SortBy)
     } catch {}
   }, [])
   useEffect(() => {
@@ -93,11 +114,36 @@ export default function ChallansListPage() {
   useEffect(() => {
     try { localStorage.setItem(ACTIONS_PILL_KEY, String(actionsOn)) } catch {}
   }, [actionsOn])
+  useEffect(() => {
+    try { localStorage.setItem(SORT_KEY, sortBy) } catch {}
+  }, [sortBy])
 
-  const visibleChallans = useMemo(
-    () => hideInvoiced ? challans.filter(c => c.status !== 'Invoiced') : challans,
-    [challans, hideInvoiced],
-  )
+  const visibleChallans = useMemo(() => {
+    const filtered = hideInvoiced ? challans.filter(c => c.status !== 'Invoiced') : challans
+    // Numeric challanNo when possible, else lexicographic. First-line item name
+    // for the item sort — the card already shows item summary so this matches
+    // what the operator sees at a glance.
+    const challanKey = (c: Challan) => {
+      const n = parseInt(c.challanNo)
+      return Number.isFinite(n) ? n : 0
+    }
+    const partyKey = (c: Challan) => (c.party.displayName || '').toLowerCase()
+    const itemKey = (c: Challan) => (c.lines[0]?.item?.displayName || '').toLowerCase()
+    const dateKey = (c: Challan) => new Date(c.challanDate).getTime()
+
+    const sorted = [...filtered]
+    switch (sortBy) {
+      case 'challan-desc': sorted.sort((a, b) => challanKey(b) - challanKey(a) || b.id - a.id); break
+      case 'challan-asc':  sorted.sort((a, b) => challanKey(a) - challanKey(b) || a.id - b.id); break
+      case 'date-desc':    sorted.sort((a, b) => dateKey(b) - dateKey(a) || b.id - a.id); break
+      case 'date-asc':     sorted.sort((a, b) => dateKey(a) - dateKey(b) || a.id - b.id); break
+      case 'party-asc':    sorted.sort((a, b) => partyKey(a).localeCompare(partyKey(b)) || dateKey(b) - dateKey(a)); break
+      case 'party-desc':   sorted.sort((a, b) => partyKey(b).localeCompare(partyKey(a)) || dateKey(b) - dateKey(a)); break
+      case 'item-asc':     sorted.sort((a, b) => itemKey(a).localeCompare(itemKey(b)) || dateKey(b) - dateKey(a)); break
+      case 'item-desc':    sorted.sort((a, b) => itemKey(b).localeCompare(itemKey(a)) || dateKey(b) - dateKey(a)); break
+    }
+    return sorted
+  }, [challans, hideInvoiced, sortBy])
   const invoicedCount = useMemo(
     () => challans.filter(c => c.status === 'Invoiced').length,
     [challans],
@@ -202,6 +248,21 @@ export default function ChallansListPage() {
         <input type="search" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search challan, party, item, alias, tag, invoice no…"
           className="flex-1 min-w-[260px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs" />
+      </div>
+
+      {/* Sort row — default Challan ↓ */}
+      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+        <span className="text-[10px] text-gray-500 dark:text-gray-400 mr-1">Sort:</span>
+        {SORT_OPTIONS.map(([key, label]) => (
+          <button key={key} onClick={() => setSortBy(key)}
+            className={`text-[11px] px-2.5 py-1 rounded-full border transition ${
+              sortBy === key
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+            }`}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {isLoading ? <div className="p-12 text-center text-gray-400">Loading…</div>
@@ -590,7 +651,9 @@ function ChallanCard(props: {
             </button>
           </div>
 
-          {/* Items summary — name + qty/unit per row, wraps cleanly on phones */}
+          {/* Items summary — name + qty/unit + rate (if available). Rate is
+              shown only when set; rateless lines (still being filled in)
+              just hide the chip so the line doesn't read "@ ₹0". */}
           {c.lines.length > 0 && (
             <ul className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 space-y-0.5">
               {c.lines.map(l => (
@@ -600,6 +663,9 @@ function ChallanCard(props: {
                   </span>
                   <span className="shrink-0 font-medium text-gray-600 dark:text-gray-300">
                     {Number(l.qty)} <span className="text-gray-400 dark:text-gray-500">{l.unit}</span>
+                    {l.rate != null && l.rate !== '' && Number(l.rate) > 0 && (
+                      <span className="text-gray-400 dark:text-gray-500 ml-1">@ ₹{fmtMoney(l.rate)}</span>
+                    )}
                   </span>
                 </li>
               ))}
