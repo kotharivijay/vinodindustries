@@ -11,9 +11,16 @@ interface Props {
   onAddNew: (name: string) => Promise<Option>
   placeholder?: string
   disabled?: boolean
+  /**
+   * If true and the operator types a name not in the list, leaving the field
+   * (blur / Tab) auto-creates the master and selects it instead of
+   * requiring a click on the "+ Add" row. Useful for free-form masters like
+   * weavers where every new supplier is a legitimate addition.
+   */
+  autoCreateOnBlur?: boolean
 }
 
-export default function ComboSelect({ options, value, onChange, onAddNew, placeholder = 'Select...', disabled }: Props) {
+export default function ComboSelect({ options, value, onChange, onAddNew, placeholder = 'Select...', disabled, autoCreateOnBlur }: Props) {
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -43,6 +50,24 @@ export default function ComboSelect({ options, value, onChange, onAddNew, placeh
         value={open ? search : (selected?.name ?? '')}
         onChange={(e) => { setSearch(e.target.value); setOpen(true) }}
         onFocus={() => { setSearch(''); setOpen(true) }}
+        onBlur={async () => {
+          // Leave a 150ms grace so a click on a dropdown row registers BEFORE
+          // we react to the blur (otherwise mouse-down → blur → auto-create
+          // races the click and creates a duplicate).
+          if (!autoCreateOnBlur) return
+          const trimmed = search.trim()
+          if (!trimmed) return
+          if (!canAddNew) return
+          setLoading(true)
+          try {
+            const item = await onAddNew(trimmed)
+            onChange(item.id)
+            setSearch('')
+            setOpen(false)
+          } catch {
+            // Silent: surfaces in the parent's error path on save if it matters.
+          } finally { setLoading(false) }
+        }}
         placeholder={placeholder}
         disabled={disabled}
         autoComplete="off"

@@ -151,7 +151,9 @@ export default function GreyEditForm({ id }: { id: string }) {
           </Field>
 
           <Field label="Grey Weaver">
-            <ComboSelect options={masters.weavers} value={form.weaverId} onChange={id => set('weaverId', id)} onAddNew={n => addMaster('weavers', n)} placeholder="Select weaver..." />
+            <ComboSelect options={masters.weavers} value={form.weaverId} onChange={id => set('weaverId', id)}
+              onAddNew={n => addMaster('weavers', n)} autoCreateOnBlur
+              placeholder="Type weaver name (auto-creates if new)" />
           </Field>
           <Field label="Viver Name-Bill" span={2}>
             <input type="text" className={inp} value={form.viverNameBill} onChange={e => set('viverNameBill', e.target.value)} />
