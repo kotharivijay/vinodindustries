@@ -107,16 +107,25 @@ function PreviewSlip({ s }: { s: PrintSettings }) {
   )
 }
 
+type Tab = 'print' | 'service'
+const TAB_KEY = 'settings-active-tab'
+
 export default function SettingsPage() {
   const router = useRouter()
   const [s, setS] = useState<PrintSettings>(DEFAULTS)
   const [saved, setSaved] = useState(false)
   const [aiBubbleHidden, setAiBubbleHidden] = useState(false)
+  const [tab, setTab] = useState<Tab>('print')
 
   useEffect(() => {
     setS(loadSettings())
     setAiBubbleHidden(localStorage.getItem('ai-bubble-hidden') === 'true')
+    const savedTab = localStorage.getItem(TAB_KEY)
+    if (savedTab === 'print' || savedTab === 'service') setTab(savedTab)
   }, [])
+  useEffect(() => {
+    try { localStorage.setItem(TAB_KEY, tab) } catch {}
+  }, [tab])
 
   function update<K extends keyof PrintSettings>(key: K, value: PrintSettings[K]) {
     setS(prev => ({ ...prev, [key]: value }))
@@ -151,6 +160,23 @@ export default function SettingsPage() {
         </button>
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Settings</h1>
       </div>
+
+      {/* Tab nav */}
+      <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700">
+        {([['print', 'Print'], ['service', 'Service']] as [Tab, string][]).map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition ${
+              tab === k
+                ? 'border-purple-600 text-purple-700 dark:text-purple-300'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'service' && <ServiceTab />}
+      {tab !== 'service' && (<>
 
       {/* Font Size */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5 mb-4">
@@ -245,6 +271,170 @@ export default function SettingsPage() {
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Thermal Print Preview</h2>
         <PreviewSlip s={s} />
       </div>
+
+      </>)}
+    </div>
+  )
+}
+
+// ─── Service Tab ─────────────────────────────────────────────────────────
+// Operator-triggered maintenance tasks. First job: clean Party master rows
+// that aren't in TallyLedger and aren't referenced anywhere.
+interface OrphanRow { id: number; name: string; tag: string | null }
+interface LinkedRow { id: number; name: string; tag: string | null; total: number; grey: number; despatch: number; fold: number; finishRecipe: number }
+interface CleanupPreview {
+  counts: { total: number; inLedger: number; linked: number; orphans: number }
+  orphans: OrphanRow[]
+  linked: LinkedRow[]
+}
+
+function ServiceTab() {
+  const [preview, setPreview] = useState<CleanupPreview | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState<{ deleted: number; skipped: number } | null>(null)
+  const [showLinked, setShowLinked] = useState(false)
+
+  async function load() {
+    setLoading(true); setError(''); setDone(null)
+    try {
+      const r = await fetch('/api/maintenance/parties', { cache: 'no-store' })
+      const data = await r.json()
+      if (!r.ok) { setError(data.error || 'Failed to load'); return }
+      setPreview(data)
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setLoading(false) }
+  }
+
+  async function deleteOrphans() {
+    if (!preview || preview.orphans.length === 0) return
+    if (!confirm(`Delete ${preview.orphans.length} orphan parties? This is irreversible.`)) return
+    setDeleting(true); setError('')
+    try {
+      const r = await fetch('/api/maintenance/parties', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: preview.orphans.map(o => o.id) }),
+      })
+      const data = await r.json()
+      if (!r.ok) { setError(data.error || 'Delete failed'); return }
+      setDone({ deleted: data.deleted, skipped: data.skipped?.length ?? 0 })
+      await load()
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setDeleting(false) }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Party Master Cleanup</h2>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">
+          Removes Party rows that aren&apos;t in the TallyLedger master AND have zero references in
+          any entry (grey, despatch, fold, finish recipes). Safe — the same gate is re-checked
+          server-side at delete time.
+        </p>
+
+        {!preview && !loading && (
+          <button onClick={load}
+            className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold">
+            Scan Party Master
+          </button>
+        )}
+
+        {loading && <div className="text-sm text-gray-400">Scanning…</div>}
+
+        {preview && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+              <Stat label="Total" value={preview.counts.total} />
+              <Stat label="In Ledger" value={preview.counts.inLedger} tone="green" />
+              <Stat label="Typo (linked)" value={preview.counts.linked} tone={preview.counts.linked ? 'amber' : 'green'} />
+              <Stat label="Orphans" value={preview.counts.orphans} tone={preview.counts.orphans ? 'rose' : 'green'} />
+            </div>
+
+            {preview.counts.linked > 0 && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                    {preview.counts.linked} Party row{preview.counts.linked === 1 ? '' : 's'} not in TallyLedger but referenced — needs manual merge:
+                  </p>
+                  <button onClick={() => setShowLinked(v => !v)}
+                    className="text-[11px] text-amber-700 dark:text-amber-300 underline">
+                    {showLinked ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                {showLinked && (
+                  <ul className="text-[11px] text-amber-700 dark:text-amber-300 space-y-0.5 max-h-40 overflow-y-auto">
+                    {preview.linked.map(p => (
+                      <li key={p.id}>
+                        <span className="font-medium">{p.name}</span>
+                        {p.tag && <span className="opacity-70"> · {p.tag}</span>}
+                        <span className="opacity-60"> — refs: {p.total}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
+                Orphans ({preview.orphans.length}) — safe to delete:
+              </p>
+              {preview.orphans.length === 0 ? (
+                <p className="text-[11px] text-gray-400">Nothing to clean. ✅</p>
+              ) : (
+                <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-0.5 max-h-48 overflow-y-auto bg-gray-50 dark:bg-gray-900/40 rounded-lg p-2">
+                  {preview.orphans.map(p => (
+                    <li key={p.id}>
+                      <span className="font-mono text-gray-400">[{p.id}]</span> {p.name}
+                      {p.tag && <span className="opacity-70"> · {p.tag}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={load} disabled={loading}
+                className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm">
+                Refresh
+              </button>
+              {preview.orphans.length > 0 && (
+                <button onClick={deleteOrphans} disabled={deleting}
+                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold disabled:opacity-50">
+                  {deleting ? 'Deleting…' : `Delete ${preview.orphans.length} orphan${preview.orphans.length === 1 ? '' : 's'}`}
+                </button>
+              )}
+            </div>
+
+            {done && (
+              <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                ✅ Deleted {done.deleted}. {done.skipped > 0 && `Skipped ${done.skipped} (became referenced).`}
+              </p>
+            )}
+            {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Stat({ label, value, tone }: { label: string; value: number; tone?: 'green' | 'amber' | 'rose' }) {
+  const cls = tone === 'green'
+    ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20'
+    : tone === 'amber'
+      ? 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20'
+      : tone === 'rose'
+        ? 'text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20'
+        : 'text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-gray-900/40'
+  return (
+    <div className={`rounded-lg p-2 ${cls}`}>
+      <div className="text-[10px] uppercase tracking-wide opacity-70">{label}</div>
+      <div className="text-lg font-bold">{value}</div>
     </div>
   )
 }
