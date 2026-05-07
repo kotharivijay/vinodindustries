@@ -599,11 +599,16 @@ export default function FoldListPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map(p => {
-            // Distinct party names across this fold program's lots — usually
-            // one, sometimes multiple for mixed-source programs. Quality
-            // names follow the same pattern.
-            const partyNames = [...new Set(p.batches.flatMap(b => b.lots).map(l => l.party?.name).filter(Boolean) as string[])]
-            const qualityNames = [...new Set(p.batches.flatMap(b => b.lots).map(l => l.quality?.name).filter(Boolean) as string[])]
+            // Distinct party + quality names across this fold program's lots.
+            // RE-PRO-* lots come from re-processing flow and have no Party
+            // FK; surface them as "Re-Process" so the card never reads as
+            // an unknown / missing party.
+            const allLots = p.batches.flatMap(b => b.lots)
+            const partyNames = [...new Set(
+              allLots.map(l => l.party?.name || (l.lotNo?.toUpperCase().startsWith('RE-PRO-') ? 'Re-Process' : null))
+                .filter(Boolean) as string[]
+            )]
+            const qualityNames = [...new Set(allLots.map(l => l.quality?.name).filter(Boolean) as string[])]
             return (
             <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
               <div className="px-4 py-3 flex items-center gap-3">
@@ -620,16 +625,6 @@ export default function FoldListPage() {
                       {p.status}
                     </span>
                   </div>
-                  {(partyNames.length > 0 || qualityNames.length > 0) && (
-                    <p className="text-xs text-gray-700 dark:text-gray-200 font-medium mb-0.5 truncate">
-                      {partyNames.length > 0 && <span>👤 {partyNames.join(', ')}</span>}
-                      {qualityNames.length > 0 && (
-                        <span className="text-gray-500 dark:text-gray-400 font-normal">
-                          {partyNames.length > 0 ? ' · ' : ''}{qualityNames.join(', ')}
-                        </span>
-                      )}
-                    </p>
-                  )}
                   <p className="text-xs text-gray-500 dark:text-gray-300">
                     {new Date(p.date).toLocaleDateString('en-IN')} &middot; {p.batches.length} batch{p.batches.length !== 1 ? 'es' : ''} &middot; {p.batches.reduce((s, b) => s + b.lots.length, 0)} lots
                     {(() => {
@@ -664,6 +659,20 @@ export default function FoldListPage() {
                   </button>
                 </div>
               </div>
+
+              {/* Party + quality on a dedicated last row — full width, wraps on
+                  long names instead of truncating, never collides with the
+                  total-than column on the right. */}
+              {(partyNames.length > 0 || qualityNames.length > 0) && (
+                <div className="px-4 pb-2 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+                  {partyNames.length > 0 && <span>👤 {partyNames.join(', ')}</span>}
+                  {qualityNames.length > 0 && (
+                    <span className="text-gray-500 dark:text-gray-400 font-normal">
+                      {partyNames.length > 0 ? ' · ' : ''}{qualityNames.join(', ')}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             )
           })}
