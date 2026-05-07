@@ -598,7 +598,13 @@ export default function FoldListPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(p => (
+          {filtered.map(p => {
+            // Distinct party names across this fold program's lots — usually
+            // one, sometimes multiple for mixed-source programs. Quality
+            // names follow the same pattern.
+            const partyNames = [...new Set(p.batches.flatMap(b => b.lots).map(l => l.party?.name).filter(Boolean) as string[])]
+            const qualityNames = [...new Set(p.batches.flatMap(b => b.lots).map(l => l.quality?.name).filter(Boolean) as string[])]
+            return (
             <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
               <div className="px-4 py-3 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
@@ -614,7 +620,17 @@ export default function FoldListPage() {
                       {p.status}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                  {(partyNames.length > 0 || qualityNames.length > 0) && (
+                    <p className="text-xs text-gray-700 dark:text-gray-200 font-medium mb-0.5 truncate">
+                      {partyNames.length > 0 && <span>👤 {partyNames.join(', ')}</span>}
+                      {qualityNames.length > 0 && (
+                        <span className="text-gray-500 dark:text-gray-400 font-normal">
+                          {partyNames.length > 0 ? ' · ' : ''}{qualityNames.join(', ')}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-300">
                     {new Date(p.date).toLocaleDateString('en-IN')} &middot; {p.batches.length} batch{p.batches.length !== 1 ? 'es' : ''} &middot; {p.batches.reduce((s, b) => s + b.lots.length, 0)} lots
                     {(() => {
                       const v = validationMap.get(p.id)
@@ -649,7 +665,8 @@ export default function FoldListPage() {
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
