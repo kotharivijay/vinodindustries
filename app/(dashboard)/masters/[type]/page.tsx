@@ -13,7 +13,7 @@ const LABELS: Record<string, string> = {
 
 const PREDEFINED_TAGS = ['Pali PC Job', 'Job Party', 'Local', 'Direct', 'Commission']
 
-interface Item { id: number; name: string; tag?: string | null; createdAt: string }
+interface Item { id: number; name: string; tag?: string | null; lotPrefix?: string | null; createdAt: string }
 interface Suggestion { id: number; name: string; score: number }
 
 export default function MasterPage() {
@@ -341,6 +341,9 @@ export default function MasterPage() {
                     />
                   )}
                   <div className="flex-1 min-w-0">
+                    {isParties && <PartyPrefixesEditor item={item}
+                      onSaved={(updated) => setItems(prev => prev.map(x => x.id === item.id ? { ...x, lotPrefixes: updated.lotPrefixes } : x))}
+                    />}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm text-gray-800 dark:text-gray-200">{item.name}</span>
                       {/* Tag badge */}
@@ -597,6 +600,91 @@ export default function MasterPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Lot-Prefix chips editor ─────────────────────────────────────────────
+// Renders the party's lotPrefixes as removable chips plus a small add
+// input. Each save round-trips PATCH /api/masters/parties so the array on
+// disk stays canonical. Operator can pick any chip in the Grey-Inward form
+// for auto-fill — first chip is the default suggestion.
+function PartyPrefixesEditor({ item, onSaved }: {
+  item: { id: number; lotPrefixes?: string[] | null }
+  onSaved: (updated: { lotPrefixes: string[] }) => void
+}) {
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const prefixes = item.lotPrefixes || []
+
+  async function commit(next: string[]) {
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/masters/parties', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, lotPrefixes: next }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || 'Save failed'); return }
+      onSaved({ lotPrefixes: data.lotPrefixes || [] })
+    } finally { setSaving(false) }
+  }
+
+  async function add() {
+    const v = draft.trim().toUpperCase()
+    if (!v) { setAdding(false); setDraft(''); return }
+    if (!/^[A-Z]{1,8}$/.test(v)) { setError('1–8 letters (A–Z)'); return }
+    if (prefixes.includes(v)) { setAdding(false); setDraft(''); return }
+    await commit([...prefixes, v])
+    setDraft(''); setAdding(false)
+  }
+  async function remove(p: string) {
+    await commit(prefixes.filter(x => x !== p))
+  }
+  async function makeFirst(p: string) {
+    if (prefixes[0] === p) return
+    await commit([p, ...prefixes.filter(x => x !== p)])
+  }
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap mb-1">
+      <span className="text-[9px] uppercase tracking-wide text-gray-400">Lot prefix</span>
+      {prefixes.map((p, i) => (
+        <span key={p}
+          className={`inline-flex items-center gap-0.5 text-[10px] font-mono font-semibold rounded border px-1.5 py-0.5 ${
+            i === 0
+              ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700'
+              : 'bg-gray-50 dark:bg-gray-900/50 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+          }`}>
+          {i !== 0 && (
+            <button title="Make default" onClick={() => makeFirst(p)}
+              className="text-gray-400 hover:text-indigo-500">★</button>
+          )}
+          {p}
+          <button onClick={() => remove(p)} disabled={saving}
+            className="text-gray-400 hover:text-rose-500 disabled:opacity-50">✕</button>
+        </span>
+      ))}
+      {adding ? (
+        <span className="inline-flex items-center gap-1">
+          <input value={draft} onChange={e => setDraft(e.target.value.toUpperCase())}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } if (e.key === 'Escape') { setAdding(false); setDraft(''); setError('') } }}
+            placeholder="ABC" maxLength={8} autoFocus
+            className="w-16 text-[10px] font-mono font-semibold px-1.5 py-0.5 border border-indigo-300 dark:border-indigo-700 rounded bg-white dark:bg-gray-700" />
+          <button onClick={add} disabled={saving}
+            className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">Add</button>
+          <button onClick={() => { setAdding(false); setDraft(''); setError('') }}
+            className="text-[10px] text-gray-400">✕</button>
+        </span>
+      ) : (
+        <button onClick={() => setAdding(true)}
+          className="text-[10px] text-indigo-500 dark:text-indigo-400 hover:underline">
+          {prefixes.length === 0 ? '+ add prefix' : '+ add'}
+        </button>
+      )}
+      {error && <span className="text-[10px] text-rose-500">{error}</span>}
     </div>
   )
 }

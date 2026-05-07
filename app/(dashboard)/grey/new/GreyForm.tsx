@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ComboSelect from '@/components/ComboSelect'
 
-interface Option { id: number; name: string; tag?: string | null }
+interface Option { id: number; name: string; tag?: string | null; lotPrefixes?: string[] | null }
 interface Masters { parties: Option[]; qualities: Option[]; weavers: Option[]; transports: Option[] }
 
 export default function GreyForm() {
@@ -42,6 +42,48 @@ export default function GreyForm() {
       if (d?.next) setForm(prev => prev.sn ? prev : { ...prev, sn: String(d.next) })
     }).catch(() => {})
   }, [])
+
+  // Auto-fill A-Lot No from selected party's prefix + SN. The operator can
+  // pick any of the party's saved prefixes (PS / PSRG / PSPC) via the chip
+  // row, or override the field entirely (then auto-fill stops). State:
+  //   selectedPrefix: which chip is active (defaults to the party's first
+  //                   prefix when party changes).
+  //   lotNoTouched:   true once the operator types something that isn't the
+  //                   current auto-template — we stop overwriting their work.
+  const [selectedPrefix, setSelectedPrefix] = useState<string | null>(null)
+  const [lotNoTouched, setLotNoTouched] = useState(false)
+  const selectedParty = masters.parties.find(p => p.id === form.partyId) || null
+  const partyPrefixes = selectedParty?.lotPrefixes ?? []
+
+  // When party changes, reset the active prefix to the party's default and
+  // re-enable auto-fill (operator effectively starts a fresh row context).
+  useEffect(() => {
+    setSelectedPrefix(partyPrefixes[0] || null)
+    setLotNoTouched(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.partyId])
+
+  // Recompute lotNo whenever (party, prefix, sn) changes — but only if the
+  // operator hasn't typed something custom.
+  useEffect(() => {
+    if (lotNoTouched) return
+    if (!selectedPrefix) return
+    if (!form.sn) return
+    const computed = `${selectedPrefix}-${form.sn}`
+    if (computed !== form.lotNo) setForm(prev => ({ ...prev, lotNo: computed }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPrefix, form.sn, lotNoTouched])
+
+  function pickPrefix(p: string) {
+    setSelectedPrefix(p)
+    setLotNoTouched(false)  // re-enable auto-fill so the chip click takes effect
+  }
+  function resetLotAuto() {
+    setLotNoTouched(false)
+    if (selectedPrefix && form.sn) {
+      setForm(prev => ({ ...prev, lotNo: `${selectedPrefix}-${form.sn}` }))
+    }
+  }
 
   async function addMaster(type: string, name: string): Promise<Option> {
     // Pass force=true so the masters API doesn't return its "did you mean…?"
@@ -134,7 +176,40 @@ export default function GreyForm() {
             <input type="number" step="0.01" className={inp} value={form.grayMtr} onChange={e => set('grayMtr', e.target.value)} />
           </Field>
           <Field label="A-Lot No *">
-            <input type="text" className={inp} value={form.lotNo} onChange={e => set('lotNo', e.target.value)} required />
+            <div className="space-y-1">
+              <input type="text" className={inp} value={form.lotNo}
+                onChange={e => {
+                  const v = e.target.value
+                  set('lotNo', v)
+                  // Touched only when the typed value diverges from the
+                  // current auto-template. Backspacing back to the template
+                  // (or empty) re-enables auto-fill.
+                  const auto = selectedPrefix && form.sn ? `${selectedPrefix}-${form.sn}` : ''
+                  setLotNoTouched(v.length > 0 && v !== auto)
+                }}
+                required />
+              {partyPrefixes.length > 0 && (
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="text-[9px] uppercase tracking-wide text-gray-400">Prefix</span>
+                  {partyPrefixes.map(p => (
+                    <button key={p} type="button" onClick={() => pickPrefix(p)}
+                      className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded border transition ${
+                        p === selectedPrefix
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600'
+                      }`}>
+                      {p}
+                    </button>
+                  ))}
+                  {lotNoTouched && (
+                    <button type="button" onClick={resetLotAuto}
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 underline ml-1">
+                      ↺ Auto
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </Field>
 
           {masters.parties.find(p => p.id === form.partyId)?.tag === 'Pali PC Job' && (

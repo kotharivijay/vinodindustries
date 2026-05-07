@@ -89,18 +89,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ty
 
   const { type } = await params
   if (type !== 'parties')
-    return NextResponse.json({ error: 'Tag update only supported for parties' }, { status: 400 })
+    return NextResponse.json({ error: 'Per-row update only supported for parties' }, { status: 400 })
 
-  const { ids, tag } = await req.json()
-  if (!Array.isArray(ids) || ids.length === 0)
-    return NextResponse.json({ error: 'ids array required' }, { status: 400 })
+  const body = await req.json()
 
-  await prisma.party.updateMany({
-    where: { id: { in: ids } },
-    data: { tag: tag || null },
-  })
+  // Bulk tag update — original behaviour.
+  if ('tag' in body) {
+    const { ids, tag } = body
+    if (!Array.isArray(ids) || ids.length === 0)
+      return NextResponse.json({ error: 'ids array required' }, { status: 400 })
+    await prisma.party.updateMany({ where: { id: { in: ids } }, data: { tag: tag || null } })
+    return NextResponse.json({ ok: true, updated: ids.length })
+  }
 
-  return NextResponse.json({ ok: true, updated: ids.length })
+  // Single-row lotPrefixes update. Validates each entry is 1–8 letters
+  // (A–Z) and dedupes. Cross-party uniqueness is NOT enforced — multiple
+  // parties may legitimately share an alphabetical convention; ambiguity
+  // is only a real problem in the auto-fill UI, where the operator picks.
+  if ('lotPrefixes' in body) {
+    const id = Number(body.id)
+    if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const raw = Array.isArray(body.lotPrefixes) ? body.lotPrefixes : []
+    const cleaned: string[] = []
+    const seen = new Set<string>()
+    for (const x of raw) {
+      const v = String(x || '').trim().toUpperCase()
+      if (!v) continue
+      if (!/^[A-Z]{1,8}$/.test(v)) {
+        return NextResponse.json({ error: `Prefix "${v}" must be 1–8 letters (A–Z)` }, { status: 400 })
+      }
+      if (seen.has(v)) continue
+      seen.add(v); cleaned.push(v)
+    }
+    const updated = await prisma.party.update({
+      where: { id },
+      data: { lotPrefixes: cleaned },
+      select: { id: true, name: true, tag: true, lotPrefixes: true },
+    })
+    return NextResponse.json(updated)
+  }
+
+  return NextResponse.json({ error: 'Provide { ids, tag } or { id, lotPrefixes }' }, { status: 400 })
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ type: string }> }) {

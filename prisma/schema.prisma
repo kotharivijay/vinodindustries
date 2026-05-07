@@ -14,6 +14,12 @@ model Party {
   id               Int               @id @default(autoincrement())
   name             String            @unique
   tag              String? // "Pali PC Job", "Local", "Direct", etc.
+  // Lot-no prefixes used by THIS party (e.g. ["PS", "PSRG"] for Prakash
+  // Shirting — PSRG is for return-goods variant). Auto-fill on grey-inward
+  // suggests the first one but the operator can pick another or override.
+  // Derived from greyEntry history by /scripts/backfill-party-prefixes-from-lots.mjs;
+  // editable per-party at /masters/parties.
+  lotPrefixes      String[]          @default([])
   createdAt        DateTime          @default(now())
   greyEntries      GreyEntry[]
   despatchEntries  DespatchEntry[]
