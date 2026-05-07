@@ -310,8 +310,9 @@ export async function PUT(req: NextRequest) {
       const date = parseSheetDate(row.date, row.month) ?? new Date()
       const transportId = row.transportId ?? (await prisma.transport.findFirst())?.id
       if (!transportId) { errors.push({ sn: row.sn, error: 'No transport found' }); continue }
-      const weaverId = row.weaverId ?? (await prisma.weaver.findFirst())?.id
-      if (!weaverId) { errors.push({ sn: row.sn, error: 'No weaver found' }); continue }
+      // Weaver is optional now — leave null if the sheet didn't supply one
+      // and we couldn't auto-link.
+      const weaverId = row.weaverId ?? null
 
       await prisma.greyEntry.create({
         data: {
@@ -328,7 +329,7 @@ export async function PUT(req: NextRequest) {
           bale: row.bale ?? undefined,
           baleNo: row.baleNo || undefined,
           echBaleThan: row.echBaleThan ?? undefined,
-          weaverId,
+          weaverId: weaverId ?? undefined,
           viverNameBill: row.weaverName || undefined,
           marka: row.marka || undefined,
           lrNo: row.lrNo || undefined,
@@ -421,7 +422,7 @@ export async function PATCH(req: NextRequest) {
       weaverId: weaver?.id ?? row.weaverId,
       transportId: transport?.id ?? row.transportId,
     }
-    if (newRow.partyId && newRow.qualityId && newRow.weaverId && newRow.lotNo) {
+    if (newRow.partyId && newRow.qualityId && newRow.lotNo) {
       newRow.missingMasters = []
       newRow.status = 'ready'
     }

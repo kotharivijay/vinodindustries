@@ -168,7 +168,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     })
     return {
       lotNo,
-      greyEntries: grey.map(g => ({ date: g.date, challanNo: g.challanNo, party: g.party.name, quality: g.quality.name, than: g.than, weaver: g.weaver.name })),
+      greyEntries: grey.map(g => ({ date: g.date, challanNo: g.challanNo, party: g.party.name, quality: g.quality.name, than: g.than, weaver: g.weaver?.name ?? null })),
       despatchEntries: despatch.map(d => ({ date: d.date, challanNo: d.challanNo, party: d.party.name, than: d.than, billNo: d.billNo })),
       dyeingEntries: dyeing.map((d: any) => ({ slipNo: d.entry.slipNo, date: d.entry.date, than: d.than, shade: d.entry.shadeName, machine: d.entry.machine?.name, operator: d.entry.operator?.name, status: d.entry.status })),
       greyThan: grey.reduce((s, g) => s + g.than, 0),
@@ -251,7 +251,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
 
     return entries.map(e => ({
       date: e.date, challanNo: e.challanNo, party: e.party.name, quality: e.quality.name,
-      lotNo: e.lotNo, than: e.than, weaver: e.weaver.name,
+      lotNo: e.lotNo, than: e.than, weaver: e.weaver?.name ?? null,
     }))
   },
 

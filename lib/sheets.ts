@@ -159,7 +159,7 @@ export function greyEntryToSheetRow(entry: {
   baleNo?: string | null
   echBaleThan?: number | null
   viverNameBill?: string | null
-  weaver: { name: string }
+  weaver: { name: string } | null
   lrNo?: string | null
   lotNo: string
 }): (string | number | null)[] {
@@ -186,7 +186,7 @@ export function greyEntryToSheetRow(entry: {
     entry.bale ?? '',               // L: Bale
     entry.baleNo ?? '',             // M: Bale No
     entry.echBaleThan ?? '',        // N: ech bale Than
-    entry.viverNameBill ?? entry.weaver.name, // O: Viver Name-Bill
+    entry.viverNameBill ?? entry.weaver?.name ?? '', // O: Viver Name-Bill
     entry.lrNo ?? '',               // P: LR No
     entry.lotNo,                    // Q: A-Lot No
     // R (Stock) and S (T_DESP) are calculated — leave empty

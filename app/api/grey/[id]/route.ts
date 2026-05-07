@@ -41,7 +41,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       bale: data.bale ? parseInt(data.bale) : null,
       baleNo: data.baleNo || null,
       echBaleThan: data.echBaleThan ? parseFloat(data.echBaleThan) : null,
-      weaverId: parseInt(data.weaverId),
+      weaverId: data.weaverId != null && data.weaverId !== '' ? parseInt(data.weaverId) : null,
       viverNameBill: data.viverNameBill || null,
       lrNo: data.lrNo || null,
       lotNo: data.lotNo,

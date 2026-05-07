@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
       bale: data.bale ? parseInt(data.bale) : undefined,
       baleNo: data.baleNo || undefined,
       echBaleThan: data.echBaleThan ? parseFloat(data.echBaleThan) : undefined,
-      weaverId: parseInt(data.weaverId),
+      weaverId: data.weaverId != null && data.weaverId !== '' ? parseInt(data.weaverId) : undefined,
       viverNameBill: data.viverNameBill || undefined,
       lrNo: data.lrNo || undefined,
       lotNo: data.lotNo,

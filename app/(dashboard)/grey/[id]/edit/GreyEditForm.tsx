@@ -68,8 +68,8 @@ export default function GreyEditForm({ id }: { id: string }) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.partyId || !form.qualityId || !form.transportId || !form.weaverId) {
-      setError('Please fill Party, Quality, Transport, and Weaver.')
+    if (!form.partyId || !form.qualityId || !form.transportId) {
+      setError('Please fill Party, Quality, and Transport.')
       return
     }
     setSaving(true); setError('')
@@ -150,7 +150,7 @@ export default function GreyEditForm({ id }: { id: string }) {
             <input type="number" step="0.01" className={inp} value={form.echBaleThan} onChange={e => set('echBaleThan', e.target.value)} />
           </Field>
 
-          <Field label="Grey Weaver *">
+          <Field label="Grey Weaver">
             <ComboSelect options={masters.weavers} value={form.weaverId} onChange={id => set('weaverId', id)} onAddNew={n => addMaster('weavers', n)} placeholder="Select weaver..." />
           </Field>
           <Field label="Viver Name-Bill" span={2}>

@@ -69,8 +69,8 @@ model GreyEntry {
   bale          Int?
   baleNo        String?
   echBaleThan   Float?
-  weaverId      Int
-  weaver        Weaver    @relation(fields: [weaverId], references: [id])
+  weaverId      Int?
+  weaver        Weaver?   @relation(fields: [weaverId], references: [id])
   viverNameBill String?
   lrNo          String?
   lotNo         String
