@@ -74,6 +74,13 @@ export default function GreyListPage() {
   // LotLink) already records scrollY + lastClickedLot — we just append
   // the form state below.
   const initial = typeof window !== 'undefined' ? readViewState(GREY_VIEW_KEY) : {}
+  // Sort prefs persist across browser sessions (sessionStorage clears on tab
+  // close). localStorage is the source of truth on first mount; sessionStorage
+  // (back-nav) wins when present so a quick lot drill-down → Back doesn't
+  // forget mid-task overrides.
+  const lsSort = typeof window !== 'undefined' ? (() => {
+    try { return JSON.parse(localStorage.getItem('grey-sort-prefs') || '{}') } catch { return {} }
+  })() : {}
   const [search, setSearchRaw] = useState<string>(() => initial.search ?? '')
   const [debouncedSearch, setDebouncedSearch] = useDebounce(initial.search ?? '')
   const [showImport, setShowImport] = useState(false)
@@ -103,8 +110,8 @@ export default function GreyListPage() {
     }
   }, [])
   const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [sortField, setSortField] = useState<SortField>(() => initial.sortField ?? 'date')
-  const [sortDir, setSortDir] = useState<SortDir>(() => initial.sortDir ?? 'desc')
+  const [sortField, setSortField] = useState<SortField>(() => initial.sortField ?? lsSort.sortField ?? 'date')
+  const [sortDir, setSortDir] = useState<SortDir>(() => initial.sortDir ?? lsSort.sortDir ?? 'desc')
   const [tab, setTab] = useState<Tab>(() => initial.tab ?? 'entries')
   const [stockFilter, setStockFilter] = useState<StockFilter>(() => initial.stockFilter ?? 'all')
   const [stockPartySearch, setStockPartySearch] = useState<string>(() => initial.stockPartySearch ?? '')
@@ -113,8 +120,8 @@ export default function GreyListPage() {
   const [debouncedStockLotQSearch, setDebouncedStockLotQSearch] = useDebounce(initial.stockLotQSearch ?? '')
   type StockSortField = 'date' | 'lotNo' | 'party' | 'quality'
   type StockSortDir = 'asc' | 'desc'
-  const [stockSortField, setStockSortField] = useState<StockSortField>(() => initial.stockSortField ?? 'date')
-  const [stockSortDir, setStockSortDir] = useState<StockSortDir>(() => initial.stockSortDir ?? 'desc')
+  const [stockSortField, setStockSortField] = useState<StockSortField>(() => initial.stockSortField ?? lsSort.stockSortField ?? 'date')
+  const [stockSortDir, setStockSortDir] = useState<StockSortDir>(() => initial.stockSortDir ?? lsSort.stockSortDir ?? 'desc')
   const [filters, setFilters] = useState<{ party: string; quality: string; lotNo: string; lrNo: string }>(
     () => initial.filters ?? { party: '', quality: '', lotNo: '', lrNo: '' }
   )
@@ -134,6 +141,17 @@ export default function GreyListPage() {
       filters,
     })
   }, [tab, sortField, sortDir, search, stockFilter, stockPartySearch, stockLotQSearch, stockSortField, stockSortDir, filters])
+
+  // Sort-only persistence to localStorage so the operator's last sort survives
+  // closing the tab. Only the four sort fields go here; everything else stays
+  // sessionStorage-scoped (search/filter/scroll are per-task, not per-user).
+  useEffect(() => {
+    try {
+      localStorage.setItem('grey-sort-prefs', JSON.stringify({
+        sortField, sortDir, stockSortField, stockSortDir,
+      }))
+    } catch {}
+  }, [sortField, sortDir, stockSortField, stockSortDir])
 
   // Restore scroll + highlight the clicked lot card after returning from /lot/[id]
   useLotBackHighlight(GREY_VIEW_KEY, true)
