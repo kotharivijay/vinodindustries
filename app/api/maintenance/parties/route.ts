@@ -108,10 +108,19 @@ export async function POST(req: NextRequest) {
     safeIds.push(p.id)
   }
 
+  // Per-id deletion so a foreign-key violation on one row (the rare race
+  // where a reference was created between our check and the delete) skips
+  // that row and continues with the rest, instead of failing the batch.
   let deleted = 0
-  if (safeIds.length) {
-    const r = await prisma.party.deleteMany({ where: { id: { in: safeIds } } })
-    deleted = r.count
+  for (const id of safeIds) {
+    try {
+      await prisma.party.delete({ where: { id } })
+      deleted++
+    } catch (e: any) {
+      // Prisma P2003 = foreign key constraint failed.
+      const msg = e?.code === 'P2003' ? 'foreign key still references this row' : (e?.message || 'delete failed')
+      skipped.push({ id, reason: msg })
+    }
   }
   return NextResponse.json({ ok: true, deleted, skipped })
 }
