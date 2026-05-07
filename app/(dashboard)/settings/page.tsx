@@ -328,6 +328,7 @@ function ServiceTab() {
 
   return (
     <div className="space-y-4">
+      <OrphanDyeingCard />
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Party Master Cleanup</h2>
         <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">
@@ -435,6 +436,218 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'gr
     <div className={`rounded-lg p-2 ${cls}`}>
       <div className="text-[10px] uppercase tracking-wide opacity-70">{label}</div>
       <div className="text-lg font-bold">{value}</div>
+    </div>
+  )
+}
+
+// ─── Orphan Dyeing Slips ─────────────────────────────────────────────────
+// Lists every dyeing slip with no fold-batch link (PC-job included).
+// Operator multi-selects → enters a fold no + date → server creates the
+// fold (or appends to existing) and binds each selected slip to a new
+// FoldBatch as one batch per slip.
+interface OrphanLot { lotNo: string; than: number }
+interface OrphanSlip {
+  id: number
+  slipNo: number
+  date: string
+  shadeName: string | null
+  isPcJob: boolean
+  lots: OrphanLot[]
+  totalThan: number
+}
+
+function OrphanDyeingCard() {
+  const [orphans, setOrphans] = useState<OrphanSlip[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [showLink, setShowLink] = useState(false)
+  const [foldNo, setFoldNo] = useState('')
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [linking, setLinking] = useState(false)
+  const [done, setDone] = useState<{ foldNo: string; created: boolean; count: number } | null>(null)
+
+  async function load() {
+    setLoading(true); setError(''); setDone(null)
+    try {
+      const r = await fetch('/api/maintenance/orphan-dyeing', { cache: 'no-store' })
+      const data = await r.json()
+      if (!r.ok) { setError(data.error || 'Load failed'); return }
+      setOrphans(data.orphans)
+      // Drop selections that are no longer in the list
+      setSelected(prev => {
+        const ids = new Set(data.orphans.map((o: OrphanSlip) => o.id))
+        const next = new Set<number>()
+        for (const id of prev) if (ids.has(id)) next.add(id)
+        return next
+      })
+    } catch (e: any) { setError(e?.message || 'Network error') }
+    finally { setLoading(false) }
+  }
+
+  function toggle(id: number) {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function selectAll() {
+    setSelected(new Set((orphans ?? []).map(o => o.id)))
+  }
+  function clearSel() { setSelected(new Set()) }
+
+  const selectedSlips = (orphans ?? []).filter(o => selected.has(o.id))
+  const selectedThan = selectedSlips.reduce((s, o) => s + o.totalThan, 0)
+
+  async function applyLink() {
+    if (!foldNo.trim()) { setError('Fold No is required'); return }
+    if (selected.size === 0) { setError('No slips selected'); return }
+    setLinking(true); setError('')
+    try {
+      const r = await fetch('/api/maintenance/orphan-dyeing', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ foldNo: foldNo.trim(), date, slipIds: [...selected] }),
+      })
+      const data = await r.json()
+      if (!r.ok) { setError(data.error || 'Link failed'); return }
+      setDone({ foldNo: data.foldNo, created: data.createdProgram, count: data.newBatchCount })
+      setShowLink(false)
+      setFoldNo('')
+      await load()
+    } catch (e: any) { setError(e?.message || 'Network error') }
+    finally { setLinking(false) }
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Orphan Dyeing Slips</h2>
+        <button onClick={load} disabled={loading}
+          className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">
+          {loading ? 'Loading…' : (orphans == null ? 'Scan' : 'Refresh')}
+        </button>
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+        Dyeing slips without a fold-batch link. Select multiple → assign to a fold (creates new batches; existing fold appends).
+        Includes PC-job slips so you can retroactively bind them.
+      </p>
+
+      {orphans == null && !loading && (
+        <button onClick={load}
+          className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold">
+          Scan
+        </button>
+      )}
+
+      {orphans && orphans.length === 0 && (
+        <p className="text-[11px] text-emerald-600 dark:text-emerald-400">Nothing orphaned. ✅</p>
+      )}
+
+      {orphans && orphans.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+            <span>{orphans.length} orphan slip{orphans.length === 1 ? '' : 's'}</span>
+            <div className="flex items-center gap-2">
+              <button onClick={selectAll} className="text-indigo-600 dark:text-indigo-400 hover:underline">Select all</button>
+              {selected.size > 0 && (
+                <>
+                  <span>·</span>
+                  <button onClick={clearSel} className="text-rose-600 dark:text-rose-400 hover:underline">Clear ({selected.size})</button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1.5 max-h-[480px] overflow-y-auto">
+            {orphans.map(o => (
+              <label key={o.id}
+                className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer ${
+                  selected.has(o.id)
+                    ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-300 dark:border-purple-700'
+                    : 'bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                }`}>
+                <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggle(o.id)}
+                  className="mt-1 h-4 w-4 accent-purple-600" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className="font-bold text-purple-700 dark:text-purple-300">Slip {o.slipNo}</span>
+                    <span className="text-gray-500 dark:text-gray-400">{new Date(o.date).toLocaleDateString('en-IN')}</span>
+                    {o.shadeName && (
+                      <span className="text-[10px] font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded">
+                        {o.shadeName}
+                      </span>
+                    )}
+                    {o.isPcJob && (
+                      <span className="text-[9px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">PC</span>
+                    )}
+                    <span className="text-gray-500 dark:text-gray-400 ml-auto font-medium">{o.totalThan} than</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {o.lots.map((l, i) => (
+                      <span key={i} className="text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded-full">
+                        {l.lotNo} ({l.than})
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          {selected.size > 0 && (
+            <div className="sticky bottom-0 -mx-1 px-1 pt-2 bg-gradient-to-t from-white dark:from-gray-800 via-white dark:via-gray-800 flex items-center justify-between gap-2">
+              <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">
+                {selected.size} selected · {selectedThan} than
+              </span>
+              <button onClick={() => { setShowLink(true); setError('') }}
+                className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold">
+                Create Fold from Selection
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {done && (
+        <div className="mt-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+          ✅ {done.created ? 'Created' : 'Appended to existing'} fold <strong>{done.foldNo}</strong> · {done.count} new batch{done.count === 1 ? '' : 'es'} linked.
+        </div>
+      )}
+      {error && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+
+      {showLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowLink(false)}>
+          <div onClick={e => e.stopPropagation()}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Link {selected.size} slip{selected.size === 1 ? '' : 's'} to fold</h3>
+              <button onClick={() => setShowLink(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
+            </div>
+            <div className="p-5 space-y-3">
+              <label className="block text-xs">
+                <span className="text-gray-500 dark:text-gray-400">Fold No *</span>
+                <input value={foldNo} onChange={e => setFoldNo(e.target.value)} autoFocus
+                  placeholder="e.g. 20"
+                  className="mt-0.5 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-mono" />
+              </label>
+              <label className="block text-xs">
+                <span className="text-gray-500 dark:text-gray-400">Date</span>
+                <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                  className="mt-0.5 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+              </label>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                If fold <span className="font-mono">{foldNo || '#'}</span> exists, new batches append starting at the next batch no. Each selected slip becomes ONE batch.
+              </p>
+              {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+              <button onClick={() => setShowLink(false)}
+                className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Cancel</button>
+              <button onClick={applyLink} disabled={linking || !foldNo.trim()}
+                className="px-5 py-2 rounded-lg text-sm bg-purple-600 hover:bg-purple-700 text-white font-semibold disabled:opacity-50">
+                {linking ? 'Linking…' : 'Create & Link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

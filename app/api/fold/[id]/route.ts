@@ -94,6 +94,24 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     })
     if (existing) return NextResponse.json({ error: 'Fold No already exists' }, { status: 409 })
 
+    // Guard: deleting batches that have dyeing slips would silently null
+    // out DyeingEntry.foldBatchId (Prisma's default ON DELETE for optional
+    // relations is SET NULL) → orphan slips. Block the PUT instead so the
+    // operator can decide. Same gate the DELETE handler uses.
+    const dyedBatches = await (prisma as any).foldBatch.findMany({
+      where: { foldProgramId: id },
+      include: { dyeingEntries: { select: { id: true, slipNo: true } } },
+    })
+    const conflicts = dyedBatches.filter((b: any) => b.dyeingEntries.length > 0)
+    if (conflicts.length > 0) {
+      const details = conflicts.map((b: any) =>
+        `B${b.batchNo} (Slip ${b.dyeingEntries.map((d: any) => d.slipNo).join(', ')})`,
+      ).join('; ')
+      return NextResponse.json({
+        error: `Cannot replace batches — ${conflicts.length} batch(es) have dyeing slips: ${details}. Unlink the slips first or delete them.`,
+      }, { status: 409 })
+    }
+
     // Delete old batches (cascade deletes lots)
     await (prisma as any).foldBatch.deleteMany({ where: { foldProgramId: id } })
 
