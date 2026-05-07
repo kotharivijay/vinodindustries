@@ -290,6 +290,54 @@ export default function FinishStockPage() {
   })
   const slipEntries = useMemo(() => finishSlips ?? [], [finishSlips])
 
+  // ── Per-tab headline stat boxes ──────────────────────────────────
+  // Each tab gets its own "Total Than" number above the tab nav so the
+  // operator instantly knows the size of the working set without scrolling.
+  // - Stock Report  : sum of dyed-but-not-finished than (= stock waiting)
+  // - Finish_Prg    : sum of unfinished + partial-pending across all slips
+  //                   (lot.than for pending, lot.than - lot.doneThan for partial,
+  //                   0 for done)
+  // - Folding Stock : sum of finish-output than still in folding stage
+  //                   (totalThan - foldingComplete portion). We approximate
+  //                   as: sum across PackingEntry lots where foldingComplete
+  //                   is false, of l.than - (l.receivedThan ?? 0).
+  // - Packing Stock : sum that's folding-complete but not yet despatched.
+  //                   (totalThan - despatchedThan) per entry, only when
+  //                   allFoldingComplete === true.
+  const finishPrgPendingThan = useMemo(() => {
+    let s = 0
+    for (const e of slipEntries) {
+      for (const l of e.lots ?? []) {
+        if (l.status === 'done') continue
+        if (l.status === 'partial') s += Math.max(0, l.than - (l.doneThan || 0))
+        else s += l.than
+      }
+    }
+    return s
+  }, [slipEntries])
+
+  const foldingStockThan = useMemo(() => {
+    let s = 0
+    for (const e of packingEntries) {
+      for (const l of e.lots) {
+        if (l.foldingComplete) continue   // already passed folding
+        const remaining = (l.than || 0) - (l.receivedThan || 0)
+        if (remaining > 0) s += remaining
+      }
+    }
+    return s
+  }, [packingEntries])
+
+  const packingStockThan = useMemo(() => {
+    let s = 0
+    for (const e of packingEntries) {
+      if (!e.allFoldingComplete) continue   // not yet ready to pack
+      const remaining = (e.totalThan || 0) - ((e as any).despatchedThan || 0)
+      if (remaining > 0) s += remaining
+    }
+    return s
+  }, [packingEntries])
+
   // Quality dropdown options (carry-forward + current year)
   const { data: qualityOptions = [] } = useSWR<string[]>('/api/finish/qualities', fetcher, {
     revalidateOnFocus: false,
@@ -1348,6 +1396,32 @@ export default function FinishStockPage() {
           + New Entry
         </Link>
       </div>
+
+      {/* Headline stat — tab-aware. Sits ABOVE the tab nav so the operator
+          sees the working-set size before drilling into the table below. */}
+      {(() => {
+        const cfg = {
+          report:   { label: 'Stock Than',           value: totalThan,           tone: 'teal' },
+          slips:    { label: 'Pending + Partial Than', value: finishPrgPendingThan, tone: 'amber' },
+          packing:  { label: 'Folding Stock Than',   value: foldingStockThan,    tone: 'purple' },
+          folding:  { label: 'Packing Stock Than',   value: packingStockThan,    tone: 'rose' },
+          register: { label: 'Stock Than',           value: totalThan,           tone: 'gray' },
+        } as const
+        const c = cfg[tab]
+        const toneCls: Record<string, string> = {
+          teal:   'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300',
+          amber:  'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300',
+          purple: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300',
+          rose:   'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300',
+          gray:   'bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200',
+        }
+        return (
+          <div className={`mb-3 rounded-xl border px-4 py-3 flex items-baseline justify-between ${toneCls[c.tone]}`}>
+            <span className="text-xs font-semibold uppercase tracking-wide opacity-80">{c.label}</span>
+            <span className="text-2xl font-bold tabular-nums">{c.value.toLocaleString('en-IN')}</span>
+          </div>
+        )
+      })()}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 border-b border-gray-200 dark:border-gray-700">
