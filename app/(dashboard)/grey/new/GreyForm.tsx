@@ -34,6 +34,15 @@ export default function GreyForm() {
     )
   }, [])
 
+  // Pre-fill SN with max(SN)+1 so the operator sees the next inward number
+  // ready to confirm — no more typing or relying on the silent "Auto" path.
+  // They can still overwrite if they need to insert a missed row in between.
+  useEffect(() => {
+    fetch('/api/grey/next-sn').then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.next) setForm(prev => prev.sn ? prev : { ...prev, sn: String(d.next) })
+    }).catch(() => {})
+  }, [])
+
   async function addMaster(type: string, name: string): Promise<Option> {
     const res = await fetch(`/api/masters/${type}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -83,7 +92,7 @@ export default function GreyForm() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
           <Field label="SN">
-            <input type="number" className={inp} value={form.sn} onChange={e => set('sn', e.target.value)} placeholder="Auto" />
+            <input type="number" className={inp} value={form.sn} onChange={e => set('sn', e.target.value)} placeholder="Loading…" />
           </Field>
           <Field label="Date *">
             <input type="date" className={inp} value={form.date} onChange={e => set('date', e.target.value)} required />
