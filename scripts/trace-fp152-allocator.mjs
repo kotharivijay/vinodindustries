@@ -79,12 +79,13 @@ async function main() {
       slipNo: true,
       shadeName: true,
       lots: { select: { lotNo: true, than: true } },
+      foldBatch: { select: { foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
     },
     orderBy: { slipNo: 'desc' },
   })
   console.log(`\n${dyeingEntries.length} candidate dyeing slips returned by query.`)
   for (const de of dyeingEntries) {
-    console.log(`  slip ${de.slipNo}  shade=${de.shadeName}  lots=${de.lots.map(l => `${l.lotNo}/${l.than}`).join(', ')}`)
+    console.log(`  slip ${de.slipNo}  fold=${de.foldBatch?.foldProgram?.foldNo ?? '(none)'}  shade=${de.shadeName}  lots=${de.lots.map(l => `${l.lotNo}/${l.than}`).join(', ')}`)
   }
 
   console.log('\n--- Allocator trace ---')
