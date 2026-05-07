@@ -49,7 +49,11 @@ export default function ComboSelect({ options, value, onChange, onAddNew, placeh
         className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:bg-gray-100 dark:disabled:bg-gray-800"
         value={open ? search : (selected?.name ?? '')}
         onChange={(e) => { setSearch(e.target.value); setOpen(true) }}
-        onFocus={() => { setSearch(''); setOpen(true) }}
+        // On focus, keep the selected name in the search box AND select all
+        // text so the operator can either start typing (replaces) or arrow
+        // through to refine — was clearing the field, which felt like the
+        // selection was lost.
+        onFocus={(e) => { setSearch(selected?.name ?? ''); setOpen(true); e.target.select() }}
         onBlur={async () => {
           // Leave a 150ms grace so a click on a dropdown row registers BEFORE
           // we react to the blur (otherwise mouse-down → blur → auto-create
