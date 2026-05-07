@@ -168,7 +168,7 @@ export default function GreyListPage() {
       if (!existing) {
         map.set(e.lotNo, {
           lotNo: e.lotNo, party: e.party.name, quality: e.quality.name,
-          weaver: e.weaver.name, entries: 1, greyThan: e.than,
+          weaver: e.weaver?.name ?? '', entries: 1, greyThan: e.than,
           tDesp: e.tDesp, stock: e.stock, lastDate: e.date, openingBalance: ob,
         })
       } else {
@@ -618,7 +618,7 @@ export default function GreyListPage() {
                           <span>Bale: {e.bale ?? '—'}</span>
                           <span>Bale No: {e.baleNo ?? '—'}</span>
                           <span>Ech Bale: {e.echBaleThan ?? '—'}</span>
-                          <span className="col-span-2">Weaver: {e.weaver.name}</span>
+                          <span className="col-span-2">Weaver: {e.weaver?.name ?? '—'}</span>
                           <span>T_DESP: {e.tDesp}</span>
                         </div>
                       )}
@@ -683,7 +683,7 @@ export default function GreyListPage() {
                           <td className="px-3 py-2.5 dark:text-gray-300">{e.bale ?? '—'}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.baleNo ?? '—'}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.echBaleThan ?? '—'}</td>
-                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.weaver.name}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.weaver?.name ?? '—'}</td>
                           <td className="px-3 py-2.5 text-orange-600 dark:text-orange-400 font-medium">{e.tDesp}</td>
                           <td className="px-3 py-2.5">
                             <span className={`font-semibold ${e.stock > 0 ? 'text-green-600' : e.stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>
