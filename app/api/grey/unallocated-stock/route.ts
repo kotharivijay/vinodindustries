@@ -12,7 +12,12 @@ export async function GET() {
 
   // Fetch everything we need in parallel
   const [greyEntries, obBalances, despatchesParent, despatchLotRows, foldBatchLots] = await Promise.all([
+    // RULE: lots that arrive with startStage set (e.g. 'finish' or 'folding')
+    // skip the grey pipeline and are already allocated to a downstream stock
+    // pool. Counting them here would double-allocate. Only rows with
+    // startStage IS NULL count as unallocated grey stock.
     prisma.greyEntry.findMany({
+      where: { startStage: null },
       select: { lotNo: true, than: true, weight: true, marka: true, grayMtr: true, date: true, challanNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
     }),
     db.lotOpeningBalance.findMany({
