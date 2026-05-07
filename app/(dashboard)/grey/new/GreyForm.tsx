@@ -44,13 +44,29 @@ export default function GreyForm() {
   }, [])
 
   async function addMaster(type: string, name: string): Promise<Option> {
+    // Pass force=true so the masters API doesn't return its "did you mean…?"
+    // 200 needsConfirm shape — auto-create on a fast data-entry path means
+    // the operator already decided to create a new one. Exact duplicates
+    // still come back as 409 with existingId.
     const res = await fetch(`/api/masters/${type}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, force: true }),
     })
-    const item = await res.json()
-    setMasters((prev) => ({ ...prev, [type]: [...prev[type as keyof Masters], item].sort((a, b) => a.name.localeCompare(b.name)) }))
-    return item
+    const data = await res.json().catch(() => ({}))
+    // 409 → exact match exists; reuse it instead of crashing the UI.
+    if (res.status === 409 && data.existingId) {
+      const existing = (masters[type as keyof Masters] as Option[]).find(o => o.id === data.existingId)
+      if (existing) return existing
+      // Existing not in our cached list — fetch fresh and add.
+      const fresh = await fetch(`/api/masters/${type}`).then(r => r.json()).catch(() => [])
+      setMasters(prev => ({ ...prev, [type]: fresh }))
+      return fresh.find((o: Option) => o.id === data.existingId) || { id: data.existingId, name }
+    }
+    if (!res.ok || !data?.id || !data?.name) {
+      throw new Error(data?.error || `Failed to add ${type.slice(0, -1)}`)
+    }
+    setMasters(prev => ({ ...prev, [type]: [...prev[type as keyof Masters], data].sort((a, b) => a.name.localeCompare(b.name)) }))
+    return data
   }
 
   const set = (field: string, value: any) => setForm((prev) => ({ ...prev, [field]: value }))

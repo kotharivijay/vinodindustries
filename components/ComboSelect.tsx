@@ -61,9 +61,13 @@ export default function ComboSelect({ options, value, onChange, onAddNew, placeh
           setLoading(true)
           try {
             const item = await onAddNew(trimmed)
-            onChange(item.id)
-            setSearch('')
-            setOpen(false)
+            // Guard against APIs returning a non-Option shape (e.g. an error
+            // body) — better to leave the field empty than crash the page.
+            if (item && typeof item.id === 'number') {
+              onChange(item.id)
+              setSearch('')
+              setOpen(false)
+            }
           } catch {
             // Silent: surfaces in the parent's error path on save if it matters.
           } finally { setLoading(false) }

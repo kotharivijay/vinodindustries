@@ -57,11 +57,21 @@ export default function GreyEditForm({ id }: { id: string }) {
   async function addMaster(type: string, name: string): Promise<Option> {
     const res = await fetch(`/api/masters/${type}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, force: true }),
     })
-    const item = await res.json()
-    setMasters((prev) => ({ ...prev, [type]: [...prev[type as keyof Masters], item].sort((a, b) => a.name.localeCompare(b.name)) }))
-    return item
+    const data = await res.json().catch(() => ({}))
+    if (res.status === 409 && data.existingId) {
+      const existing = (masters[type as keyof Masters] as Option[]).find(o => o.id === data.existingId)
+      if (existing) return existing
+      const fresh = await fetch(`/api/masters/${type}`).then(r => r.json()).catch(() => [])
+      setMasters(prev => ({ ...prev, [type]: fresh }))
+      return fresh.find((o: Option) => o.id === data.existingId) || { id: data.existingId, name }
+    }
+    if (!res.ok || !data?.id || !data?.name) {
+      throw new Error(data?.error || `Failed to add ${type.slice(0, -1)}`)
+    }
+    setMasters(prev => ({ ...prev, [type]: [...prev[type as keyof Masters], data].sort((a, b) => a.name.localeCompare(b.name)) }))
+    return data
   }
 
   const set = (field: string, value: any) => setForm((prev) => ({ ...prev, [field]: value }))
