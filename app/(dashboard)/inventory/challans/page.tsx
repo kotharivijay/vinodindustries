@@ -120,21 +120,30 @@ export default function ChallansListPage() {
 
   const visibleChallans = useMemo(() => {
     const filtered = hideInvoiced ? challans.filter(c => c.status !== 'Invoiced') : challans
-    // Numeric challanNo when possible, else lexicographic. First-line item name
-    // for the item sort — the card already shows item summary so this matches
-    // what the operator sees at a glance.
-    const challanKey = (c: Challan) => {
-      const n = parseInt(c.challanNo)
-      return Number.isFinite(n) ? n : 0
+    // Challan sort: extract the TRAILING run of digits as the number, ignore
+    // the prefix during numeric comparison ("AB-100" sorts as 100, not 0).
+    // Prefix is only used as a tie-breaker so AB-100 vs XY-100 stay grouped
+    // by series. First-line item name drives the Item sort.
+    const challanNumber = (c: Challan) => {
+      const matches = String(c.challanNo ?? '').match(/\d+/g)
+      return matches?.length ? parseInt(matches[matches.length - 1], 10) : 0
     }
+    const challanPrefix = (c: Challan) =>
+      String(c.challanNo ?? '').replace(/\d+(?!.*\d)/, '').toLowerCase()
     const partyKey = (c: Challan) => (c.party.displayName || '').toLowerCase()
     const itemKey = (c: Challan) => (c.lines[0]?.item?.displayName || '').toLowerCase()
     const dateKey = (c: Challan) => new Date(c.challanDate).getTime()
 
     const sorted = [...filtered]
     switch (sortBy) {
-      case 'challan-desc': sorted.sort((a, b) => challanKey(b) - challanKey(a) || b.id - a.id); break
-      case 'challan-asc':  sorted.sort((a, b) => challanKey(a) - challanKey(b) || a.id - b.id); break
+      case 'challan-desc': sorted.sort((a, b) =>
+        challanNumber(b) - challanNumber(a)
+        || challanPrefix(a).localeCompare(challanPrefix(b))
+        || b.id - a.id); break
+      case 'challan-asc':  sorted.sort((a, b) =>
+        challanNumber(a) - challanNumber(b)
+        || challanPrefix(a).localeCompare(challanPrefix(b))
+        || a.id - b.id); break
       case 'date-desc':    sorted.sort((a, b) => dateKey(b) - dateKey(a) || b.id - a.id); break
       case 'date-asc':     sorted.sort((a, b) => dateKey(a) - dateKey(b) || a.id - b.id); break
       case 'party-asc':    sorted.sort((a, b) => partyKey(a).localeCompare(partyKey(b)) || dateKey(b) - dateKey(a)); break
