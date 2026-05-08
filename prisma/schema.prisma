@@ -818,6 +818,27 @@ model TallyReceipt {
   @@index([firmCode, partyName])
 }
 
+// KSI HDFC BANK Ledger Vouchers — pulled via Tally "Ledger Vouchers" report
+// keyed by LEDGERNAME=HDFC BANK. Captures every voucher type that touched
+// HDFC (Receipt, Payment, Contra, Journal). UI filters by vchType + FY.
+model KsiHdfcReceipt {
+  id         Int       @id @default(autoincrement())
+  fy         String    // "25-26", "26-27"
+  date       DateTime
+  vchNumber  String
+  vchType    String    // "Rcpt", "Pymt", "Contra", "Jrnl" (from DSPVCHTYPE)
+  partyName  String    // counter-party ledger (DSPVCHLEDACCOUNT)
+  amount     Float     // absolute rupee value (always positive)
+  direction  String    // "in" (Dr on HDFC = receipt) or "out" (Cr = payment)
+  narration  String?
+  lastSynced DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+
+  @@unique([vchNumber, date, vchType], name: "vch_natural_key")
+  @@index([fy, direction])
+  @@index([fy, date])
+}
+
 // ─── Sales Orders (Google Sheets) ─────────────────────────────────────────────
 
 model SalesOrder {
