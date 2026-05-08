@@ -8,10 +8,6 @@ const KSI_TALLY = 'Kothari Synthetic Industries -( from 2023)'
 const SALES_TYPES = ['Process Job']
 
 const pad = (n: number) => String(n).padStart(2, '0')
-function isoToYYYYMMDD(iso: string): string {
-  const d = new Date(iso + 'T00:00:00')
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`
-}
 function fyOf(date: Date): string {
   const y = date.getFullYear(), m = date.getMonth()
   const start = m < 3 ? y - 1 : y
@@ -191,34 +187,57 @@ function parseVouchers(xml: string): ParsedVoucher[] {
   return out
 }
 
-function buildXML(fromYMD: string, toYMD: string): string {
-  const typeFilter = SALES_TYPES.map(t => `$VoucherTypeName="${t}"`).join(' OR ')
+// Tally's date format for Voucher Register (DD/MM/YYYY).
+function fmtTallyDate(iso: string): string {
+  const d = new Date(iso + 'T00:00:00')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`
+}
+
+// Voucher Register report — built-in, properly date-filtered and type-
+// filtered via VOUCHERTYPENAME. The custom-Collection-with-FILTER
+// approach from tally.md §2 broke crossing fiscal years for KSI (returned
+// 1 voucher for FY 25-26 vs 967 here). One report = one type, so we call
+// once per type per month and merge the results.
+function buildVoucherRegisterXML(fromDDMMYYYY: string, toDDMMYYYY: string, vchType: string): string {
   return `<ENVELOPE>
   <HEADER>
     <VERSION>1</VERSION>
     <TALLYREQUEST>Export</TALLYREQUEST>
-    <TYPE>Collection</TYPE>
-    <ID>KsiSalesVouchers</ID>
+    <TYPE>Data</TYPE>
+    <ID>Voucher Register</ID>
   </HEADER>
   <BODY>
     <DESC>
       <STATICVARIABLES>
         <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
         <SVCURRENTCOMPANY>${KSI_TALLY}</SVCURRENTCOMPANY>
-        <SVFROMDATE>${fromYMD}</SVFROMDATE>
-        <SVTODATE>${toYMD}</SVTODATE>
+        <SVFROMDATE>${fromDDMMYYYY}</SVFROMDATE>
+        <SVTODATE>${toDDMMYYYY}</SVTODATE>
+        <VOUCHERTYPENAME>${vchType}</VOUCHERTYPENAME>
       </STATICVARIABLES>
-      <TDL><TDLMESSAGE>
-        <COLLECTION NAME="KsiSalesVouchers" ISMODIFY="No">
-          <TYPE>Voucher</TYPE>
-          <FETCH>Date,VoucherNumber,VoucherTypeName,PartyLedgerName,PartyName,PartyGSTIN,StateName,PlaceOfSupply,Amount,Narration,Reference,BasicShippedBy,BasicPurchaseOrderNo,BasicOrderRef,AllInventoryEntries,AllLedgerEntries</FETCH>
-          <FILTER>KsiSalesFilter</FILTER>
-        </COLLECTION>
-        <SYSTEM TYPE="Formulae" NAME="KsiSalesFilter">(${typeFilter}) AND $Date &gt;= $$Date:"${fromYMD}" AND $Date &lt;= $$Date:"${toYMD}"</SYSTEM>
-      </TDLMESSAGE></TDL>
     </DESC>
   </BODY>
 </ENVELOPE>`
+}
+
+// Walk the requested ISO range as monthly windows so a year-long backfill
+// never requests an 80MB+ XML in a single call.
+function monthlyWindows(fromISO: string, toISO: string): { from: string; to: string }[] {
+  const out: { from: string; to: string }[] = []
+  const start = new Date(fromISO + 'T00:00:00')
+  const end = new Date(toISO + 'T23:59:59')
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1)
+  while (cur <= end) {
+    const winStart = cur < start ? start : cur
+    const winEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0) // last day of month
+    const realEnd = winEnd > end ? end : winEnd
+    out.push({
+      from: `${winStart.getFullYear()}-${pad(winStart.getMonth() + 1)}-${pad(winStart.getDate())}`,
+      to: `${realEnd.getFullYear()}-${pad(realEnd.getMonth() + 1)}-${pad(realEnd.getDate())}`,
+    })
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+  }
+  return out
 }
 
 // POST /api/tally/ksi-sales-sync — Body: { from?, to? } (YYYY-MM-DD)
@@ -238,20 +257,26 @@ export async function POST(req: NextRequest) {
   if (process.env.CF_ACCESS_CLIENT_ID) headers['CF-Access-Client-Id'] = process.env.CF_ACCESS_CLIENT_ID
   if (process.env.CF_ACCESS_CLIENT_SECRET) headers['CF-Access-Client-Secret'] = process.env.CF_ACCESS_CLIENT_SECRET
 
-  let res: Response
-  try {
-    res = await fetch(tunnelUrl, {
-      method: 'POST',
-      headers,
-      body: buildXML(isoToYYYYMMDD(from), isoToYYYYMMDD(to)),
-    })
-  } catch (e: any) {
-    return NextResponse.json({ error: `Tally tunnel unreachable: ${e?.message || 'network error'}` }, { status: 502 })
+  // Iterate monthly windows × voucher types and accumulate.
+  const windows = monthlyWindows(from, to)
+  const vouchers: ParsedVoucher[] = []
+  for (const w of windows) {
+    for (const vt of SALES_TYPES) {
+      let res: Response
+      try {
+        res = await fetch(tunnelUrl, {
+          method: 'POST',
+          headers,
+          body: buildVoucherRegisterXML(fmtTallyDate(w.from), fmtTallyDate(w.to), vt),
+        })
+      } catch (e: any) {
+        return NextResponse.json({ error: `Tally tunnel unreachable in ${w.from}–${w.to} ${vt}: ${e?.message || 'network error'}` }, { status: 502 })
+      }
+      if (!res.ok) return NextResponse.json({ error: `Tally HTTP ${res.status} in ${w.from}–${w.to} ${vt}` }, { status: 502 })
+      const xml = await res.text()
+      vouchers.push(...parseVouchers(xml))
+    }
   }
-  if (!res.ok) return NextResponse.json({ error: `Tally HTTP ${res.status}` }, { status: 502 })
-
-  const xml = await res.text()
-  const vouchers = parseVouchers(xml)
 
   // Defensive: re-filter by date in case Tally returns out-of-range vouchers
   const fromMs = new Date(from + 'T00:00:00').getTime()

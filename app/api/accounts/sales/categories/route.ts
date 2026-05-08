@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
-const VALID = new Set(['extra-charge', 'discount', 'tax', 'party', 'ignore'])
+const VALID = new Set(['sales', 'extra-charge', 'discount', 'tax', 'roundoff', 'party', 'ignore'])
 
 // GET — list of unique ledger names found across all KSI sales invoices,
 // joined with their existing category (if any), plus per-ledger totals so

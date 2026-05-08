@@ -39,17 +39,28 @@ const fmtDate = (iso: string) => {
   return `${String(d.getDate()).padStart(2, '0')}-${d.toLocaleString('en-IN', { month: 'short' })}-${String(d.getFullYear()).slice(2)}`
 }
 
-// Net = sum(items) + extra-charges − discounts. Tax + party + ignore omitted.
-function computeNet(inv: Invoice, catMap: Record<string, string>): { gross: number; extras: number; discount: number; net: number } {
-  const gross = inv.lines.reduce((s, l) => s + l.amount, 0)
-  let extras = 0, discount = 0
+// Two derived figures per voucher:
+//   Net Sales       = max(items, sales-ledger) + extras − discounts        (revenue recognised, ex-tax)
+//   Net Payment Ask = max(items, sales-ledger) + tax + extras − discounts  (customer's payable)
+// Tax = sum of CGST + SGST + IGST on the voucher. Round-off is shown
+// separately because it's a balancing entry, not a charge.
+function computeNet(inv: Invoice, catMap: Record<string, string>): {
+  itemSum: number; salesLedger: number; gross: number; extras: number; discount: number; tax: number; net: number; paymentAsk: number
+} {
+  const itemSum = inv.lines.reduce((s, l) => s + l.amount, 0)
+  let salesLedger = 0, extras = 0, discount = 0
   for (const led of inv.ledgers) {
     const cat = catMap[led.ledgerName.toLowerCase()]
     const abs = Math.abs(led.amount)
-    if (cat === 'extra-charge') extras += abs
+    if (cat === 'sales') salesLedger += abs
+    else if (cat === 'extra-charge') extras += abs
     else if (cat === 'discount') discount += abs
   }
-  return { gross, extras, discount, net: gross + extras - discount }
+  const gross = Math.max(itemSum, salesLedger)
+  const tax = (inv.cgstAmount || 0) + (inv.sgstAmount || 0) + (inv.igstAmount || 0)
+  const net = gross + extras - discount
+  const paymentAsk = net + tax
+  return { itemSum, salesLedger, gross, extras, discount, tax, net, paymentAsk }
 }
 
 export default function SalesPage() {
@@ -111,15 +122,32 @@ export default function SalesPage() {
     return sorted
   }, [data?.invoices, sortBy, filterMode, pickedMonth, rangeFrom, rangeTo, partySearch])
 
-  const filteredTotals = useMemo(() => {
-    let gross = 0, extras = 0, discount = 0, net = 0, tax = 0
-    for (const inv of rows) {
-      const c = computeNet(inv, catMap)
-      gross += c.gross; extras += c.extras; discount += c.discount; net += c.net
-      tax += (inv.cgstAmount || 0) + (inv.sgstAmount || 0) + (inv.igstAmount || 0)
+  // Auto-detect well-known ledgers (CGST/SGST/IGST/round-off/party) so the
+  // user doesn't have to tag every voucher's tax lines. Doesn't write to
+  // the DB — explicit classification still wins.
+  const effectiveCatMap = useMemo(() => {
+    const out = { ...catMap }
+    for (const inv of data?.invoices ?? []) {
+      for (const led of inv.ledgers) {
+        const lname = led.ledgerName.toLowerCase()
+        if (out[lname]) continue
+        if (/cgst|sgst|utgst|igst/.test(lname)) out[lname] = 'tax'
+        else if (/round\s*off|roundoff|rounding/.test(lname)) out[lname] = 'roundoff'
+        else if (lname === inv.partyName.toLowerCase()) out[lname] = 'party'
+      }
     }
-    return { gross, extras, discount, net, tax, count: rows.length }
-  }, [rows, catMap])
+    return out
+  }, [catMap, data?.invoices])
+
+  const filteredTotals = useMemo(() => {
+    let gross = 0, extras = 0, discount = 0, net = 0, tax = 0, paymentAsk = 0
+    for (const inv of rows) {
+      const c = computeNet(inv, effectiveCatMap)
+      gross += c.gross; extras += c.extras; discount += c.discount
+      net += c.net; tax += c.tax; paymentAsk += c.paymentAsk
+    }
+    return { gross, extras, discount, net, tax, paymentAsk, count: rows.length }
+  }, [rows, effectiveCatMap])
 
   async function syncFy(fy: string) {
     setSyncing(true); setSyncMsg('')
@@ -194,7 +222,7 @@ export default function SalesPage() {
           partySearch={partySearch} setPartySearch={setPartySearch}
           monthOptions={monthOptions}
           totals={filteredTotals}
-          catMap={catMap}
+          catMap={effectiveCatMap}
         />
       ) : (
         <CategoriseView onChanged={() => mutate()} />
@@ -257,12 +285,13 @@ function VouchersView(props: any) {
       </div>
 
       {/* Headline totals */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 mb-3 text-center text-[10px]">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mb-3 text-center text-[10px]">
         <Stat label="Vouchers" value={String(totals.count)} />
         <Stat label="Gross" value={`₹${fmtMoney(totals.gross)}`} />
         <Stat label="Extras" value={`₹${fmtMoney(totals.extras)}`} tone="amber" />
         <Stat label="Discounts" value={`₹${fmtMoney(totals.discount)}`} tone="rose" />
         <Stat label="Net Sales" value={`₹${fmtMoney(totals.net)}`} tone="emerald" />
+        <Stat label="Payment Ask" value={`₹${fmtMoney(totals.paymentAsk)}`} tone="indigo" />
       </div>
 
       {/* Voucher cards */}
@@ -279,20 +308,13 @@ function VouchersView(props: any) {
 
 function VoucherCard({ inv, catMap }: { inv: Invoice; catMap: Record<string, string> }) {
   const c = computeNet(inv, catMap)
-  // Bucket non-tax/party ledgers by category for display
   const groups: Record<string, { ledger: string; amount: number }[]> = {
-    'extra-charge': [], 'discount': [], 'tax': [], 'party': [], 'ignore': [], 'unmapped': [],
+    sales: [], 'extra-charge': [], discount: [], tax: [], roundoff: [], party: [], ignore: [], unmapped: [],
   }
   for (const led of inv.ledgers) {
     const cat = catMap[led.ledgerName.toLowerCase()]
     if (cat && groups[cat]) groups[cat].push({ ledger: led.ledgerName, amount: Math.abs(led.amount) })
-    else if (!cat) {
-      // auto-bucket the obvious tax/party/round-off ones for display
-      const lname = led.ledgerName.toLowerCase()
-      if (/cgst|sgst|igst|utgst/.test(lname) || /round/.test(lname)) groups['tax'].push({ ledger: led.ledgerName, amount: Math.abs(led.amount) })
-      else if (lname === inv.partyName.toLowerCase()) groups['party'].push({ ledger: led.ledgerName, amount: Math.abs(led.amount) })
-      else groups['unmapped'].push({ ledger: led.ledgerName, amount: Math.abs(led.amount) })
-    }
+    else groups['unmapped'].push({ ledger: led.ledgerName, amount: Math.abs(led.amount) })
   }
 
   return (
@@ -308,9 +330,18 @@ function VoucherCard({ inv, catMap }: { inv: Invoice; catMap: Record<string, str
           <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{inv.partyName}</div>
           {inv.partyGstin && <div className="text-[10px] text-gray-500 dark:text-gray-400 font-mono">{inv.partyGstin}</div>}
         </div>
-        <div className="text-right shrink-0">
-          <div className="text-base font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(inv.totalAmount)}</div>
-          <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">net ₹{fmtMoney(c.net)}</div>
+        <div className="text-right shrink-0 leading-tight">
+          <div className="text-base font-bold text-indigo-700 dark:text-indigo-400 tabular-nums" title="Net Payment Ask = Items + Tax + Extras − Discount">
+            ₹{fmtMoney(c.paymentAsk)}
+          </div>
+          <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold" title="Net Sales = Items + Extras − Discount (ex-tax)">
+            net sales ₹{fmtMoney(c.net)}
+          </div>
+          {Math.abs(c.paymentAsk - inv.totalAmount) > 0.5 && (
+            <div className="text-[10px] text-amber-600 dark:text-amber-400" title="Difference between computed Payment Ask and Tally voucher total — usually round-off or unmapped extras/discounts">
+              tally ₹{fmtMoney(inv.totalAmount)} (Δ {(c.paymentAsk - inv.totalAmount).toFixed(2)})
+            </div>
+          )}
         </div>
       </div>
 
@@ -341,7 +372,10 @@ function VoucherCard({ inv, catMap }: { inv: Invoice; catMap: Record<string, str
 
       {/* Voucher-level breakdown */}
       <div className="border-t border-gray-100 dark:border-gray-700 pt-1.5 mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-        <div>Items: <span className="text-gray-700 dark:text-gray-300 tabular-nums">₹{fmtMoney(c.gross)}</span></div>
+        {c.itemSum > 0 && <div>Items: <span className="text-gray-700 dark:text-gray-300 tabular-nums">₹{fmtMoney(c.itemSum)}</span></div>}
+        {c.salesLedger > 0 && (
+          <div>Sales (ledger): <span className="text-gray-700 dark:text-gray-300 tabular-nums">₹{fmtMoney(c.salesLedger)}</span></div>
+        )}
         {(inv.cgstAmount || inv.sgstAmount || inv.igstAmount) && (
           <div>Tax: <span className="text-gray-700 dark:text-gray-300 tabular-nums">₹{fmtMoney((inv.cgstAmount || 0) + (inv.sgstAmount || 0) + (inv.igstAmount || 0))}</span></div>
         )}
@@ -368,10 +402,11 @@ function VoucherCard({ inv, catMap }: { inv: Invoice; catMap: Record<string, str
   )
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: 'emerald' | 'amber' | 'rose' }) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: 'emerald' | 'amber' | 'rose' | 'indigo' }) {
   const colors = tone === 'emerald' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300'
     : tone === 'amber' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300'
     : tone === 'rose' ? 'bg-rose-50 dark:bg-rose-900/20 text-rose-800 dark:text-rose-300'
+    : tone === 'indigo' ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-800 dark:text-indigo-300'
     : 'bg-gray-50 dark:bg-gray-700/40 text-gray-700 dark:text-gray-200'
   return (
     <div className={`rounded-lg px-2 py-1.5 ${colors}`}>
@@ -405,8 +440,8 @@ function CategoriseView({ onChanged }: { onChanged: () => void }) {
   return (
     <div>
       <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
-        Tag each ledger so we know what it is. Net Sales = Items + Extra Charges − Discounts.
-        Tax / Party / Ignore stay out of the calculation.
+        Tag each ledger. Net Sales = max(Items, Sales-ledger) + Extra Charges − Discounts.
+        Tax / Round-off / Party / Ignore stay out of the calculation.
       </p>
       <div className="space-y-1.5">
         {rows.map(r => (
@@ -418,13 +453,15 @@ function CategoriseView({ onChanged }: { onChanged: () => void }) {
               </div>
             </div>
             <div className="flex gap-1 flex-wrap">
-              {(['extra-charge', 'discount', 'tax', 'party', 'ignore'] as const).map(c => (
+              {(['sales', 'extra-charge', 'discount', 'tax', 'roundoff', 'party', 'ignore'] as const).map(c => (
                 <button key={c} onClick={() => setCategory(r.ledgerName, c)} disabled={busy === r.ledgerName}
                   className={`text-[10px] px-2 py-1 rounded-full border transition ${
                     r.category === c
-                      ? c === 'extra-charge' ? 'bg-amber-500 text-white border-amber-500'
+                      ? c === 'sales' ? 'bg-emerald-500 text-white border-emerald-500'
+                        : c === 'extra-charge' ? 'bg-amber-500 text-white border-amber-500'
                         : c === 'discount' ? 'bg-rose-500 text-white border-rose-500'
                         : c === 'tax' ? 'bg-indigo-500 text-white border-indigo-500'
+                        : c === 'roundoff' ? 'bg-sky-500 text-white border-sky-500'
                         : c === 'party' ? 'bg-gray-500 text-white border-gray-500'
                         : 'bg-gray-300 text-gray-700 border-gray-300'
                       : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
