@@ -105,10 +105,13 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
     })).map(e => ({ ...e, _lotThan: e.than, lots: [], chemicals: [] }))
   }
 
-  // Find fold entries via FoldBatchLot
+  // Find fold entries via FoldBatchLot. Exclude cancelled batches from the
+  // active list so foldThan + count reflect what's actually allocated; the
+  // cancelled rows are surfaced separately below for audit.
   let foldEntries: any[] = []
+  let cancelledFoldEntries: any[] = []
   try {
-    foldEntries = await db.foldBatchLot.findMany({
+    const allFold = await db.foldBatchLot.findMany({
       where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
       include: {
         foldBatch: {
@@ -119,6 +122,8 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         },
       },
     })
+    foldEntries = allFold.filter((e: any) => !e.foldBatch?.cancelled)
+    cancelledFoldEntries = allFold.filter((e: any) => e.foldBatch?.cancelled)
   } catch {}
 
   // Find finish entries via FinishEntryLot

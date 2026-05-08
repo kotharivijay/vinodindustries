@@ -119,6 +119,9 @@ interface FoldBatch {
   shade?: { id: number; name: string }
   lots: FoldBatchLot[]
   dyeingEntries?: DyeingRef[]
+  cancelled?: boolean
+  cancelledReason?: string | null
+  cancelledAt?: string | null
 }
 
 interface FoldProgram {
@@ -368,7 +371,7 @@ export default function FoldDetailPage() {
       y = (doc as any).lastAutoTable.finalY + 8
     }
 
-    const totalThan = program.batches.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + l.than, 0), 0)
+    const totalThan = program.batches.filter(b => !b.cancelled).reduce((s, b) => s + b.lots.reduce((ls, l) => ls + l.than, 0), 0)
     doc.setFont('helvetica', 'bold')
     doc.text(`Grand Total: ${totalThan} than`, 14, y)
 
@@ -382,7 +385,12 @@ export default function FoldDetailPage() {
   if (isLoading) return <div className="p-8 text-gray-400 dark:text-gray-500">Loading...</div>
   if (!program) return <div className="p-8 text-red-500">Not found</div>
 
-  const totalThan = program.batches.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + l.than, 0), 0)
+  // Cancelled batches don't count toward the program's working total than —
+  // their lots returned to the unallocated pool. Their rows are still
+  // rendered below for audit, with strikethrough.
+  const totalThan = program.batches
+    .filter(b => !b.cancelled)
+    .reduce((s, b) => s + b.lots.reduce((ls, l) => ls + l.than, 0), 0)
 
   return (
     <div className="p-4 md:p-8 max-w-2xl">
@@ -481,13 +489,41 @@ export default function FoldDetailPage() {
           const dyed = batch.dyeingEntries && batch.dyeingEntries.length > 0
           const dyeEntry = batch.dyeingEntries?.[0]
           const dyeStatus = dyeEntry?.dyeingDoneAt ? 'done' : dyeEntry?.status || null
+          const isCancelled = !!batch.cancelled
+          // Cancelled batches go full grey with a strikethrough on the title
+          // and total-than. Their lots also strike through. Audit fields
+          // (cancelledAt, cancelledReason) get surfaced just under the header.
+          const headerBg = isCancelled
+            ? 'bg-gray-100 dark:bg-gray-900/40'
+            : (dyed ? 'bg-green-50 dark:bg-green-900/20' : 'bg-indigo-50 dark:bg-indigo-900/30')
+          const titleColor = isCancelled
+            ? 'text-gray-500 dark:text-gray-400 line-through'
+            : (dyed ? 'text-green-700 dark:text-green-400' : 'text-indigo-700 dark:text-indigo-400')
+          const totalColor = isCancelled
+            ? 'text-gray-400 dark:text-gray-500 line-through'
+            : (dyed ? 'text-green-600 dark:text-green-400' : 'text-indigo-600 dark:text-indigo-400')
           return (
-            <div key={batch.id} className={`bg-white dark:bg-gray-800 rounded-xl border overflow-hidden ${dyed ? 'border-green-200 dark:border-green-800' : 'border-gray-200 dark:border-gray-700'}`}>
-              <div className={`px-4 py-2 flex items-center justify-between ${dyed ? 'bg-green-50 dark:bg-green-900/20' : 'bg-indigo-50 dark:bg-indigo-900/30'}`}>
-                <div className="flex items-center gap-1.5">
-                  {dyed && <span className="text-sm">🔒</span>}
-                  <span className={`font-bold text-sm ${dyed ? 'text-green-700 dark:text-green-400' : 'text-indigo-700 dark:text-indigo-400'}`}>Batch {batch.batchNo}</span>
-                  <ShadePicker batch={batch} shades={shades} onSave={updateBatchShade} />
+            <div key={batch.id}
+              title={isCancelled && batch.cancelledReason ? `Cancelled: ${batch.cancelledReason}` : undefined}
+              className={`bg-white dark:bg-gray-800 rounded-xl border overflow-hidden ${
+                isCancelled ? 'border-gray-200 dark:border-gray-700 opacity-70'
+                : dyed ? 'border-green-200 dark:border-green-800'
+                : 'border-gray-200 dark:border-gray-700'
+              }`}>
+              <div className={`px-4 py-2 flex items-center justify-between ${headerBg}`}>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {isCancelled && <span className="text-sm">🚫</span>}
+                  {!isCancelled && dyed && <span className="text-sm">🔒</span>}
+                  <span className={`font-bold text-sm ${titleColor}`}>Batch {batch.batchNo}</span>
+                  {isCancelled && (
+                    <span className="text-[10px] font-bold text-rose-700 bg-rose-100 dark:bg-rose-900/30 dark:text-rose-300 px-1.5 py-0.5 rounded">
+                      Cancelled
+                    </span>
+                  )}
+                  {!isCancelled && <ShadePicker batch={batch} shades={shades} onSave={updateBatchShade} />}
+                  {isCancelled && (batch.shade?.name || batch.shadeName) && (
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 line-through">{batch.shade?.name || batch.shadeName}</span>
+                  )}
                   {dyed && dyeEntry && (
                     <a href={`/dyeing/${dyeEntry.id}`} className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 hover:underline">
                       Slip {dyeEntry.slipNo} {dyeStatus === 'done' ? '✅' : dyeStatus === 'patchy' ? '⚠️' : '⏳'}
@@ -495,8 +531,8 @@ export default function FoldDetailPage() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-sm font-bold ${dyed ? 'text-green-600 dark:text-green-400' : 'text-indigo-600 dark:text-indigo-400'}`}>{batchTotal} than</span>
-                  {!dyed && (
+                  <span className={`text-sm font-bold ${totalColor}`}>{batchTotal} than</span>
+                  {!isCancelled && !dyed && (
                     <button
                       onClick={() => router.push(`/dyeing/batch?batchId=${batch.id}`)}
                       className="text-[10px] bg-purple-600 text-white px-2 py-1 rounded hover:bg-purple-700 font-medium"
@@ -506,6 +542,12 @@ export default function FoldDetailPage() {
                   )}
                 </div>
               </div>
+              {isCancelled && (batch.cancelledReason || batch.cancelledAt) && (
+                <div className="px-4 py-1 bg-gray-50 dark:bg-gray-900/30 text-[10px] text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                  Cancelled{batch.cancelledAt ? ` ${new Date(batch.cancelledAt).toLocaleDateString('en-IN')}` : ''}
+                  {batch.cancelledReason ? ` — ${batch.cancelledReason}` : ''}
+                </div>
+              )}
               {/* Mobile card view */}
               <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-700">
                 {batch.lots.map(lot => (
