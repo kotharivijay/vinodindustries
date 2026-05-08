@@ -138,7 +138,13 @@ function parseVouchers(xml: string): ParsedVoucher[] {
     // Ledger entries — categorise common known ones (CGST/SGST/IGST/RoundOff)
     // for the headline columns AND store EVERY entry verbatim so the user can
     // map any new ledger name to extra-charge / discount / ignore in the UI.
-    const ledBlocks = b.match(/<ALLLEDGERENTRIES\.LIST[^>]*>[\s\S]*?<\/ALLLEDGERENTRIES\.LIST>/g) || []
+    // Voucher Register report returns <LEDGERENTRIES.LIST>; custom voucher
+    // collections return <ALLLEDGERENTRIES.LIST>. Match both so the sync
+    // works regardless of which Tally report we hit.
+    const ledBlocks: string[] = [
+      ...(b.match(/<ALLLEDGERENTRIES\.LIST[^>]*>[\s\S]*?<\/ALLLEDGERENTRIES\.LIST>/g) || []),
+      ...(b.match(/<LEDGERENTRIES\.LIST[^>]*>[\s\S]*?<\/LEDGERENTRIES\.LIST>/g) || []),
+    ]
     let cgst = 0, sgst = 0, igst = 0, roundOff = 0
     const ledgers: ParsedLedger[] = []
     for (const lb of ledBlocks) {
