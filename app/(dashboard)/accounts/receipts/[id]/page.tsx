@@ -272,19 +272,39 @@ function InvoiceCard({ inv, receiptId, receiptRemaining, onChange }: {
         </div>
       )}
 
-      {/* Action: collapsed pill OR expanded form */}
+      {/* Action: pills (TDS / Discount / Link) always visible when collapsed */}
       {!open ? (
-        <div className="flex justify-end gap-2 mt-2">
-          {myAlloc && (
-            <button onClick={unlink} disabled={busy}
-              className="text-[11px] px-2.5 py-1 rounded-lg border border-rose-300 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50">
-              ↩ Unlink
-            </button>
+        <div className="flex flex-wrap items-center justify-end gap-1.5 mt-2">
+          {myAlloc ? (
+            <>
+              <button onClick={unlink} disabled={busy}
+                className="text-[11px] px-2.5 py-1 rounded-full border border-rose-300 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50">
+                ↩ Unlink
+              </button>
+              <button onClick={() => setOpen(true)} disabled={busy}
+                className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+                ✏ Edit
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => { autoTds(); setOpen(true) }}
+                disabled={receiptRemaining <= 0}
+                className="text-[11px] px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold disabled:opacity-40">
+                💰 TDS @{DEFAULT_TDS_RATE}%
+              </button>
+              <button onClick={() => setOpen(true)}
+                disabled={receiptRemaining <= 0}
+                className="text-[11px] px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold disabled:opacity-40">
+                🏷 Discount
+              </button>
+              <button onClick={() => setOpen(true)}
+                disabled={receiptRemaining <= 0}
+                className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold">
+                🔗 Link
+              </button>
+            </>
           )}
-          <button onClick={() => setOpen(true)} disabled={!myAlloc && receiptRemaining <= 0}
-            className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold">
-            {myAlloc ? '✏ Edit' : '🔗 Link Receipt'}
-          </button>
         </div>
       ) : (
         <div className="mt-2.5 pt-2.5 border-t border-emerald-200 dark:border-emerald-700/30 space-y-2">
