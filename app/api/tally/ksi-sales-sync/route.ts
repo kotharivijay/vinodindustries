@@ -155,7 +155,12 @@ function parseVouchers(xml: string): ParsedVoucher[] {
       ledgers.push({ ledgerName, amount: signedAmt, isDeemedPositive: idp })
     }
 
-    const totalAmount = Math.abs(parseAmount(pickTag(b, 'AMOUNT')))
+    // Voucher grand total — computed deterministically from items + tax + round-off.
+    // Tally XML has no reliable voucher-level <AMOUNT>; pickTag would return the
+    // FIRST <AMOUNT> in the block, which is usually the first inventory line's
+    // amount, missing every line after it (KSI/25-26/966 had ₹10,640 instead of
+    // ₹41,522).
+    const totalAmount = taxable + cgst + sgst + igst + roundOff
 
     // UDFs
     const agentName = dec(b.match(/<UDF:AGENTNMVCH_PCDOE26(?![A-Z0-9_])[^>]*>([^<]*)<\/UDF:AGENTNMVCH_PCDOE26>/)?.[1] || '') || null
