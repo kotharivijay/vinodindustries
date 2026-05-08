@@ -24,7 +24,8 @@ export async function GET() {
   const db = prisma as any
 
   const [foldRows, dyeRows, finishRows, packRows] = await Promise.all([
-    db.foldBatchLot.groupBy({ by: ['lotNo'], _sum: { than: true } }).catch(() => []),
+    // Cancelled batches don't count as "in fold" — their than goes back to grey.
+    db.foldBatchLot.groupBy({ where: { foldBatch: { cancelled: false } }, by: ['lotNo'], _sum: { than: true } }).catch(() => []),
     db.dyeingEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } }).catch(() => []),
     db.finishEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } }).catch(() => []),
     db.packingLot.groupBy({ by: ['lotNo'], _sum: { than: true } }).catch(() => []),

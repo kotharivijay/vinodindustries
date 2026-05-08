@@ -8,8 +8,11 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Fetch fold programmed than per lot
+  // Fetch fold programmed than per lot. Cancelled batches are excluded so
+  // their than returns to the unallocated pool (the row + lot is kept for
+  // audit; only stock math ignores it).
   const foldBatchLots = await (prisma as any).foldBatchLot.findMany({
+    where: { foldBatch: { cancelled: false } },
     select: { lotNo: true, than: true },
   })
   const foldMap = new Map<string, number>()

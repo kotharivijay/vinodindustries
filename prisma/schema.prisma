@@ -571,6 +571,14 @@ model FoldBatch {
   shadeName        String? // free-text shade name (if not in master)
   shadeDescription String?
   marka            String?
+  // Cancelled batches keep their row + linked dyeing slip (so audit + slip
+  // history survive) but their lots are excluded from foldMap stock
+  // deductions — the than returns to the unallocated pool. Used when a fold
+  // program is being edited and a locked batch needs to be retired without
+  // orphaning its dyeing slip.
+  cancelled        Boolean        @default(false)
+  cancelledReason  String?
+  cancelledAt      DateTime?
   lots             FoldBatchLot[]
   dyeingEntries    DyeingEntry[]
 }

@@ -73,9 +73,9 @@ export async function GET(req: NextRequest) {
   const reproMap = new Map<string, number>()
   for (const r of reproLots) reproMap.set(r.reproNo.toLowerCase().trim(), r.totalThan)
 
-  // Fold usage (all folds, not just current)
+  // Fold usage (all non-cancelled folds, current + others)
   const foldLots = await db.foldBatchLot.findMany({
-    where: { lotNo: { in: Array.from(allLotNos) } },
+    where: { lotNo: { in: Array.from(allLotNos) }, foldBatch: { cancelled: false } },
     select: { lotNo: true, than: true, foldBatchId: true },
   })
 

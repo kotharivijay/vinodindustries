@@ -96,10 +96,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     // Guard: deleting batches that have dyeing slips would silently null
     // out DyeingEntry.foldBatchId (Prisma's default ON DELETE for optional
-    // relations is SET NULL) → orphan slips. Block the PUT instead so the
-    // operator can decide. Same gate the DELETE handler uses.
+    // relations is SET NULL) → orphan slips. We refuse PUT only when a
+    // NON-CANCELLED batch has linked slips. Cancelled batches with slips
+    // are fine (they're preserved separately below) — that's the whole
+    // point of cancelling: retire a locked batch without orphaning it.
     const dyedBatches = await (prisma as any).foldBatch.findMany({
-      where: { foldProgramId: id },
+      where: { foldProgramId: id, cancelled: false },
       include: { dyeingEntries: { select: { id: true, slipNo: true } } },
     })
     const conflicts = dyedBatches.filter((b: any) => b.dyeingEntries.length > 0)
@@ -108,12 +110,23 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         `B${b.batchNo} (Slip ${b.dyeingEntries.map((d: any) => d.slipNo).join(', ')})`,
       ).join('; ')
       return NextResponse.json({
-        error: `Cannot replace batches — ${conflicts.length} batch(es) have dyeing slips: ${details}. Unlink the slips first or delete them.`,
+        error: `Cannot replace batches — ${conflicts.length} active batch(es) have dyeing slips: ${details}. Cancel the batch first (locked batches keep their slips and lots return to unallocated stock).`,
       }, { status: 409 })
     }
 
-    // Delete old batches (cascade deletes lots)
-    await (prisma as any).foldBatch.deleteMany({ where: { foldProgramId: id } })
+    // Delete only non-cancelled batches; cancelled ones survive the edit so
+    // their audit trail + slip linkage remains intact. Their batchNos are
+    // preserved, so the form's new batches must avoid collision.
+    await (prisma as any).foldBatch.deleteMany({ where: { foldProgramId: id, cancelled: false } })
+
+    // Find the max cancelled batchNo so we can offset new batchNos and avoid
+    // unique collisions. (FoldBatch has no @@unique on (programId, batchNo)
+    // but operators expect monotonic numbering.)
+    const cancelled = await (prisma as any).foldBatch.findMany({
+      where: { foldProgramId: id, cancelled: true },
+      select: { batchNo: true },
+    })
+    const cancelledNos = new Set<number>(cancelled.map((b: any) => b.batchNo))
 
     // Update program and recreate batches
     const program = await (prisma as any).foldProgram.update({

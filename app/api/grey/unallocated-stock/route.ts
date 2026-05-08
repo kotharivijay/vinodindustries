@@ -32,7 +32,9 @@ export async function GET() {
     prisma.despatchEntryLot.findMany({
       select: { lotNo: true, than: true },
     }),
+    // Skip cancelled batches — their than returns to the unallocated pool.
     db.foldBatchLot.findMany({
+      where: { foldBatch: { cancelled: false } },
       select: { lotNo: true, than: true },
     }),
   ])

@@ -46,11 +46,14 @@ interface LotRow {
 }
 
 interface BatchRow {
+  id?: number               // present when this batch came from the saved program
   batchNo: number
   shadeId: number | null
   shadeName: string
   shadeDescription: string
   lots: LotRow[]
+  cancelled?: boolean       // saved-side cancelled flag
+  dyeingSlipCount?: number  // when > 0, batch is "locked" — Cancel button instead of Remove
 }
 
 // ── Shade Combobox ────────────────────────────────────────────────────────────
@@ -267,10 +270,13 @@ export default function EditFoldPage() {
     setNotes(existingProgram.notes ?? '')
     setBatches(
       (existingProgram.batches ?? []).map((b: any) => ({
+        id: b.id,
         batchNo: b.batchNo,
         shadeId: b.shade?.id ?? null,
         shadeName: b.shade?.name ?? b.shadeName ?? '',
         shadeDescription: b.shadeDescription ?? '',
+        cancelled: b.cancelled ?? false,
+        dyeingSlipCount: Array.isArray(b.dyeingEntries) ? b.dyeingEntries.length : (b._count?.dyeingEntries ?? 0),
         lots: (b.lots ?? []).map((l: any) => ({
           lotNo: l.lotNo,
           than: String(l.than),
@@ -582,7 +588,42 @@ export default function EditFoldPage() {
                     onShadeAdded={shade => mutateShades(prev => [...(prev ?? []), shade].sort((a, b) => a.name.localeCompare(b.name)))}
                   />
                 </div>
-                {batches.length > 1 && (
+                {batch.cancelled && (
+                  <span className="text-[10px] font-bold text-rose-700 bg-rose-100 dark:bg-rose-900/30 dark:text-rose-300 px-2 py-0.5 rounded shrink-0">
+                    Cancelled
+                  </span>
+                )}
+                {!batch.cancelled && (batch.dyeingSlipCount ?? 0) > 0 && (
+                  // Locked: a dyeing slip references this batch. No cancel,
+                  // no delete — operator must detach the slip first via
+                  // Settings → Service → Orphan Dyeing Slips. Frozen until
+                  // then.
+                  <span title={`${batch.dyeingSlipCount} dyeing slip(s) linked — detach via Service tab to enable cancel/remove`}
+                    className="text-[10px] font-bold text-amber-700 bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 px-2 py-0.5 rounded shrink-0">
+                    🔒 Locked ({batch.dyeingSlipCount})
+                  </span>
+                )}
+                {!batch.cancelled && (batch.dyeingSlipCount ?? 0) === 0 && batch.id != null && (
+                  // Saved batch with no slips — Cancel marks it as retired
+                  // for audit (row stays, lots return to unallocated stock).
+                  // Cleaner than Remove when you want to keep the record.
+                  <button onClick={async () => {
+                    const reason = window.prompt('Reason for cancelling this batch? (optional)') ?? ''
+                    if (reason === null) return
+                    if (!confirm(`Cancel batch ${batch.batchNo}? It stays in records but its lots return to unallocated stock.`)) return
+                    try {
+                      const res = await fetch(`/api/fold/batches/${batch.id}/cancel`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reason: reason || undefined }),
+                      })
+                      if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Cancel failed'); return }
+                      setBatches(prev => prev.map((b, i) => i === batchIdx ? { ...b, cancelled: true } : b))
+                    } catch (e: any) { alert(e?.message || 'Cancel failed') }
+                  }} className="text-xs text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 shrink-0 font-medium">
+                    🚫 Cancel
+                  </button>
+                )}
+                {!batch.cancelled && (batch.dyeingSlipCount ?? 0) === 0 && batches.length > 1 && (
                   <button onClick={() => removeBatch(batchIdx)} className="text-xs text-red-500 hover:text-red-700 shrink-0">
                     Remove
                   </button>
