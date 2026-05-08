@@ -881,6 +881,7 @@ model KsiSalesInvoice {
   createdAt     DateTime  @default(now())
 
   lines       KsiSalesInvoiceLine[]
+  ledgers     KsiSalesInvoiceLedger[]
   allocations KsiReceiptAllocation[]
 
   @@unique([vchNumber, date, vchType], name: "ksi_sales_natural_key")
@@ -891,6 +892,7 @@ model KsiSalesInvoice {
 
 // Item-level lines for a sales invoice — keeps the raw qty/rate strings
 // (Tally returns " 420.0 THAN" / "175.00/THAN") plus parsed numeric fallbacks.
+// altQty/altUnit captures dual-unit qty when present (e.g. "834.00 MTR = 35 PCS").
 model KsiSalesInvoiceLine {
   id          Int             @id @default(autoincrement())
   invoiceId   Int
@@ -900,12 +902,44 @@ model KsiSalesInvoiceLine {
   rawQty      String?
   qty         Float?
   unit        String?
+  altQty      Float?
+  altUnit     String?
   rate        Float?
+  rateUnit    String?
   amount      Float
   discountPct Float?
   baleNo      String?
 
   @@index([invoiceId])
+}
+
+// All non-item ledger entries on a sales invoice — taxes, discounts, freight,
+// extra charges, party ledger, etc. Stored verbatim so the user can map any
+// new ledger name encountered to a category for net-sales computation.
+model KsiSalesInvoiceLedger {
+  id                Int             @id @default(autoincrement())
+  invoiceId         Int
+  invoice           KsiSalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  ledgerName        String
+  amount            Float           // signed (Tally convention)
+  isDeemedPositive  Boolean
+
+  @@index([invoiceId])
+  @@index([ledgerName])
+}
+
+// User-driven classification of voucher-level ledger names. One row per
+// ledger name (case-insensitive). Used to compute net sales = items + extra
+// charges − discounts. Sync routes never touch this table.
+model KsiSalesLedgerCategory {
+  id          Int      @id @default(autoincrement())
+  ledgerName  String   @unique
+  category    String   // 'extra-charge' | 'discount' | 'tax' | 'party' | 'ignore'
+  note        String?
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@index([category])
 }
 
 // Manual reconciliation: a receipt linked to one or more sales/process

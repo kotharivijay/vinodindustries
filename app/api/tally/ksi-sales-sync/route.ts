@@ -38,11 +38,17 @@ function parseRate(s: string): { rate: number | null; unit: string | null } {
   if (!m) return { rate: null, unit: null }
   return { rate: parseFloat(m[1]), unit: m[2] }
 }
-function parseQty(s: string): { qty: number | null; unit: string | null } {
-  // e.g. " 420.0 THAN" or "834.00 MTR = 35 PCS" — primary qty is first number
-  const m = s.trim().match(/([\d.]+)\s*(\w+)?/)
-  if (!m) return { qty: null, unit: null }
-  return { qty: parseFloat(m[1]), unit: m[2] || null }
+function parseQty(s: string): {
+  qty: number | null; unit: string | null; altQty: number | null; altUnit: string | null
+} {
+  // " 420.0 THAN"           → qty=420, unit=THAN
+  // "834.00 MTR = 35 PCS"   → qty=834, unit=MTR, altQty=35, altUnit=PCS
+  const trimmed = s.trim()
+  const dual = trimmed.match(/([\d.]+)\s*(\w+)\s*=\s*([\d.]+)\s*(\w+)/)
+  if (dual) return { qty: parseFloat(dual[1]), unit: dual[2], altQty: parseFloat(dual[3]), altUnit: dual[4] }
+  const single = trimmed.match(/([\d.]+)\s*(\w+)?/)
+  if (!single) return { qty: null, unit: null, altQty: null, altUnit: null }
+  return { qty: parseFloat(single[1]), unit: single[2] || null, altQty: null, altUnit: null }
 }
 
 interface ParsedLine {
@@ -51,10 +57,19 @@ interface ParsedLine {
   rawQty: string | null
   qty: number | null
   unit: string | null
+  altQty: number | null
+  altUnit: string | null
   rate: number | null
+  rateUnit: string | null
   amount: number
   discountPct: number | null
   baleNo: string | null
+}
+
+interface ParsedLedger {
+  ledgerName: string
+  amount: number
+  isDeemedPositive: boolean
 }
 
 interface ParsedVoucher {
@@ -78,6 +93,7 @@ interface ParsedVoucher {
   transporter: string | null
   agentName: string | null
   lines: ParsedLine[]
+  ledgers: ParsedLedger[]
 }
 
 function parseVouchers(xml: string): ParsedVoucher[] {
@@ -100,7 +116,7 @@ function parseVouchers(xml: string): ParsedVoucher[] {
       const stockItem = pickTag(il, 'STOCKITEMNAME')
       if (!stockItem) return
       const rawQty = pickTag(il, 'ACTUALQTY') || pickTag(il, 'BILLEDQTY')
-      const { qty, unit: qtyUnit } = parseQty(rawQty)
+      const { qty, unit: qtyUnit, altQty, altUnit } = parseQty(rawQty)
       const rateStr = pickTag(il, 'RATE')
       const { rate, unit: rateUnit } = parseRate(rateStr)
       const amount = parseAmount(pickTag(il, 'AMOUNT'))
@@ -111,8 +127,11 @@ function parseVouchers(xml: string): ParsedVoucher[] {
         stockItem,
         rawQty: rawQty || null,
         qty,
-        unit: rateUnit || qtyUnit,
+        unit: qtyUnit,
+        altQty,
+        altUnit,
         rate,
+        rateUnit,
         amount: Math.abs(amount),
         discountPct: discPct,
         baleNo: bale,
@@ -120,16 +139,24 @@ function parseVouchers(xml: string): ParsedVoucher[] {
       taxable += Math.abs(amount)
     })
 
-    // Ledger entries — categorise by ledger name
+    // Ledger entries — categorise common known ones (CGST/SGST/IGST/RoundOff)
+    // for the headline columns AND store EVERY entry verbatim so the user can
+    // map any new ledger name to extra-charge / discount / ignore in the UI.
     const ledBlocks = b.match(/<ALLLEDGERENTRIES\.LIST[^>]*>[\s\S]*?<\/ALLLEDGERENTRIES\.LIST>/g) || []
     let cgst = 0, sgst = 0, igst = 0, roundOff = 0
+    const ledgers: ParsedLedger[] = []
     for (const lb of ledBlocks) {
-      const lname = pickTag(lb, 'LEDGERNAME').toLowerCase()
-      const lamt = Math.abs(parseAmount(pickTag(lb, 'AMOUNT')))
-      if (/cgst/.test(lname)) cgst += lamt
-      else if (/sgst|utgst/.test(lname)) sgst += lamt
-      else if (/igst/.test(lname)) igst += lamt
-      else if (/round/.test(lname)) roundOff += lamt
+      const ledgerName = pickTag(lb, 'LEDGERNAME')
+      if (!ledgerName) continue
+      const signedAmt = parseAmount(pickTag(lb, 'AMOUNT'))
+      const idp = pickTag(lb, 'ISDEEMEDPOSITIVE').toLowerCase() === 'yes'
+      const lname = ledgerName.toLowerCase()
+      const absAmt = Math.abs(signedAmt)
+      if (/cgst/.test(lname)) cgst += absAmt
+      else if (/sgst|utgst/.test(lname)) sgst += absAmt
+      else if (/igst/.test(lname)) igst += absAmt
+      else if (/round/.test(lname)) roundOff += absAmt
+      ledgers.push({ ledgerName, amount: signedAmt, isDeemedPositive: idp })
     }
 
     const totalAmount = Math.abs(parseAmount(pickTag(b, 'AMOUNT')))
@@ -158,6 +185,7 @@ function parseVouchers(xml: string): ParsedVoucher[] {
       transporter: pickTag(b, 'BASICSHIPPEDBY') || null,
       agentName,
       lines,
+      ledgers,
     })
   }
   return out
@@ -262,6 +290,15 @@ export async function POST(req: NextRequest) {
     if (v.lines.length > 0) {
       await db.ksiSalesInvoiceLine.createMany({
         data: v.lines.map(l => ({ ...l, invoiceId: invoice.id })),
+      })
+    }
+    // Replace ledger entries fully — these are derived from Tally, no
+    // user-edit data lives on this table (categorisation lives on
+    // KsiSalesLedgerCategory keyed by ledgerName).
+    await db.ksiSalesInvoiceLedger.deleteMany({ where: { invoiceId: invoice.id } })
+    if (v.ledgers.length > 0) {
+      await db.ksiSalesInvoiceLedger.createMany({
+        data: v.ledgers.map(l => ({ ...l, invoiceId: invoice.id })),
       })
     }
     saved++
