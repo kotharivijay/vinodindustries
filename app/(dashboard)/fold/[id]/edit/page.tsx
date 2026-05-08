@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import useSWR from 'swr'
+import useSWR, { mutate as globalMutate } from 'swr'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -617,6 +617,12 @@ export default function EditFoldPage() {
                       })
                       if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Cancel failed'); return }
                       setBatches(prev => prev.map((b, i) => i === batchIdx ? { ...b, cancelled: true } : b))
+                      // Refresh stock-derived caches across the app + server
+                      // pages (lot tracking is server-rendered).
+                      globalMutate('/api/stock')
+                      globalMutate(`/api/fold/${id}`)
+                      globalMutate(`/api/fold/validate?foldId=${id}`)
+                      router.refresh()
                     } catch (e: any) { alert(e?.message || 'Cancel failed') }
                   }} className="text-xs text-rose-600 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 shrink-0 font-medium">
                     🚫 Cancel
@@ -630,6 +636,10 @@ export default function EditFoldPage() {
                       const res = await fetch(`/api/fold/batches/${batch.id}/cancel`, { method: 'DELETE' })
                       if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Restore failed'); return }
                       setBatches(prev => prev.map((b, i) => i === batchIdx ? { ...b, cancelled: false } : b))
+                      globalMutate('/api/stock')
+                      globalMutate(`/api/fold/${id}`)
+                      globalMutate(`/api/fold/validate?foldId=${id}`)
+                      router.refresh()
                     } catch (e: any) { alert(e?.message || 'Restore failed') }
                   }} className="text-xs text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 shrink-0 font-medium">
                     ↩ Restore
@@ -645,6 +655,10 @@ export default function EditFoldPage() {
                       const res = await fetch(`/api/fold/batches/${batch.id}`, { method: 'DELETE' })
                       if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || 'Delete failed'); return }
                       setBatches(prev => prev.filter((_, i) => i !== batchIdx))
+                      globalMutate('/api/stock')
+                      globalMutate(`/api/fold/${id}`)
+                      globalMutate(`/api/fold/validate?foldId=${id}`)
+                      router.refresh()
                     } catch (e: any) { alert(e?.message || 'Delete failed') }
                   }} className="text-xs text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 shrink-0 font-medium">
                     🗑 Delete
@@ -837,11 +851,21 @@ export default function EditFoldPage() {
           + Add Batch
         </button>
         <div className="flex-1 text-right">
-          <span className="text-sm text-gray-500 dark:text-gray-400">Total: </span>
-          <span className="text-lg font-bold text-indigo-700 dark:text-indigo-400">
-            {batches.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + (parseInt(l.than) || 0), 0), 0)} than
-          </span>
-          <span className="text-xs text-gray-400 ml-1">across {batches.length} batch{batches.length !== 1 ? 'es' : ''}</span>
+          {(() => {
+            const active = batches.filter(b => !b.cancelled)
+            const total = active.reduce((s, b) => s + b.lots.reduce((ls, l) => ls + (parseInt(l.than) || 0), 0), 0)
+            const cancelledCount = batches.length - active.length
+            return (
+              <>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Total: </span>
+                <span className="text-lg font-bold text-indigo-700 dark:text-indigo-400">{total} than</span>
+                <span className="text-xs text-gray-400 ml-1">
+                  across {active.length} batch{active.length !== 1 ? 'es' : ''}
+                  {cancelledCount > 0 && ` (+${cancelledCount} cancelled)`}
+                </span>
+              </>
+            )
+          })()}
         </div>
       </div>
 
