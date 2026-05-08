@@ -847,6 +847,82 @@ model KsiHdfcReceipt {
   @@index([fy, direction])
   @@index([fy, hidden])
   @@index([fy, date])
+
+  allocations KsiReceiptAllocation[]
+}
+
+// KSI Sales-side invoices pulled from Tally (Process Job = GST invoice with
+// CGST/SGST/IGST; Local Job Delivery = matching delivery challan, same
+// vchNumber, no GST). Stored together so each party's history shows both.
+model KsiSalesInvoice {
+  id            Int       @id @default(autoincrement())
+  fy            String    // "25-26", "26-27"
+  date          DateTime
+  vchNumber     String
+  vchType       String    // "Process Job" | "Local Job Delivery"
+  partyName     String
+  partyGstin    String?
+  stateName     String?
+  placeOfSupply String?
+  // Money — totalAmount stored as abs (Tally records party-credit as -ve).
+  totalAmount   Float
+  taxableAmount Float?    // sum of item-line amounts
+  cgstAmount    Float?
+  sgstAmount    Float?
+  igstAmount    Float?
+  roundOff      Float?
+  // Free text + references
+  narration     String?
+  reference     String?
+  buyerPO       String?
+  transporter   String?
+  agentName     String?
+  lastSynced    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  lines       KsiSalesInvoiceLine[]
+  allocations KsiReceiptAllocation[]
+
+  @@unique([vchNumber, date, vchType], name: "ksi_sales_natural_key")
+  @@index([fy, partyName])
+  @@index([fy, date])
+  @@index([partyName, date])
+}
+
+// Item-level lines for a sales invoice — keeps the raw qty/rate strings
+// (Tally returns " 420.0 THAN" / "175.00/THAN") plus parsed numeric fallbacks.
+model KsiSalesInvoiceLine {
+  id          Int             @id @default(autoincrement())
+  invoiceId   Int
+  invoice     KsiSalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  lineNo      Int
+  stockItem   String
+  rawQty      String?
+  qty         Float?
+  unit        String?
+  rate        Float?
+  amount      Float
+  discountPct Float?
+  baleNo      String?
+
+  @@index([invoiceId])
+}
+
+// Manual reconciliation: a receipt linked to one or more sales/process
+// invoices. User-driven, never touched by sync routes.
+model KsiReceiptAllocation {
+  id              Int              @id @default(autoincrement())
+  receiptId       Int
+  receipt         KsiHdfcReceipt   @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  invoiceId       Int
+  invoice         KsiSalesInvoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  allocatedAmount Float
+  note            String?
+  createdAt       DateTime         @default(now())
+
+  @@unique([receiptId, invoiceId])
+  @@index([receiptId])
+  @@index([invoiceId])
 }
 
 // ─── Sales Orders (Google Sheets) ─────────────────────────────────────────────

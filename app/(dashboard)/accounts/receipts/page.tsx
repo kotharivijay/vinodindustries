@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
 
@@ -42,9 +43,11 @@ const fmtMoney = (n: number) =>
   n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function ReceiptsPage() {
+  const router = useRouter()
   const [activeFy, setActiveFy] = useState<string>('26-27')
   const [sortBy, setSortBy] = useState<SortBy>('date-desc')
   const [showHidden, setShowHidden] = useState(false)
+  const [selectMode, setSelectMode] = useState(false)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string>('')
@@ -69,8 +72,9 @@ export default function ReceiptsPage() {
     fetcher,
   )
 
-  // Clear selection when FY tab or filter changes
+  // Clear selection when FY tab or filter changes; also when select mode toggles off
   useEffect(() => { setSelected(new Set()) }, [activeFy, showHidden])
+  useEffect(() => { if (!selectMode) setSelected(new Set()) }, [selectMode])
 
   function toggleSelect(id: number) {
     setSelected(prev => {
@@ -255,6 +259,15 @@ export default function ReceiptsPage() {
           className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold">
           {syncing ? 'Syncing…' : `Sync FY ${activeFy} from Tally`}
         </button>
+        <button onClick={() => setSelectMode(v => !v)}
+          title={selectMode ? 'Tap a card to toggle selection. Tap Select again to exit.' : 'Enable multiselect (cards become clickable for actions when off)'}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+            selectMode
+              ? 'bg-emerald-600 text-white border-emerald-600'
+              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+          }`}>
+          {selectMode ? '✓ Select: ON' : '☐ Select'}
+        </button>
         <button onClick={() => setShowHidden(v => !v)}
           title="Hidden = manually marked as not related to sales/process party"
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
@@ -293,13 +306,21 @@ export default function ReceiptsPage() {
       <div className="space-y-2">
         {rows.map(r => {
           const isSelected = selected.has(r.id)
+          const onCardClick = () => {
+            if (selectMode) toggleSelect(r.id)
+            else router.push(`/accounts/receipts/${r.id}`)
+          }
           return (
-            <label key={r.id}
-              className={`flex items-start gap-2 bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm cursor-pointer transition ${
+            <div key={r.id} role="button" tabIndex={0}
+              onClick={onCardClick}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCardClick() } }}
+              className={`flex items-start gap-2 bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm cursor-pointer transition hover:border-emerald-300 dark:hover:border-emerald-600/40 ${
                 r.hidden ? 'opacity-60 border-amber-200 dark:border-amber-700/40' : 'border-gray-100 dark:border-gray-700'
               } ${isSelected ? 'ring-2 ring-emerald-500 border-emerald-500' : ''}`}>
-              <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
-                className="mt-1.5 w-4 h-4 accent-emerald-600 shrink-0" />
+              {selectMode && (
+                <input type="checkbox" checked={isSelected} readOnly
+                  className="mt-1.5 w-4 h-4 accent-emerald-600 shrink-0 pointer-events-none" />
+              )}
               <div className="flex items-start justify-between gap-2 flex-1 min-w-0">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -332,7 +353,7 @@ export default function ReceiptsPage() {
                   </div>
                 </div>
               </div>
-            </label>
+            </div>
           )
         })}
       </div>
