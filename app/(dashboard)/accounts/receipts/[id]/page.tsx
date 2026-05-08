@@ -134,13 +134,14 @@ function InvoiceCard({ inv, receiptId, receiptRemaining, categoryMap, partyName:
   // older rows (synced before taxableAmount was populated) still produce a
   // non-zero TDS auto-calc.
   const itemSum = useMemo(() => inv.lines.reduce((s, l) => s + l.amount, 0), [inv.lines])
-  const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : itemSum
+  const grossTaxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : itemSum
   const ask = inv.totalAmount  // = abs(party ledger amount) → net of any invoice-side discount
   const myAlloc = inv.allocations.find(a => a.receipt?.id === receiptId)
 
-  // Voucher-level ledgers grouped by category — display only. This is what
-  // Tally has on the bill (extras / discounts / round-off / tax). The
-  // Discount pill in the form below is a separate at-payment concession.
+  // Voucher-level ledgers grouped by category. The Discount pill in the
+  // form is a separate at-payment concession — voucher-level discounts
+  // (e.g. "Finish Gadi Less") are already part of the invoice and reduce
+  // the taxable base used for TDS.
   const ledgerGroups = useMemo(() => {
     const groups: Record<string, Ledger[]> = { sales: [], 'extra-charge': [], discount: [], tax: [], roundoff: [], party: [], ignore: [], unmapped: [] }
     for (const led of inv.ledgers ?? []) {
@@ -156,6 +157,19 @@ function InvoiceCard({ inv, receiptId, receiptRemaining, categoryMap, partyName:
     }
     return groups
   }, [inv.ledgers, inv.partyName, categoryMap])
+
+  // Net taxable for TDS = items − voucher-level discounts + voucher-level
+  // extra charges (the actual service amount the party is paying for, before
+  // GST). Finish Gadi Less reduces it; freight/packing add to it.
+  const voucherDiscount = useMemo(
+    () => ledgerGroups['discount'].reduce((s, l) => s + Math.abs(l.amount), 0),
+    [ledgerGroups],
+  )
+  const voucherExtraCharge = useMemo(
+    () => ledgerGroups['extra-charge'].reduce((s, l) => s + Math.abs(l.amount), 0),
+    [ledgerGroups],
+  )
+  const taxable = Math.max(0, grossTaxable - voucherDiscount + voucherExtraCharge)
 
   const [open, setOpen] = useState(false)
   const [tdsRate, setTdsRate] = useState<string>(myAlloc?.tdsAmount && myAlloc.tdsAmount > 0 ? '' : String(DEFAULT_TDS_RATE))
@@ -279,7 +293,20 @@ function InvoiceCard({ inv, receiptId, receiptRemaining, categoryMap, partyName:
 
       {/* Voucher-level math summary */}
       <div className="border-t border-gray-100 dark:border-gray-700 pt-1.5 mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-gray-500 dark:text-gray-400">
-        {taxable > 0 && <div>Taxable: <span className="text-gray-700 dark:text-gray-200 tabular-nums">₹{fmtMoney(taxable)}</span></div>}
+        {grossTaxable > 0 && <div>Items: <span className="text-gray-700 dark:text-gray-200 tabular-nums">₹{fmtMoney(grossTaxable)}</span></div>}
+        {voucherDiscount > 0 && (
+          <div className="text-rose-700 dark:text-rose-400">
+            − Discount: <span className="tabular-nums">₹{fmtMoney(voucherDiscount)}</span>
+          </div>
+        )}
+        {voucherExtraCharge > 0 && (
+          <div className="text-amber-700 dark:text-amber-400">
+            + Extras: <span className="tabular-nums">₹{fmtMoney(voucherExtraCharge)}</span>
+          </div>
+        )}
+        {(voucherDiscount > 0 || voucherExtraCharge > 0) && (
+          <div>Taxable (net): <span className="text-gray-700 dark:text-gray-200 font-semibold tabular-nums">₹{fmtMoney(taxable)}</span></div>
+        )}
         {(inv.cgstAmount || inv.sgstAmount || inv.igstAmount) ? (
           <div>Tax: <span className="text-gray-700 dark:text-gray-200 tabular-nums">₹{fmtMoney((inv.cgstAmount || 0) + (inv.sgstAmount || 0) + (inv.igstAmount || 0))}</span></div>
         ) : null}
