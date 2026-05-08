@@ -82,6 +82,18 @@ export async function GET(req: NextRequest) {
     select: { lotNo: true, than: true, foldBatchId: true },
   })
 
+  // Total active fold allocation per lot, summed across ALL folds.
+  // Used to estimate "downstream despatch": despatch in this app keeps the
+  // grey lotNo through fold→dye→finish→despatch, so subtracting the full
+  // despatch total from grey/OB stock double-counts the consumption already
+  // captured by the fold allocation. The grey-stage despatch (the part that
+  // didn't flow through any fold) is approximated by max(0, desp - allFold).
+  const allFoldUsage = new Map<string, number>()
+  for (const fl of foldLots) {
+    const key = fl.lotNo.toLowerCase().trim()
+    allFoldUsage.set(key, (allFoldUsage.get(key) || 0) + fl.than)
+  }
+
   // Dyeing usage (standalone, without fold)
   const dyeLots = await db.dyeingEntryLot.findMany({
     where: { lotNo: { in: Array.from(allLotNos) } },
@@ -145,7 +157,12 @@ export async function GET(req: NextRequest) {
       const desp = despMap.get(key) ?? 0
       const otherFold = otherFoldUsage.get(key) ?? 0
       const dye = dyeMap.get(key) ?? 0
-      const stock = grey + ob + repro - desp
+      const allFold = allFoldUsage.get(key) ?? 0
+      // Only the despatch beyond active fold capacity exits grey stage —
+      // the rest was produced through a fold pipeline and is already
+      // accounted for in that fold's allocation.
+      const greyDespatch = Math.max(0, desp - allFold)
+      const stock = grey + ob + repro - greyDespatch
       const available = Math.max(0, stock - otherFold - dye)
 
       if (stock <= 0 && grey === 0 && ob === 0 && repro === 0) {
