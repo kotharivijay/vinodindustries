@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 interface PrintSettings {
@@ -329,6 +330,7 @@ function ServiceTab() {
   return (
     <div className="space-y-4">
       <OrphanDyeingCard />
+      <NegativeLotsCard />
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Party Master Cleanup</h2>
         <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">
@@ -646,6 +648,113 @@ function OrphanDyeingCard() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface NegativeLot {
+  lotNo: string
+  inflow: number
+  despatched: number
+  folded: number
+  standaloneDye: number
+  consumed: number
+  net: number
+  foldDetail: string[]
+}
+
+function NegativeLotsCard() {
+  const [data, setData] = useState<{ count: number; lots: NegativeLot[] } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  async function load() {
+    setLoading(true); setError('')
+    try {
+      const r = await fetch('/api/maintenance/negative-lots', { cache: 'no-store' })
+      const d = await r.json()
+      if (!r.ok) { setError(d.error || 'Failed'); return }
+      setData(d)
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
+      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Negative Stock Lots</h2>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">
+        Lots where total commitments (despatch / fold / standalone dye) exceed inflow
+        (grey + OB + repro). Click a lot to inspect details. Browser back returns here.
+      </p>
+
+      {!data && !loading && (
+        <button onClick={load}
+          className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold">
+          Scan Negative Lots
+        </button>
+      )}
+      {loading && <div className="text-sm text-gray-400">Scanning…</div>}
+      {error && <div className="text-xs text-rose-600 mt-2">{error}</div>}
+
+      {data && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+              data.count === 0
+                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                : 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300'
+            }`}>
+              {data.count} negative
+            </span>
+            <button onClick={load} className="text-[11px] text-indigo-600 dark:text-indigo-400 underline">
+              Refresh
+            </button>
+          </div>
+
+          {data.count === 0 ? (
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">All lots balanced.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                    <th className="py-1.5 pr-2">Lot</th>
+                    <th className="py-1.5 px-2 text-right">Inflow</th>
+                    <th className="py-1.5 px-2 text-right">Desp</th>
+                    <th className="py-1.5 px-2 text-right">Fold</th>
+                    <th className="py-1.5 px-2 text-right">Std-Dye</th>
+                    <th className="py-1.5 px-2 text-right">Consumed</th>
+                    <th className="py-1.5 px-2 text-right">Net</th>
+                    <th className="py-1.5 pl-2">Fold detail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.lots.map(l => (
+                    <tr key={l.lotNo} className="border-b border-gray-100 dark:border-gray-700/50">
+                      <td className="py-1.5 pr-2">
+                        <Link href={`/lot/${encodeURIComponent(l.lotNo)}`}
+                          className="font-mono font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
+                          {l.lotNo}
+                        </Link>
+                      </td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{l.inflow}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{l.despatched}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{l.folded}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{l.standaloneDye}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums">{l.consumed}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums font-bold text-rose-600 dark:text-rose-400">{l.net}</td>
+                      <td className="py-1.5 pl-2 text-[10px] text-gray-500 dark:text-gray-400 max-w-xs truncate" title={l.foldDetail.join(', ')}>
+                        {l.foldDetail.join(', ')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
     </div>
