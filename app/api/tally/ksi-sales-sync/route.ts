@@ -161,12 +161,19 @@ function parseVouchers(xml: string): ParsedVoucher[] {
       ledgers.push({ ledgerName, amount: signedAmt, isDeemedPositive: idp })
     }
 
-    // Voucher grand total — computed deterministically from items + tax + round-off.
-    // Tally XML has no reliable voucher-level <AMOUNT>; pickTag would return the
-    // FIRST <AMOUNT> in the block, which is usually the first inventory line's
-    // amount, missing every line after it (KSI/25-26/966 had ₹10,640 instead of
-    // ₹41,522).
-    const totalAmount = taxable + cgst + sgst + igst + roundOff
+    // Voucher grand total — derived from the party ledger entry's absolute
+    // amount (= what the customer owes). This naturally captures any
+    // discount-style ledgers that Tally subtracts on the credit side (e.g.
+    // "Finish Gadi Less"), so totalAmount matches what Tally prints. We
+    // can't trust pickTag(b, 'AMOUNT') because the first <AMOUNT> in XML
+    // is usually a nested item-level amount.
+    let totalFromParty = 0
+    if (partyName) {
+      const partyLow = partyName.toLowerCase()
+      const partyEntry = ledgers.find(l => l.ledgerName.toLowerCase() === partyLow)
+      if (partyEntry) totalFromParty = Math.abs(partyEntry.amount)
+    }
+    const totalAmount = totalFromParty || (taxable + cgst + sgst + igst + roundOff)
 
     // UDFs
     const agentName = dec(b.match(/<UDF:AGENTNMVCH_PCDOE26(?![A-Z0-9_])[^>]*>([^<]*)<\/UDF:AGENTNMVCH_PCDOE26>/)?.[1] || '') || null

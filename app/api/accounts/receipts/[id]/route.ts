@@ -27,11 +27,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     where: { partyName: { contains: receipt.partyName.split('(')[0].trim(), mode: 'insensitive' } },
     include: {
       lines: { orderBy: { lineNo: 'asc' } },
+      ledgers: true,
       allocations: { include: { receipt: { select: { id: true, vchNumber: true, date: true, amount: true } } } },
     },
     orderBy: { date: 'desc' },
     take: 100,
   })
+
+  // Category map for ledger classification (Net Ask uses extras + discounts)
+  const categories = await db.ksiSalesLedgerCategory.findMany()
+  const categoryMap: Record<string, string> = {}
+  for (const c of categories) categoryMap[c.ledgerName.toLowerCase()] = c.category
 
   // Pending = totalAmount − Σ(allocatedAmount + tdsAmount + discountAmount).
   // TDS / discount reduce the invoice's outstanding without being cash receipts,
@@ -48,5 +54,5 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     }
   })
 
-  return NextResponse.json({ receipt, invoices: enriched })
+  return NextResponse.json({ receipt, invoices: enriched, categoryMap })
 }

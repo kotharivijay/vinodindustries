@@ -15,12 +15,13 @@ const fmtDate = (iso: string) => {
 const DEFAULT_TDS_RATE = 2 // % — adjustable inline
 
 interface Line { id: number; lineNo: number; stockItem: string; rawQty: string | null; qty: number | null; unit: string | null; altQty: number | null; altUnit: string | null; rate: number | null; rateUnit: string | null; amount: number; discountPct: number | null; baleNo: string | null }
+interface Ledger { id: number; ledgerName: string; amount: number; isDeemedPositive: boolean }
 interface Allocation { id: number; allocatedAmount: number; tdsAmount?: number; discountAmount?: number; note: string | null; receipt?: { id: number; vchNumber: string; date: string; amount: number } }
 interface Invoice {
   id: number; date: string; vchNumber: string; vchType: string; partyName: string; partyGstin: string | null
   totalAmount: number; taxableAmount: number | null; cgstAmount: number | null; sgstAmount: number | null; igstAmount: number | null; roundOff: number | null
   narration: string | null; reference: string | null; buyerPO: string | null; transporter: string | null; agentName: string | null
-  lines: Line[]; allocations: Allocation[]
+  lines: Line[]; ledgers: Ledger[]; allocations: Allocation[]
   allocated: number; tds: number; discount: number; consumed: number; pending: number
 }
 interface Receipt {
@@ -32,7 +33,7 @@ interface Receipt {
 export default function ReceiptDetailPage() {
   const params = useParams()
   const id = params.id as string
-  const { data, mutate, isLoading } = useSWR<{ receipt: Receipt; invoices: Invoice[] }>(
+  const { data, mutate, isLoading } = useSWR<{ receipt: Receipt; invoices: Invoice[]; categoryMap: Record<string, string> }>(
     `/api/accounts/receipts/${id}`, fetcher,
   )
   const [syncing, setSyncing] = useState(false)
@@ -114,6 +115,8 @@ export default function ReceiptDetailPage() {
           {invoices.map(inv => (
             <InvoiceCard key={inv.id} inv={inv} receiptId={Number(id)}
               receiptRemaining={receiptRemaining}
+              categoryMap={data?.categoryMap ?? {}}
+              partyName={r.partyName}
               onChange={() => mutate()} />
           ))}
         </div>
@@ -122,16 +125,37 @@ export default function ReceiptDetailPage() {
   )
 }
 
-function InvoiceCard({ inv, receiptId, receiptRemaining, onChange }: {
-  inv: Invoice; receiptId: number; receiptRemaining: number; onChange: () => void
+function InvoiceCard({ inv, receiptId, receiptRemaining, categoryMap, partyName: _partyName, onChange }: {
+  inv: Invoice; receiptId: number; receiptRemaining: number;
+  categoryMap: Record<string, string>; partyName: string;
+  onChange: () => void
 }) {
   // Prefer the stored taxableAmount; fall back to summing item lines so
   // older rows (synced before taxableAmount was populated) still produce a
   // non-zero TDS auto-calc.
   const itemSum = useMemo(() => inv.lines.reduce((s, l) => s + l.amount, 0), [inv.lines])
   const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : itemSum
-  const ask = inv.totalAmount  // Tally's totalAmount = customer payable (incl. GST + roundoff)
+  const ask = inv.totalAmount  // = abs(party ledger amount) → net of any invoice-side discount
   const myAlloc = inv.allocations.find(a => a.receipt?.id === receiptId)
+
+  // Voucher-level ledgers grouped by category — display only. This is what
+  // Tally has on the bill (extras / discounts / round-off / tax). The
+  // Discount pill in the form below is a separate at-payment concession.
+  const ledgerGroups = useMemo(() => {
+    const groups: Record<string, Ledger[]> = { sales: [], 'extra-charge': [], discount: [], tax: [], roundoff: [], party: [], ignore: [], unmapped: [] }
+    for (const led of inv.ledgers ?? []) {
+      const lname = led.ledgerName.toLowerCase()
+      let cat = categoryMap[lname]
+      if (!cat) {
+        if (/cgst|sgst|utgst|igst/.test(lname)) cat = 'tax'
+        else if (/round\s*off|roundoff|rounding/.test(lname)) cat = 'roundoff'
+        else if (lname === inv.partyName.toLowerCase()) cat = 'party'
+        else cat = 'unmapped'
+      }
+      if (groups[cat]) groups[cat].push(led)
+    }
+    return groups
+  }, [inv.ledgers, inv.partyName, categoryMap])
 
   const [open, setOpen] = useState(false)
   const [tdsRate, setTdsRate] = useState<string>(myAlloc?.tdsAmount && myAlloc.tdsAmount > 0 ? '' : String(DEFAULT_TDS_RATE))
@@ -268,6 +292,27 @@ function InvoiceCard({ inv, receiptId, receiptRemaining, onChange }: {
           </div>
         )}
       </div>
+
+      {/* Voucher-level ledgers (extras/discounts/unmapped) — informational. */}
+      {(ledgerGroups['extra-charge'].length + ledgerGroups['discount'].length + ledgerGroups['unmapped'].length) > 0 && (
+        <div className="border-t border-gray-100 dark:border-gray-700 pt-1.5 mt-1.5 space-y-0.5 text-[10px]">
+          {ledgerGroups['extra-charge'].map(l => (
+            <div key={l.id} className="flex justify-between text-amber-700 dark:text-amber-400">
+              <span>+ {l.ledgerName}</span><span className="tabular-nums">₹{fmtMoney(Math.abs(l.amount))}</span>
+            </div>
+          ))}
+          {ledgerGroups['discount'].map(l => (
+            <div key={l.id} className="flex justify-between text-rose-700 dark:text-rose-400">
+              <span>− {l.ledgerName}</span><span className="tabular-nums">₹{fmtMoney(Math.abs(l.amount))}</span>
+            </div>
+          ))}
+          {ledgerGroups['unmapped'].map(l => (
+            <div key={l.id} className="flex justify-between text-gray-500 dark:text-gray-400" title="Categorise this ledger in Sales / Process Register → Categorise Ledgers">
+              <span>? {l.ledgerName}</span><span className="tabular-nums">₹{fmtMoney(Math.abs(l.amount))}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Allocations summary (from any receipt) */}
       {(inv.tds > 0 || inv.discount > 0 || inv.allocated > 0) && (
