@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../../../BackButton'
@@ -12,17 +12,21 @@ const fmtDate = (iso: string) => {
   return `${String(d.getDate()).padStart(2, '0')}-${d.toLocaleString('en-IN', { month: 'short' })}-${String(d.getFullYear()).slice(2)}`
 }
 
-interface Line { id: number; lineNo: number; stockItem: string; rawQty: string | null; qty: number | null; unit: string | null; rate: number | null; amount: number; discountPct: number | null; baleNo: string | null }
-interface Allocation { id: number; allocatedAmount: number; note: string | null; receipt?: { id: number; vchNumber: string; date: string; amount: number } }
+const DEFAULT_TDS_RATE = 2 // % — adjustable inline
+
+interface Line { id: number; lineNo: number; stockItem: string; rawQty: string | null; qty: number | null; unit: string | null; altQty: number | null; altUnit: string | null; rate: number | null; rateUnit: string | null; amount: number; discountPct: number | null; baleNo: string | null }
+interface Allocation { id: number; allocatedAmount: number; tdsAmount?: number; discountAmount?: number; note: string | null; receipt?: { id: number; vchNumber: string; date: string; amount: number } }
 interface Invoice {
   id: number; date: string; vchNumber: string; vchType: string; partyName: string; partyGstin: string | null
   totalAmount: number; taxableAmount: number | null; cgstAmount: number | null; sgstAmount: number | null; igstAmount: number | null; roundOff: number | null
   narration: string | null; reference: string | null; buyerPO: string | null; transporter: string | null; agentName: string | null
-  lines: Line[]; allocations: Allocation[]; allocated: number; pending: number
+  lines: Line[]; allocations: Allocation[]
+  allocated: number; tds: number; discount: number; consumed: number; pending: number
 }
 interface Receipt {
   id: number; date: string; vchNumber: string; partyName: string; amount: number; narration: string | null
-  instrumentNo: string | null; bankRef: string | null; allocations: { invoiceId: number; allocatedAmount: number }[]
+  instrumentNo: string | null; bankRef: string | null
+  allocations: { invoiceId: number; allocatedAmount: number; tdsAmount?: number; discountAmount?: number }[]
 }
 
 export default function ReceiptDetailPage() {
@@ -39,8 +43,8 @@ export default function ReceiptDetailPage() {
 
   const r = data.receipt
   const invoices = data.invoices
-  const linkedInvoiceIds = new Set(r.allocations.map(a => a.invoiceId))
-  const receiptRemaining = r.amount - r.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
+  const receiptUsed = r.allocations.reduce((s, a) => s + (a.allocatedAmount || 0), 0)
+  const receiptRemaining = Math.max(0, r.amount - receiptUsed)
 
   async function syncSales() {
     setSyncing(true); setSyncMsg('')
@@ -57,37 +61,6 @@ export default function ReceiptDetailPage() {
       mutate()
     } catch (e: any) { setSyncMsg(e?.message || 'Network error') }
     finally { setSyncing(false) }
-  }
-
-  async function linkInvoice(inv: Invoice) {
-    const suggested = Math.min(receiptRemaining, inv.pending) || 0
-    const input = window.prompt(`Allocate amount to ${inv.vchNumber}?\nReceipt remaining: ₹${fmtMoney(receiptRemaining)} | Invoice pending: ₹${fmtMoney(inv.pending)}`, String(suggested.toFixed(2)))
-    if (input === null) return
-    const amt = parseFloat(input)
-    if (!Number.isFinite(amt) || amt <= 0) return alert('Invalid amount')
-    const note = window.prompt('Note (optional):') || undefined
-    try {
-      const res = await fetch(`/api/accounts/receipts/${id}/allocate`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId: inv.id, allocatedAmount: amt, note }),
-      })
-      const d = await res.json()
-      if (!res.ok) return alert(d.error || 'Failed')
-      mutate()
-    } catch (e: any) { alert(e?.message || 'Network error') }
-  }
-
-  async function unlinkInvoice(inv: Invoice) {
-    if (!confirm(`Remove link to ${inv.vchNumber}?`)) return
-    try {
-      const res = await fetch(`/api/accounts/receipts/${id}/allocate`, {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId: inv.id }),
-      })
-      const d = await res.json()
-      if (!res.ok) return alert(d.error || 'Failed')
-      mutate()
-    } catch (e: any) { alert(e?.message || 'Network error') }
   }
 
   return (
@@ -138,85 +111,252 @@ export default function ReceiptDetailPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {invoices.map(inv => {
-            const isLinked = linkedInvoiceIds.has(inv.id)
-            return (
-              <div key={inv.id}
-                className={`bg-white dark:bg-gray-800 border rounded-xl p-3 transition ${
-                  isLinked ? 'border-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-700/40' : 'border-gray-100 dark:border-gray-700'
-                }`}>
-                <div className="flex items-start justify-between gap-2 mb-1">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
-                        {inv.vchType} {inv.vchNumber}
-                      </span>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-400">{fmtDate(inv.date)}</span>
-                      {isLinked && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
-                          ✓ Linked
-                        </span>
-                      )}
-                    </div>
-                    {inv.partyGstin && <div className="text-[10px] text-gray-500 dark:text-gray-400">GSTIN: {inv.partyGstin}</div>}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-base font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(inv.totalAmount)}</div>
-                    <div className="text-[10px] text-gray-500">pending ₹{fmtMoney(inv.pending)}</div>
-                  </div>
-                </div>
-                {/* Item-level lines */}
-                {inv.lines.length > 0 && (
-                  <div className="border-t border-gray-100 dark:border-gray-700 pt-1.5 mt-1.5 space-y-0.5">
-                    {inv.lines.map(l => (
-                      <div key={l.id} className="text-[11px] text-gray-600 dark:text-gray-300 flex items-center justify-between gap-2">
-                        <span className="truncate">{l.stockItem}</span>
-                        <span className="shrink-0 text-gray-500 tabular-nums">
-                          {l.rawQty} {l.rate != null && `@ ₹${l.rate}`} · ₹{fmtMoney(l.amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* Tax + total breakdown */}
-                {(inv.cgstAmount || inv.sgstAmount || inv.igstAmount) && (
-                  <div className="text-[10px] text-gray-500 mt-1">
-                    Taxable ₹{fmtMoney(inv.taxableAmount || 0)}
-                    {inv.cgstAmount ? ` · CGST ₹${fmtMoney(inv.cgstAmount)}` : ''}
-                    {inv.sgstAmount ? ` · SGST ₹${fmtMoney(inv.sgstAmount)}` : ''}
-                    {inv.igstAmount ? ` · IGST ₹${fmtMoney(inv.igstAmount)}` : ''}
-                  </div>
-                )}
-                {(inv.buyerPO || inv.reference) && (
-                  <div className="text-[10px] text-gray-500 mt-0.5">
-                    {inv.buyerPO && <span>PO: {inv.buyerPO} </span>}
-                    {inv.reference && <span>· Ref: {inv.reference}</span>}
-                  </div>
-                )}
-                {/* Allocations from other receipts */}
-                {inv.allocations.length > 0 && (
-                  <div className="text-[10px] text-emerald-700 dark:text-emerald-300 mt-1">
-                    Allocated: {inv.allocations.map(a => `Rcpt#${a.receipt?.vchNumber} ₹${fmtMoney(a.allocatedAmount)}`).join(' · ')}
-                  </div>
-                )}
-                {/* Action button */}
-                <div className="flex justify-end mt-2">
-                  {isLinked ? (
-                    <button onClick={() => unlinkInvoice(inv)}
-                      className="text-[11px] px-2.5 py-1 rounded-lg border border-rose-300 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20">
-                      ↩ Unlink
-                    </button>
-                  ) : (
-                    <button onClick={() => linkInvoice(inv)}
-                      disabled={receiptRemaining <= 0}
-                      className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold">
-                      🔗 Link Receipt
-                    </button>
-                  )}
-                </div>
+          {invoices.map(inv => (
+            <InvoiceCard key={inv.id} inv={inv} receiptId={Number(id)}
+              receiptRemaining={receiptRemaining}
+              onChange={() => mutate()} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InvoiceCard({ inv, receiptId, receiptRemaining, onChange }: {
+  inv: Invoice; receiptId: number; receiptRemaining: number; onChange: () => void
+}) {
+  const taxable = inv.taxableAmount || 0
+  const ask = inv.totalAmount  // Tally's totalAmount = customer payable (incl. GST + roundoff)
+  const myAlloc = inv.allocations.find(a => a.receipt?.id === receiptId)
+
+  const [open, setOpen] = useState(false)
+  const [tdsRate, setTdsRate] = useState<string>(myAlloc?.tdsAmount && myAlloc.tdsAmount > 0 ? '' : String(DEFAULT_TDS_RATE))
+  const [tdsAmt, setTdsAmt] = useState<string>(myAlloc?.tdsAmount ? String(myAlloc.tdsAmount.toFixed(2)) : '')
+  const [discPct, setDiscPct] = useState<string>('')
+  const [discAmt, setDiscAmt] = useState<string>(myAlloc?.discountAmount ? String(myAlloc.discountAmount.toFixed(2)) : '')
+  const [note, setNote] = useState<string>(myAlloc?.note ?? '')
+  const [busy, setBusy] = useState(false)
+
+  // Final amount the receipt will allocate = ask − tds − discount
+  const numTds = parseFloat(tdsAmt) || 0
+  const numDisc = parseFloat(discAmt) || 0
+  const final = useMemo(() => Math.max(0, ask - numTds - numDisc), [ask, numTds, numDisc])
+  const cappedFinal = useMemo(() => {
+    // Cap at receipt remaining + any portion already allocated to this invoice
+    const myCash = myAlloc?.allocatedAmount ?? 0
+    const cap = receiptRemaining + myCash
+    return Math.min(final, cap)
+  }, [final, receiptRemaining, myAlloc])
+
+  function autoTds() {
+    const rate = parseFloat(tdsRate) || DEFAULT_TDS_RATE
+    if (!Number.isFinite(rate) || rate <= 0) return
+    const calc = Math.round((taxable * rate) / 100)
+    setTdsRate(String(rate))
+    setTdsAmt(String(calc))
+  }
+
+  function applyDiscPct() {
+    const pct = parseFloat(discPct) || 0
+    if (pct <= 0) return
+    const calc = Math.round((taxable * pct) / 100)
+    setDiscAmt(String(calc))
+  }
+
+  async function save() {
+    if (cappedFinal <= 0) { alert('Final allocation is zero — adjust TDS/Discount.'); return }
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/accounts/receipts/${receiptId}/allocate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId: inv.id,
+          allocatedAmount: cappedFinal,
+          tdsAmount: numTds,
+          discountAmount: numDisc,
+          tdsRatePct: parseFloat(tdsRate) || null,
+          note: note || null,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert(d.error || 'Failed'); return }
+      setOpen(false)
+      onChange()
+    } catch (e: any) { alert(e?.message || 'Network error') }
+    finally { setBusy(false) }
+  }
+
+  async function unlink() {
+    if (!confirm(`Remove link to ${inv.vchNumber}?`)) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/accounts/receipts/${receiptId}/allocate`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId: inv.id }),
+      })
+      const d = await res.json()
+      if (!res.ok) return alert(d.error || 'Failed')
+      setOpen(false)
+      onChange()
+    } catch (e: any) { alert(e?.message || 'Network error') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className={`bg-white dark:bg-gray-800 border rounded-xl p-3 transition ${
+      myAlloc ? 'border-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-700/40' : 'border-gray-100 dark:border-gray-700'
+    }`}>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+              {inv.vchType} {inv.vchNumber}
+            </span>
+            <span className="text-[10px] text-gray-500 dark:text-gray-400">{fmtDate(inv.date)}</span>
+            {myAlloc && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
+                ✓ Linked ₹{fmtMoney(myAlloc.allocatedAmount)}
+              </span>
+            )}
+          </div>
+          {inv.partyGstin && <div className="text-[10px] text-gray-500 dark:text-gray-400">GSTIN: {inv.partyGstin}</div>}
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-base font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(ask)}</div>
+          <div className="text-[10px] text-rose-600 dark:text-rose-400">pending ₹{fmtMoney(inv.pending)}</div>
+        </div>
+      </div>
+
+      {/* Item-level lines */}
+      {inv.lines.length > 0 && (
+        <div className="border-t border-gray-100 dark:border-gray-700 pt-1.5 mt-1.5 space-y-0.5">
+          {inv.lines.map(l => (
+            <div key={l.id} className="text-[11px] text-gray-700 dark:text-gray-300">
+              <div className="flex items-start justify-between gap-2">
+                <span className="font-medium truncate">{l.stockItem}</span>
+                <span className="shrink-0 tabular-nums">₹{fmtMoney(l.amount)}</span>
               </div>
-            )
-          })}
+              <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                {l.qty != null && (
+                  <>{l.qty} {l.unit ?? ''}{l.altQty != null && ` = ${l.altQty} ${l.altUnit ?? ''}`}</>
+                )}
+                {l.rate != null && <span> · @ ₹{l.rate}{l.rateUnit ? `/${l.rateUnit}` : ''}</span>}
+                {l.discountPct != null && l.discountPct > 0 && <span> · disc {l.discountPct}%</span>}
+                {l.baleNo && <span> · bale {l.baleNo}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Voucher-level math summary */}
+      <div className="border-t border-gray-100 dark:border-gray-700 pt-1.5 mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px] text-gray-500 dark:text-gray-400">
+        {taxable > 0 && <div>Taxable: <span className="text-gray-700 dark:text-gray-200 tabular-nums">₹{fmtMoney(taxable)}</span></div>}
+        {(inv.cgstAmount || inv.sgstAmount || inv.igstAmount) ? (
+          <div>Tax: <span className="text-gray-700 dark:text-gray-200 tabular-nums">₹{fmtMoney((inv.cgstAmount || 0) + (inv.sgstAmount || 0) + (inv.igstAmount || 0))}</span></div>
+        ) : null}
+        {(inv.roundOff || 0) !== 0 && <div>Round: <span className="tabular-nums">₹{fmtMoney(inv.roundOff || 0)}</span></div>}
+        {(inv.buyerPO || inv.transporter || inv.agentName) && (
+          <div className="col-span-2 mt-0.5">
+            {inv.buyerPO && <span>PO {inv.buyerPO} </span>}
+            {inv.transporter && <span>· Transporter: {inv.transporter} </span>}
+            {inv.agentName && <span>· Agent: {inv.agentName}</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Allocations summary (from any receipt) */}
+      {(inv.tds > 0 || inv.discount > 0 || inv.allocated > 0) && (
+        <div className="text-[10px] mt-1.5 text-emerald-700 dark:text-emerald-400">
+          Settled: cash ₹{fmtMoney(inv.allocated)}{inv.tds > 0 ? ` · TDS ₹${fmtMoney(inv.tds)}` : ''}{inv.discount > 0 ? ` · disc ₹${fmtMoney(inv.discount)}` : ''}
+        </div>
+      )}
+
+      {/* Action: collapsed pill OR expanded form */}
+      {!open ? (
+        <div className="flex justify-end gap-2 mt-2">
+          {myAlloc && (
+            <button onClick={unlink} disabled={busy}
+              className="text-[11px] px-2.5 py-1 rounded-lg border border-rose-300 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50">
+              ↩ Unlink
+            </button>
+          )}
+          <button onClick={() => setOpen(true)} disabled={!myAlloc && receiptRemaining <= 0}
+            className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold">
+            {myAlloc ? '✏ Edit' : '🔗 Link Receipt'}
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2.5 pt-2.5 border-t border-emerald-200 dark:border-emerald-700/30 space-y-2">
+          {/* Pills row */}
+          <div className="flex items-center gap-2 flex-wrap text-[11px]">
+            <button onClick={autoTds} type="button"
+              className="px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold">
+              💰 TDS @{tdsRate || DEFAULT_TDS_RATE}%
+            </button>
+            <span className="text-gray-400">on taxable ₹{fmtMoney(taxable)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <span className="text-gray-500 w-12">TDS</span>
+            <input type="number" value={tdsRate} onChange={e => setTdsRate(e.target.value)}
+              placeholder="rate%" step="0.01"
+              className="w-16 px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" />
+            <span className="text-gray-400">%</span>
+            <input type="number" value={tdsAmt} onChange={e => setTdsAmt(e.target.value)}
+              placeholder="amount"
+              className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 tabular-nums" />
+            <span className="text-gray-400">₹</span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap text-[11px]">
+            <button type="button"
+              className="px-2 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold">
+              🏷 Discount
+            </button>
+            <span className="text-gray-400">% or ₹</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <span className="text-gray-500 w-12">Disc</span>
+            <input type="number" value={discPct} onChange={e => setDiscPct(e.target.value)}
+              onBlur={applyDiscPct}
+              placeholder="%" step="0.01"
+              className="w-16 px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" />
+            <span className="text-gray-400">%</span>
+            <input type="number" value={discAmt} onChange={e => setDiscAmt(e.target.value)}
+              placeholder="amount"
+              className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 tabular-nums" />
+            <span className="text-gray-400">₹</span>
+          </div>
+
+          {/* Final summary */}
+          <div className="bg-gray-50 dark:bg-gray-700/40 rounded-lg p-2 text-[11px]">
+            <div className="flex justify-between"><span>Ask</span><span className="tabular-nums">₹{fmtMoney(ask)}</span></div>
+            {numTds > 0 && <div className="flex justify-between text-amber-700 dark:text-amber-400"><span>− TDS</span><span className="tabular-nums">₹{fmtMoney(numTds)}</span></div>}
+            {numDisc > 0 && <div className="flex justify-between text-rose-700 dark:text-rose-400"><span>− Discount</span><span className="tabular-nums">₹{fmtMoney(numDisc)}</span></div>}
+            <div className="flex justify-between font-bold border-t border-gray-200 dark:border-gray-600 mt-1 pt-1">
+              <span>Final to allocate</span>
+              <span className="tabular-nums text-emerald-700 dark:text-emerald-400">₹{fmtMoney(cappedFinal)}</span>
+            </div>
+            {cappedFinal < final && (
+              <div className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
+                Capped to receipt remaining (was ₹{fmtMoney(final)}).
+              </div>
+            )}
+          </div>
+
+          <input value={note} onChange={e => setNote(e.target.value)} placeholder="Note (optional)"
+            className="w-full px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px]" />
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={() => setOpen(false)} disabled={busy}
+              className="text-[11px] px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">
+              Cancel
+            </button>
+            <button onClick={save} disabled={busy || cappedFinal <= 0}
+              className="text-[11px] px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold">
+              {busy ? 'Saving…' : (myAlloc ? 'Update Link' : 'Link ₹' + fmtMoney(cappedFinal))}
+            </button>
+          </div>
         </div>
       )}
     </div>

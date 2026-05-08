@@ -13,16 +13,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const receiptId = parseInt(params.id)
   if (!Number.isFinite(receiptId)) return NextResponse.json({ error: 'invalid id' }, { status: 400 })
 
-  const { invoiceId, allocatedAmount, note } = await req.json().catch(() => ({}))
+  const { invoiceId, allocatedAmount, tdsAmount, discountAmount, tdsRatePct, note } = await req.json().catch(() => ({}))
   if (!Number.isFinite(invoiceId) || !Number.isFinite(allocatedAmount) || allocatedAmount <= 0) {
     return NextResponse.json({ error: 'invoiceId + positive allocatedAmount required' }, { status: 400 })
   }
+  const tds = Number.isFinite(tdsAmount) && tdsAmount > 0 ? Number(tdsAmount) : 0
+  const disc = Number.isFinite(discountAmount) && discountAmount > 0 ? Number(discountAmount) : 0
+  const ratePct = Number.isFinite(tdsRatePct) ? Number(tdsRatePct) : null
 
   const db = prisma as any
   const row = await db.ksiReceiptAllocation.upsert({
     where: { receiptId_invoiceId: { receiptId, invoiceId } },
-    create: { receiptId, invoiceId, allocatedAmount, note: note || null },
-    update: { allocatedAmount, note: note || null },
+    create: { receiptId, invoiceId, allocatedAmount, tdsAmount: tds, discountAmount: disc, tdsRatePct: ratePct, note: note || null },
+    update: { allocatedAmount, tdsAmount: tds, discountAmount: disc, tdsRatePct: ratePct, note: note || null },
   })
   return NextResponse.json({ ok: true, allocation: row })
 }

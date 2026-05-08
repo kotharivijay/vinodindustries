@@ -33,10 +33,19 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     take: 100,
   })
 
-  // Compute pending = totalAmount − sum(allocations) per invoice
+  // Pending = totalAmount − Σ(allocatedAmount + tdsAmount + discountAmount).
+  // TDS / discount reduce the invoice's outstanding without being cash receipts,
+  // so they belong on the "consumed" side just like the cash allocation.
   const enriched = invoices.map((inv: any) => {
     const allocated = (inv.allocations || []).reduce((s: number, a: any) => s + (a.allocatedAmount || 0), 0)
-    return { ...inv, allocated, pending: Math.max(0, inv.totalAmount - allocated) }
+    const tds = (inv.allocations || []).reduce((s: number, a: any) => s + (a.tdsAmount || 0), 0)
+    const discount = (inv.allocations || []).reduce((s: number, a: any) => s + (a.discountAmount || 0), 0)
+    return {
+      ...inv,
+      allocated, tds, discount,
+      consumed: allocated + tds + discount,
+      pending: Math.max(0, inv.totalAmount - allocated - tds - discount),
+    }
   })
 
   return NextResponse.json({ receipt, invoices: enriched })

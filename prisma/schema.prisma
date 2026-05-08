@@ -944,6 +944,11 @@ model KsiSalesLedgerCategory {
 
 // Manual reconciliation: a receipt linked to one or more sales/process
 // invoices. User-driven, never touched by sync routes.
+//
+// pending(invoice) = totalAmount − Σ(allocatedAmount + tdsAmount + discountAmount)
+//   allocatedAmount = cash from the receipt
+//   tdsAmount       = TDS the customer deducted at source (Section 194C etc.)
+//   discountAmount  = discount/rebate given to settle the bill
 model KsiReceiptAllocation {
   id              Int              @id @default(autoincrement())
   receiptId       Int
@@ -951,6 +956,9 @@ model KsiReceiptAllocation {
   invoiceId       Int
   invoice         KsiSalesInvoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   allocatedAmount Float
+  tdsAmount       Float            @default(0)
+  discountAmount  Float            @default(0)
+  tdsRatePct      Float?           // e.g. 2.0 — kept for audit; not load-bearing
   note            String?
   createdAt       DateTime         @default(now())
 
