@@ -572,9 +572,9 @@ export default function EditFoldPage() {
           <div key={batchIdx} className="bg-white dark:bg-gray-800 rounded-xl border border-indigo-100 dark:border-gray-700 overflow-hidden">
             {/* Batch header */}
             <div className="bg-indigo-50 dark:bg-indigo-900/30 px-4 py-2 space-y-1.5">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400 shrink-0">Batch {batch.batchNo}</span>
-                <div className="flex-1">
+                <div className="flex-1 min-w-[180px]">
                   <ShadeCombobox
                     shadeId={batch.shadeId}
                     shadeName={batch.shadeName}
