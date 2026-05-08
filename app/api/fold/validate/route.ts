@@ -19,11 +19,14 @@ export async function GET(req: NextRequest) {
   if (foldId && !folds[0]) return NextResponse.json({ error: 'Fold not found' }, { status: 404 })
 
   // Collect all lot numbers and shade names
+  // Cancelled batches don't consume stock — their than has returned to the
+  // unallocated pool — so skip them everywhere in this validator.
   const allLotNos = new Set<string>()
   const allShadeNames = new Set<string>()
   for (const f of folds) {
     if (!f) continue
     for (const b of f.batches) {
+      if (b.cancelled) continue
       for (const l of b.lots) allLotNos.add(l.lotNo)
       const sn = b.shade?.name || b.shadeName
       if (sn) allShadeNames.add(sn)
@@ -104,7 +107,9 @@ export async function GET(req: NextRequest) {
   for (const f of folds) {
     if (!f) continue
 
-    // Get batch IDs for this fold (to exclude from "other fold usage")
+    // Get batch IDs for this fold (to exclude from "other fold usage").
+    // Note: even cancelled batches of this fold are excluded from "other"
+    // — they're already filtered out of foldLots by the cancelled:false where.
     const thisFoldBatchIds = new Set(f.batches.map((b: any) => b.id))
 
     // Lot stock per fold lot (excluding this fold's own usage)
@@ -119,9 +124,13 @@ export async function GET(req: NextRequest) {
     const lotIssues: any[] = []
     const shadeIssues: any[] = []
 
-    // Check lot stock
+    // Check lot stock — only non-cancelled batches consume stock.
+    // Cancelled batches' than is already returned to the unallocated pool
+    // (see /api/grey/unallocated-stock and /api/stock), so counting them
+    // as "needed" produced phantom shortages after batch cancel.
     const lotNeeded = new Map<string, number>()
     for (const b of f.batches) {
+      if (b.cancelled) continue
       for (const l of b.lots) {
         const key = l.lotNo.toLowerCase().trim()
         lotNeeded.set(key, (lotNeeded.get(key) || 0) + l.than)
@@ -146,9 +155,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Check shades
+    // Check shades — cancelled batches don't need a valid shade.
     const seenShades = new Set<string>()
     for (const b of f.batches) {
+      if (b.cancelled) continue
       const sn = b.shade?.name || b.shadeName
       if (sn && !seenShades.has(sn.toLowerCase().trim())) {
         seenShades.add(sn.toLowerCase().trim())
