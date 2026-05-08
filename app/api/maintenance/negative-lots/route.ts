@@ -21,7 +21,7 @@ export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const [grey, ob, despP, despC, fold, dye, repro] = await Promise.all([
+  const [grey, ob, despP, despC, fold, dye, repro, reproAll] = await Promise.all([
     prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } }),
     db.lotOpeningBalance.findMany({ select: { lotNo: true, openingThan: true } }),
     prisma.despatchEntry.groupBy({ where: { despatchLots: { none: {} } }, by: ['lotNo'], _sum: { than: true } }),
@@ -32,7 +32,18 @@ export async function GET() {
     }),
     db.dyeingEntryLot.findMany({ select: { lotNo: true, than: true, entry: { select: { foldBatchId: true } } } }),
     db.reProcessLot.findMany({ where: { status: { in: ['pending', 'in-dyeing', 'finished'] } }, select: { reproNo: true, totalThan: true } }),
+    // Active-OR-merged repro lots — only used to recover the canonical casing
+    // for display when the lot is referenced by dyeing rows but its parent is
+    // already merged (so it's excluded from the inflow query above).
+    db.reProcessLot.findMany({ select: { reproNo: true } }),
   ])
+
+  // Casing-correction map: lowercase key → canonical mixed-case lotNo from any
+  // source (any-status repro, then grey, OB).
+  const casingMap = new Map<string, string>()
+  for (const r of reproAll) casingMap.set(r.reproNo.toLowerCase().trim(), r.reproNo)
+  for (const g of grey) casingMap.set(g.lotNo.toLowerCase().trim(), g.lotNo)
+  for (const o of ob) casingMap.set(o.lotNo.toLowerCase().trim(), o.lotNo)
 
   type Casing = { lotNo: string; than: number }
   const greyMap = new Map<string, Casing>(grey.map((g: any) => [g.lotNo.toLowerCase().trim(), { lotNo: g.lotNo, than: g._sum.than ?? 0 }]))
@@ -73,7 +84,8 @@ export async function GET() {
     const consumed = Math.max(desp, folded + standDye)
     const net = inflow - consumed
     if (net < 0) {
-      const display = greyMap.get(k)?.lotNo ?? obMap.get(k)?.lotNo ?? reproMap.get(k)?.lotNo ?? k
+      const display = casingMap.get(k)
+        ?? greyMap.get(k)?.lotNo ?? obMap.get(k)?.lotNo ?? reproMap.get(k)?.lotNo ?? k
       negatives.push({
         lotNo: display, inflow, despatched: desp, folded, standaloneDye: standDye,
         consumed, net,
