@@ -125,7 +125,11 @@ export default function ReceiptDetailPage() {
 function InvoiceCard({ inv, receiptId, receiptRemaining, onChange }: {
   inv: Invoice; receiptId: number; receiptRemaining: number; onChange: () => void
 }) {
-  const taxable = inv.taxableAmount || 0
+  // Prefer the stored taxableAmount; fall back to summing item lines so
+  // older rows (synced before taxableAmount was populated) still produce a
+  // non-zero TDS auto-calc.
+  const itemSum = useMemo(() => inv.lines.reduce((s, l) => s + l.amount, 0), [inv.lines])
+  const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : itemSum
   const ask = inv.totalAmount  // Tally's totalAmount = customer payable (incl. GST + roundoff)
   const myAlloc = inv.allocations.find(a => a.receipt?.id === receiptId)
 
