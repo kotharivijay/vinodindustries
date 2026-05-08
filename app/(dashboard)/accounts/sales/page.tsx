@@ -337,7 +337,7 @@ function VoucherCard({ inv, catMap }: { inv: Invoice; catMap: Record<string, str
           <div className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold" title="Net Sales = Items + Extras − Discount (ex-tax)">
             net sales ₹{fmtMoney(c.net)}
           </div>
-          {Math.abs(c.paymentAsk - inv.totalAmount) > 0.5 && (
+          {Math.abs(c.paymentAsk - inv.totalAmount) > 1 && (
             <div className="text-[10px] text-amber-600 dark:text-amber-400" title="Difference between computed Payment Ask and Tally voucher total — usually round-off or unmapped extras/discounts">
               tally ₹{fmtMoney(inv.totalAmount)} (Δ {(c.paymentAsk - inv.totalAmount).toFixed(2)})
             </div>
