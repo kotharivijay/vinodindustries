@@ -124,6 +124,8 @@ export async function POST(req: NextRequest) {
   const rows = parseLedgerVouchers(xml)
 
   // Upsert by (vchNumber, date, vchType) — additive, never destructive.
+  // On UPDATE we explicitly re-write only the sync-derived fields so the
+  // user's hidden/hiddenReason/hiddenAt flags survive a re-sync.
   const db = prisma as any
   let saved = 0
   const now = new Date()
@@ -131,7 +133,13 @@ export async function POST(req: NextRequest) {
     await db.ksiHdfcReceipt.upsert({
       where: { vch_natural_key: { vchNumber: r.vchNumber, date: r.date, vchType: r.vchType } },
       create: { ...r, lastSynced: now },
-      update: { ...r, lastSynced: now },
+      update: {
+        fy: r.fy,
+        partyName: r.partyName,
+        amount: r.amount,
+        direction: r.direction,
+        lastSynced: now,
+      },
     })
     saved++
   }

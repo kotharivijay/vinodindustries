@@ -11,10 +11,12 @@ export async function GET(req: NextRequest) {
 
   const fy = req.nextUrl.searchParams.get('fy') || ''
   const direction = req.nextUrl.searchParams.get('direction') || 'in'
+  const showHidden = req.nextUrl.searchParams.get('showHidden') === '1'
   const db = prisma as any
 
   const where: any = { direction }
   if (fy) where.fy = fy
+  if (!showHidden) where.hidden = false
 
   const rows = await db.ksiHdfcReceipt.findMany({
     where,
@@ -22,16 +24,21 @@ export async function GET(req: NextRequest) {
     take: 1000,
   })
 
+  // FY totals split by visibility so the tab summary stays meaningful.
   const fyTotals = await db.ksiHdfcReceipt.groupBy({
     by: ['fy'],
-    where: { direction },
+    where: { direction, hidden: false },
     _count: { _all: true },
     _sum: { amount: true },
     orderBy: { fy: 'desc' },
+  })
+  const hiddenCount = await db.ksiHdfcReceipt.count({
+    where: { direction, hidden: true, ...(fy ? { fy } : {}) },
   })
 
   return NextResponse.json({
     rows,
     fyTotals: fyTotals.map((g: any) => ({ fy: g.fy, count: g._count._all, total: g._sum.amount ?? 0 })),
+    hiddenCount,
   })
 }
