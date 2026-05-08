@@ -120,16 +120,10 @@ export default function ChallansListPage() {
 
   const visibleChallans = useMemo(() => {
     const filtered = hideInvoiced ? challans.filter(c => c.status !== 'Invoiced') : challans
-    // Challan sort: extract the TRAILING run of digits as the number, ignore
-    // the prefix during numeric comparison ("AB-100" sorts as 100, not 0).
-    // Prefix is only used as a tie-breaker so AB-100 vs XY-100 stay grouped
-    // by series. First-line item name drives the Item sort.
-    const challanNumber = (c: Challan) => {
-      const matches = String(c.challanNo ?? '').match(/\d+/g)
-      return matches?.length ? parseInt(matches[matches.length - 1], 10) : 0
-    }
-    const challanPrefix = (c: Challan) =>
-      String(c.challanNo ?? '').replace(/\d+(?!.*\d)/, '').toLowerCase()
+    // Challan sort = sort by the displayed KSI/IN/<FY>/<series> identifier.
+    // FY (seriesFy) is the prefix group; internalSeriesNo is the numeric
+    // sequence within an FY. The supplier-provided challanNo is unrelated
+    // to the displayed number and was previously misleading the sort.
     const partyKey = (c: Challan) => (c.party.displayName || '').toLowerCase()
     const itemKey = (c: Challan) => (c.lines[0]?.item?.displayName || '').toLowerCase()
     const dateKey = (c: Challan) => new Date(c.challanDate).getTime()
@@ -137,12 +131,12 @@ export default function ChallansListPage() {
     const sorted = [...filtered]
     switch (sortBy) {
       case 'challan-desc': sorted.sort((a, b) =>
-        challanNumber(b) - challanNumber(a)
-        || challanPrefix(a).localeCompare(challanPrefix(b))
+        (b.seriesFy || '').localeCompare(a.seriesFy || '')
+        || (b.internalSeriesNo || 0) - (a.internalSeriesNo || 0)
         || b.id - a.id); break
       case 'challan-asc':  sorted.sort((a, b) =>
-        challanNumber(a) - challanNumber(b)
-        || challanPrefix(a).localeCompare(challanPrefix(b))
+        (a.seriesFy || '').localeCompare(b.seriesFy || '')
+        || (a.internalSeriesNo || 0) - (b.internalSeriesNo || 0)
         || a.id - b.id); break
       case 'date-desc':    sorted.sort((a, b) => dateKey(b) - dateKey(a) || b.id - a.id); break
       case 'date-asc':     sorted.sort((a, b) => dateKey(a) - dateKey(b) || a.id - b.id); break
