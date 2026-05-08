@@ -27,6 +27,8 @@ interface Receipt {
   amount: number
   direction: 'in' | 'out'
   narration: string | null
+  instrumentNo: string | null
+  bankRef: string | null
   hidden: boolean
   hiddenReason: string | null
 }
@@ -46,6 +48,11 @@ export default function ReceiptsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string>('')
+  // Date filter — 'fy' (whole FY tab), 'month' (specific month), 'range'
+  const [filterMode, setFilterMode] = useState<'fy' | 'month' | 'range'>('fy')
+  const [pickedMonth, setPickedMonth] = useState<string>('')  // "2026-05"
+  const [rangeFrom, setRangeFrom] = useState<string>('')      // "2026-05-01"
+  const [rangeTo, setRangeTo] = useState<string>('')          // "2026-05-31"
 
   useEffect(() => {
     try {
@@ -94,10 +101,45 @@ export default function ReceiptsPage() {
   }
 
   const apiRows = data?.rows ?? []
+
+  // Compute the 12 months covered by the active FY for the picker.
+  const monthOptions = useMemo(() => {
+    const startYear = 2000 + parseInt(activeFy.split('-')[0])
+    const months = []
+    for (let i = 0; i < 12; i++) {
+      const y = i < 9 ? startYear : startYear + 1
+      const m = ((i + 3) % 12) + 1 // April=4, May=5, …, March=3
+      const value = `${y}-${String(m).padStart(2, '0')}`
+      const label = `${new Date(y, m - 1).toLocaleString('en-IN', { month: 'short' })} ${String(y).slice(2)}`
+      months.push({ value, label })
+    }
+    return months
+  }, [activeFy])
+
   const rows = useMemo(() => {
     const dateKey = (r: Receipt) => new Date(r.date).getTime()
     const partyKey = (r: Receipt) => (r.partyName || '').toLowerCase()
-    const sorted = [...apiRows]
+
+    // Apply month / range filter on top of the FY-scoped API result.
+    let filtered = apiRows
+    if (filterMode === 'month' && pickedMonth) {
+      const [y, m] = pickedMonth.split('-').map(Number)
+      const start = new Date(y, m - 1, 1).getTime()
+      const end = new Date(y, m, 0, 23, 59, 59).getTime()
+      filtered = filtered.filter(r => {
+        const t = new Date(r.date).getTime()
+        return t >= start && t <= end
+      })
+    } else if (filterMode === 'range' && rangeFrom && rangeTo) {
+      const start = new Date(rangeFrom + 'T00:00:00').getTime()
+      const end = new Date(rangeTo + 'T23:59:59').getTime()
+      filtered = filtered.filter(r => {
+        const t = new Date(r.date).getTime()
+        return t >= start && t <= end
+      })
+    }
+
+    const sorted = [...filtered]
     switch (sortBy) {
       case 'date-desc':   sorted.sort((a, b) => dateKey(b) - dateKey(a) || b.id - a.id); break
       case 'date-asc':    sorted.sort((a, b) => dateKey(a) - dateKey(b) || a.id - b.id); break
@@ -107,7 +149,9 @@ export default function ReceiptsPage() {
       case 'amount-asc':  sorted.sort((a, b) => a.amount - b.amount || dateKey(b) - dateKey(a)); break
     }
     return sorted
-  }, [apiRows, sortBy])
+  }, [apiRows, sortBy, filterMode, pickedMonth, rangeFrom, rangeTo])
+
+  const filteredTotal = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows])
   const fyTotals = data?.fyTotals ?? []
   const fyMap = useMemo(() => new Map(fyTotals.map(f => [f.fy, f])), [fyTotals])
   const tabs: { fy: string; label: string }[] = [
@@ -167,6 +211,42 @@ export default function ReceiptsPage() {
             </button>
           )
         })}
+      </div>
+
+      {/* Date filter — Whole FY / Month / Range */}
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap text-[11px]">
+        <span className="text-gray-500 dark:text-gray-400 mr-0.5">Show:</span>
+        {([['fy', 'Whole FY'], ['month', 'Month'], ['range', 'Range']] as const).map(([k, lbl]) => (
+          <button key={k} onClick={() => setFilterMode(k)}
+            className={`px-2.5 py-1 rounded-full border transition ${
+              filterMode === k
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+            }`}>
+            {lbl}
+          </button>
+        ))}
+        {filterMode === 'month' && (
+          <select value={pickedMonth} onChange={e => setPickedMonth(e.target.value)}
+            className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[11px]">
+            <option value="">Select month…</option>
+            {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+        )}
+        {filterMode === 'range' && (
+          <>
+            <input type="date" value={rangeFrom} onChange={e => setRangeFrom(e.target.value)}
+              className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[11px]" />
+            <span className="text-gray-400">→</span>
+            <input type="date" value={rangeTo} onChange={e => setRangeTo(e.target.value)}
+              className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[11px]" />
+          </>
+        )}
+        {filterMode !== 'fy' && (
+          <span className="ml-auto text-gray-600 dark:text-gray-400 font-semibold">
+            {rows.length} · ₹{fmtMoney(filteredTotal)}
+          </span>
+        )}
       </div>
 
       {/* Sync button + Show Hidden toggle */}
@@ -235,8 +315,15 @@ export default function ReceiptsPage() {
                     )}
                   </div>
                   <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{r.partyName}</div>
+                  {(r.bankRef || r.instrumentNo) && (
+                    <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-0.5 font-mono">
+                      {r.instrumentNo && <span>ref: {r.instrumentNo}</span>}
+                      {r.instrumentNo && r.bankRef && <span> · </span>}
+                      {r.bankRef && <span>uniq: {r.bankRef}</span>}
+                    </div>
+                  )}
                   {r.narration && (
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 break-words">{r.narration}</div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 break-words">{r.narration}</div>
                   )}
                 </div>
                 <div className="text-right shrink-0">

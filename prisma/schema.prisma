@@ -822,25 +822,26 @@ model TallyReceipt {
 // keyed by LEDGERNAME=HDFC BANK. Captures every voucher type that touched
 // HDFC (Receipt, Payment, Contra, Journal). UI filters by vchType + FY.
 model KsiHdfcReceipt {
-  id           Int       @id @default(autoincrement())
-  fy           String    // "25-26", "26-27"
-  date         DateTime
-  vchNumber    String
-  vchType      String    // "Rcpt", "Pymt", "Contra", "Jrnl" (from DSPVCHTYPE)
-  partyName    String    // counter-party ledger (DSPVCHLEDACCOUNT)
-  amount       Float     // absolute rupee value (always positive)
-  direction    String    // "in" (Dr on HDFC = receipt) or "out" (Cr = payment)
-  narration    String?
+  id            Int       @id @default(autoincrement())
+  fy            String    // "25-26", "26-27"
+  date          DateTime
+  vchNumber     String
+  vchType       String    // "Receipt", "Payment", etc.
+  partyName     String    // counter-party ledger
+  amount        Float     // absolute rupee value
+  direction     String    // "in" or "out"
+  narration     String?   // bank narration — usually has UPI/NEFT refs inline
+  instrumentNo  String?   // BANKALLOCATIONS.INSTRUMENTNUMBER (NEFT/cheque)
+  bankRef       String?   // BANKALLOCATIONS.UNIQUEREFERENCENUMBER
   // Manual classification — user marks rows as not related to sales/process
   // party ledgers (loans, refunds, internal transfers, etc.). Hidden from
-  // the default view; survives re-syncs because upsert preserves these
-  // fields when the row's natural key is unchanged (we update the sync
-  // fields explicitly without overwriting hidden/hiddenReason).
-  hidden       Boolean   @default(false)
-  hiddenReason String?
-  hiddenAt     DateTime?
-  lastSynced   DateTime  @default(now())
-  createdAt    DateTime  @default(now())
+  // the default view; survives re-syncs because the sync route only writes
+  // sync-derived fields on upsert, leaving these untouched.
+  hidden        Boolean   @default(false)
+  hiddenReason  String?
+  hiddenAt      DateTime?
+  lastSynced    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
 
   @@unique([vchNumber, date, vchType], name: "vch_natural_key")
   @@index([fy, direction])
