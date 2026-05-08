@@ -110,7 +110,14 @@ export async function GET() {
   for (const [k, g] of greyByLot) {
     const despatched = despatchedMap.get(k) || 0
     const folded = foldedMap.get(k) || 0
-    const remaining = g.than - despatched - folded
+    // Despatch in this app keeps the original grey lotNo through
+    // fold→dye→finish→despatch. Subtracting both "despatched" and "folded"
+    // double-counts the same than (the despatched cloth came out of the
+    // folded pipeline). The actual grey-stage consumption is whichever is
+    // larger: if despatch ≤ fold capacity it's all downstream; if despatch
+    // exceeds fold, the excess is grey-direct despatch.
+    const consumed = Math.max(despatched, folded)
+    const remaining = g.than - consumed
     if (remaining <= 0) continue
 
     // Find original lotNo casing
@@ -132,7 +139,7 @@ export async function GET() {
     })
   }
 
-  // Process OB (carry-forward) — subtract OB allocations + despatched + folded
+  // Process OB (carry-forward) — same downstream-despatch handling as grey.
   for (const ob of obBalances) {
     const k = ob.lotNo.toLowerCase().trim()
     // Skip if current-year grey also has this lotNo (would double-count)
@@ -141,7 +148,8 @@ export async function GET() {
     const despatched = despatchedMap.get(k) || 0
     const folded = foldedMap.get(k) || 0
     const obAllocated = (ob.allocations || []).reduce((s: number, a: any) => s + (a.than || 0), 0)
-    const remaining = ob.openingThan - despatched - folded - obAllocated
+    const consumed = Math.max(despatched, folded)
+    const remaining = ob.openingThan - consumed - obAllocated
     if (remaining <= 0) continue
 
     const obParty = ob.party || 'Unknown'

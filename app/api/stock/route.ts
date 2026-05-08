@@ -253,6 +253,13 @@ export async function GET() {
     const dyeingUsed = dyeingUsedMap.get(key) ?? 0
     const reservation = reservationMap.get(key)
     const manuallyUsed = reservation?.usedThan ?? 0
+    // Despatch keeps the grey lotNo through fold→dye→finish→despatch, so
+    // counting both `despThan` (already in `stock`) and `foldProgrammed`
+    // double-deducts that than. Use max() to take whichever path captures
+    // the actual exit; excess despatch over pipeline = grey-direct exits.
+    const pipelineCommit = foldProgrammed + dyeingUsed
+    const exitOrCommit = Math.max(despThan, pipelineCommit)
+    const foldAvailable = Math.max(0, obThan + greyThan - exitOrCommit - manuallyUsed)
     lotStocks.push({
       lotNo: g.lotNo,
       party: detail?.party ?? ob?.party ?? 'Unknown',
@@ -266,7 +273,7 @@ export async function GET() {
       foldProgrammed,
       manuallyUsed,
       manuallyUsedNote: reservation?.note ?? null,
-      foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
+      foldAvailable,
       lrNos: Array.from(lrMap.get(key) || []).join(', '),
       markas: Array.from(markaMap.get(key) || []).join(', '),
       inwardDates: Array.from(dateMap.get(key) || []).sort().join(', '),
@@ -297,6 +304,10 @@ export async function GET() {
     const obDateSet = new Set<string>(Array.from(dateMap.get(key) || []))
     if (ob.greyDate) obDateSet.add(ob.greyDate.toISOString().slice(0, 10))
 
+    // Same downstream-despatch handling as the grey branch above.
+    const pipelineCommit = foldProgrammed + dyeingUsed
+    const exitOrCommit = Math.max(despThan, pipelineCommit)
+    const foldAvailable = Math.max(0, ob.openingThan - exitOrCommit - manuallyUsed)
     lotStocks.push({
       lotNo: ob.lotNo,
       party: ob.party || 'Unknown',
@@ -310,7 +321,7 @@ export async function GET() {
       foldProgrammed,
       manuallyUsed,
       manuallyUsedNote: reservation?.note ?? null,
-      foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
+      foldAvailable,
       lrNos: obLr,
       markas: Array.from(markaMap.get(key) || []).join(', '),
       inwardDates: Array.from(obDateSet).sort().join(', '),
@@ -335,6 +346,9 @@ export async function GET() {
       const dyeingUsed = dyeingUsedMap.get(key) ?? 0
       const reservation = reservationMap.get(key)
       const manuallyUsed = reservation?.usedThan ?? 0
+      const pipelineCommit = foldProgrammed + dyeingUsed
+      const exitOrCommit = Math.max(despThan, pipelineCommit)
+      const foldAvailable = Math.max(0, r.totalThan - exitOrCommit - manuallyUsed)
       lotStocks.push({
         lotNo: r.reproNo,
         party: 'Re-Process',
@@ -348,7 +362,7 @@ export async function GET() {
         foldProgrammed,
         manuallyUsed,
         manuallyUsedNote: reservation?.note ?? null,
-        foldAvailable: Math.max(0, stock - foldProgrammed - manuallyUsed - dyeingUsed),
+        foldAvailable,
         lrNos: '',
         markas: '',
         inwardDates: '',
