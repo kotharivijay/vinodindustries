@@ -18,6 +18,13 @@ const SORT_KEY = 'ksi:accounts-receipts:sortBy'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+interface LinkedInvoice {
+  vchType: string
+  vchNumber: string
+  allocatedAmount: number
+  tdsAmount: number
+  discountAmount: number
+}
 interface Receipt {
   id: number
   fy: string
@@ -32,7 +39,13 @@ interface Receipt {
   bankRef: string | null
   hidden: boolean
   hiddenReason: string | null
+  linkedCount: number
+  linkedCash: number
+  linkedTds: number
+  linkedDiscount: number
+  linkedInvoices: LinkedInvoice[]
 }
+type LinkFilter = 'all' | 'linked' | 'unlinked'
 interface FyTotal { fy: string; count: number; total: number }
 
 const fmtDate = (iso: string) => {
@@ -56,6 +69,11 @@ export default function ReceiptsPage() {
   const [pickedMonth, setPickedMonth] = useState<string>('')  // "2026-05"
   const [rangeFrom, setRangeFrom] = useState<string>('')      // "2026-05-01"
   const [rangeTo, setRangeTo] = useState<string>('')          // "2026-05-31"
+  // Link-status filter: All / Linked / Unlinked. When 'linked' is active,
+  // the "Hide matched (±1)" pill also becomes available — a fully-matched
+  // receipt has |amount − Σ allocatedAmount| ≤ ₹1.
+  const [linkFilter, setLinkFilter] = useState<LinkFilter>('all')
+  const [hideMatched, setHideMatched] = useState(false)
 
   useEffect(() => {
     try {
@@ -143,6 +161,15 @@ export default function ReceiptsPage() {
       })
     }
 
+    if (linkFilter === 'linked') {
+      filtered = filtered.filter(r => r.linkedCount > 0)
+      if (hideMatched) {
+        filtered = filtered.filter(r => Math.abs(r.amount - r.linkedCash) > 1)
+      }
+    } else if (linkFilter === 'unlinked') {
+      filtered = filtered.filter(r => r.linkedCount === 0)
+    }
+
     const sorted = [...filtered]
     switch (sortBy) {
       case 'date-desc':   sorted.sort((a, b) => dateKey(b) - dateKey(a) || b.id - a.id); break
@@ -153,9 +180,18 @@ export default function ReceiptsPage() {
       case 'amount-asc':  sorted.sort((a, b) => a.amount - b.amount || dateKey(b) - dateKey(a)); break
     }
     return sorted
-  }, [apiRows, sortBy, filterMode, pickedMonth, rangeFrom, rangeTo])
+  }, [apiRows, sortBy, filterMode, pickedMonth, rangeFrom, rangeTo, linkFilter, hideMatched])
 
   const filteredTotal = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows])
+  // Counts for the link-filter pills — based on the FY-scoped api result
+  // (ignores month/range so users see the global count when picking).
+  const linkCounts = useMemo(() => {
+    let linked = 0, unlinked = 0
+    for (const r of apiRows) {
+      if (r.linkedCount > 0) linked++; else unlinked++
+    }
+    return { all: apiRows.length, linked, unlinked }
+  }, [apiRows])
   const fyTotals = data?.fyTotals ?? []
   const fyMap = useMemo(() => new Map(fyTotals.map(f => [f.fy, f])), [fyTotals])
   const tabs: { fy: string; label: string }[] = [
@@ -280,6 +316,32 @@ export default function ReceiptsPage() {
         {syncMsg && <span className="text-[11px] text-gray-600 dark:text-gray-400 truncate">{syncMsg}</span>}
       </div>
 
+      {/* Link-status filter pills */}
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap text-[11px]">
+        <span className="text-gray-500 dark:text-gray-400 mr-0.5">Link:</span>
+        {([['all', `All (${linkCounts.all})`], ['linked', `🔗 Linked (${linkCounts.linked})`], ['unlinked', `Unlinked (${linkCounts.unlinked})`]] as const).map(([k, lbl]) => (
+          <button key={k} onClick={() => setLinkFilter(k as LinkFilter)}
+            className={`px-2.5 py-1 rounded-full border transition ${
+              linkFilter === k
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+            }`}>
+            {lbl}
+          </button>
+        ))}
+        {linkFilter === 'linked' && (
+          <button onClick={() => setHideMatched(v => !v)}
+            title="Hide receipts whose cash linked equals the receipt amount within ±₹1"
+            className={`px-2.5 py-1 rounded-full border transition ${
+              hideMatched
+                ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+            }`}>
+            {hideMatched ? '✓ Hide matched (±1)' : 'Hide matched (±1)'}
+          </button>
+        )}
+      </div>
+
       {/* Sort pills */}
       <div className="flex items-center gap-1.5 mb-3 flex-wrap">
         <span className="text-[10px] text-gray-500 dark:text-gray-400 mr-1">Sort:</span>
@@ -310,6 +372,8 @@ export default function ReceiptsPage() {
             if (selectMode) toggleSelect(r.id)
             else router.push(`/accounts/receipts/${r.id}`)
           }
+          const diff = r.amount - r.linkedCash
+          const matched = r.linkedCount > 0 && Math.abs(diff) <= 1
           return (
             <div key={r.id} role="button" tabIndex={0}
               onClick={onCardClick}
@@ -328,6 +392,16 @@ export default function ReceiptsPage() {
                       {r.vchType} #{r.vchNumber}
                     </span>
                     <span className="text-[10px] text-gray-500 dark:text-gray-400">{fmtDate(r.date)}</span>
+                    {r.linkedCount > 0 && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        matched
+                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200'
+                      }`}
+                        title={`${r.linkedCount} invoice(s) linked · cash ₹${fmtMoney(r.linkedCash)}${r.linkedTds > 0 ? ` · TDS ₹${fmtMoney(r.linkedTds)}` : ''}${r.linkedDiscount > 0 ? ` · disc ₹${fmtMoney(r.linkedDiscount)}` : ''}`}>
+                        🔗 {r.linkedCount}{matched ? ' ✓' : ''}
+                      </span>
+                    )}
                     {r.hidden && (
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
                         title={r.hiddenReason || 'hidden'}>
@@ -346,11 +420,38 @@ export default function ReceiptsPage() {
                   {r.narration && (
                     <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 break-words">{r.narration}</div>
                   )}
+                  {r.linkedCount > 0 && (
+                    <div className="mt-1 text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5">
+                      {r.linkedInvoices.slice(0, 4).map((inv, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <span className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
+                          <span className="tabular-nums">₹{fmtMoney(inv.allocatedAmount)}</span>
+                          {inv.tdsAmount > 0 && <span className="text-amber-600 dark:text-amber-400">+TDS ₹{fmtMoney(inv.tdsAmount)}</span>}
+                          {inv.discountAmount > 0 && <span className="text-rose-600 dark:text-rose-400">+disc ₹{fmtMoney(inv.discountAmount)}</span>}
+                        </div>
+                      ))}
+                      {r.linkedInvoices.length > 4 && (
+                        <div className="text-gray-400">+{r.linkedInvoices.length - 4} more…</div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
                   <div className={`text-base font-bold tabular-nums ${r.hidden ? 'text-gray-500 dark:text-gray-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                     ₹{fmtMoney(r.amount)}
                   </div>
+                  {r.linkedCount > 0 && (
+                    <>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 tabular-nums">
+                        linked ₹{fmtMoney(r.linkedCash)}
+                      </div>
+                      <div className={`text-[10px] font-semibold tabular-nums ${
+                        matched ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                      }`}>
+                        Δ ₹{fmtMoney(diff)}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
