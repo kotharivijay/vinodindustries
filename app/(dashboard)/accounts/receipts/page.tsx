@@ -497,39 +497,70 @@ export default function ReceiptsPage() {
         })}
       </div>
 
-      {/* Bottom action bar — appears only when something is selected */}
-      {selected.size > 0 && (
-        <div className="fixed bottom-3 left-3 right-3 z-40 max-w-3xl mx-auto bg-gray-900 text-gray-100 rounded-xl shadow-2xl border border-emerald-500/40 px-3 py-2.5 flex items-center gap-2 flex-wrap">
-          <div className="flex-1 min-w-0 text-xs">
-            <span className="font-semibold">{selected.size} selected</span>
-            {partyQuery.trim() && (
-              <span className="ml-1.5 text-gray-300">· {partyQuery.trim()}</span>
-            )}
+      {/* Bottom action bar — appears only when something is selected.
+         Top strip: Σ selected receipts; bottom strip: Σ already linked
+         (cash) and remaining unallocated cash across the selection. */}
+      {selected.size > 0 && (() => {
+        const selRows = apiRows.filter(r => selected.has(r.id))
+        const sumSelected = selRows.reduce((s, r) => s + r.amount, 0)
+        const sumLinkedCash = selRows.reduce((s, r) => s + (r.linkedCash || 0), 0)
+        const remaining = sumSelected - sumLinkedCash
+        return (
+          <div className="fixed bottom-3 left-3 right-3 z-40 max-w-3xl mx-auto bg-gray-900 text-gray-100 rounded-xl shadow-2xl border border-emerald-500/40">
+            {/* Top strip: counts + Σ receipts */}
+            <div className="px-3 py-2 border-b border-gray-700/60 flex items-center justify-between gap-2">
+              <div className="text-xs min-w-0">
+                <span className="font-semibold">{selected.size} selected</span>
+                {partyQuery.trim() && (
+                  <span className="ml-1.5 text-gray-300 truncate">· {partyQuery.trim()}</span>
+                )}
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-[10px] text-gray-400 uppercase tracking-wide">Σ Receipts</div>
+                <div className="text-sm font-bold text-emerald-300 tabular-nums">₹{fmtMoney(sumSelected)}</div>
+              </div>
+            </div>
+
+            {/* Action row */}
+            <div className="px-3 py-2 flex items-center gap-2 flex-wrap">
+              <div className="flex-1 min-w-0 text-[11px] flex items-center gap-3">
+                <div>
+                  <span className="text-gray-400">linked </span>
+                  <span className="font-semibold text-indigo-300 tabular-nums">₹{fmtMoney(sumLinkedCash)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-400">remaining </span>
+                  <span className={`font-semibold tabular-nums ${
+                    Math.abs(remaining) <= 1 ? 'text-emerald-300' : 'text-amber-300'
+                  }`}>₹{fmtMoney(remaining)}</span>
+                </div>
+              </div>
+              <button onClick={() => setSelected(new Set())}
+                className="text-xs text-gray-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-gray-600">
+                Clear
+              </button>
+              {partyQuery.trim() && !showHidden && (
+                <button onClick={() => setBulkOpen(true)}
+                  title="Auto-link selected receipts to this party's pending invoices (oldest first)"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+                  🔗 Bulk Link
+                </button>
+              )}
+              {showHidden ? (
+                <button onClick={() => bulkHide(false)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+                  ↩ Restore
+                </button>
+              ) : (
+                <button onClick={() => bulkHide(true)}
+                  className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+                  🚫 Mark Not Sales
+                </button>
+              )}
+            </div>
           </div>
-          <button onClick={() => setSelected(new Set())}
-            className="text-xs text-gray-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-gray-600">
-            Clear
-          </button>
-          {partyQuery.trim() && !showHidden && (
-            <button onClick={() => setBulkOpen(true)}
-              title="Auto-link selected receipts to this party's pending invoices (oldest first)"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
-              🔗 Bulk Link
-            </button>
-          )}
-          {showHidden ? (
-            <button onClick={() => bulkHide(false)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
-              ↩ Restore
-            </button>
-          ) : (
-            <button onClick={() => bulkHide(true)}
-              className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
-              🚫 Mark Not Sales
-            </button>
-          )}
-        </div>
-      )}
+        )
+      })()}
 
       {bulkOpen && (
         <BulkLinkSheet
