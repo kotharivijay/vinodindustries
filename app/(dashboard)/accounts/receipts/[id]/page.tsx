@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../../../BackButton'
+
+type InvoiceView = 'all' | 'linked'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 const fmtMoney = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -32,18 +34,25 @@ interface Receipt {
 
 export default function ReceiptDetailPage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const id = params.id as string
+  const initialView: InvoiceView = searchParams.get('view') === 'linked' ? 'linked' : 'all'
   const { data, mutate, isLoading } = useSWR<{ receipt: Receipt; invoices: Invoice[]; categoryMap: Record<string, string> }>(
     `/api/accounts/receipts/${id}`, fetcher,
   )
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
+  const [view, setView] = useState<InvoiceView>(initialView)
 
   if (isLoading) return <div className="max-w-3xl mx-auto p-3"><BackButton /><div className="text-center py-8 text-gray-400 text-sm">Loading…</div></div>
   if (!data?.receipt) return <div className="max-w-3xl mx-auto p-3"><BackButton /><div className="p-8 text-center text-rose-500">Receipt not found</div></div>
 
   const r = data.receipt
-  const invoices = data.invoices
+  const allInvoices = data.invoices
+  const linkedCount = allInvoices.filter(inv => inv.allocations.some(a => a.receipt?.id === Number(id))).length
+  const invoices = view === 'linked'
+    ? allInvoices.filter(inv => inv.allocations.some(a => a.receipt?.id === Number(id)))
+    : allInvoices
   const receiptUsed = r.allocations.reduce((s, a) => s + (a.allocatedAmount || 0), 0)
   const receiptRemaining = Math.max(0, r.amount - receiptUsed)
 
@@ -94,21 +103,51 @@ export default function ReceiptDetailPage() {
       </div>
 
       {/* Invoices for this party */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-          Sales / Process Invoices for this party ({invoices.length})
+          {view === 'linked' ? 'Linked invoices' : 'Sales / Process invoices for this party'} ({invoices.length})
         </h2>
         <button onClick={syncSales} disabled={syncing}
           className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[11px] font-semibold">
           {syncing ? 'Syncing…' : 'Sync from Tally'}
         </button>
       </div>
+      {linkedCount > 0 && (
+        <div className="flex items-center gap-1.5 mb-2 text-[11px]">
+          <span className="text-gray-500 dark:text-gray-400">Show:</span>
+          <button onClick={() => setView('linked')}
+            className={`px-2.5 py-1 rounded-full border transition ${
+              view === 'linked'
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+            }`}>
+            🔗 Linked only ({linkedCount})
+          </button>
+          <button onClick={() => setView('all')}
+            className={`px-2.5 py-1 rounded-full border transition ${
+              view === 'all'
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+            }`}>
+            All party invoices ({allInvoices.length})
+          </button>
+        </div>
+      )}
       {syncMsg && <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">{syncMsg}</div>}
 
       {invoices.length === 0 ? (
         <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm border border-dashed rounded-xl">
-          No KSI Process Job invoices for &ldquo;{r.partyName}&rdquo;.<br />
-          <span className="text-[11px]">Tap &ldquo;Sync from Tally&rdquo; to backfill.</span>
+          {view === 'linked' ? (
+            <>No invoices linked to this receipt yet.<br />
+              <button onClick={() => setView('all')} className="text-[11px] mt-1 underline text-emerald-600 dark:text-emerald-400">
+                Show all party invoices to link one
+              </button>
+            </>
+          ) : (
+            <>No KSI Process Job invoices for &ldquo;{r.partyName}&rdquo;.<br />
+              <span className="text-[11px]">Tap &ldquo;Sync from Tally&rdquo; to backfill.</span>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-2">

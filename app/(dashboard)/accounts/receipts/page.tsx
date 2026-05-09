@@ -74,6 +74,7 @@ export default function ReceiptsPage() {
   // receipt has |amount − Σ allocatedAmount| ≤ ₹1.
   const [linkFilter, setLinkFilter] = useState<LinkFilter>('all')
   const [hideMatched, setHideMatched] = useState(false)
+  const [partyQuery, setPartyQuery] = useState<string>('')
 
   useEffect(() => {
     try {
@@ -170,6 +171,9 @@ export default function ReceiptsPage() {
       filtered = filtered.filter(r => r.linkedCount === 0)
     }
 
+    const q = partyQuery.trim().toLowerCase()
+    if (q) filtered = filtered.filter(r => (r.partyName || '').toLowerCase().includes(q))
+
     const sorted = [...filtered]
     switch (sortBy) {
       case 'date-desc':   sorted.sort((a, b) => dateKey(b) - dateKey(a) || b.id - a.id); break
@@ -180,7 +184,7 @@ export default function ReceiptsPage() {
       case 'amount-asc':  sorted.sort((a, b) => a.amount - b.amount || dateKey(b) - dateKey(a)); break
     }
     return sorted
-  }, [apiRows, sortBy, filterMode, pickedMonth, rangeFrom, rangeTo, linkFilter, hideMatched])
+  }, [apiRows, sortBy, filterMode, pickedMonth, rangeFrom, rangeTo, linkFilter, hideMatched, partyQuery])
 
   const filteredTotal = useMemo(() => rows.reduce((s, r) => s + r.amount, 0), [rows])
   // Counts for the link-filter pills — based on the FY-scoped api result
@@ -316,6 +320,19 @@ export default function ReceiptsPage() {
         {syncMsg && <span className="text-[11px] text-gray-600 dark:text-gray-400 truncate">{syncMsg}</span>}
       </div>
 
+      {/* Party search */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <input type="search" value={partyQuery} onChange={e => setPartyQuery(e.target.value)}
+          placeholder="🔍 Search party…"
+          className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[12px] placeholder-gray-400" />
+        {partyQuery && (
+          <button onClick={() => setPartyQuery('')}
+            className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400">
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
       {/* Link-status filter pills */}
       <div className="flex items-center gap-1.5 mb-2 flex-wrap text-[11px]">
         <span className="text-gray-500 dark:text-gray-400 mr-0.5">Link:</span>
@@ -370,7 +387,7 @@ export default function ReceiptsPage() {
           const isSelected = selected.has(r.id)
           const onCardClick = () => {
             if (selectMode) toggleSelect(r.id)
-            else router.push(`/accounts/receipts/${r.id}`)
+            else router.push(`/accounts/receipts/${r.id}${r.linkedCount > 0 ? '?view=linked' : ''}`)
           }
           const diff = r.amount - r.linkedCash
           const matched = r.linkedCount > 0 && Math.abs(diff) <= 1
