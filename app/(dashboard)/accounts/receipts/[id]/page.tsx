@@ -49,6 +49,9 @@ export default function ReceiptDetailPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const [view, setView] = useState<InvoiceView>(initialView)
+  const [editingCarry, setEditingCarry] = useState(false)
+  const [carryInput, setCarryInput] = useState('')
+  const [savingCarry, setSavingCarry] = useState(false)
 
   if (isLoading) return <div className="max-w-3xl mx-auto p-3"><BackButton fallback="/accounts/receipts" /><div className="text-center py-8 text-gray-400 text-sm">Loading…</div></div>
   if (!data?.receipt) return <div className="max-w-3xl mx-auto p-3"><BackButton fallback="/accounts/receipts" /><div className="p-8 text-center text-rose-500">Receipt not found</div></div>
@@ -68,6 +71,23 @@ export default function ReceiptDetailPage() {
       : allInvoices
   const receiptUsed = r.allocations.reduce((s, a) => s + (a.allocatedAmount || 0), 0)
   const receiptRemaining = Math.max(0, r.amount - receiptUsed)
+
+  async function saveCarryOver() {
+    const v = parseFloat(carryInput)
+    if (!Number.isFinite(v) || v < 0) { alert('Enter a valid amount (≥ 0)'); return }
+    setSavingCarry(true)
+    try {
+      const res = await fetch(`/api/accounts/receipts/${id}/carry-over`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ carryOver: v }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert(d.error || 'Failed'); return }
+      setEditingCarry(false)
+      mutate()
+    } catch (e: any) { alert(e?.message || 'Network error') }
+    finally { setSavingCarry(false) }
+  }
 
   async function syncSales() {
     setSyncing(true); setSyncMsg('')
@@ -111,10 +131,37 @@ export default function ReceiptDetailPage() {
           <div className="text-right shrink-0">
             <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">₹{fmtMoney(r.amount)}</div>
             <div className="text-[10px] text-gray-500 mt-0.5">remaining ₹{fmtMoney(receiptRemaining)}</div>
-            {(r.carryOverPriorFy ?? 0) > 0 && (
-              <div className="text-[10px] text-amber-700 dark:text-amber-300 italic mt-0.5 tabular-nums" title="Marked as carry-over to prior FY (e.g. FY 24-25) — not itemised against any invoice">
-                ⏪ carry-over ₹{fmtMoney(r.carryOverPriorFy ?? 0)}
+            {editingCarry ? (
+              <div className="mt-1 flex items-center gap-1 justify-end">
+                <span className="text-[10px] text-amber-700 dark:text-amber-300">⏪ ₹</span>
+                <input type="number" value={carryInput}
+                  onChange={e => setCarryInput(e.target.value)}
+                  placeholder="0"
+                  autoFocus
+                  className="w-24 px-1.5 py-0.5 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-700 text-[11px] tabular-nums" />
+                <button onClick={saveCarryOver} disabled={savingCarry}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">
+                  {savingCarry ? '…' : 'Save'}
+                </button>
+                <button onClick={() => setEditingCarry(false)} disabled={savingCarry}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500">
+                  ✕
+                </button>
               </div>
+            ) : (r.carryOverPriorFy ?? 0) > 0 ? (
+              <button
+                onClick={() => { setCarryInput(String(r.carryOverPriorFy ?? 0)); setEditingCarry(true) }}
+                className="text-[10px] text-amber-700 dark:text-amber-300 italic mt-0.5 tabular-nums hover:underline"
+                title="Click to edit carry-over amount">
+                ⏪ carry-over ₹{fmtMoney(r.carryOverPriorFy ?? 0)} ✏
+              </button>
+            ) : (
+              <button
+                onClick={() => { setCarryInput(''); setEditingCarry(true) }}
+                className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 hover:underline"
+                title="Mark a portion of this receipt as carry-over to prior FY (e.g. FY 24-25)">
+                + add carry-over
+              </button>
             )}
           </div>
         </div>
