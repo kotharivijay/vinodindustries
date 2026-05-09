@@ -30,15 +30,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   return NextResponse.json({ ok: true, allocation: row })
 }
 
+// DELETE — body { invoiceId, removeAllReceipts? }
+//   removeAllReceipts:false (default) → only this receipt's allocation
+//   removeAllReceipts:true            → every receipt's allocation for
+//                                       this invoice (cascade unlink)
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const receiptId = parseInt(params.id)
   if (!Number.isFinite(receiptId)) return NextResponse.json({ error: 'invalid id' }, { status: 400 })
-  const { invoiceId } = await req.json().catch(() => ({}))
+  const { invoiceId, removeAllReceipts } = await req.json().catch(() => ({}))
   if (!Number.isFinite(invoiceId)) return NextResponse.json({ error: 'invoiceId required' }, { status: 400 })
 
   const db = prisma as any
-  const result = await db.ksiReceiptAllocation.deleteMany({ where: { receiptId, invoiceId } })
+  const where = removeAllReceipts === true ? { invoiceId } : { receiptId, invoiceId }
+  const result = await db.ksiReceiptAllocation.deleteMany({ where })
   return NextResponse.json({ ok: true, deleted: result.count })
 }

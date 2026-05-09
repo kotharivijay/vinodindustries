@@ -374,13 +374,25 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
   }
 
+  // Unlinking always cascades — every receipt allocation for this
+  // invoice is removed, not just the current one. Confirmation message
+  // lists the other affected receipts so the action is never silent.
   async function unlink() {
-    if (!confirm(`Remove link to ${inv.vchNumber}?`)) return
+    const allRcpts = inv.allocations.map(a => a.receipt).filter(Boolean) as { id: number; vchNumber: string; amount: number }[]
+    const others = allRcpts.filter(r => r.id !== receiptId)
+    let msg: string
+    if (others.length === 0) {
+      msg = `Remove link to ${inv.vchNumber}?`
+    } else {
+      const list = allRcpts.map(r => `  • #${r.vchNumber}`).join('\n')
+      msg = `Unlink ${inv.vchNumber} from ALL ${allRcpts.length} receipts?\n\n${list}\n\nThis will reset every allocation on this invoice.`
+    }
+    if (!confirm(msg)) return
     setBusy(true)
     try {
       const res = await fetch(`/api/accounts/receipts/${receiptId}/allocate`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId: inv.id }),
+        body: JSON.stringify({ invoiceId: inv.id, removeAllReceipts: true }),
       })
       const d = await res.json()
       if (!res.ok) return alert(d.error || 'Failed')
