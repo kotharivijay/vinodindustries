@@ -44,8 +44,8 @@ export default function ReceiptDetailPage() {
   const [syncMsg, setSyncMsg] = useState('')
   const [view, setView] = useState<InvoiceView>(initialView)
 
-  if (isLoading) return <div className="max-w-3xl mx-auto p-3"><BackButton /><div className="text-center py-8 text-gray-400 text-sm">Loading…</div></div>
-  if (!data?.receipt) return <div className="max-w-3xl mx-auto p-3"><BackButton /><div className="p-8 text-center text-rose-500">Receipt not found</div></div>
+  if (isLoading) return <div className="max-w-3xl mx-auto p-3"><BackButton fallback="/accounts/receipts" /><div className="text-center py-8 text-gray-400 text-sm">Loading…</div></div>
+  if (!data?.receipt) return <div className="max-w-3xl mx-auto p-3"><BackButton fallback="/accounts/receipts" /><div className="p-8 text-center text-rose-500">Receipt not found</div></div>
 
   const r = data.receipt
   const allInvoices = data.invoices
@@ -76,7 +76,7 @@ export default function ReceiptDetailPage() {
   return (
     <div className="max-w-3xl mx-auto p-3 pb-20">
       <div className="flex items-center gap-2 mb-3">
-        <BackButton />
+        <BackButton fallback="/accounts/receipts" />
         <h1 className="text-base font-bold text-gray-800 dark:text-gray-100">Receipt #{r.vchNumber}</h1>
       </div>
 
