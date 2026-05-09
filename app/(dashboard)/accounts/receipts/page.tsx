@@ -67,11 +67,13 @@ interface DryRunResponse {
 // invoice.
 interface RowState {
   invoiceId: number
+  selected: boolean       // false → invoice is skipped in manual mode
   tdsRatePct: number | null
   tdsAmount: number
   discountPct: number | null
   discountAmount: number
 }
+type BulkMode = 'auto' | 'manual'
 const DEFAULT_TDS_RATE = 2
 const round2 = (n: number) => Math.round(n * 100) / 100
 interface FyTotal { fy: string; count: number; total: number }
@@ -590,6 +592,7 @@ function BulkLinkSheet({
   receiptIds, partyName, onClose, onDone,
 }: { receiptIds: number[]; partyName: string; onClose: () => void; onDone: (saved: number) => void }) {
   const [includeAdvance, setIncludeAdvance] = useState(false)
+  const [mode, setMode] = useState<BulkMode>('auto')
   const [data, setData] = useState<DryRunResponse | null>(null)
   const [rows, setRows] = useState<RowState[]>([])
   const [loading, setLoading] = useState(true)
@@ -621,6 +624,7 @@ function BulkLinkSheet({
           const taxable = inv?.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
           return {
             invoiceId: p.invoiceId,
+            selected: true,
             tdsRatePct: DEFAULT_TDS_RATE,
             tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100),
             discountPct: null,
@@ -635,6 +639,16 @@ function BulkLinkSheet({
 
   function updateRow(idx: number, patch: Partial<RowState>) {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r))
+  }
+  // Switching to Auto forces every row back to selected so FIFO covers
+  // all candidate invoices. Switching to Manual leaves the current
+  // selection intact (user usually unchecks a few from the full list).
+  function switchMode(next: BulkMode) {
+    setMode(next)
+    if (next === 'auto') setRows(prev => prev.map(r => ({ ...r, selected: true })))
+  }
+  function selectAll(value: boolean) {
+    setRows(prev => prev.map(r => ({ ...r, selected: value })))
   }
   function applyTdsRate(idx: number) {
     const row = rows[idx]
@@ -663,6 +677,7 @@ function BulkLinkSheet({
     for (const r of data.receipts) remaining[r.id] = r.amount
     let i = 0
     for (const row of rows) {
+      if (!row.selected) { map.set(row.invoiceId, []); continue }
       const inv = data.invoices.find(x => x.id === row.invoiceId)
       if (!inv) { map.set(row.invoiceId, []); continue }
       const targetCash = Math.max(0, round2(inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0)))
@@ -684,11 +699,12 @@ function BulkLinkSheet({
     return map
   }, [data, rows])
 
-  // Live totals derived from rows + computed splits
+  // Live totals derived from selected rows + computed splits.
   const totals = useMemo(() => {
     const sumReceipts = data?.totals.receipts ?? 0
     let cash = 0, tds = 0, disc = 0
     for (const row of rows) {
+      if (!row.selected) continue
       const splits = splitsByInvoice.get(row.invoiceId) || []
       cash += splits.reduce((s, a) => s + a.allocatedAmount, 0)
       tds += row.tdsAmount || 0
@@ -696,6 +712,7 @@ function BulkLinkSheet({
     }
     return { sumReceipts, cash, tds, disc, delta: sumReceipts - cash }
   }, [data, rows, splitsByInvoice])
+  const selectedCount = useMemo(() => rows.filter(r => r.selected).length, [rows])
 
   // After re-FIFO the math always satisfies cash + TDS + disc ≤ pending,
   // so this guard is mostly defensive (e.g. user typed a TDS larger
@@ -704,6 +721,7 @@ function BulkLinkSheet({
     if (!data) return [] as number[]
     const idxs: number[] = []
     rows.forEach((row, i) => {
+      if (!row.selected) return
       const inv = data.invoices.find(x => x.id === row.invoiceId)
       if (!inv) return
       const splits = splitsByInvoice.get(row.invoiceId) || []
@@ -723,13 +741,16 @@ function BulkLinkSheet({
     try {
       const body = {
         receiptIds, partyName, includeAdvance,
-        rows: rows.map(r => ({
-          invoiceId: r.invoiceId,
-          allocations: splitsByInvoice.get(r.invoiceId) || [],
-          tdsRatePct: r.tdsRatePct ?? null,
-          tdsAmount: r.tdsAmount || 0,
-          discountAmount: r.discountAmount || 0,
-        })).filter(r => r.allocations.length > 0 || r.tdsAmount > 0 || r.discountAmount > 0),
+        rows: rows
+          .filter(r => r.selected)
+          .map(r => ({
+            invoiceId: r.invoiceId,
+            allocations: splitsByInvoice.get(r.invoiceId) || [],
+            tdsRatePct: r.tdsRatePct ?? null,
+            tdsAmount: r.tdsAmount || 0,
+            discountAmount: r.discountAmount || 0,
+          }))
+          .filter(r => r.allocations.length > 0 || r.tdsAmount > 0 || r.discountAmount > 0),
       }
       const res = await fetch('/api/accounts/receipts/bulk-allocate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -793,7 +814,33 @@ function BulkLinkSheet({
               </div>
             )
           })()}
-          <div className="flex items-center gap-1.5 mt-2 text-[11px]">
+          <div className="flex items-center gap-1.5 mt-2 text-[11px] flex-wrap">
+            {/* Auto / Manual mode */}
+            <div className="flex items-center gap-0.5 rounded-full border border-gray-200 dark:border-gray-600 p-0.5">
+              {(['auto', 'manual'] as BulkMode[]).map(m => (
+                <button key={m} onClick={() => switchMode(m)}
+                  className={`px-2 py-0.5 rounded-full text-[11px] font-semibold transition ${
+                    mode === m
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+                  }`}>
+                  {m === 'auto' ? '⚙ Auto' : '✋ Manual'}
+                </button>
+              ))}
+            </div>
+            {mode === 'manual' && (
+              <>
+                <span className="text-gray-400 text-[10px]">{selectedCount}/{rows.length} picked</span>
+                <button onClick={() => selectAll(true)}
+                  className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 text-[10px]">
+                  All
+                </button>
+                <button onClick={() => selectAll(false)}
+                  className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 text-[10px]">
+                  None
+                </button>
+              </>
+            )}
             <button onClick={() => setIncludeAdvance(v => !v)}
               className={`px-2 py-0.5 rounded-full border transition ${
                 includeAdvance
@@ -866,14 +913,20 @@ function BulkLinkSheet({
             const isOver = overAllocated.includes(idx)
             const targetCash = Math.max(0, inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0))
             const cashShort = round2(targetCash - cash) // > 0 → receipts ran out before this invoice closed
+            const cardCls = !row.selected
+              ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 opacity-60'
+              : isOver
+                ? 'border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/10'
+                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
             return (
-              <div key={inv.id} className={`border rounded-xl p-3 ${
-                isOver
-                  ? 'border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/10'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
-              }`}>
+              <div key={inv.id} className={`border rounded-xl p-3 ${cardCls}`}>
                 <div className="flex items-start justify-between gap-2 mb-1">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex items-start gap-2">
+                    {mode === 'manual' && (
+                      <input type="checkbox" checked={row.selected}
+                        onChange={e => updateRow(idx, { selected: e.target.checked })}
+                        className="mt-0.5 w-4 h-4 accent-emerald-600 cursor-pointer" />
+                    )}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
                         {inv.vchType} {inv.vchNumber}
@@ -939,16 +992,26 @@ function BulkLinkSheet({
                 </div>
 
                 {/* Cash formula line: cash = pending − TDS − discount */}
-                <div className={`mt-1.5 text-[10px] flex justify-between ${isOver ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                  <span>
-                    cash <span className="font-semibold tabular-nums">₹{fmtMoney(cash)}</span>
-                    {' = '}pending ₹{fmtMoney(inv.pending)}
-                    {(row.tdsAmount || 0) > 0 && <> − TDS ₹{fmtMoney(row.tdsAmount || 0)}</>}
-                    {(row.discountAmount || 0) > 0 && <> − disc ₹{fmtMoney(row.discountAmount || 0)}</>}
-                  </span>
-                  <span className={`font-semibold ${cashShort > 1 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-                    {cashShort > 1 ? `short ₹${fmtMoney(cashShort)}` : isOver ? '⚠ over' : '✓ closes'}
-                  </span>
+                <div className={`mt-1.5 text-[10px] flex justify-between ${
+                  !row.selected ? 'text-gray-400'
+                  : isOver ? 'text-rose-600 dark:text-rose-400'
+                  : 'text-gray-500 dark:text-gray-400'
+                }`}>
+                  {row.selected ? (
+                    <>
+                      <span>
+                        cash <span className="font-semibold tabular-nums">₹{fmtMoney(cash)}</span>
+                        {' = '}pending ₹{fmtMoney(inv.pending)}
+                        {(row.tdsAmount || 0) > 0 && <> − TDS ₹{fmtMoney(row.tdsAmount || 0)}</>}
+                        {(row.discountAmount || 0) > 0 && <> − disc ₹{fmtMoney(row.discountAmount || 0)}</>}
+                      </span>
+                      <span className={`font-semibold ${cashShort > 1 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                        {cashShort > 1 ? `short ₹${fmtMoney(cashShort)}` : isOver ? '⚠ over' : '✓ closes'}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="italic">— skipped (manual mode)</span>
+                  )}
                 </div>
               </div>
             )
@@ -961,9 +1024,9 @@ function BulkLinkSheet({
             className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
             Cancel
           </button>
-          <button onClick={commit} disabled={committing || loading || rows.length === 0 || overAllocated.length > 0 || !!conflicts}
+          <button onClick={commit} disabled={committing || loading || selectedCount === 0 || overAllocated.length > 0 || !!conflicts}
             className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold">
-            {committing ? 'Linking…' : `Confirm ${rows.length} link${rows.length === 1 ? '' : 's'}`}
+            {committing ? 'Linking…' : `Confirm ${selectedCount} link${selectedCount === 1 ? '' : 's'}`}
           </button>
         </div>
       </div>
