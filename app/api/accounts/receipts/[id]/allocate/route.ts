@@ -22,6 +22,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const ratePct = Number.isFinite(tdsRatePct) ? Number(tdsRatePct) : null
 
   const db = prisma as any
+
+  // Pending check — prevent over-allocation when the invoice is shared
+  // by multiple receipts. Sum every existing allocation for this invoice
+  // EXCEPT the current (receiptId, invoiceId) row (which is being
+  // replaced by the upsert), and verify the new total stays within the
+  // invoice's totalAmount + ₹1 tolerance.
+  const inv = await db.ksiSalesInvoice.findUnique({
+    where: { id: invoiceId },
+    include: { allocations: true },
+  })
+  if (!inv) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+  const existingFromOthers = (inv.allocations || [])
+    .filter((a: any) => a.receiptId !== receiptId)
+    .reduce((s: number, a: any) => s + (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0), 0)
+  const newOnThisRow = Number(allocatedAmount) + tds + disc
+  if (existingFromOthers + newOnThisRow > inv.totalAmount + 1) {
+    return NextResponse.json({
+      error: `Over-allocation: invoice total ₹${inv.totalAmount.toFixed(2)}, already paid by other receipts ₹${existingFromOthers.toFixed(2)}, this allocation ₹${newOnThisRow.toFixed(2)}`,
+      pending: Math.max(0, inv.totalAmount - existingFromOthers),
+    }, { status: 400 })
+  }
+
   const row = await db.ksiReceiptAllocation.upsert({
     where: { receiptId_invoiceId: { receiptId, invoiceId } },
     create: { receiptId, invoiceId, allocatedAmount, tdsAmount: tds, discountAmount: disc, tdsRatePct: ratePct, note: note || null },

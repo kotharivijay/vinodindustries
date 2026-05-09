@@ -243,8 +243,16 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
   // non-zero TDS auto-calc.
   const itemSum = useMemo(() => inv.lines.reduce((s, l) => s + l.amount, 0), [inv.lines])
   const grossTaxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : itemSum
-  const ask = inv.totalAmount  // = abs(party ledger amount) → net of any invoice-side discount
   const myAlloc = inv.allocations.find(a => a.receipt?.id === receiptId)
+  // What this receipt can apply to the invoice = invoice's open pending +
+  // whatever this receipt has already applied (since editing rebuilds
+  // *this* receipt's portion). Lets the same invoice be settled by
+  // multiple receipts: each picks up the remaining pending.
+  const myConsumed = (myAlloc?.allocatedAmount ?? 0) + (myAlloc?.tdsAmount ?? 0) + (myAlloc?.discountAmount ?? 0)
+  const ask = Math.max(0, inv.pending + myConsumed)
+  const otherReceiptsPaid = inv.allocations
+    .filter(a => a.receipt?.id !== receiptId)
+    .reduce((s, a) => s + (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0), 0)
 
   // Voucher-level ledgers grouped by category. The Discount pill in the
   // form is a separate at-payment concession — voucher-level discounts
@@ -422,8 +430,13 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
           {inv.partyGstin && <div className="text-[10px] text-gray-500 dark:text-gray-400">GSTIN: {inv.partyGstin}</div>}
         </div>
         <div className="text-right shrink-0">
-          <div className="text-base font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(ask)}</div>
+          <div className="text-base font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(inv.totalAmount)}</div>
           <div className="text-[10px] text-rose-600 dark:text-rose-400">pending ₹{fmtMoney(inv.pending)}</div>
+          {otherReceiptsPaid > 0 && (
+            <div className="text-[10px] text-indigo-600 dark:text-indigo-400" title="Settled by other receipts">
+              other rcpts ₹{fmtMoney(otherReceiptsPaid)}
+            </div>
+          )}
         </div>
       </div>
 
@@ -596,7 +609,16 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
 
           {/* Final summary */}
           <div className="bg-gray-50 dark:bg-gray-700/40 rounded-lg p-2 text-[11px]">
-            <div className="flex justify-between"><span>Ask</span><span className="tabular-nums">₹{fmtMoney(ask)}</span></div>
+            <div className="flex justify-between">
+              <span>Ask {otherReceiptsPaid > 0 && <span className="text-[10px] text-indigo-600 dark:text-indigo-400">(pending of ₹{fmtMoney(inv.totalAmount)})</span>}</span>
+              <span className="tabular-nums">₹{fmtMoney(ask)}</span>
+            </div>
+            {otherReceiptsPaid > 0 && (
+              <div className="flex justify-between text-[10px] text-indigo-600 dark:text-indigo-400">
+                <span>already paid by other receipts</span>
+                <span className="tabular-nums">−₹{fmtMoney(otherReceiptsPaid)}</span>
+              </div>
+            )}
             {numTds > 0 && <div className="flex justify-between text-amber-700 dark:text-amber-400"><span>− TDS</span><span className="tabular-nums">₹{fmtMoney(numTds)}</span></div>}
             {numDisc > 0 && <div className="flex justify-between text-rose-700 dark:text-rose-400"><span>− Discount</span><span className="tabular-nums">₹{fmtMoney(numDisc)}</span></div>}
             <div className="flex justify-between font-bold border-t border-gray-200 dark:border-gray-600 mt-1 pt-1">
