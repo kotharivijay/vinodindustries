@@ -692,31 +692,44 @@ function BulkLinkSheet({
             </div>
             <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-100 text-xl leading-none">×</button>
           </div>
-          {/* Totals chips */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2 text-center text-[10px]">
-            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 py-1.5">
-              <div className="text-gray-500 dark:text-gray-400">Σ Receipts</div>
-              <div className="text-emerald-700 dark:text-emerald-300 font-bold tabular-nums">₹{fmtMoney(totals.sumReceipts)}</div>
-            </div>
-            <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700/40 py-1.5">
-              <div className="text-gray-500 dark:text-gray-400">Σ Linked (cash)</div>
-              <div className="text-indigo-700 dark:text-indigo-300 font-bold tabular-nums">₹{fmtMoney(totals.cash)}</div>
-            </div>
-            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/40 py-1.5">
-              <div className="text-gray-500 dark:text-gray-400">Σ TDS / Disc</div>
-              <div className="text-amber-700 dark:text-amber-300 font-bold tabular-nums">₹{fmtMoney(totals.tds + totals.disc)}</div>
-            </div>
-            <div className={`rounded-lg border py-1.5 ${
-              Math.abs(totals.delta) <= 1
-                ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700/40'
-                : 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-700/40'
-            }`}>
-              <div className="text-gray-500 dark:text-gray-400">Δ</div>
-              <div className={`font-bold tabular-nums ${
-                Math.abs(totals.delta) <= 1 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
-              }`}>₹{fmtMoney(totals.delta)}</div>
-            </div>
-          </div>
+          {/* Remaining-unallocated banner — the headline number for the
+             user. Green within ±₹1 (fully matched), rose otherwise. */}
+          {(() => {
+            const matched = Math.abs(totals.delta) <= 1
+            const overMatched = totals.delta < -1  // linked > receipts
+            return (
+              <div className={`rounded-xl border-2 mt-2 px-3 py-2.5 ${
+                matched
+                  ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700/60'
+                  : 'bg-rose-50 dark:bg-rose-900/20 border-rose-300 dark:border-rose-700/60'
+              }`}>
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <div className={`text-[10px] uppercase tracking-wide font-semibold ${
+                      matched ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
+                    }`}>
+                      {matched ? '✓ Fully matched' : overMatched ? 'Over-allocated' : 'Remaining unallocated'}
+                    </div>
+                    <div className={`text-2xl sm:text-3xl font-extrabold tabular-nums ${
+                      matched ? 'text-emerald-700 dark:text-emerald-200' : 'text-rose-700 dark:text-rose-200'
+                    }`}>
+                      ₹{fmtMoney(Math.abs(totals.delta))}
+                    </div>
+                  </div>
+                  <div className="text-right text-[10px] text-gray-600 dark:text-gray-300 leading-tight">
+                    <div>Σ Receipts <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(totals.sumReceipts)}</span></div>
+                    <div>− Linked cash <span className="font-semibold text-indigo-700 dark:text-indigo-300 tabular-nums">₹{fmtMoney(totals.cash)}</span></div>
+                    {(totals.tds > 0 || totals.disc > 0) && (
+                      <div className="text-amber-700 dark:text-amber-300">
+                        + TDS <span className="tabular-nums">₹{fmtMoney(totals.tds)}</span>
+                        {totals.disc > 0 && <> · Disc <span className="tabular-nums">₹{fmtMoney(totals.disc)}</span></>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
           <div className="flex items-center gap-1.5 mt-2 text-[11px]">
             <button onClick={() => setIncludeAdvance(v => !v)}
               className={`px-2 py-0.5 rounded-full border transition ${
