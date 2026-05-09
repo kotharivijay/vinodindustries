@@ -285,6 +285,7 @@ export default function ReceiptsPage() {
   const fyTotals = data?.fyTotals ?? []
   const fyMap = useMemo(() => new Map(fyTotals.map(f => [f.fy, f])), [fyTotals])
   const tabs: { fy: string; label: string }[] = [
+    { fy: '24-25', label: 'FY 24-25' },
     { fy: '25-26', label: 'FY 25-26' },
     { fy: '26-27', label: 'FY 26-27' },
   ]
@@ -607,6 +608,12 @@ export default function ReceiptsPage() {
               <span className="ml-1.5 text-gray-300">· {partyQuery.trim()}</span>
             )}
           </div>
+          <button onClick={() => setSelected(new Set(rows.map(r => r.id)))}
+            disabled={rows.length === 0 || selected.size === rows.length}
+            title="Select every receipt currently visible (after filters / search)"
+            className="text-xs text-gray-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-gray-600 disabled:opacity-40">
+            ☑ All ({rows.length})
+          </button>
           <button onClick={() => setSelected(new Set())}
             className="text-xs text-gray-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-gray-600">
             Clear
