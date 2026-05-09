@@ -960,11 +960,15 @@ model KsiReceiptAllocation {
   discountAmount  Float            @default(0)
   tdsRatePct      Float?           // e.g. 2.0 — kept for audit; not load-bearing
   note            String?
+  // All allocations created in one bulk-link operation share the same
+  // UUID. Single-receipt links (from the detail page) leave it NULL.
+  bulkBatchId     String?
   createdAt       DateTime         @default(now())
 
   @@unique([receiptId, invoiceId])
   @@index([receiptId])
   @@index([invoiceId])
+  @@index([bulkBatchId])
 }
 
 // ─── Sales Orders (Google Sheets) ─────────────────────────────────────────────

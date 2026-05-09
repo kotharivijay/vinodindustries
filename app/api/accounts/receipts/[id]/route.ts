@@ -21,6 +21,37 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   })
   if (!receipt) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  // Bulk-batch siblings: every other receipt that was committed in the
+  // same /bulk-allocate call as any of this receipt's allocations.
+  const batchIds: string[] = Array.from(new Set(
+    (receipt.allocations || []).map((a: any) => a.bulkBatchId).filter((b: any): b is string => !!b),
+  ))
+  let batchSiblings: any[] = []
+  let batchInvoiceIds: number[] = []
+  if (batchIds.length > 0) {
+    const batchAllocs = await db.ksiReceiptAllocation.findMany({
+      where: { bulkBatchId: { in: batchIds } },
+      include: { receipt: { select: { id: true, vchNumber: true, vchType: true, date: true, amount: true, partyName: true } } },
+    })
+    const sibMap = new Map<number, any>()
+    const invSet = new Set<number>()
+    const sibTotals: Record<number, { cash: number; tds: number; discount: number; count: number }> = {}
+    for (const a of batchAllocs) {
+      invSet.add(a.invoiceId)
+      const rcptId = a.receipt.id
+      if (!sibMap.has(rcptId)) sibMap.set(rcptId, a.receipt)
+      const t = sibTotals[rcptId] ??= { cash: 0, tds: 0, discount: 0, count: 0 }
+      t.cash += a.allocatedAmount
+      t.tds += a.tdsAmount
+      t.discount += a.discountAmount
+      t.count += 1
+    }
+    sibMap.delete(id)  // drop the current receipt
+    batchSiblings = [...sibMap.values()].map(r => ({ ...r, ...sibTotals[r.id] }))
+    batchSiblings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    batchInvoiceIds = [...invSet]
+  }
+
   // Pull invoices for the party (case-insensitive partial match: Tally
   // sometimes uses slightly different capitalisations).
   const invoices = await db.ksiSalesInvoice.findMany({
@@ -54,5 +85,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     }
   })
 
-  return NextResponse.json({ receipt, invoices: enriched, categoryMap })
+  return NextResponse.json({
+    receipt, invoices: enriched, categoryMap,
+    batchIds, batchSiblings, batchInvoiceIds,
+  })
 }

@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../../../BackButton'
 
-type InvoiceView = 'all' | 'linked'
+type InvoiceView = 'all' | 'linked' | 'batch'
+
+interface BatchSibling { id: number; vchNumber: string; vchType: string; date: string; amount: number; partyName: string; cash: number; tds: number; discount: number; count: number }
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 const fmtMoney = (n: number) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -35,11 +37,14 @@ interface Receipt {
 export default function ReceiptDetailPage() {
   const params = useParams()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const id = params.id as string
-  const initialView: InvoiceView = searchParams.get('view') === 'linked' ? 'linked' : 'all'
-  const { data, mutate, isLoading } = useSWR<{ receipt: Receipt; invoices: Invoice[]; categoryMap: Record<string, string> }>(
-    `/api/accounts/receipts/${id}`, fetcher,
-  )
+  const viewParam = searchParams.get('view')
+  const initialView: InvoiceView = viewParam === 'linked' ? 'linked' : viewParam === 'batch' ? 'batch' : 'all'
+  const { data, mutate, isLoading } = useSWR<{
+    receipt: Receipt; invoices: Invoice[]; categoryMap: Record<string, string>;
+    batchIds: string[]; batchSiblings: BatchSibling[]; batchInvoiceIds: number[]
+  }>(`/api/accounts/receipts/${id}`, fetcher)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
   const [view, setView] = useState<InvoiceView>(initialView)
@@ -49,10 +54,16 @@ export default function ReceiptDetailPage() {
 
   const r = data.receipt
   const allInvoices = data.invoices
+  const batchSiblings = data.batchSiblings || []
+  const batchInvoiceIds = new Set(data.batchInvoiceIds || [])
+  const hasBatch = batchSiblings.length > 0
   const linkedCount = allInvoices.filter(inv => inv.allocations.some(a => a.receipt?.id === Number(id))).length
+  const batchInvoiceCount = allInvoices.filter(inv => batchInvoiceIds.has(inv.id)).length
   const invoices = view === 'linked'
     ? allInvoices.filter(inv => inv.allocations.some(a => a.receipt?.id === Number(id)))
-    : allInvoices
+    : view === 'batch'
+      ? allInvoices.filter(inv => batchInvoiceIds.has(inv.id))
+      : allInvoices
   const receiptUsed = r.allocations.reduce((s, a) => s + (a.allocatedAmount || 0), 0)
   const receiptRemaining = Math.max(0, r.amount - receiptUsed)
 
@@ -102,27 +113,72 @@ export default function ReceiptDetailPage() {
         </div>
       </div>
 
+      {/* Bulk-batch siblings — every other receipt that was committed
+         in the same /bulk-allocate call as this one. Tap to open. */}
+      {hasBatch && (
+        <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700/40 rounded-xl p-3 mb-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+              🔗 Bulk batch · {batchSiblings.length + 1} receipts
+            </div>
+            <button onClick={() => setView('batch')}
+              className="text-[10px] underline text-indigo-700 dark:text-indigo-300">
+              Show batch invoices ({batchInvoiceCount})
+            </button>
+          </div>
+          <div className="space-y-0.5 text-[11px]">
+            {batchSiblings.map(s => (
+              <button key={s.id}
+                onClick={() => router.push(`/accounts/receipts/${s.id}?view=batch`)}
+                className="w-full flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-indigo-100 dark:hover:bg-indigo-800/30 text-left">
+                <span className="font-mono text-emerald-700 dark:text-emerald-300 shrink-0">#{s.vchNumber}</span>
+                <span className="text-gray-500 shrink-0">{fmtDate(s.date)}</span>
+                <span className="flex-1 text-gray-700 dark:text-gray-200 tabular-nums text-right">₹{fmtMoney(s.amount)}</span>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 tabular-nums shrink-0">
+                  → ₹{fmtMoney(s.cash)}
+                  {s.count > 1 && <span className="text-gray-400"> · {s.count} invs</span>}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Invoices for this party */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-          {view === 'linked' ? 'Linked invoices' : 'Sales / Process invoices for this party'} ({invoices.length})
+          {view === 'linked' ? 'Linked invoices'
+            : view === 'batch' ? 'Batch invoices'
+            : 'Sales / Process invoices for this party'} ({invoices.length})
         </h2>
         <button onClick={syncSales} disabled={syncing}
           className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[11px] font-semibold">
           {syncing ? 'Syncing…' : 'Sync from Tally'}
         </button>
       </div>
-      {linkedCount > 0 && (
-        <div className="flex items-center gap-1.5 mb-2 text-[11px]">
+      {(linkedCount > 0 || hasBatch) && (
+        <div className="flex items-center gap-1.5 mb-2 text-[11px] flex-wrap">
           <span className="text-gray-500 dark:text-gray-400">Show:</span>
-          <button onClick={() => setView('linked')}
-            className={`px-2.5 py-1 rounded-full border transition ${
-              view === 'linked'
-                ? 'bg-emerald-600 text-white border-emerald-600'
-                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
-            }`}>
-            🔗 Linked only ({linkedCount})
-          </button>
+          {linkedCount > 0 && (
+            <button onClick={() => setView('linked')}
+              className={`px-2.5 py-1 rounded-full border transition ${
+                view === 'linked'
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+              }`}>
+              🔗 Linked only ({linkedCount})
+            </button>
+          )}
+          {hasBatch && (
+            <button onClick={() => setView('batch')}
+              className={`px-2.5 py-1 rounded-full border transition ${
+                view === 'batch'
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+              }`}>
+              🔗 Batch ({batchInvoiceCount})
+            </button>
+          )}
           <button onClick={() => setView('all')}
             className={`px-2.5 py-1 rounded-full border transition ${
               view === 'all'
@@ -141,6 +197,12 @@ export default function ReceiptDetailPage() {
             <>No invoices linked to this receipt yet.<br />
               <button onClick={() => setView('all')} className="text-[11px] mt-1 underline text-emerald-600 dark:text-emerald-400">
                 Show all party invoices to link one
+              </button>
+            </>
+          ) : view === 'batch' ? (
+            <>No invoices in this bulk batch.<br />
+              <button onClick={() => setView('all')} className="text-[11px] mt-1 underline text-emerald-600 dark:text-emerald-400">
+                Show all party invoices
               </button>
             </>
           ) : (

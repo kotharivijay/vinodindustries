@@ -247,13 +247,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // One UUID per bulk-link operation, stamped on every row created in
+  // this transaction. Lets the receipt detail page pull every sibling
+  // receipt + invoice in the same batch when any one is opened.
+  const bulkBatchId = crypto.randomUUID()
   const created = await db.$transaction(
-    Object.values(merged).map(m => db.ksiReceiptAllocation.create({ data: m })),
+    Object.values(merged).map(m => db.ksiReceiptAllocation.create({ data: { ...m, bulkBatchId } })),
   )
 
   return NextResponse.json({
     ok: true,
     saved: created.length,
+    bulkBatchId,
     totals: {
       cash: round2(Object.values(merged).reduce((s, m) => s + m.allocatedAmount, 0)),
       tds: round2(Object.values(merged).reduce((s, m) => s + m.tdsAmount, 0)),
