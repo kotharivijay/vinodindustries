@@ -36,12 +36,36 @@ export async function GET(req: NextRequest) {
   const allocs = receiptIds.length > 0
     ? await db.ksiReceiptAllocation.findMany({
         where: { receiptId: { in: receiptIds } },
-        include: { invoice: { select: { vchNumber: true, vchType: true } } },
+        include: { invoice: { select: { id: true, vchNumber: true, vchType: true } } },
       })
     : []
+
+  // For each invoice referenced by these allocations, compute its
+  // current pending = totalAmount − Σ(cash + tds + disc) across
+  // *every* allocation (not just the ones tied to this receipt batch).
+  // Used to show "pending ₹X" next to the linked invoice line.
+  const invoiceIds = Array.from(new Set(allocs.map((a: any) => a.invoiceId)))
+  const pendingByInvoice: Record<number, number> = {}
+  if (invoiceIds.length > 0) {
+    const invs = await db.ksiSalesInvoice.findMany({
+      where: { id: { in: invoiceIds } },
+      select: {
+        id: true, totalAmount: true,
+        allocations: { select: { allocatedAmount: true, tdsAmount: true, discountAmount: true } },
+      },
+    })
+    for (const inv of invs) {
+      const consumed = (inv.allocations || []).reduce(
+        (s: number, a: any) => s + (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0),
+        0,
+      )
+      pendingByInvoice[inv.id] = Math.max(0, inv.totalAmount - consumed)
+    }
+  }
+
   const byReceipt: Record<number, {
     linkedCount: number; linkedCash: number; linkedTds: number; linkedDiscount: number;
-    linkedInvoices: { vchType: string; vchNumber: string; allocatedAmount: number; tdsAmount: number; discountAmount: number }[]
+    linkedInvoices: { vchType: string; vchNumber: string; allocatedAmount: number; tdsAmount: number; discountAmount: number; pending: number }[]
   }> = {}
   for (const a of allocs) {
     const acc = byReceipt[a.receiptId] ??= { linkedCount: 0, linkedCash: 0, linkedTds: 0, linkedDiscount: 0, linkedInvoices: [] }
@@ -52,6 +76,7 @@ export async function GET(req: NextRequest) {
     acc.linkedInvoices.push({
       vchType: a.invoice.vchType, vchNumber: a.invoice.vchNumber,
       allocatedAmount: a.allocatedAmount, tdsAmount: a.tdsAmount, discountAmount: a.discountAmount,
+      pending: pendingByInvoice[a.invoiceId] ?? 0,
     })
   }
   const enriched = rows.map((r: any) => ({
