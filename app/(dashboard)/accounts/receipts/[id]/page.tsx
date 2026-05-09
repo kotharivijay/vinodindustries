@@ -364,7 +364,7 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
     lines.push(`*Receipt:* #${receipt.vchNumber} (${fmtDate(receipt.date)}) ₹${fmtMoney(receipt.amount)}`)
     lines.push(`*Invoice:* ${inv.vchType} ${inv.vchNumber} (${fmtDate(inv.date)}) ₹${fmtMoney(inv.totalAmount)}`)
     lines.push('')
-    lines.push(`Cash: ₹${fmtMoney(cashPart)}`)
+    lines.push(`Bank Recpt: ₹${fmtMoney(cashPart)}`)
     if (tdsPart > 0) lines.push(`+ TDS: ₹${fmtMoney(tdsPart)}`)
     if (discPart > 0) lines.push(`+ Discount: ₹${fmtMoney(discPart)}`)
     const settled = cashPart + tdsPart + discPart
@@ -515,7 +515,7 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
       {/* Allocations summary (from any receipt) */}
       {(inv.tds > 0 || inv.discount > 0 || inv.allocated > 0) && (
         <div className="text-[10px] mt-1.5 text-emerald-700 dark:text-emerald-400">
-          Settled: cash ₹{fmtMoney(inv.allocated)}{inv.tds > 0 ? ` · TDS ₹${fmtMoney(inv.tds)}` : ''}{inv.discount > 0 ? ` · disc ₹${fmtMoney(inv.discount)}` : ''}
+          Settled: Bank Recpt ₹{fmtMoney(inv.allocated)}{inv.tds > 0 ? ` · TDS ₹${fmtMoney(inv.tds)}` : ''}{inv.discount > 0 ? ` · disc ₹${fmtMoney(inv.discount)}` : ''}
         </div>
       )}
 

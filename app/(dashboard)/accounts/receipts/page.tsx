@@ -409,7 +409,7 @@ export default function ReceiptsPage() {
         ))}
         {linkFilter === 'linked' && (
           <button onClick={() => setHideMatched(v => !v)}
-            title="Hide receipts whose cash linked equals the receipt amount within ±₹1"
+            title="Hide receipts whose linked Bank Recpt equals the receipt amount within ±₹1"
             className={`px-2.5 py-1 rounded-full border transition ${
               hideMatched
                 ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-200'
@@ -476,7 +476,7 @@ export default function ReceiptsPage() {
                           ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                           : 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200'
                       }`}
-                        title={`${r.linkedCount} invoice(s) linked · cash ₹${fmtMoney(r.linkedCash)}${r.linkedTds > 0 ? ` · TDS ₹${fmtMoney(r.linkedTds)}` : ''}${r.linkedDiscount > 0 ? ` · disc ₹${fmtMoney(r.linkedDiscount)}` : ''}`}>
+                        title={`${r.linkedCount} invoice(s) linked · Bank Recpt ₹${fmtMoney(r.linkedCash)}${r.linkedTds > 0 ? ` · TDS ₹${fmtMoney(r.linkedTds)}` : ''}${r.linkedDiscount > 0 ? ` · disc ₹${fmtMoney(r.linkedDiscount)}` : ''}`}>
                         🔗 {r.linkedCount}{matched ? ' ✓' : ''}
                       </span>
                     )}
@@ -508,12 +508,6 @@ export default function ReceiptsPage() {
                             {inv.tdsAmount > 0 && <span className="text-amber-600 dark:text-amber-400">+TDS ₹{fmtMoney(inv.tdsAmount)}</span>}
                             {inv.discountAmount > 0 && <span className="text-rose-600 dark:text-rose-400">+disc ₹{fmtMoney(inv.discountAmount)}</span>}
                           </div>
-                          {inv.pending > 0.5 && (
-                            <div className="text-[10px] text-rose-600 dark:text-rose-400 pl-2 tabular-nums"
-                              title="Invoice still has pending amount across all linked receipts">
-                              pending ₹{fmtMoney(inv.pending)}
-                            </div>
-                          )}
                         </div>
                       ))}
                       {r.linkedInvoices.length > 4 && (
@@ -536,6 +530,20 @@ export default function ReceiptsPage() {
                       }`}>
                         Δ ₹{fmtMoney(diff)}
                       </div>
+                      {/* Per-invoice pending — only invoices not yet
+                         fully settled. Two lines: the −pending amount
+                         in rose, then the invoice voucher number below
+                         in smaller mono. Disappears when settled. */}
+                      {r.linkedInvoices.filter(inv => inv.pending > 0.5).map((inv, i) => (
+                        <div key={i} className="mt-0.5">
+                          <div className="text-[10px] font-semibold text-rose-600 dark:text-rose-400 tabular-nums">
+                            −pending ₹{fmtMoney(inv.pending)}
+                          </div>
+                          <div className="text-[9px] font-mono text-rose-500 dark:text-rose-400/80">
+                            {inv.vchType} {inv.vchNumber}
+                          </div>
+                        </div>
+                      ))}
                     </>
                   )}
                 </div>
@@ -794,7 +802,7 @@ function BulkLinkSheet({
       for (const r of data.receipts) {
         lines.push(`• #${r.vchNumber} (${fmtDate(r.date)}) ₹${fmtMoney(r.amount)}`)
       }
-      lines.push(`*Total cash:* ₹${fmtMoney(totals.sumReceipts)}`)
+      lines.push(`*Total Bank Recpt:* ₹${fmtMoney(totals.sumReceipts)}`)
       lines.push('')
       lines.push(`*Linked invoices (${selectedCount}):*`)
       for (const row of rows.filter(r => r.selected)) {
@@ -863,7 +871,7 @@ function BulkLinkSheet({
                   </div>
                   <div className="text-right text-[10px] text-gray-600 dark:text-gray-300 leading-tight">
                     <div>Σ Receipts <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(totals.sumReceipts)}</span></div>
-                    <div>− Linked cash <span className="font-semibold text-indigo-700 dark:text-indigo-300 tabular-nums">₹{fmtMoney(totals.cash)}</span></div>
+                    <div>− Linked Bank Recpt <span className="font-semibold text-indigo-700 dark:text-indigo-300 tabular-nums">₹{fmtMoney(totals.cash)}</span></div>
                     {(totals.tds > 0 || totals.disc > 0) && (
                       <div className="text-amber-700 dark:text-amber-300">
                         + TDS <span className="tabular-nums">₹{fmtMoney(totals.tds)}</span>
@@ -1003,7 +1011,7 @@ function BulkLinkSheet({
 
                 {/* Cash splits — auto-rebuilt by re-FIFO whenever TDS / Disc change */}
                 <div className="text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5 mt-1">
-                  {splits.length === 0 && <div className="text-gray-400 italic">No cash assigned (receipts exhausted)</div>}
+                  {splits.length === 0 && <div className="text-gray-400 italic">No Bank Recpt assigned (receipts exhausted)</div>}
                   {splits.map((s, i) => {
                     const rcpt = data.receipts.find(r => r.id === s.receiptId)
                     return (
@@ -1061,7 +1069,7 @@ function BulkLinkSheet({
                   {row.selected ? (
                     <>
                       <span>
-                        cash <span className="font-semibold tabular-nums">₹{fmtMoney(cash)}</span>
+                        Bank Recpt <span className="font-semibold tabular-nums">₹{fmtMoney(cash)}</span>
                         {' = '}pending ₹{fmtMoney(inv.pending)}
                         {(row.tdsAmount || 0) > 0 && <> − TDS ₹{fmtMoney(row.tdsAmount || 0)}</>}
                         {(row.discountAmount || 0) > 0 && <> − disc ₹{fmtMoney(row.discountAmount || 0)}</>}
@@ -1101,7 +1109,7 @@ function BulkLinkSheet({
               </div>
               <div className="text-[11px] text-gray-600 dark:text-gray-300 mt-0.5">{partyName}</div>
               <div className="grid grid-cols-3 gap-2 mt-3 text-[10px]">
-                <div><div className="text-gray-500">Cash</div><div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">₹{fmtMoney(totals.cash)}</div></div>
+                <div><div className="text-gray-500">Bank Recpt</div><div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">₹{fmtMoney(totals.cash)}</div></div>
                 <div><div className="text-gray-500">+ TDS / Disc</div><div className="font-bold text-amber-700 dark:text-amber-300 tabular-nums">₹{fmtMoney(totals.tds + totals.disc)}</div></div>
                 <div><div className="text-gray-500">Δ Remaining</div><div className={`font-bold tabular-nums ${Math.abs(totals.delta) <= 1 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>₹{fmtMoney(totals.delta)}</div></div>
               </div>
