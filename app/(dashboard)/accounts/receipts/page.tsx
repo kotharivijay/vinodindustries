@@ -59,13 +59,21 @@ interface DryRunResponse {
   invoices: DryRunInvoice[]
   includeAdvance: boolean
 }
-interface EditableRow extends DryRunPlanRow {
+// Per-invoice editable state. Cash splits are NOT stored here — they
+// are derived via re-FIFO whenever TDS / discount change, so that the
+// cash actually flowing from receipts to this invoice always equals
+//   cash = pending − TDS − discount
+// and any leftover from a receipt automatically rolls to the next
+// invoice.
+interface RowState {
+  invoiceId: number
   tdsRatePct: number | null
   tdsAmount: number
   discountPct: number | null
   discountAmount: number
 }
 const DEFAULT_TDS_RATE = 2
+const round2 = (n: number) => Math.round(n * 100) / 100
 interface FyTotal { fy: string; count: number; total: number }
 
 const fmtDate = (iso: string) => {
@@ -583,14 +591,16 @@ function BulkLinkSheet({
 }: { receiptIds: number[]; partyName: string; onClose: () => void; onDone: (saved: number) => void }) {
   const [includeAdvance, setIncludeAdvance] = useState(false)
   const [data, setData] = useState<DryRunResponse | null>(null)
-  const [rows, setRows] = useState<EditableRow[]>([])
+  const [rows, setRows] = useState<RowState[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [conflicts, setConflicts] = useState<{ receiptId: number; vchNumber: string; existingLinks: number }[] | null>(null)
   const [committing, setCommitting] = useState(false)
 
-  // Re-run dry-run on mount + whenever the advance toggle flips. Server
-  // returns the FIFO plan; we then seed editable TDS/discount fields.
+  // Run dry-run on mount + whenever the advance toggle flips. The
+  // server's plan tells us which invoices are candidates and in what
+  // order; the cash splits themselves are recomputed client-side via
+  // re-FIFO whenever TDS / discount change.
   useEffect(() => {
     let alive = true
     setLoading(true); setError(null); setConflicts(null)
@@ -606,17 +616,13 @@ function BulkLinkSheet({
         setData(d)
         const invById: Record<number, DryRunInvoice> = {}
         for (const inv of d.invoices) invById[inv.id] = inv
-        setRows(d.plan.map((p: DryRunPlanRow): EditableRow => {
+        setRows(d.plan.map((p: DryRunPlanRow): RowState => {
           const inv = invById[p.invoiceId]
-          const cash = p.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
-          const taxableShare = inv?.taxableAmount && inv.taxableAmount > 0 && inv.totalAmount > 0
-            ? (inv.taxableAmount * cash) / inv.totalAmount
-            : 0
-          const tdsAmount = Math.round((taxableShare * DEFAULT_TDS_RATE) / 100)
+          const taxable = inv?.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
           return {
-            ...p,
+            invoiceId: p.invoiceId,
             tdsRatePct: DEFAULT_TDS_RATE,
-            tdsAmount,
+            tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100),
             discountPct: null,
             discountAmount: 0,
           }
@@ -627,57 +633,85 @@ function BulkLinkSheet({
     return () => { alive = false }
   }, [receiptIds, partyName, includeAdvance])
 
-  function updateRow(idx: number, patch: Partial<EditableRow>) {
+  function updateRow(idx: number, patch: Partial<RowState>) {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r))
   }
   function applyTdsRate(idx: number) {
     const row = rows[idx]
     const inv = data?.invoices.find(i => i.id === row.invoiceId)
-    if (!inv) return
-    const cash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
-    const taxableShare = inv.taxableAmount && inv.taxableAmount > 0 && inv.totalAmount > 0
-      ? (inv.taxableAmount * cash) / inv.totalAmount
-      : 0
+    if (!inv || !inv.taxableAmount || inv.taxableAmount <= 0) return
     const rate = row.tdsRatePct ?? DEFAULT_TDS_RATE
-    updateRow(idx, { tdsAmount: Math.round((taxableShare * rate) / 100) })
+    updateRow(idx, { tdsAmount: Math.round((inv.taxableAmount * rate) / 100) })
   }
   function applyDiscPct(idx: number) {
     const row = rows[idx]
     const inv = data?.invoices.find(i => i.id === row.invoiceId)
-    if (!inv) return
-    const cash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
-    const taxableShare = inv.taxableAmount && inv.taxableAmount > 0 && inv.totalAmount > 0
-      ? (inv.taxableAmount * cash) / inv.totalAmount
-      : 0
+    if (!inv || !inv.taxableAmount || inv.taxableAmount <= 0) return
     const pct = row.discountPct ?? 0
     if (pct <= 0) return
-    updateRow(idx, { discountAmount: Math.round((taxableShare * pct) / 100) })
+    updateRow(idx, { discountAmount: Math.round((inv.taxableAmount * pct) / 100) })
   }
 
-  // Live totals derived from the editable rows
+  // Re-FIFO derived cash splits: walk receipts oldest-first, drain
+  // each into the current invoice until its targetCash (= pending −
+  // TDS − discount) is met, then move to the next invoice. Leftover
+  // from a receipt naturally rolls forward to the next invoice.
+  const splitsByInvoice = useMemo(() => {
+    const map = new Map<number, DryRunSplit[]>()
+    if (!data) return map
+    const remaining: Record<number, number> = {}
+    for (const r of data.receipts) remaining[r.id] = r.amount
+    let i = 0
+    for (const row of rows) {
+      const inv = data.invoices.find(x => x.id === row.invoiceId)
+      if (!inv) { map.set(row.invoiceId, []); continue }
+      const targetCash = Math.max(0, round2(inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0)))
+      let need = targetCash
+      const splits: DryRunSplit[] = []
+      while (need > 0 && i < data.receipts.length) {
+        const r = data.receipts[i]
+        const have = remaining[r.id]
+        if (have <= 0.0001) { i++; continue }
+        const take = round2(Math.min(have, need))
+        if (take <= 0) { i++; continue }
+        splits.push({ receiptId: r.id, allocatedAmount: take })
+        remaining[r.id] = round2(have - take)
+        need = round2(need - take)
+        if (remaining[r.id] <= 0.0001) i++
+      }
+      map.set(row.invoiceId, splits)
+    }
+    return map
+  }, [data, rows])
+
+  // Live totals derived from rows + computed splits
   const totals = useMemo(() => {
     const sumReceipts = data?.totals.receipts ?? 0
     let cash = 0, tds = 0, disc = 0
     for (const row of rows) {
-      cash += row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
+      const splits = splitsByInvoice.get(row.invoiceId) || []
+      cash += splits.reduce((s, a) => s + a.allocatedAmount, 0)
       tds += row.tdsAmount || 0
       disc += row.discountAmount || 0
     }
     return { sumReceipts, cash, tds, disc, delta: sumReceipts - cash }
-  }, [data, rows])
+  }, [data, rows, splitsByInvoice])
 
-  // Per-row over-allocation guard: cash + tds + disc must be ≤ pending.
+  // After re-FIFO the math always satisfies cash + TDS + disc ≤ pending,
+  // so this guard is mostly defensive (e.g. user typed a TDS larger
+  // than the invoice's pending).
   const overAllocated = useMemo(() => {
     if (!data) return [] as number[]
     const idxs: number[] = []
     rows.forEach((row, i) => {
       const inv = data.invoices.find(x => x.id === row.invoiceId)
       if (!inv) return
-      const cash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
+      const splits = splitsByInvoice.get(row.invoiceId) || []
+      const cash = splits.reduce((s, a) => s + a.allocatedAmount, 0)
       if (cash + (row.tdsAmount || 0) + (row.discountAmount || 0) > inv.pending + 1) idxs.push(i)
     })
     return idxs
-  }, [data, rows])
+  }, [data, rows, splitsByInvoice])
 
   async function commit() {
     if (!data || rows.length === 0) return
@@ -691,11 +725,11 @@ function BulkLinkSheet({
         receiptIds, partyName, includeAdvance,
         rows: rows.map(r => ({
           invoiceId: r.invoiceId,
-          allocations: r.allocations,
+          allocations: splitsByInvoice.get(r.invoiceId) || [],
           tdsRatePct: r.tdsRatePct ?? null,
           tdsAmount: r.tdsAmount || 0,
           discountAmount: r.discountAmount || 0,
-        })),
+        })).filter(r => r.allocations.length > 0 || r.tdsAmount > 0 || r.discountAmount > 0),
       }
       const res = await fetch('/api/accounts/receipts/bulk-allocate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -798,7 +832,10 @@ function BulkLinkSheet({
             <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-[11px] bg-gray-50 dark:bg-gray-800/40">
               <div className="font-semibold text-gray-700 dark:text-gray-200 mb-1">Receipts ({data.receipts.length}) · oldest first</div>
               {data.receipts.map(r => {
-                const used = rows.reduce((s, row) => s + row.allocations.filter(a => a.receiptId === r.id).reduce((ss, a) => ss + a.allocatedAmount, 0), 0)
+                let used = 0
+                for (const splits of splitsByInvoice.values()) {
+                  for (const s of splits) if (s.receiptId === r.id) used += s.allocatedAmount
+                }
                 const left = Math.max(0, r.amount - used)
                 return (
                   <div key={r.id} className="flex items-center justify-between gap-2 py-0.5">
@@ -823,12 +860,12 @@ function BulkLinkSheet({
           {data && rows.map((row, idx) => {
             const inv = data.invoices.find(i => i.id === row.invoiceId)
             if (!inv) return null
-            const cash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
-            const consumed = cash + (row.tdsAmount || 0) + (row.discountAmount || 0)
+            const splits = splitsByInvoice.get(row.invoiceId) || []
+            const cash = splits.reduce((s, a) => s + a.allocatedAmount, 0)
+            const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
             const isOver = overAllocated.includes(idx)
-            const taxableShare = inv.taxableAmount && inv.taxableAmount > 0 && inv.totalAmount > 0
-              ? (inv.taxableAmount * cash) / inv.totalAmount
-              : 0
+            const targetCash = Math.max(0, inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0))
+            const cashShort = round2(targetCash - cash) // > 0 → receipts ran out before this invoice closed
             return (
               <div key={inv.id} className={`border rounded-xl p-3 ${
                 isOver
@@ -850,9 +887,10 @@ function BulkLinkSheet({
                   </div>
                 </div>
 
-                {/* Cash splits (read-only, FIFO from server) */}
+                {/* Cash splits — auto-rebuilt by re-FIFO whenever TDS / Disc change */}
                 <div className="text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5 mt-1">
-                  {row.allocations.map((s, i) => {
+                  {splits.length === 0 && <div className="text-gray-400 italic">No cash assigned (receipts exhausted)</div>}
+                  {splits.map((s, i) => {
                     const rcpt = data.receipts.find(r => r.id === s.receiptId)
                     return (
                       <div key={i} className="flex justify-between">
@@ -879,7 +917,7 @@ function BulkLinkSheet({
                     onChange={e => updateRow(idx, { tdsAmount: parseFloat(e.target.value) || 0 })}
                     placeholder="₹"
                     className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums" />
-                  <span className="text-gray-400 text-[10px] whitespace-nowrap">on ₹{fmtMoney(taxableShare)}</span>
+                  <span className="text-gray-400 text-[10px] whitespace-nowrap">on ₹{fmtMoney(taxable)}</span>
                 </div>
 
                 {/* Discount row */}
@@ -900,10 +938,17 @@ function BulkLinkSheet({
                     className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums" />
                 </div>
 
-                {/* Consumed line */}
+                {/* Cash formula line: cash = pending − TDS − discount */}
                 <div className={`mt-1.5 text-[10px] flex justify-between ${isOver ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                  <span>cash ₹{fmtMoney(cash)} + TDS ₹{fmtMoney(row.tdsAmount || 0)} + disc ₹{fmtMoney(row.discountAmount || 0)}</span>
-                  <span className="font-semibold">= ₹{fmtMoney(consumed)} {isOver && '⚠ over'}</span>
+                  <span>
+                    cash <span className="font-semibold tabular-nums">₹{fmtMoney(cash)}</span>
+                    {' = '}pending ₹{fmtMoney(inv.pending)}
+                    {(row.tdsAmount || 0) > 0 && <> − TDS ₹{fmtMoney(row.tdsAmount || 0)}</>}
+                    {(row.discountAmount || 0) > 0 && <> − disc ₹{fmtMoney(row.discountAmount || 0)}</>}
+                  </span>
+                  <span className={`font-semibold ${cashShort > 1 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                    {cashShort > 1 ? `short ₹${fmtMoney(cashShort)}` : isOver ? '⚠ over' : '✓ closes'}
+                  </span>
                 </div>
               </div>
             )
