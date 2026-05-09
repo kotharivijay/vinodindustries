@@ -36,6 +36,11 @@ interface BulkBody {
   // Free-form note saved on every allocation row in this batch.
   // Surfaced on the receipt detail page and shared on WhatsApp.
   batchNote?: string | null
+  // Total amount of these receipts that should be marked as carry-over
+  // to a prior FY (e.g. FY 24-25). Reduces the FIFO pool before
+  // allocation; distributed FIFO across selected receipts oldest-first
+  // and persisted on each receipt's carryOverPriorFy column.
+  carryOver?: number
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -48,7 +53,8 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as BulkBody | null
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
 
-  const { receiptIds, partyName, includeAdvance = false, rows, batchNote } = body
+  const { receiptIds, partyName, includeAdvance = false, rows, batchNote, carryOver = 0 } = body
+  const carryOverAmt = Number.isFinite(carryOver) && carryOver > 0 ? round2(Number(carryOver)) : 0
   if (!Array.isArray(receiptIds) || receiptIds.length === 0) {
     return NextResponse.json({ error: 'receiptIds required' }, { status: 400 })
   }
@@ -120,12 +126,40 @@ export async function POST(req: NextRequest) {
     }))
 
   // ── 3a. Dry-run: build FIFO plan and return ─────────────────────────
+  const sortedReceipts = [...receipts].sort((a: any, b: any) =>
+    a.date.getTime() - b.date.getTime() || a.id - b.id,
+  )
+
+  // Distribute the new carry-over (FIFO oldest-first) on top of any
+  // existing carryOverPriorFy. Each receipt's available pool is then
+  // r.amount − existing − additional. Used by both the dry-run FIFO
+  // and the commit-time validation.
+  const additionalCarryOver: Record<number, number> = {}
+  if (carryOverAmt > 0) {
+    let need = carryOverAmt
+    for (const r of sortedReceipts) {
+      if (need <= 0.0001) break
+      const existing = (r as any).carryOverPriorFy || 0
+      const headroom = Math.max(0, round2(r.amount - existing))
+      if (headroom <= 0.0001) continue
+      const take = round2(Math.min(headroom, need))
+      additionalCarryOver[r.id] = take
+      need = round2(need - take)
+    }
+    if (need > 0.5) {
+      return NextResponse.json({
+        error: `Carry-over ₹${carryOverAmt.toFixed(2)} exceeds available pool by ₹${need.toFixed(2)}`,
+      }, { status: 400 })
+    }
+  }
+
   if (dryRun || !rows) {
-    const sortedReceipts = [...receipts].sort((a: any, b: any) =>
-      a.date.getTime() - b.date.getTime() || a.id - b.id,
-    )
     const rcptRemaining: Record<number, number> = {}
-    for (const r of sortedReceipts) rcptRemaining[r.id] = r.amount
+    for (const r of sortedReceipts) {
+      const existing = (r as any).carryOverPriorFy || 0
+      const add = additionalCarryOver[r.id] || 0
+      rcptRemaining[r.id] = round2(Math.max(0, r.amount - existing - add))
+    }
 
     const plan: PlanRow[] = []
     let i = 0
@@ -152,6 +186,10 @@ export async function POST(req: NextRequest) {
       (s, row) => s + row.allocations.reduce((ss, a) => ss + a.allocatedAmount, 0),
       0,
     )
+    const totalExistingCarryOver = sortedReceipts.reduce(
+      (s: number, r: any) => s + (r.carryOverPriorFy || 0), 0,
+    )
+    const totalCarryOver = round2(totalExistingCarryOver + carryOverAmt)
     const leftoverReceipt = round2(Object.values(rcptRemaining).reduce((s: number, v: number) => s + v, 0))
     const totalInvoicePending = pendingInvoices.reduce((s: number, v: { pending: number }) => s + v.pending, 0)
     const leftoverInvoice = round2(Math.max(0, totalInvoicePending - totalLinked))
@@ -162,13 +200,16 @@ export async function POST(req: NextRequest) {
       totals: {
         receipts: round2(totalReceipts),
         linked: round2(totalLinked),
-        delta: round2(totalReceipts - totalLinked),
+        carryOver: totalCarryOver,
+        delta: round2(totalReceipts - totalLinked - totalCarryOver),
         leftoverReceipt,
         leftoverInvoice,
       },
       receipts: sortedReceipts.map((r: any) => ({
         id: r.id, vchNumber: r.vchNumber, vchType: r.vchType, date: r.date,
         amount: r.amount, partyName: r.partyName,
+        carryOverPriorFy: r.carryOverPriorFy || 0,
+        additionalCarryOver: additionalCarryOver[r.id] || 0,
       })),
       invoices: pendingInvoices,
       includeAdvance,
@@ -213,9 +254,12 @@ export async function POST(req: NextRequest) {
   }
   for (const [ridStr, spent] of Object.entries(cashSpentByReceipt)) {
     const rid = Number(ridStr)
-    if (spent > rcptById[rid].amount + 1) {
+    const r = rcptById[rid]
+    const reserved = (r.carryOverPriorFy || 0) + (additionalCarryOver[rid] || 0)
+    const cap = r.amount - reserved
+    if (spent > cap + 1) {
       return NextResponse.json({
-        error: `Receipt #${rcptById[rid].vchNumber} over-spent (${round2(spent)} > ${rcptById[rid].amount})`,
+        error: `Receipt #${r.vchNumber} over-spent (cash ₹${round2(spent)} > available ₹${round2(cap)} after carry-over ₹${round2(reserved)})`,
       }, { status: 400 })
     }
   }
@@ -257,9 +301,22 @@ export async function POST(req: NextRequest) {
   // this transaction. Lets the receipt detail page pull every sibling
   // receipt + invoice in the same batch when any one is opened.
   const bulkBatchId = crypto.randomUUID()
-  const created = await db.$transaction(
-    Object.values(merged).map(m => db.ksiReceiptAllocation.create({ data: { ...m, bulkBatchId } })),
+  const allocCreates = Object.values(merged).map(m =>
+    db.ksiReceiptAllocation.create({ data: { ...m, bulkBatchId } }),
   )
+  // Bump carryOverPriorFy on each affected receipt by its FIFO share.
+  const carryOverUpdates = Object.entries(additionalCarryOver)
+    .filter(([, add]) => (add as number) > 0)
+    .map(([ridStr, add]) => {
+      const rid = Number(ridStr)
+      const existing = rcptById[rid].carryOverPriorFy || 0
+      return db.ksiHdfcReceipt.update({
+        where: { id: rid },
+        data: { carryOverPriorFy: round2(existing + (add as number)) },
+      })
+    })
+  const result = await db.$transaction([...carryOverUpdates, ...allocCreates])
+  const created = result.slice(carryOverUpdates.length)
 
   return NextResponse.json({
     ok: true,
@@ -269,6 +326,7 @@ export async function POST(req: NextRequest) {
       cash: round2(Object.values(merged).reduce((s, m) => s + m.allocatedAmount, 0)),
       tds: round2(Object.values(merged).reduce((s, m) => s + m.tdsAmount, 0)),
       discount: round2(Object.values(merged).reduce((s, m) => s + m.discountAmount, 0)),
+      carryOverApplied: round2(Object.values(additionalCarryOver).reduce((s, v) => s + v, 0)),
     },
   })
 }

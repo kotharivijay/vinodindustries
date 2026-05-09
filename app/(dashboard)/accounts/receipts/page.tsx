@@ -44,6 +44,7 @@ interface Receipt {
   bankRef: string | null
   hidden: boolean
   hiddenReason: string | null
+  carryOverPriorFy: number
   linkedCount: number
   linkedCash: number
   linkedTds: number
@@ -52,14 +53,14 @@ interface Receipt {
 }
 type LinkFilter = 'all' | 'linked' | 'unlinked'
 
-interface DryRunReceipt { id: number; vchType: string; vchNumber: string; date: string; amount: number; partyName: string }
+interface DryRunReceipt { id: number; vchType: string; vchNumber: string; date: string; amount: number; partyName: string; carryOverPriorFy?: number; additionalCarryOver?: number }
 interface DryRunInvoice { id: number; vchType: string; vchNumber: string; date: string; totalAmount: number; taxableAmount: number | null; partyGstin: string | null; pending: number }
 interface DryRunSplit { receiptId: number; allocatedAmount: number }
 interface DryRunPlanRow { invoiceId: number; allocations: DryRunSplit[] }
 interface DryRunResponse {
   dryRun: true
   plan: DryRunPlanRow[]
-  totals: { receipts: number; linked: number; delta: number; leftoverReceipt: number; leftoverInvoice: number }
+  totals: { receipts: number; linked: number; carryOver?: number; delta: number; leftoverReceipt: number; leftoverInvoice: number }
   receipts: DryRunReceipt[]
   invoices: DryRunInvoice[]
   includeAdvance: boolean
@@ -249,12 +250,12 @@ export default function ReceiptsPage() {
     }
 
     if (linkFilter === 'linked') {
-      filtered = filtered.filter(r => r.linkedCount > 0)
+      filtered = filtered.filter(r => r.linkedCount > 0 || r.carryOverPriorFy > 0)
       if (hideMatched) {
-        filtered = filtered.filter(r => Math.abs(r.amount - r.linkedCash) > 1)
+        filtered = filtered.filter(r => Math.abs(r.amount - r.linkedCash - (r.carryOverPriorFy || 0)) > 1)
       }
     } else if (linkFilter === 'unlinked') {
-      filtered = filtered.filter(r => r.linkedCount === 0)
+      filtered = filtered.filter(r => r.linkedCount === 0 && (r.carryOverPriorFy || 0) === 0)
     }
 
     const q = partyQuery.trim().toLowerCase()
@@ -496,8 +497,9 @@ export default function ReceiptsPage() {
             if (selectMode) toggleSelect(r.id)
             else router.push(`/accounts/receipts/${r.id}${r.linkedCount > 0 ? '?view=linked' : ''}`)
           }
-          const diff = r.amount - r.linkedCash
-          const matched = r.linkedCount > 0 && Math.abs(diff) <= 1
+          const carryOver = r.carryOverPriorFy || 0
+          const diff = r.amount - r.linkedCash - carryOver
+          const matched = (r.linkedCount > 0 || carryOver > 0) && Math.abs(diff) <= 1
           return (
             <div key={r.id} role="button" tabIndex={0}
               onClick={onCardClick}
@@ -566,11 +568,18 @@ export default function ReceiptsPage() {
                   <div className={`text-base font-bold tabular-nums ${r.hidden ? 'text-gray-500 dark:text-gray-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                     ₹{fmtMoney(r.amount)}
                   </div>
-                  {r.linkedCount > 0 && (
+                  {(r.linkedCount > 0 || carryOver > 0) && (
                     <>
-                      <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 tabular-nums">
-                        linked ₹{fmtMoney(r.linkedCash)}
-                      </div>
+                      {r.linkedCount > 0 && (
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 tabular-nums">
+                          linked ₹{fmtMoney(r.linkedCash)}
+                        </div>
+                      )}
+                      {carryOver > 0 && (
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400 italic tabular-nums" title="Carry-over to prior FY (e.g. FY 24-25)">
+                          carry-over ₹{fmtMoney(carryOver)}
+                        </div>
+                      )}
                       <div className={`text-[10px] font-semibold tabular-nums ${
                         matched ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
                       }`}>
@@ -669,6 +678,10 @@ function BulkLinkSheet({
   const [conflicts, setConflicts] = useState<{ receiptId: number; vchNumber: string; existingLinks: number }[] | null>(null)
   const [committing, setCommitting] = useState(false)
   const [batchNote, setBatchNote] = useState('')
+  // Total prior-FY carry-over to deduct from the receipts pool before
+  // FIFO. Distributed FIFO across selected receipts oldest-first;
+  // displayed as a separate "carry-over" line in the totals banner.
+  const [carryOver, setCarryOver] = useState('')
   // Set after a successful commit. While non-null, the sheet shows a
   // success card with the WhatsApp share button instead of the editor.
   const [committed, setCommitted] = useState<{ saved: number } | null>(null)
@@ -739,6 +752,33 @@ function BulkLinkSheet({
     updateRow(idx, { discountAmount: Math.round((inv.taxableAmount * pct) / 100) })
   }
 
+  // Distribute the prior-FY carry-over input FIFO across receipts
+  // (oldest first), respecting any previously-set carryOverPriorFy.
+  // Returns per-receipt amounts that should be reserved before FIFO.
+  const additionalCarryOverByReceipt = useMemo(() => {
+    const out: Record<number, number> = {}
+    if (!data) return out
+    const total = round2(parseFloat(carryOver) || 0)
+    if (total <= 0) return out
+    let need = total
+    for (const r of data.receipts) {
+      if (need <= 0.0001) break
+      const existing = r.carryOverPriorFy || 0
+      const headroom = Math.max(0, round2(r.amount - existing))
+      if (headroom <= 0.0001) continue
+      const take = round2(Math.min(headroom, need))
+      out[r.id] = take
+      need = round2(need - take)
+    }
+    return out
+  }, [data, carryOver])
+  const carryOverNum = round2(parseFloat(carryOver) || 0)
+  const carryOverApplied = useMemo(
+    () => Object.values(additionalCarryOverByReceipt).reduce((s, v) => s + v, 0),
+    [additionalCarryOverByReceipt],
+  )
+  const carryOverExceeds = carryOverNum > carryOverApplied + 0.5
+
   // Re-FIFO derived cash splits: walk receipts oldest-first, drain
   // each into the current invoice until its targetCash (= pending −
   // TDS − discount) is met, then move to the next invoice. Leftover
@@ -747,7 +787,11 @@ function BulkLinkSheet({
     const map = new Map<number, DryRunSplit[]>()
     if (!data) return map
     const remaining: Record<number, number> = {}
-    for (const r of data.receipts) remaining[r.id] = r.amount
+    for (const r of data.receipts) {
+      const existing = r.carryOverPriorFy || 0
+      const additional = additionalCarryOverByReceipt[r.id] || 0
+      remaining[r.id] = round2(Math.max(0, r.amount - existing - additional))
+    }
     let i = 0
     for (const row of rows) {
       if (!row.selected) { map.set(row.invoiceId, []); continue }
@@ -770,11 +814,12 @@ function BulkLinkSheet({
       map.set(row.invoiceId, splits)
     }
     return map
-  }, [data, rows])
+  }, [data, rows, additionalCarryOverByReceipt])
 
   // Live totals derived from selected rows + computed splits.
   const totals = useMemo(() => {
     const sumReceipts = data?.totals.receipts ?? 0
+    const existingCarryOver = (data?.receipts || []).reduce((s, r) => s + (r.carryOverPriorFy || 0), 0)
     let cash = 0, tds = 0, disc = 0
     for (const row of rows) {
       if (!row.selected) continue
@@ -783,8 +828,9 @@ function BulkLinkSheet({
       tds += row.tdsAmount || 0
       disc += row.discountAmount || 0
     }
-    return { sumReceipts, cash, tds, disc, delta: sumReceipts - cash }
-  }, [data, rows, splitsByInvoice])
+    const carryTotal = round2(existingCarryOver + carryOverApplied)
+    return { sumReceipts, cash, tds, disc, carryOver: carryTotal, delta: round2(sumReceipts - cash - carryTotal) }
+  }, [data, rows, splitsByInvoice, carryOverApplied])
   const selectedCount = useMemo(() => rows.filter(r => r.selected).length, [rows])
 
   // After re-FIFO the math always satisfies cash + TDS + disc ≤ pending,
@@ -815,6 +861,7 @@ function BulkLinkSheet({
       const body = {
         receiptIds, partyName, includeAdvance,
         batchNote: batchNote.trim() || null,
+        carryOver: carryOverNum > 0 ? carryOverNum : 0,
         rows: rows
           .filter(r => r.selected)
           .map(r => ({
@@ -868,6 +915,7 @@ function BulkLinkSheet({
         lines.push(`• ${inv.vchType} ${inv.vchNumber} (${fmtDate(inv.date)}) ₹${fmtMoney(cash)}${extras.length ? ' · ' + extras.join(' · ') : ''}`)
       }
       lines.push(`*Total settled:* ₹${fmtMoney(totals.cash)}${totals.tds > 0 ? ` (+ TDS ₹${fmtMoney(totals.tds)})` : ''}${totals.disc > 0 ? ` (+ Disc ₹${fmtMoney(totals.disc)})` : ''}`)
+      if (totals.carryOver > 0) lines.push(`⏪ *Carry-over (prior FY):* ₹${fmtMoney(totals.carryOver)}`)
       lines.push('')
       lines.push(`Δ *Remaining:* ₹${fmtMoney(totals.delta)}`)
     }
@@ -924,6 +972,9 @@ function BulkLinkSheet({
                   <div className="text-right text-[10px] text-gray-600 dark:text-gray-300 leading-tight">
                     <div>Σ Receipts <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(totals.sumReceipts)}</span></div>
                     <div>− Linked Bank Recpt <span className="font-semibold text-indigo-700 dark:text-indigo-300 tabular-nums">₹{fmtMoney(totals.cash)}</span></div>
+                    {totals.carryOver > 0 && (
+                      <div className="text-gray-500 italic">− Carry-over <span className="tabular-nums">₹{fmtMoney(totals.carryOver)}</span></div>
+                    )}
                     {(totals.tds > 0 || totals.disc > 0) && (
                       <div className="text-amber-700 dark:text-amber-300">
                         + TDS <span className="tabular-nums">₹{fmtMoney(totals.tds)}</span>
@@ -995,6 +1046,32 @@ function BulkLinkSheet({
             <div className="border border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/20 rounded-xl p-3 text-[12px] text-rose-700 dark:text-rose-300">{error}</div>
           )}
 
+          {/* Prior-FY carry-over input */}
+          {data && !committed && (
+            <div className="border border-amber-200 dark:border-amber-700/40 bg-amber-50 dark:bg-amber-900/10 rounded-xl p-2.5 text-[11px]">
+              <label className="block text-amber-800 dark:text-amber-200 font-semibold mb-1">
+                ⏪ Prior-FY carry-over <span className="font-normal text-gray-500 dark:text-gray-400">(e.g. FY 24-25 bills you don&apos;t want to itemise)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 text-[10px]">₹</span>
+                <input type="number" value={carryOver} onChange={e => setCarryOver(e.target.value)}
+                  placeholder="0"
+                  className="w-32 px-1.5 py-1 rounded border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-700 tabular-nums" />
+                <span className="text-[10px] text-gray-500 dark:text-gray-400">
+                  Reduces the FIFO pool oldest-receipt-first.
+                  {carryOverNum > 0 && (
+                    <> Reserved: <span className="font-semibold tabular-nums">₹{fmtMoney(carryOverApplied)}</span></>
+                  )}
+                </span>
+              </div>
+              {carryOverExceeds && (
+                <div className="mt-1 text-rose-600 dark:text-rose-400">
+                  ⚠ Carry-over exceeds available pool by ₹{fmtMoney(carryOverNum - carryOverApplied)}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Receipts (read-only) */}
           {data && (
             <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-[11px] bg-gray-50 dark:bg-gray-800/40">
@@ -1004,12 +1081,18 @@ function BulkLinkSheet({
                 for (const splits of splitsByInvoice.values()) {
                   for (const s of splits) if (s.receiptId === r.id) used += s.allocatedAmount
                 }
-                const left = Math.max(0, r.amount - used)
+                const reserved = (r.carryOverPriorFy || 0) + (additionalCarryOverByReceipt[r.id] || 0)
+                const left = Math.max(0, r.amount - used - reserved)
                 return (
                   <div key={r.id} className="flex items-center justify-between gap-2 py-0.5">
                     <span className="font-mono text-emerald-700 dark:text-emerald-300">#{r.vchNumber}</span>
                     <span className="text-gray-500">{fmtDate(r.date)}</span>
                     <span className="text-gray-700 dark:text-gray-200 tabular-nums">₹{fmtMoney(r.amount)}</span>
+                    {reserved > 0 && (
+                      <span className="text-[10px] text-amber-700 dark:text-amber-300 italic tabular-nums" title="Reserved as prior-FY carry-over">
+                        ⏪ ₹{fmtMoney(reserved)}
+                      </span>
+                    )}
                     <span className={`tabular-nums ${left <= 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                       {left <= 1 ? '✓ used' : `left ₹${fmtMoney(left)}`}
                     </span>
@@ -1193,9 +1276,9 @@ function BulkLinkSheet({
                 className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
                 Cancel
               </button>
-              <button onClick={commit} disabled={committing || loading || selectedCount === 0 || overAllocated.length > 0 || !!conflicts}
+              <button onClick={commit} disabled={committing || loading || (selectedCount === 0 && carryOverNum === 0) || overAllocated.length > 0 || !!conflicts || carryOverExceeds}
                 className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold">
-                {committing ? 'Linking…' : `Confirm ${selectedCount} link${selectedCount === 1 ? '' : 's'}`}
+                {committing ? 'Linking…' : `Confirm ${selectedCount} link${selectedCount === 1 ? '' : 's'}${carryOverNum > 0 ? ` + carry-over` : ''}`}
               </button>
             </>
           )}

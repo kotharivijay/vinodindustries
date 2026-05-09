@@ -31,6 +31,7 @@ interface Invoice {
 interface Receipt {
   id: number; date: string; vchNumber: string; partyName: string; amount: number; narration: string | null
   instrumentNo: string | null; bankRef: string | null
+  carryOverPriorFy?: number
   allocations: { invoiceId: number; allocatedAmount: number; tdsAmount?: number; discountAmount?: number }[]
 }
 
@@ -110,6 +111,11 @@ export default function ReceiptDetailPage() {
           <div className="text-right shrink-0">
             <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">₹{fmtMoney(r.amount)}</div>
             <div className="text-[10px] text-gray-500 mt-0.5">remaining ₹{fmtMoney(receiptRemaining)}</div>
+            {(r.carryOverPriorFy ?? 0) > 0 && (
+              <div className="text-[10px] text-amber-700 dark:text-amber-300 italic mt-0.5 tabular-nums" title="Marked as carry-over to prior FY (e.g. FY 24-25) — not itemised against any invoice">
+                ⏪ carry-over ₹{fmtMoney(r.carryOverPriorFy ?? 0)}
+              </div>
+            )}
           </div>
         </div>
       </div>

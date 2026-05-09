@@ -81,6 +81,7 @@ export async function GET(req: NextRequest) {
   }
   const enriched = rows.map((r: any) => ({
     ...r,
+    carryOverPriorFy: r.carryOverPriorFy || 0,
     ...(byReceipt[r.id] ?? { linkedCount: 0, linkedCash: 0, linkedTds: 0, linkedDiscount: 0, linkedInvoices: [] }),
   }))
 

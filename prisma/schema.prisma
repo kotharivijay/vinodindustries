@@ -840,6 +840,11 @@ model KsiHdfcReceipt {
   hidden        Boolean   @default(false)
   hiddenReason  String?
   hiddenAt      DateTime?
+  // Manual carry-over for prior-FY (e.g. FY 24-25) bills that the user
+  // doesn't want to itemise. Reduces the receipt's pool before FIFO
+  // when bulk-linking, and counts toward Δ on the list page so a
+  // receipt can read fully matched without explicit invoice rows.
+  carryOverPriorFy Float  @default(0)
   lastSynced    DateTime  @default(now())
   createdAt     DateTime  @default(now())
 
