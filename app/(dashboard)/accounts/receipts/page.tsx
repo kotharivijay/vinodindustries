@@ -77,7 +77,9 @@ const fmtMoney = (n: number) =>
 
 export default function ReceiptsPage() {
   const router = useRouter()
-  const [activeFy, setActiveFy] = useState<string>('26-27')
+  // Multiple FYs can be active at once — clicking a tab toggles it. Must
+  // keep at least one selected (no empty state).
+  const [activeFys, setActiveFys] = useState<Set<string>>(new Set(['26-27']))
   const [sortBy, setSortBy] = useState<SortBy>('date-desc')
   const [showHidden, setShowHidden] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
@@ -108,12 +110,12 @@ export default function ReceiptsPage() {
   }, [sortBy])
 
   const { data, mutate, isLoading } = useSWR<{ rows: Receipt[]; fyTotals: FyTotal[]; hiddenCount: number }>(
-    `/api/accounts/receipts?fy=${activeFy}&direction=in${showHidden ? '&showHidden=1' : ''}`,
+    `/api/accounts/receipts?fy=${[...activeFys].join(',')}&direction=in${showHidden ? '&showHidden=1' : ''}`,
     fetcher,
   )
 
   // Clear selection when FY tab or filter changes; also when select mode toggles off
-  useEffect(() => { setSelected(new Set()) }, [activeFy, showHidden])
+  useEffect(() => { setSelected(new Set()) }, [activeFys, showHidden])
   useEffect(() => { if (!selectMode) setSelected(new Set()) }, [selectMode])
 
   function toggleSelect(id: number) {
@@ -146,19 +148,26 @@ export default function ReceiptsPage() {
 
   const apiRows = data?.rows ?? []
 
-  // Compute the 12 months covered by the active FY for the picker.
+  // Months for the picker — union across every selected FY, deduped and
+  // sorted ascending (Apr of earliest FY → Mar of latest FY).
   const monthOptions = useMemo(() => {
-    const startYear = 2000 + parseInt(activeFy.split('-')[0])
-    const months = []
-    for (let i = 0; i < 12; i++) {
-      const y = i < 9 ? startYear : startYear + 1
-      const m = ((i + 3) % 12) + 1 // April=4, May=5, …, March=3
-      const value = `${y}-${String(m).padStart(2, '0')}`
-      const label = `${new Date(y, m - 1).toLocaleString('en-IN', { month: 'short' })} ${String(y).slice(2)}`
-      months.push({ value, label })
+    const seen = new Set<string>()
+    const months: { value: string; label: string }[] = []
+    const sortedFys = [...activeFys].sort()
+    for (const fy of sortedFys) {
+      const startYear = 2000 + parseInt(fy.split('-')[0])
+      for (let i = 0; i < 12; i++) {
+        const y = i < 9 ? startYear : startYear + 1
+        const m = ((i + 3) % 12) + 1
+        const value = `${y}-${String(m).padStart(2, '0')}`
+        if (seen.has(value)) continue
+        seen.add(value)
+        const label = `${new Date(y, m - 1).toLocaleString('en-IN', { month: 'short' })} ${String(y).slice(2)}`
+        months.push({ value, label })
+      }
     }
     return months
-  }, [activeFy])
+  }, [activeFys])
 
   const rows = useMemo(() => {
     const dateKey = (r: Receipt) => new Date(r.date).getTime()
@@ -224,24 +233,30 @@ export default function ReceiptsPage() {
     { fy: '26-27', label: 'FY 26-27' },
   ]
 
-  async function syncFy(fy: string) {
+  async function syncFys(fys: string[]) {
     setSyncing(true); setSyncMsg('')
-    const startYear = 2000 + parseInt(fy.split('-')[0])
-    const endYear = startYear + 1
-    const fromIso = `${startYear}-04-01`
-    // Cap at today when FY isn't over yet — no point asking Tally for
-    // future dates (it returns nothing) and it makes the fetch faster.
-    const fyEndIso = `${endYear}-03-31`
+    let totalSaved = 0, totalFetched = 0, totalIn = 0, totalOut = 0
     const todayIso = new Date().toISOString().slice(0, 10)
-    const toIso = fyEndIso > todayIso ? todayIso : fyEndIso
     try {
-      const r = await fetch('/api/tally/ksi-hdfc-sync', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: fromIso, to: toIso }),
-      })
-      const d = await r.json()
-      if (!r.ok) { setSyncMsg(d.error || 'Sync failed'); return }
-      setSyncMsg(`Synced ${d.saved}/${d.fetched} rows · IN ₹${fmtMoney(d.inflow)} · OUT ₹${fmtMoney(d.outflow)}`)
+      for (const fy of fys) {
+        const startYear = 2000 + parseInt(fy.split('-')[0])
+        const endYear = startYear + 1
+        const fromIso = `${startYear}-04-01`
+        const fyEndIso = `${endYear}-03-31`
+        const toIso = fyEndIso > todayIso ? todayIso : fyEndIso
+        setSyncMsg(`Syncing FY ${fy}…`)
+        const r = await fetch('/api/tally/ksi-hdfc-sync', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: fromIso, to: toIso }),
+        })
+        const d = await r.json()
+        if (!r.ok) { setSyncMsg(d.error || `Sync failed for FY ${fy}`); return }
+        totalSaved += d.saved || 0
+        totalFetched += d.fetched || 0
+        totalIn += d.inflow || 0
+        totalOut += d.outflow || 0
+      }
+      setSyncMsg(`Synced ${totalSaved}/${totalFetched} rows across ${fys.length} FY · IN ₹${fmtMoney(totalIn)} · OUT ₹${fmtMoney(totalOut)}`)
       mutate()
     } catch (e: any) {
       setSyncMsg(e?.message || 'Network error')
@@ -255,19 +270,33 @@ export default function ReceiptsPage() {
         <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Receipts · HDFC BANK</h1>
       </div>
 
-      {/* FY tabs */}
+      {/* FY tabs — multi-select. Click a tab to toggle; at least one
+         must remain active so the list always has a year scope. */}
       <div className="flex gap-2 mb-3">
         {tabs.map(t => {
           const total = fyMap.get(t.fy)
-          const isActive = activeFy === t.fy
+          const isActive = activeFys.has(t.fy)
+          const onClick = () => {
+            setActiveFys(prev => {
+              const next = new Set(prev)
+              if (next.has(t.fy)) {
+                if (next.size === 1) return next  // keep at least one
+                next.delete(t.fy)
+              } else {
+                next.add(t.fy)
+              }
+              return next
+            })
+          }
           return (
-            <button key={t.fy} onClick={() => setActiveFy(t.fy)}
+            <button key={t.fy} onClick={onClick}
+              title={isActive ? 'Click to deselect' : 'Click to add this FY'}
               className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold border transition ${
                 isActive
                   ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
                   : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300'
               }`}>
-              <div>{t.label}</div>
+              <div>{isActive && '✓ '}{t.label}</div>
               {total && (
                 <div className={`text-[10px] mt-0.5 ${isActive ? 'text-emerald-50' : 'text-gray-500 dark:text-gray-400'}`}>
                   {total.count} · ₹{fmtMoney(total.total)}
@@ -316,9 +345,9 @@ export default function ReceiptsPage() {
 
       {/* Sync button + Show Hidden toggle */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <button onClick={() => syncFy(activeFy)} disabled={syncing}
+        <button onClick={() => syncFys([...activeFys].sort())} disabled={syncing}
           className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold">
-          {syncing ? 'Syncing…' : `Sync FY ${activeFy} from Tally`}
+          {syncing ? 'Syncing…' : `Sync FY ${[...activeFys].sort().join(', ')} from Tally`}
         </button>
         <button onClick={() => setSelectMode(v => !v)}
           title={selectMode ? 'Tap a card to toggle selection. Tap Select again to exit.' : 'Enable multiselect (cards become clickable for actions when off)'}
@@ -399,7 +428,7 @@ export default function ReceiptsPage() {
       {isLoading && <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>}
       {!isLoading && rows.length === 0 && (
         <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
-          No receipts in FY {activeFy}. Tap “Sync FY” to fetch from Tally.
+          No receipts in FY {[...activeFys].sort().join(', ')}. Tap “Sync FY” to fetch from Tally.
         </div>
       )}
 

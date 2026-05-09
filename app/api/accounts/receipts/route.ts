@@ -9,13 +9,17 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const fy = req.nextUrl.searchParams.get('fy') || ''
+  // Accepts a comma-separated list of FY codes (e.g. "25-26,26-27") so
+  // the user can view multiple FYs at once.
+  const fyParam = req.nextUrl.searchParams.get('fy') || ''
+  const fys = fyParam.split(',').map(s => s.trim()).filter(Boolean)
   const direction = req.nextUrl.searchParams.get('direction') || 'in'
   const showHidden = req.nextUrl.searchParams.get('showHidden') === '1'
   const db = prisma as any
 
   const where: any = { direction }
-  if (fy) where.fy = fy
+  if (fys.length === 1) where.fy = fys[0]
+  else if (fys.length > 1) where.fy = { in: fys }
   if (!showHidden) where.hidden = false
 
   const rows = await db.ksiHdfcReceipt.findMany({
@@ -64,7 +68,10 @@ export async function GET(req: NextRequest) {
     orderBy: { fy: 'desc' },
   })
   const hiddenCount = await db.ksiHdfcReceipt.count({
-    where: { direction, hidden: true, ...(fy ? { fy } : {}) },
+    where: {
+      direction, hidden: true,
+      ...(fys.length === 1 ? { fy: fys[0] } : fys.length > 1 ? { fy: { in: fys } } : {}),
+    },
   })
 
   return NextResponse.json({
