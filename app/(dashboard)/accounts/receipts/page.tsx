@@ -15,6 +15,10 @@ const SORT_OPTIONS: [SortBy, string][] = [
   ['amount-asc', 'Amount ↑'],
 ]
 const SORT_KEY = 'ksi:accounts-receipts:sortBy'
+// Tab-session-scoped store for the filter / selection state. Survives
+// back navigation and intra-tab reloads; lost when the tab closes,
+// which is the right scope for "show me what I was just looking at".
+const STATE_KEY = 'ksi:accounts-receipts:state'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -120,13 +124,54 @@ export default function ReceiptsPage() {
     try { localStorage.setItem(SORT_KEY, sortBy) } catch {}
   }, [sortBy])
 
+  // Hydrate filter / selection state from sessionStorage on mount so
+  // back-navigation lands the user back exactly where they were
+  // (selected FYs, party search, select mode + selection, etc).
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(STATE_KEY)
+      if (!raw) return
+      const s = JSON.parse(raw)
+      if (Array.isArray(s.activeFys) && s.activeFys.length > 0) setActiveFys(new Set(s.activeFys))
+      if (typeof s.partyQuery === 'string') setPartyQuery(s.partyQuery)
+      if (s.linkFilter === 'all' || s.linkFilter === 'linked' || s.linkFilter === 'unlinked') setLinkFilter(s.linkFilter)
+      if (typeof s.hideMatched === 'boolean') setHideMatched(s.hideMatched)
+      if (s.filterMode === 'fy' || s.filterMode === 'month' || s.filterMode === 'range') setFilterMode(s.filterMode)
+      if (typeof s.pickedMonth === 'string') setPickedMonth(s.pickedMonth)
+      if (typeof s.rangeFrom === 'string') setRangeFrom(s.rangeFrom)
+      if (typeof s.rangeTo === 'string') setRangeTo(s.rangeTo)
+      if (typeof s.showHidden === 'boolean') setShowHidden(s.showHidden)
+      if (typeof s.selectMode === 'boolean') setSelectMode(s.selectMode)
+      if (Array.isArray(s.selected)) setSelected(new Set(s.selected.filter((n: any) => Number.isFinite(n))))
+    } catch {}
+  }, [])
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STATE_KEY, JSON.stringify({
+        activeFys: [...activeFys],
+        partyQuery,
+        linkFilter,
+        hideMatched,
+        filterMode,
+        pickedMonth,
+        rangeFrom,
+        rangeTo,
+        showHidden,
+        selectMode,
+        selected: [...selected],
+      }))
+    } catch {}
+  }, [activeFys, partyQuery, linkFilter, hideMatched, filterMode, pickedMonth, rangeFrom, rangeTo, showHidden, selectMode, selected])
+
   const { data, mutate, isLoading } = useSWR<{ rows: Receipt[]; fyTotals: FyTotal[]; hiddenCount: number }>(
     `/api/accounts/receipts?fy=${[...activeFys].join(',')}&direction=in${showHidden ? '&showHidden=1' : ''}`,
     fetcher,
   )
 
-  // Clear selection when FY tab or filter changes; also when select mode toggles off
-  useEffect(() => { setSelected(new Set()) }, [activeFys, showHidden])
+  // Clear selection when select mode toggles off. FY / showHidden
+  // changes used to clear selection too, but that fought against
+  // sessionStorage restoration; selections now persist across filter
+  // changes (use Clear or exit Select mode to reset).
   useEffect(() => { if (!selectMode) setSelected(new Set()) }, [selectMode])
 
   function toggleSelect(id: number) {
