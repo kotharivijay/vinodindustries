@@ -33,6 +33,9 @@ interface BulkBody {
   partyName: string
   includeAdvance?: boolean
   rows?: PlanRow[]
+  // Free-form note saved on every allocation row in this batch.
+  // Surfaced on the receipt detail page and shared on WhatsApp.
+  batchNote?: string | null
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100
@@ -45,7 +48,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as BulkBody | null
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
 
-  const { receiptIds, partyName, includeAdvance = false, rows } = body
+  const { receiptIds, partyName, includeAdvance = false, rows, batchNote } = body
   if (!Array.isArray(receiptIds) || receiptIds.length === 0) {
     return NextResponse.json({ error: 'receiptIds required' }, { status: 400 })
   }
@@ -229,7 +232,10 @@ export async function POST(req: NextRequest) {
     const tdsTotal = Number.isFinite(row.tdsAmount) && row.tdsAmount! > 0 ? Number(row.tdsAmount) : 0
     const discTotal = Number.isFinite(row.discountAmount) && row.discountAmount! > 0 ? Number(row.discountAmount) : 0
     const ratePct = Number.isFinite(row.tdsRatePct) ? Number(row.tdsRatePct) : null
-    const note = (row.note ?? null) || null
+    // Bulk-level note overrides per-row notes when present, so every
+    // row in the batch shares the same string (used for sibling
+    // listing on the detail page and WhatsApp share).
+    const note = (batchNote && batchNote.trim()) ? batchNote.trim() : ((row.note ?? null) || null)
     const totalCash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0) || 1
     for (const split of row.allocations) {
       const ratio = split.allocatedAmount / totalCash

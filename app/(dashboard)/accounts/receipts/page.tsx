@@ -599,6 +599,10 @@ function BulkLinkSheet({
   const [error, setError] = useState<string | null>(null)
   const [conflicts, setConflicts] = useState<{ receiptId: number; vchNumber: string; existingLinks: number }[] | null>(null)
   const [committing, setCommitting] = useState(false)
+  const [batchNote, setBatchNote] = useState('')
+  // Set after a successful commit. While non-null, the sheet shows a
+  // success card with the WhatsApp share button instead of the editor.
+  const [committed, setCommitted] = useState<{ saved: number } | null>(null)
 
   // Run dry-run on mount + whenever the advance toggle flips. The
   // server's plan tells us which invoices are candidates and in what
@@ -741,6 +745,7 @@ function BulkLinkSheet({
     try {
       const body = {
         receiptIds, partyName, includeAdvance,
+        batchNote: batchNote.trim() || null,
         rows: rows
           .filter(r => r.selected)
           .map(r => ({
@@ -758,9 +763,56 @@ function BulkLinkSheet({
       })
       const d = await res.json()
       if (!res.ok) { setError(d.error || 'Commit failed'); return }
-      onDone(d.saved ?? rows.length)
+      // Switch sheet into success state — user will explicitly click
+      // Done (or share + Done) so they have time to fire the share.
+      setCommitted({ saved: d.saved ?? rows.length })
     } catch (e: any) { setError(e?.message || 'Network error') }
     finally { setCommitting(false) }
+  }
+
+  // Build the WhatsApp / share message from the committed plan.
+  function buildShareText(): string {
+    const lines: string[] = []
+    lines.push(`🧾 *Bulk Receipt Link* — ${partyName}`)
+    lines.push(fmtDate(new Date().toISOString()))
+    lines.push('')
+    if (batchNote.trim()) {
+      lines.push(`📌 *Notes:* ${batchNote.trim()}`)
+      lines.push('')
+    }
+    if (data) {
+      lines.push(`*Receipts (${data.receipts.length}):*`)
+      for (const r of data.receipts) {
+        lines.push(`• #${r.vchNumber} (${fmtDate(r.date)}) ₹${fmtMoney(r.amount)}`)
+      }
+      lines.push(`*Total cash:* ₹${fmtMoney(totals.sumReceipts)}`)
+      lines.push('')
+      lines.push(`*Linked invoices (${selectedCount}):*`)
+      for (const row of rows.filter(r => r.selected)) {
+        const inv = data.invoices.find(i => i.id === row.invoiceId)
+        if (!inv) continue
+        const splits = splitsByInvoice.get(row.invoiceId) || []
+        const cash = splits.reduce((s, a) => s + a.allocatedAmount, 0)
+        const extras: string[] = []
+        if ((row.tdsAmount || 0) > 0) extras.push(`TDS ₹${fmtMoney(row.tdsAmount)}`)
+        if ((row.discountAmount || 0) > 0) extras.push(`Disc ₹${fmtMoney(row.discountAmount)}`)
+        lines.push(`• ${inv.vchType} ${inv.vchNumber} (${fmtDate(inv.date)}) ₹${fmtMoney(cash)}${extras.length ? ' · ' + extras.join(' · ') : ''}`)
+      }
+      lines.push(`*Total settled:* ₹${fmtMoney(totals.cash)}${totals.tds > 0 ? ` (+ TDS ₹${fmtMoney(totals.tds)})` : ''}${totals.disc > 0 ? ` (+ Disc ₹${fmtMoney(totals.disc)})` : ''}`)
+      lines.push('')
+      lines.push(`Δ *Remaining:* ₹${fmtMoney(totals.delta)}`)
+    }
+    return lines.join('\n')
+  }
+  async function shareWhatsApp() {
+    const text = buildShareText()
+    if (typeof navigator !== 'undefined' && (navigator as any).share) {
+      try {
+        await (navigator as any).share({ title: `Bulk Receipt Link — ${partyName}`, text })
+        return
+      } catch { /* user cancelled or unavailable — fall through */ }
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
   }
 
   return (
@@ -1016,18 +1068,68 @@ function BulkLinkSheet({
               </div>
             )
           })}
+
+          {/* Batch notes — saved on every allocation in this batch and
+             reused in the WhatsApp share text. */}
+          {data && !committed && (
+            <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-2.5">
+              <label className="text-[11px] text-gray-500 dark:text-gray-400 font-semibold">
+                📌 Notes <span className="font-normal">(saved on every link & shared)</span>
+              </label>
+              <textarea value={batchNote} onChange={e => setBatchNote(e.target.value)}
+                placeholder="e.g. April advance, signed by Vijay, RTGS UTR …"
+                rows={2}
+                className="w-full mt-1 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[12px]" />
+            </div>
+          )}
+
+          {/* Success card — shown after a successful commit */}
+          {committed && (
+            <div className="rounded-xl border-2 border-emerald-300 dark:border-emerald-700/60 bg-emerald-50 dark:bg-emerald-900/20 p-4 text-center">
+              <div className="text-3xl">✓</div>
+              <div className="text-sm font-bold text-emerald-700 dark:text-emerald-300 mt-1">
+                Linked {committed.saved} allocation{committed.saved === 1 ? '' : 's'}
+              </div>
+              <div className="text-[11px] text-gray-600 dark:text-gray-300 mt-0.5">{partyName}</div>
+              <div className="grid grid-cols-3 gap-2 mt-3 text-[10px]">
+                <div><div className="text-gray-500">Cash</div><div className="font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">₹{fmtMoney(totals.cash)}</div></div>
+                <div><div className="text-gray-500">+ TDS / Disc</div><div className="font-bold text-amber-700 dark:text-amber-300 tabular-nums">₹{fmtMoney(totals.tds + totals.disc)}</div></div>
+                <div><div className="text-gray-500">Δ Remaining</div><div className={`font-bold tabular-nums ${Math.abs(totals.delta) <= 1 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>₹{fmtMoney(totals.delta)}</div></div>
+              </div>
+              {batchNote.trim() && (
+                <div className="mt-3 text-[11px] text-left bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-2">
+                  <span className="font-semibold">📌 Notes:</span> {batchNote.trim()}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2">
-          <button onClick={onClose} disabled={committing}
-            className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
-            Cancel
-          </button>
-          <button onClick={commit} disabled={committing || loading || selectedCount === 0 || overAllocated.length > 0 || !!conflicts}
-            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold">
-            {committing ? 'Linking…' : `Confirm ${selectedCount} link${selectedCount === 1 ? '' : 's'}`}
-          </button>
+          {committed ? (
+            <>
+              <button onClick={shareWhatsApp}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">
+                📤 Share on WhatsApp
+              </button>
+              <button onClick={() => onDone(committed.saved)}
+                className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
+                Done
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={onClose} disabled={committing}
+                className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
+                Cancel
+              </button>
+              <button onClick={commit} disabled={committing || loading || selectedCount === 0 || overAllocated.length > 0 || !!conflicts}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold">
+                {committing ? 'Linking…' : `Confirm ${selectedCount} link${selectedCount === 1 ? '' : 's'}`}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

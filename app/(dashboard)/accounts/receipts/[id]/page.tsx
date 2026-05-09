@@ -43,7 +43,7 @@ export default function ReceiptDetailPage() {
   const initialView: InvoiceView = viewParam === 'linked' ? 'linked' : viewParam === 'batch' ? 'batch' : 'all'
   const { data, mutate, isLoading } = useSWR<{
     receipt: Receipt; invoices: Invoice[]; categoryMap: Record<string, string>;
-    batchIds: string[]; batchSiblings: BatchSibling[]; batchInvoiceIds: number[]
+    batchIds: string[]; batchSiblings: BatchSibling[]; batchInvoiceIds: number[]; batchNote: string | null
   }>(`/api/accounts/receipts/${id}`, fetcher)
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
@@ -57,6 +57,7 @@ export default function ReceiptDetailPage() {
   const batchSiblings = data.batchSiblings || []
   const batchInvoiceIds = new Set(data.batchInvoiceIds || [])
   const hasBatch = batchSiblings.length > 0
+  const batchNote = data.batchNote || null
   const linkedCount = allInvoices.filter(inv => inv.allocations.some(a => a.receipt?.id === Number(id))).length
   const batchInvoiceCount = allInvoices.filter(inv => batchInvoiceIds.has(inv.id)).length
   const invoices = view === 'linked'
@@ -126,6 +127,11 @@ export default function ReceiptDetailPage() {
               Show batch invoices ({batchInvoiceCount})
             </button>
           </div>
+          {batchNote && (
+            <div className="text-[11px] text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-700/40 rounded p-1.5 mb-1.5">
+              <span className="font-semibold">📌 Notes:</span> {batchNote}
+            </div>
+          )}
           <div className="space-y-0.5 text-[11px]">
             {batchSiblings.map(s => (
               <button key={s.id}
@@ -215,6 +221,7 @@ export default function ReceiptDetailPage() {
         <div className="space-y-2">
           {invoices.map(inv => (
             <InvoiceCard key={inv.id} inv={inv} receiptId={Number(id)}
+              receipt={r}
               receiptRemaining={receiptRemaining}
               categoryMap={data?.categoryMap ?? {}}
               partyName={r.partyName}
@@ -226,8 +233,8 @@ export default function ReceiptDetailPage() {
   )
 }
 
-function InvoiceCard({ inv, receiptId, receiptRemaining, categoryMap, partyName: _partyName, onChange }: {
-  inv: Invoice; receiptId: number; receiptRemaining: number;
+function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, partyName, onChange }: {
+  inv: Invoice; receiptId: number; receipt: Receipt; receiptRemaining: number;
   categoryMap: Record<string, string>; partyName: string;
   onChange: () => void
 }) {
@@ -327,6 +334,44 @@ function InvoiceCard({ inv, receiptId, receiptRemaining, categoryMap, partyName:
       onChange()
     } catch (e: any) { alert(e?.message || 'Network error') }
     finally { setBusy(false) }
+  }
+
+  // Build the WhatsApp share text from the *currently saved* allocation
+  // values when collapsed, or the in-progress edit values when open. The
+  // user usually shares right after saving, so saved values are the
+  // common path.
+  function buildShareText(): string {
+    const cashPart = myAlloc?.allocatedAmount ?? cappedFinal
+    const tdsPart = myAlloc?.tdsAmount ?? numTds
+    const discPart = myAlloc?.discountAmount ?? numDisc
+    const notePart = (myAlloc?.note ?? note)?.trim() || null
+    const lines: string[] = []
+    lines.push(`🧾 *Receipt Link* — ${partyName}`)
+    lines.push(fmtDate(new Date().toISOString()))
+    lines.push('')
+    if (notePart) {
+      lines.push(`📌 *Notes:* ${notePart}`)
+      lines.push('')
+    }
+    lines.push(`*Receipt:* #${receipt.vchNumber} (${fmtDate(receipt.date)}) ₹${fmtMoney(receipt.amount)}`)
+    lines.push(`*Invoice:* ${inv.vchType} ${inv.vchNumber} (${fmtDate(inv.date)}) ₹${fmtMoney(inv.totalAmount)}`)
+    lines.push('')
+    lines.push(`Cash: ₹${fmtMoney(cashPart)}`)
+    if (tdsPart > 0) lines.push(`+ TDS: ₹${fmtMoney(tdsPart)}`)
+    if (discPart > 0) lines.push(`+ Discount: ₹${fmtMoney(discPart)}`)
+    const settled = cashPart + tdsPart + discPart
+    lines.push(`*Settled:* ₹${fmtMoney(settled)} of ₹${fmtMoney(inv.totalAmount)}`)
+    return lines.join('\n')
+  }
+  async function shareWhatsApp() {
+    const text = buildShareText()
+    if (typeof navigator !== 'undefined' && (navigator as any).share) {
+      try {
+        await (navigator as any).share({ title: `Receipt Link — ${partyName}`, text })
+        return
+      } catch { /* user cancelled — fall through */ }
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
   }
 
   async function unlink() {
@@ -449,11 +494,23 @@ function InvoiceCard({ inv, receiptId, receiptRemaining, categoryMap, partyName:
         </div>
       )}
 
+      {/* Saved note for this allocation — visible when collapsed too */}
+      {myAlloc?.note && !open && (
+        <div className="text-[10px] mt-1 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/40 rounded p-1.5">
+          📌 {myAlloc.note}
+        </div>
+      )}
+
       {/* Action: pills (TDS / Discount / Link) always visible when collapsed */}
       {!open ? (
         <div className="flex flex-wrap items-center justify-end gap-1.5 mt-2">
           {myAlloc ? (
             <>
+              <button onClick={shareWhatsApp}
+                title="Share this link's summary on WhatsApp"
+                className="text-[11px] px-2.5 py-1 rounded-full border border-emerald-300 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                📤 Share
+              </button>
               <button onClick={unlink} disabled={busy}
                 className="text-[11px] px-2.5 py-1 rounded-full border border-rose-300 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50">
                 ↩ Unlink

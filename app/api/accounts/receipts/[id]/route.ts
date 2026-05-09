@@ -28,6 +28,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   ))
   let batchSiblings: any[] = []
   let batchInvoiceIds: number[] = []
+  let batchNote: string | null = null
   if (batchIds.length > 0) {
     const batchAllocs = await db.ksiReceiptAllocation.findMany({
       where: { bulkBatchId: { in: batchIds } },
@@ -38,6 +39,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const sibTotals: Record<number, { cash: number; tds: number; discount: number; count: number }> = {}
     for (const a of batchAllocs) {
       invSet.add(a.invoiceId)
+      if (!batchNote && a.note) batchNote = a.note
       const rcptId = a.receipt.id
       if (!sibMap.has(rcptId)) sibMap.set(rcptId, a.receipt)
       const t = sibTotals[rcptId] ??= { cash: 0, tds: 0, discount: 0, count: 0 }
@@ -87,6 +89,6 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   return NextResponse.json({
     receipt, invoices: enriched, categoryMap,
-    batchIds, batchSiblings, batchInvoiceIds,
+    batchIds, batchSiblings, batchInvoiceIds, batchNote,
   })
 }
