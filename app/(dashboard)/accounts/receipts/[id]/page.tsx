@@ -52,6 +52,11 @@ export default function ReceiptDetailPage() {
   const [editingCarry, setEditingCarry] = useState(false)
   const [carryInput, setCarryInput] = useState('')
   const [savingCarry, setSavingCarry] = useState(false)
+  // Default invoice list filter on the "all" tab:
+  //   pending > 0 AND date ≤ receipt.date
+  // Toggle to drop both filters and show every party invoice up to
+  // today, including fully-settled ones.
+  const [showAll, setShowAll] = useState(false)
 
   if (isLoading) return <div className="max-w-3xl mx-auto p-3"><BackButton fallback="/accounts/receipts" /><div className="text-center py-8 text-gray-400 text-sm">Loading…</div></div>
   if (!data?.receipt) return <div className="max-w-3xl mx-auto p-3"><BackButton fallback="/accounts/receipts" /><div className="p-8 text-center text-rose-500">Receipt not found</div></div>
@@ -64,11 +69,15 @@ export default function ReceiptDetailPage() {
   const batchNote = data.batchNote || null
   const linkedCount = allInvoices.filter(inv => inv.allocations.some(a => a.receipt?.id === Number(id))).length
   const batchInvoiceCount = allInvoices.filter(inv => batchInvoiceIds.has(inv.id)).length
+  const receiptDateMs = new Date(r.date).getTime()
+  const todayMs = new Date(new Date().toISOString().slice(0, 10) + 'T23:59:59').getTime()
+  // "all" view: always hide settled invoices. Date cap defaults to the
+  // receipt's date and extends to today when "Show till today" is on.
   const invoices = view === 'linked'
     ? allInvoices.filter(inv => inv.allocations.some(a => a.receipt?.id === Number(id)))
     : view === 'batch'
       ? allInvoices.filter(inv => batchInvoiceIds.has(inv.id))
-      : allInvoices
+      : allInvoices.filter(inv => inv.pending > 0.5 && new Date(inv.date).getTime() <= (showAll ? todayMs : receiptDateMs))
   const receiptUsed = r.allocations.reduce((s, a) => s + (a.allocatedAmount || 0), 0)
   const receiptRemaining = Math.max(0, r.amount - receiptUsed)
 
@@ -208,46 +217,58 @@ export default function ReceiptDetailPage() {
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
           {view === 'linked' ? 'Linked invoices'
             : view === 'batch' ? 'Batch invoices'
-            : 'Sales / Process invoices for this party'} ({invoices.length})
+            : showAll ? 'Pending invoices · till today'
+            : `Pending invoices ≤ ${fmtDate(r.date)}`} ({invoices.length})
         </h2>
         <button onClick={syncSales} disabled={syncing}
           className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-[11px] font-semibold">
           {syncing ? 'Syncing…' : 'Sync from Tally'}
         </button>
       </div>
-      {(linkedCount > 0 || hasBatch) && (
-        <div className="flex items-center gap-1.5 mb-2 text-[11px] flex-wrap">
-          <span className="text-gray-500 dark:text-gray-400">Show:</span>
-          {linkedCount > 0 && (
-            <button onClick={() => setView('linked')}
-              className={`px-2.5 py-1 rounded-full border transition ${
-                view === 'linked'
-                  ? 'bg-emerald-600 text-white border-emerald-600'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
-              }`}>
-              🔗 Linked only ({linkedCount})
-            </button>
-          )}
-          {hasBatch && (
-            <button onClick={() => setView('batch')}
-              className={`px-2.5 py-1 rounded-full border transition ${
-                view === 'batch'
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
-              }`}>
-              🔗 Batch ({batchInvoiceCount})
-            </button>
-          )}
-          <button onClick={() => setView('all')}
+      <div className="flex items-center gap-1.5 mb-2 text-[11px] flex-wrap">
+        <span className="text-gray-500 dark:text-gray-400">Show:</span>
+        {linkedCount > 0 && (
+          <button onClick={() => setView('linked')}
             className={`px-2.5 py-1 rounded-full border transition ${
-              view === 'all'
+              view === 'linked'
                 ? 'bg-emerald-600 text-white border-emerald-600'
                 : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
             }`}>
-            All party invoices ({allInvoices.length})
+            🔗 Linked only ({linkedCount})
           </button>
-        </div>
-      )}
+        )}
+        {hasBatch && (
+          <button onClick={() => setView('batch')}
+            className={`px-2.5 py-1 rounded-full border transition ${
+              view === 'batch'
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+            }`}>
+            🔗 Batch ({batchInvoiceCount})
+          </button>
+        )}
+        <button onClick={() => setView('all')}
+          className={`px-2.5 py-1 rounded-full border transition ${
+            view === 'all'
+              ? 'bg-emerald-600 text-white border-emerald-600'
+              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+          }`}>
+          All party invoices
+        </button>
+        {view === 'all' && (
+          <button onClick={() => setShowAll(v => !v)}
+            title={showAll
+              ? 'Showing pending invoices dated on or before today'
+              : `Showing pending invoices dated on or before this receipt (${fmtDate(r.date)})`}
+            className={`px-2.5 py-1 rounded-full border transition ${
+              showAll
+                ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+            }`}>
+            {showAll ? '✓ Till today' : '📅 Show till today'}
+          </button>
+        )}
+      </div>
       {syncMsg && <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">{syncMsg}</div>}
 
       {invoices.length === 0 ? (
@@ -262,6 +283,12 @@ export default function ReceiptDetailPage() {
             <>No invoices in this bulk batch.<br />
               <button onClick={() => setView('all')} className="text-[11px] mt-1 underline text-emerald-600 dark:text-emerald-400">
                 Show all party invoices
+              </button>
+            </>
+          ) : !showAll ? (
+            <>No pending invoices dated ≤ {fmtDate(r.date)}.<br />
+              <button onClick={() => setShowAll(true)} className="text-[11px] mt-1 underline text-emerald-600 dark:text-emerald-400">
+                📅 Show pending till today
               </button>
             </>
           ) : (
