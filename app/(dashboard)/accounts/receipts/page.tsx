@@ -46,6 +46,26 @@ interface Receipt {
   linkedInvoices: LinkedInvoice[]
 }
 type LinkFilter = 'all' | 'linked' | 'unlinked'
+
+interface DryRunReceipt { id: number; vchType: string; vchNumber: string; date: string; amount: number; partyName: string }
+interface DryRunInvoice { id: number; vchType: string; vchNumber: string; date: string; totalAmount: number; taxableAmount: number | null; partyGstin: string | null; pending: number }
+interface DryRunSplit { receiptId: number; allocatedAmount: number }
+interface DryRunPlanRow { invoiceId: number; allocations: DryRunSplit[] }
+interface DryRunResponse {
+  dryRun: true
+  plan: DryRunPlanRow[]
+  totals: { receipts: number; linked: number; delta: number; leftoverReceipt: number; leftoverInvoice: number }
+  receipts: DryRunReceipt[]
+  invoices: DryRunInvoice[]
+  includeAdvance: boolean
+}
+interface EditableRow extends DryRunPlanRow {
+  tdsRatePct: number | null
+  tdsAmount: number
+  discountPct: number | null
+  discountAmount: number
+}
+const DEFAULT_TDS_RATE = 2
 interface FyTotal { fy: string; count: number; total: number }
 
 const fmtDate = (iso: string) => {
@@ -75,6 +95,7 @@ export default function ReceiptsPage() {
   const [linkFilter, setLinkFilter] = useState<LinkFilter>('all')
   const [hideMatched, setHideMatched] = useState(false)
   const [partyQuery, setPartyQuery] = useState<string>('')
+  const [bulkOpen, setBulkOpen] = useState(false)
 
   useEffect(() => {
     try {
@@ -478,14 +499,24 @@ export default function ReceiptsPage() {
 
       {/* Bottom action bar — appears only when something is selected */}
       {selected.size > 0 && (
-        <div className="fixed bottom-3 left-3 right-3 z-40 max-w-3xl mx-auto bg-gray-900 text-gray-100 rounded-xl shadow-2xl border border-emerald-500/40 px-3 py-2.5 flex items-center gap-2">
+        <div className="fixed bottom-3 left-3 right-3 z-40 max-w-3xl mx-auto bg-gray-900 text-gray-100 rounded-xl shadow-2xl border border-emerald-500/40 px-3 py-2.5 flex items-center gap-2 flex-wrap">
           <div className="flex-1 min-w-0 text-xs">
             <span className="font-semibold">{selected.size} selected</span>
+            {partyQuery.trim() && (
+              <span className="ml-1.5 text-gray-300">· {partyQuery.trim()}</span>
+            )}
           </div>
           <button onClick={() => setSelected(new Set())}
             className="text-xs text-gray-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-gray-600">
             Clear
           </button>
+          {partyQuery.trim() && !showHidden && (
+            <button onClick={() => setBulkOpen(true)}
+              title="Auto-link selected receipts to this party's pending invoices (oldest first)"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+              🔗 Bulk Link
+            </button>
+          )}
           {showHidden ? (
             <button onClick={() => bulkHide(false)}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
@@ -499,6 +530,356 @@ export default function ReceiptsPage() {
           )}
         </div>
       )}
+
+      {bulkOpen && (
+        <BulkLinkSheet
+          receiptIds={[...selected]}
+          partyName={partyQuery.trim()}
+          onClose={() => setBulkOpen(false)}
+          onDone={(saved) => {
+            setBulkOpen(false)
+            setSelected(new Set())
+            setSelectMode(false)
+            mutate()
+            setSyncMsg(`Linked ${saved} allocation(s).`)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function BulkLinkSheet({
+  receiptIds, partyName, onClose, onDone,
+}: { receiptIds: number[]; partyName: string; onClose: () => void; onDone: (saved: number) => void }) {
+  const [includeAdvance, setIncludeAdvance] = useState(false)
+  const [data, setData] = useState<DryRunResponse | null>(null)
+  const [rows, setRows] = useState<EditableRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [conflicts, setConflicts] = useState<{ receiptId: number; vchNumber: string; existingLinks: number }[] | null>(null)
+  const [committing, setCommitting] = useState(false)
+
+  // Re-run dry-run on mount + whenever the advance toggle flips. Server
+  // returns the FIFO plan; we then seed editable TDS/discount fields.
+  useEffect(() => {
+    let alive = true
+    setLoading(true); setError(null); setConflicts(null)
+    fetch('/api/accounts/receipts/bulk-allocate?dryRun=1', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ receiptIds, partyName, includeAdvance }),
+    })
+      .then(async r => {
+        const d = await r.json()
+        if (!alive) return
+        if (r.status === 409 && d.conflicts) { setConflicts(d.conflicts); return }
+        if (!r.ok) { setError(d.error || 'Failed to plan'); return }
+        setData(d)
+        const invById: Record<number, DryRunInvoice> = {}
+        for (const inv of d.invoices) invById[inv.id] = inv
+        setRows(d.plan.map((p: DryRunPlanRow): EditableRow => {
+          const inv = invById[p.invoiceId]
+          const cash = p.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
+          const taxableShare = inv?.taxableAmount && inv.taxableAmount > 0 && inv.totalAmount > 0
+            ? (inv.taxableAmount * cash) / inv.totalAmount
+            : 0
+          const tdsAmount = Math.round((taxableShare * DEFAULT_TDS_RATE) / 100)
+          return {
+            ...p,
+            tdsRatePct: DEFAULT_TDS_RATE,
+            tdsAmount,
+            discountPct: null,
+            discountAmount: 0,
+          }
+        }))
+      })
+      .catch(e => { if (alive) setError(e?.message || 'Network error') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [receiptIds, partyName, includeAdvance])
+
+  function updateRow(idx: number, patch: Partial<EditableRow>) {
+    setRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r))
+  }
+  function applyTdsRate(idx: number) {
+    const row = rows[idx]
+    const inv = data?.invoices.find(i => i.id === row.invoiceId)
+    if (!inv) return
+    const cash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
+    const taxableShare = inv.taxableAmount && inv.taxableAmount > 0 && inv.totalAmount > 0
+      ? (inv.taxableAmount * cash) / inv.totalAmount
+      : 0
+    const rate = row.tdsRatePct ?? DEFAULT_TDS_RATE
+    updateRow(idx, { tdsAmount: Math.round((taxableShare * rate) / 100) })
+  }
+  function applyDiscPct(idx: number) {
+    const row = rows[idx]
+    const inv = data?.invoices.find(i => i.id === row.invoiceId)
+    if (!inv) return
+    const cash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
+    const taxableShare = inv.taxableAmount && inv.taxableAmount > 0 && inv.totalAmount > 0
+      ? (inv.taxableAmount * cash) / inv.totalAmount
+      : 0
+    const pct = row.discountPct ?? 0
+    if (pct <= 0) return
+    updateRow(idx, { discountAmount: Math.round((taxableShare * pct) / 100) })
+  }
+
+  // Live totals derived from the editable rows
+  const totals = useMemo(() => {
+    const sumReceipts = data?.totals.receipts ?? 0
+    let cash = 0, tds = 0, disc = 0
+    for (const row of rows) {
+      cash += row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
+      tds += row.tdsAmount || 0
+      disc += row.discountAmount || 0
+    }
+    return { sumReceipts, cash, tds, disc, delta: sumReceipts - cash }
+  }, [data, rows])
+
+  // Per-row over-allocation guard: cash + tds + disc must be ≤ pending.
+  const overAllocated = useMemo(() => {
+    if (!data) return [] as number[]
+    const idxs: number[] = []
+    rows.forEach((row, i) => {
+      const inv = data.invoices.find(x => x.id === row.invoiceId)
+      if (!inv) return
+      const cash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
+      if (cash + (row.tdsAmount || 0) + (row.discountAmount || 0) > inv.pending + 1) idxs.push(i)
+    })
+    return idxs
+  }, [data, rows])
+
+  async function commit() {
+    if (!data || rows.length === 0) return
+    if (overAllocated.length > 0) {
+      alert(`${overAllocated.length} invoice(s) over-allocated — reduce TDS/Discount first.`)
+      return
+    }
+    setCommitting(true); setError(null)
+    try {
+      const body = {
+        receiptIds, partyName, includeAdvance,
+        rows: rows.map(r => ({
+          invoiceId: r.invoiceId,
+          allocations: r.allocations,
+          tdsRatePct: r.tdsRatePct ?? null,
+          tdsAmount: r.tdsAmount || 0,
+          discountAmount: r.discountAmount || 0,
+        })),
+      }
+      const res = await fetch('/api/accounts/receipts/bulk-allocate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error || 'Commit failed'); return }
+      onDone(d.saved ?? rows.length)
+    } catch (e: any) { setError(e?.message || 'Network error') }
+    finally { setCommitting(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 w-full max-w-3xl max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col"
+        onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="text-sm font-bold text-gray-800 dark:text-gray-100">Bulk Link · {partyName}</div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400">{receiptIds.length} receipts → FIFO into oldest pending invoices</div>
+            </div>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-100 text-xl leading-none">×</button>
+          </div>
+          {/* Totals chips */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2 text-center text-[10px]">
+            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 py-1.5">
+              <div className="text-gray-500 dark:text-gray-400">Σ Receipts</div>
+              <div className="text-emerald-700 dark:text-emerald-300 font-bold tabular-nums">₹{fmtMoney(totals.sumReceipts)}</div>
+            </div>
+            <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700/40 py-1.5">
+              <div className="text-gray-500 dark:text-gray-400">Σ Linked (cash)</div>
+              <div className="text-indigo-700 dark:text-indigo-300 font-bold tabular-nums">₹{fmtMoney(totals.cash)}</div>
+            </div>
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/40 py-1.5">
+              <div className="text-gray-500 dark:text-gray-400">Σ TDS / Disc</div>
+              <div className="text-amber-700 dark:text-amber-300 font-bold tabular-nums">₹{fmtMoney(totals.tds + totals.disc)}</div>
+            </div>
+            <div className={`rounded-lg border py-1.5 ${
+              Math.abs(totals.delta) <= 1
+                ? 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700/40'
+                : 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-700/40'
+            }`}>
+              <div className="text-gray-500 dark:text-gray-400">Δ</div>
+              <div className={`font-bold tabular-nums ${
+                Math.abs(totals.delta) <= 1 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
+              }`}>₹{fmtMoney(totals.delta)}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 mt-2 text-[11px]">
+            <button onClick={() => setIncludeAdvance(v => !v)}
+              className={`px-2 py-0.5 rounded-full border transition ${
+                includeAdvance
+                  ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+              }`}>
+              {includeAdvance ? '✓ Including advance invoices' : '+ Advance invoices'}
+            </button>
+            <span className="text-gray-400 text-[10px]">
+              {includeAdvance ? 'all pending bills' : `bills dated ≤ newest receipt`}
+            </span>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+          {loading && <div className="text-center py-8 text-gray-400 text-sm">Planning…</div>}
+
+          {conflicts && (
+            <div className="border border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/20 rounded-xl p-3 text-[11px]">
+              <div className="font-bold text-rose-700 dark:text-rose-300 mb-1">Conflict — these receipts are already linked. Unlink them first.</div>
+              <ul className="text-rose-600 dark:text-rose-400 space-y-0.5">
+                {conflicts.map(c => (
+                  <li key={c.receiptId}>• #{c.vchNumber} ({c.existingLinks} existing link{c.existingLinks > 1 ? 's' : ''})</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {error && !conflicts && (
+            <div className="border border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/20 rounded-xl p-3 text-[12px] text-rose-700 dark:text-rose-300">{error}</div>
+          )}
+
+          {/* Receipts (read-only) */}
+          {data && (
+            <div className="border border-gray-200 dark:border-gray-700 rounded-xl p-2.5 text-[11px] bg-gray-50 dark:bg-gray-800/40">
+              <div className="font-semibold text-gray-700 dark:text-gray-200 mb-1">Receipts ({data.receipts.length}) · oldest first</div>
+              {data.receipts.map(r => {
+                const used = rows.reduce((s, row) => s + row.allocations.filter(a => a.receiptId === r.id).reduce((ss, a) => ss + a.allocatedAmount, 0), 0)
+                const left = Math.max(0, r.amount - used)
+                return (
+                  <div key={r.id} className="flex items-center justify-between gap-2 py-0.5">
+                    <span className="font-mono text-emerald-700 dark:text-emerald-300">#{r.vchNumber}</span>
+                    <span className="text-gray-500">{fmtDate(r.date)}</span>
+                    <span className="text-gray-700 dark:text-gray-200 tabular-nums">₹{fmtMoney(r.amount)}</span>
+                    <span className={`tabular-nums ${left <= 1 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {left <= 1 ? '✓ used' : `left ₹${fmtMoney(left)}`}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Invoice cards */}
+          {data && rows.length === 0 && (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm border border-dashed rounded-xl">
+              No pending invoices to link. {!includeAdvance && 'Try “Advance invoices” if this is an advance payment.'}
+            </div>
+          )}
+          {data && rows.map((row, idx) => {
+            const inv = data.invoices.find(i => i.id === row.invoiceId)
+            if (!inv) return null
+            const cash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0)
+            const consumed = cash + (row.tdsAmount || 0) + (row.discountAmount || 0)
+            const isOver = overAllocated.includes(idx)
+            const taxableShare = inv.taxableAmount && inv.taxableAmount > 0 && inv.totalAmount > 0
+              ? (inv.taxableAmount * cash) / inv.totalAmount
+              : 0
+            return (
+              <div key={inv.id} className={`border rounded-xl p-3 ${
+                isOver
+                  ? 'border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/10'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+              }`}>
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+                        {inv.vchType} {inv.vchNumber}
+                      </span>
+                      <span className="text-[10px] text-gray-500">{fmtDate(inv.date)}</span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(inv.totalAmount)}</div>
+                    <div className="text-[10px] text-rose-600 dark:text-rose-400">pending ₹{fmtMoney(inv.pending)}</div>
+                  </div>
+                </div>
+
+                {/* Cash splits (read-only, FIFO from server) */}
+                <div className="text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5 mt-1">
+                  {row.allocations.map((s, i) => {
+                    const rcpt = data.receipts.find(r => r.id === s.receiptId)
+                    return (
+                      <div key={i} className="flex justify-between">
+                        <span className="font-mono text-emerald-700 dark:text-emerald-300">#{rcpt?.vchNumber} {fmtDate(rcpt?.date ?? '')}</span>
+                        <span className="tabular-nums">₹{fmtMoney(s.allocatedAmount)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* TDS row */}
+                <div className="flex items-center gap-1.5 text-[11px] mt-1.5">
+                  <button type="button" onClick={() => applyTdsRate(idx)}
+                    className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold">
+                    💰 TDS @{row.tdsRatePct ?? DEFAULT_TDS_RATE}%
+                  </button>
+                  <input type="number" value={row.tdsRatePct ?? ''} step="0.01"
+                    onChange={e => updateRow(idx, { tdsRatePct: e.target.value === '' ? null : parseFloat(e.target.value) })}
+                    onBlur={() => applyTdsRate(idx)}
+                    placeholder="rate"
+                    className="w-14 px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px]" />
+                  <span className="text-gray-400 text-[10px]">%</span>
+                  <input type="number" value={row.tdsAmount || ''}
+                    onChange={e => updateRow(idx, { tdsAmount: parseFloat(e.target.value) || 0 })}
+                    placeholder="₹"
+                    className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums" />
+                  <span className="text-gray-400 text-[10px] whitespace-nowrap">on ₹{fmtMoney(taxableShare)}</span>
+                </div>
+
+                {/* Discount row */}
+                <div className="flex items-center gap-1.5 text-[11px] mt-1">
+                  <button type="button"
+                    className="px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold">
+                    🏷 Disc
+                  </button>
+                  <input type="number" value={row.discountPct ?? ''} step="0.01"
+                    onChange={e => updateRow(idx, { discountPct: e.target.value === '' ? null : parseFloat(e.target.value) })}
+                    onBlur={() => applyDiscPct(idx)}
+                    placeholder="%"
+                    className="w-14 px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px]" />
+                  <span className="text-gray-400 text-[10px]">%</span>
+                  <input type="number" value={row.discountAmount || ''}
+                    onChange={e => updateRow(idx, { discountAmount: parseFloat(e.target.value) || 0 })}
+                    placeholder="₹"
+                    className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums" />
+                </div>
+
+                {/* Consumed line */}
+                <div className={`mt-1.5 text-[10px] flex justify-between ${isOver ? 'text-rose-600 dark:text-rose-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                  <span>cash ₹{fmtMoney(cash)} + TDS ₹{fmtMoney(row.tdsAmount || 0)} + disc ₹{fmtMoney(row.discountAmount || 0)}</span>
+                  <span className="font-semibold">= ₹{fmtMoney(consumed)} {isOver && '⚠ over'}</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2">
+          <button onClick={onClose} disabled={committing}
+            className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
+            Cancel
+          </button>
+          <button onClick={commit} disabled={committing || loading || rows.length === 0 || overAllocated.length > 0 || !!conflicts}
+            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold">
+            {committing ? 'Linking…' : `Confirm ${rows.length} link${rows.length === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
