@@ -54,7 +54,7 @@ interface Receipt {
 type LinkFilter = 'all' | 'linked' | 'unlinked'
 
 interface DryRunReceipt { id: number; vchType: string; vchNumber: string; date: string; amount: number; partyName: string; carryOverPriorFy?: number; additionalCarryOver?: number }
-interface DryRunInvoice { id: number; vchType: string; vchNumber: string; date: string; totalAmount: number; taxableAmount: number | null; partyGstin: string | null; pending: number }
+interface DryRunInvoice { id: number; vchType: string; vchNumber: string; date: string; totalAmount: number; taxableAmount: number | null; partyGstin: string | null; pending: number; skipAutoLink?: boolean; skipAutoLinkReason?: string | null }
 interface DryRunSplit { receiptId: number; allocatedAmount: number }
 interface DryRunPlanRow { invoiceId: number; allocations: DryRunSplit[] }
 interface DryRunResponse {
@@ -683,6 +683,9 @@ function BulkLinkSheet({
   // FIFO. Distributed FIFO across selected receipts oldest-first;
   // displayed as a separate "carry-over" line in the totals banner.
   const [carryOver, setCarryOver] = useState('')
+  // Bumped after every Skip / Allow-to-link toggle so the dry-run
+  // re-fetches with fresh skip flags.
+  const [refetchTick, setRefetchTick] = useState(0)
   // Set after a successful commit. While non-null, the sheet shows a
   // success card with the WhatsApp share button instead of the editor.
   const [committed, setCommitted] = useState<{ saved: number } | null>(null)
@@ -725,7 +728,24 @@ function BulkLinkSheet({
       .catch(e => { if (alive) setError(e?.message || 'Network error') })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [receiptIds, partyName, includeAdvance])
+  }, [receiptIds, partyName, includeAdvance, refetchTick])
+
+  // Toggle the persistent skip-from-auto-link flag on an invoice and
+  // re-fetch the dry-run so FIFO replans without (or with) it.
+  async function toggleSkip(invoiceId: number, skip: boolean, reason: string | null) {
+    try {
+      const res = await fetch(`/api/accounts/sales/${invoiceId}/skip`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skip, reason }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        alert(d.error || 'Failed to update skip flag')
+        return
+      }
+      setRefetchTick(t => t + 1)
+    } catch (e: any) { alert(e?.message || 'Network error') }
+  }
 
   function updateRow(idx: number, patch: Partial<RowState>) {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, ...patch } : r))
@@ -801,6 +821,8 @@ function BulkLinkSheet({
       if (!row.selected) { map.set(row.invoiceId, []); continue }
       const inv = data.invoices.find(x => x.id === row.invoiceId)
       if (!inv) { map.set(row.invoiceId, []); continue }
+      // Persistent skip flag — FIFO doesn't allocate cash to these.
+      if (inv.skipAutoLink) { map.set(row.invoiceId, []); continue }
       const targetCash = Math.max(0, round2(inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0)))
       let need = targetCash
       const splits: DryRunSplit[] = []
@@ -827,6 +849,8 @@ function BulkLinkSheet({
     let cash = 0, tds = 0, disc = 0
     for (const row of rows) {
       if (!row.selected) continue
+      const inv = data?.invoices.find(i => i.id === row.invoiceId)
+      if (inv?.skipAutoLink) continue
       const splits = splitsByInvoice.get(row.invoiceId) || []
       cash += splits.reduce((s, a) => s + a.allocatedAmount, 0)
       tds += row.tdsAmount || 0
@@ -846,7 +870,7 @@ function BulkLinkSheet({
     rows.forEach((row, i) => {
       if (!row.selected) return
       const inv = data.invoices.find(x => x.id === row.invoiceId)
-      if (!inv) return
+      if (!inv || inv.skipAutoLink) return
       const splits = splitsByInvoice.get(row.invoiceId) || []
       const cash = splits.reduce((s, a) => s + a.allocatedAmount, 0)
       if (cash + (row.tdsAmount || 0) + (row.discountAmount || 0) > inv.pending + 1) idxs.push(i)
@@ -868,6 +892,10 @@ function BulkLinkSheet({
         carryOver: carryOverNum > 0 ? carryOverNum : 0,
         rows: rows
           .filter(r => r.selected)
+          .filter(r => {
+            const inv = data?.invoices.find(i => i.id === r.invoiceId)
+            return !inv?.skipAutoLink
+          })
           .map(r => ({
             invoiceId: r.invoiceId,
             allocations: splitsByInvoice.get(r.invoiceId) || [],
@@ -1122,13 +1150,16 @@ function BulkLinkSheet({
             const cash = splits.reduce((s, a) => s + a.allocatedAmount, 0)
             const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
             const isOver = overAllocated.includes(idx)
+            const isSkipped = !!inv.skipAutoLink
             const targetCash = Math.max(0, inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0))
             const cashShort = round2(targetCash - cash) // > 0 → receipts ran out before this invoice closed
-            const cardCls = !row.selected
-              ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 opacity-60'
-              : isOver
-                ? 'border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/10'
-                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+            const cardCls = isSkipped
+              ? 'border-rose-300 dark:border-rose-700/40 bg-rose-50/40 dark:bg-rose-900/5 opacity-60'
+              : !row.selected
+                ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 opacity-60'
+                : isOver
+                  ? 'border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/10'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
             return (
               <div key={inv.id} className={`border rounded-xl p-3 ${cardCls}`}>
                 <div className="flex items-start justify-between gap-2 mb-1">
@@ -1222,6 +1253,36 @@ function BulkLinkSheet({
                     </>
                   ) : (
                     <span className="italic">— skipped (manual mode)</span>
+                  )}
+                </div>
+
+                {/* Persistent skip toggle — saves to KsiSalesInvoice
+                   so the flag survives across bulk-link sessions and
+                   Tally re-syncs. */}
+                <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-dashed border-gray-200 dark:border-gray-700/60 text-[10px]">
+                  {isSkipped ? (
+                    <>
+                      <div className="text-rose-700 dark:text-rose-300 italic min-w-0 truncate">
+                        🚫 Skipped from auto-link
+                        {inv.skipAutoLinkReason && <span className="text-gray-600 dark:text-gray-400"> · {inv.skipAutoLinkReason}</span>}
+                      </div>
+                      <button onClick={() => toggleSkip(inv.id, false, null)}
+                        className="ml-2 px-2 py-0.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shrink-0">
+                        ✓ Allow to link
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-gray-400 italic">FIFO will assign cash to this bill.</span>
+                      <button onClick={() => {
+                        const r = window.prompt('Skip reason (optional, e.g. "disputed quality, on hold"):') ?? ''
+                        if (r === null) return
+                        toggleSkip(inv.id, true, r.trim() || null)
+                      }}
+                        className="ml-2 px-2 py-0.5 rounded-full bg-white dark:bg-gray-700 border border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 shrink-0">
+                        🚫 Skip
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
