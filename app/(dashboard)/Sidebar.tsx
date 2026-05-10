@@ -61,7 +61,7 @@ const ksiNavGroups = [
       { href: '/ksi/tally', label: 'Tally Dashboard', icon: '📊' },
       { href: '/accounts/receipts', label: 'Receipts (HDFC)', icon: '🏦' },
       { href: '/accounts/sales', label: 'Sales / Process Register', icon: '📈' },
-      { href: '/ksi/outstanding', label: 'Outstanding', icon: '💰' },
+      { href: '/accounts/outstanding', label: 'Outstanding', icon: '💰' },
       { href: '/ksi/ledgers', label: 'Ledger Master', icon: '📒' },
       { href: '/ksi/ledger-tags', label: 'Ledger Tags', icon: '🏷️' },
     ],
