@@ -704,13 +704,16 @@ function BulkLinkSheet({
         if (r.status === 409 && d.conflicts) { setConflicts(d.conflicts); return }
         if (!r.ok) { setError(d.error || 'Failed to plan'); return }
         setData(d)
-        const invById: Record<number, DryRunInvoice> = {}
-        for (const inv of d.invoices) invById[inv.id] = inv
-        setRows(d.plan.map((p: DryRunPlanRow): RowState => {
-          const inv = invById[p.invoiceId]
-          const taxable = inv?.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
+        // Seed rows from the full candidate invoice list (every pending
+        // bill in scope), NOT from d.plan. The server's plan is pre-TDS
+        // FIFO and may stop short of the last few invoices when the
+        // receipts run out before TDS can reduce the cash needed —
+        // those invoices belong in the editable list anyway, since the
+        // client's TDS-aware re-FIFO will reach them.
+        setRows(d.invoices.map((inv: DryRunInvoice): RowState => {
+          const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
           return {
-            invoiceId: p.invoiceId,
+            invoiceId: inv.id,
             selected: true,
             tdsRatePct: DEFAULT_TDS_RATE,
             tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100),
