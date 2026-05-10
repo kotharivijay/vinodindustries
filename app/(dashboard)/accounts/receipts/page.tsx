@@ -75,6 +75,11 @@ interface DryRunResponse {
 interface RowState {
   invoiceId: number
   selected: boolean       // false → invoice is skipped in manual mode
+  // Auto FIFO only allocates to invoices that can be fully closed
+  // (cash >= targetCash). When a row would be short, it's skipped
+  // unless the user explicitly opts in by setting allowPartial=true.
+  // Manual mode ignores this flag (user is being explicit).
+  allowPartial: boolean
   tdsRatePct: number | null
   tdsAmount: number
   discountPct: number | null
@@ -718,6 +723,7 @@ function BulkLinkSheet({
           return {
             invoiceId: inv.id,
             selected: true,
+            allowPartial: false,
             tdsRatePct: DEFAULT_TDS_RATE,
             tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100),
             discountPct: null,
@@ -807,6 +813,9 @@ function BulkLinkSheet({
   // each into the current invoice until its targetCash (= pending −
   // TDS − discount) is met, then move to the next invoice. Leftover
   // from a receipt naturally rolls forward to the next invoice.
+  // In Auto mode, an invoice that the remaining receipts can't fully
+  // close is skipped entirely (no partial allocation) — its row gets
+  // a "Link partial" toggle the user can enable to override.
   const splitsByInvoice = useMemo(() => {
     const map = new Map<number, DryRunSplit[]>()
     if (!data) return map
@@ -816,6 +825,7 @@ function BulkLinkSheet({
       const additional = additionalCarryOverByReceipt[r.id] || 0
       remaining[r.id] = round2(Math.max(0, r.amount - existing - additional))
     }
+    let totalRemaining = round2(Object.values(remaining).reduce((s, v) => s + v, 0))
     let i = 0
     for (const row of rows) {
       if (!row.selected) { map.set(row.invoiceId, []); continue }
@@ -824,6 +834,14 @@ function BulkLinkSheet({
       // Persistent skip flag — FIFO doesn't allocate cash to these.
       if (inv.skipAutoLink) { map.set(row.invoiceId, []); continue }
       const targetCash = Math.max(0, round2(inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0)))
+      // Auto mode: skip invoices that can't be fully closed unless the
+      // user explicitly opted into partial linking on this row. Manual
+      // mode is already explicit — user picked the row, allocate what
+      // we can.
+      if (mode === 'auto' && !row.allowPartial && targetCash > totalRemaining + 0.5) {
+        map.set(row.invoiceId, [])
+        continue
+      }
       let need = targetCash
       const splits: DryRunSplit[] = []
       while (need > 0 && i < data.receipts.length) {
@@ -834,13 +852,14 @@ function BulkLinkSheet({
         if (take <= 0) { i++; continue }
         splits.push({ receiptId: r.id, allocatedAmount: take })
         remaining[r.id] = round2(have - take)
+        totalRemaining = round2(totalRemaining - take)
         need = round2(need - take)
         if (remaining[r.id] <= 0.0001) i++
       }
       map.set(row.invoiceId, splits)
     }
     return map
-  }, [data, rows, additionalCarryOverByReceipt])
+  }, [data, rows, mode, additionalCarryOverByReceipt])
 
   // Live totals derived from selected rows + computed splits.
   const totals = useMemo(() => {
@@ -852,6 +871,10 @@ function BulkLinkSheet({
       const inv = data?.invoices.find(i => i.id === row.invoiceId)
       if (inv?.skipAutoLink) continue
       const splits = splitsByInvoice.get(row.invoiceId) || []
+      // Auto-skipped rows (no cash assigned) contribute 0 to all
+      // totals — we don't claim TDS / discount on a bill that's not
+      // being settled.
+      if (splits.length === 0) continue
       cash += splits.reduce((s, a) => s + a.allocatedAmount, 0)
       tds += row.tdsAmount || 0
       disc += row.discountAmount || 0
@@ -1153,13 +1176,20 @@ function BulkLinkSheet({
             const isSkipped = !!inv.skipAutoLink
             const targetCash = Math.max(0, inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0))
             const cashShort = round2(targetCash - cash) // > 0 → receipts ran out before this invoice closed
+            // Auto mode: this row was skipped because the remaining
+            // receipts couldn't fully close it (and user hasn't opted
+            // into partial linking).
+            const isAutoShort = mode === 'auto' && row.selected && !isSkipped && !row.allowPartial
+              && cash === 0 && targetCash > 0.5
             const cardCls = isSkipped
               ? 'border-rose-300 dark:border-rose-700/40 bg-rose-50/40 dark:bg-rose-900/5 opacity-60'
-              : !row.selected
-                ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 opacity-60'
-                : isOver
-                  ? 'border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/10'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+              : isAutoShort
+                ? 'border-amber-300 dark:border-amber-700/40 bg-amber-50/60 dark:bg-amber-900/10'
+                : !row.selected
+                  ? 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 opacity-60'
+                  : isOver
+                    ? 'border-rose-300 dark:border-rose-700/40 bg-rose-50 dark:bg-rose-900/10'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
             return (
               <div key={inv.id} className={`border rounded-xl p-3 ${cardCls}`}>
                 <div className="flex items-start justify-between gap-2 mb-1">
@@ -1234,12 +1264,26 @@ function BulkLinkSheet({
                 </div>
 
                 {/* Cash formula line: cash = pending − TDS − discount */}
-                <div className={`mt-1.5 text-[10px] flex justify-between ${
+                <div className={`mt-1.5 text-[10px] flex justify-between gap-2 ${
                   !row.selected ? 'text-gray-400'
+                  : isAutoShort ? 'text-amber-700 dark:text-amber-300'
                   : isOver ? 'text-rose-600 dark:text-rose-400'
                   : 'text-gray-500 dark:text-gray-400'
                 }`}>
-                  {row.selected ? (
+                  {!row.selected ? (
+                    <span className="italic">— skipped (manual mode)</span>
+                  ) : isAutoShort ? (
+                    <>
+                      <span>
+                        🔸 Auto-skipped — receipts can't fully close this (target ₹{fmtMoney(targetCash)})
+                      </span>
+                      <button
+                        onClick={() => updateRow(idx, { allowPartial: true })}
+                        className="shrink-0 px-2 py-0.5 rounded-full bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[10px]">
+                        Link partial
+                      </button>
+                    </>
+                  ) : (
                     <>
                       <span>
                         Bank Recpt <span className="font-semibold tabular-nums">₹{fmtMoney(cash)}</span>
@@ -1247,12 +1291,20 @@ function BulkLinkSheet({
                         {(row.tdsAmount || 0) > 0 && <> − TDS ₹{fmtMoney(row.tdsAmount || 0)}</>}
                         {(row.discountAmount || 0) > 0 && <> − disc ₹{fmtMoney(row.discountAmount || 0)}</>}
                       </span>
-                      <span className={`font-semibold ${cashShort > 1 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-                        {cashShort > 1 ? `short ₹${fmtMoney(cashShort)}` : isOver ? '⚠ over' : '✓ closes'}
+                      <span className="flex items-center gap-2">
+                        <span className={`font-semibold ${cashShort > 1 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                          {cashShort > 1 ? `short ₹${fmtMoney(cashShort)}` : isOver ? '⚠ over' : '✓ closes'}
+                        </span>
+                        {row.allowPartial && cashShort > 1 && (
+                          <button
+                            onClick={() => updateRow(idx, { allowPartial: false })}
+                            title="Revert to auto-skip if can't fully close"
+                            className="px-1.5 py-0.5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-500 text-[9px] font-semibold">
+                            ✕ undo partial
+                          </button>
+                        )}
                       </span>
                     </>
-                  ) : (
-                    <span className="italic">— skipped (manual mode)</span>
                   )}
                 </div>
 
