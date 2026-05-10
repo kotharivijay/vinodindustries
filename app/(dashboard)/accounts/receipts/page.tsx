@@ -1275,7 +1275,7 @@ function BulkLinkSheet({
                   ) : isAutoShort ? (
                     <>
                       <span>
-                        🔸 Auto-skipped — receipts can't fully close this (target ₹{fmtMoney(targetCash)})
+                        🔸 Auto-skipped — receipts cannot fully close this (target ₹{fmtMoney(targetCash)})
                       </span>
                       <button
                         onClick={() => updateRow(idx, { allowPartial: true })}
