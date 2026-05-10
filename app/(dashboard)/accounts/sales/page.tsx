@@ -66,6 +66,10 @@ function computeNet(inv: Invoice, catMap: Record<string, string>): {
 export default function SalesPage() {
   const [activeFy, setActiveFy] = useState<string>('26-27')
   const [tab, setTab] = useState<'vouchers' | 'categorise'>('vouchers')
+  // Voucher-type filter — adds tabs above the voucher list so users can
+  // jump between Process Job / Sales / Credit Note (or see all).
+  const [vchTypeFilter, setVchTypeFilter] = useState<string>('all')
+  const KNOWN_VCH_TYPES = ['Process Job', 'Sales', 'Credit Note']
   const [sortBy, setSortBy] = useState<SortBy>('date-desc')
   const [filterMode, setFilterMode] = useState<'fy' | 'month' | 'range'>('fy')
   const [pickedMonth, setPickedMonth] = useState<string>('')
@@ -93,8 +97,21 @@ export default function SalesPage() {
     return months
   }, [activeFy])
 
+  // Counts per vchType (across the full FY result, before other
+  // filters) so the tab labels show stable totals.
+  const vchTypeCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const inv of data?.invoices ?? []) {
+      counts[inv.vchType] = (counts[inv.vchType] || 0) + 1
+    }
+    return counts
+  }, [data?.invoices])
+
   const rows = useMemo(() => {
     let filtered = data?.invoices ?? []
+    if (vchTypeFilter !== 'all') {
+      filtered = filtered.filter(r => r.vchType === vchTypeFilter)
+    }
     if (filterMode === 'month' && pickedMonth) {
       const [y, m] = pickedMonth.split('-').map(Number)
       const start = new Date(y, m - 1, 1).getTime()
@@ -120,7 +137,7 @@ export default function SalesPage() {
       case 'amount-asc':  sorted.sort((a, b) => a.totalAmount - b.totalAmount || dateKey(b) - dateKey(a)); break
     }
     return sorted
-  }, [data?.invoices, sortBy, filterMode, pickedMonth, rangeFrom, rangeTo, partySearch])
+  }, [data?.invoices, sortBy, filterMode, pickedMonth, rangeFrom, rangeTo, partySearch, vchTypeFilter])
 
   // Auto-detect well-known ledgers (CGST/SGST/IGST/round-off/party) so the
   // user doesn't have to tag every voucher's tax lines. Doesn't write to
@@ -205,6 +222,31 @@ export default function SalesPage() {
           </button>
         ))}
       </div>
+
+      {/* Voucher-type tabs — only meaningful when the Vouchers sub-tab
+         is active. Shows count per type across the active FY. */}
+      {tab === 'vouchers' && (
+        <div className="flex gap-1.5 mb-3 flex-wrap text-[11px]">
+          <button onClick={() => setVchTypeFilter('all')}
+            className={`px-2.5 py-1 rounded-full border font-semibold transition ${
+              vchTypeFilter === 'all'
+                ? 'bg-indigo-600 text-white border-indigo-600'
+                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+            }`}>
+            All ({data?.invoices?.length ?? 0})
+          </button>
+          {KNOWN_VCH_TYPES.map(t => (
+            <button key={t} onClick={() => setVchTypeFilter(t)}
+              className={`px-2.5 py-1 rounded-full border font-semibold transition ${
+                vchTypeFilter === t
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+              }`}>
+              {t} ({vchTypeCounts[t] ?? 0})
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === 'vouchers' ? (
         <VouchersView

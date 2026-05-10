@@ -5,7 +5,11 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
 const KSI_TALLY = 'Kothari Synthetic Industries -( from 2023)'
-const SALES_TYPES = ['Process Job']
+// Voucher types to pull from Tally's Voucher Register. One report
+// call per type per month — Tally's Voucher Register filters
+// reliably by VOUCHERTYPENAME so we keep them as separate calls and
+// merge the results.
+const SALES_TYPES = ['Process Job', 'Sales', 'Credit Note']
 
 const pad = (n: number) => String(n).padStart(2, '0')
 function fyOf(date: Date): string {
