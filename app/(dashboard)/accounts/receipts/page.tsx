@@ -108,6 +108,7 @@ export default function ReceiptsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string>('')
+  const [syncLog, setSyncLog] = useState<string[]>([])
   // Date filter — 'fy' (whole FY tab), 'month' (specific month), 'range'
   const [filterMode, setFilterMode] = useState<'fy' | 'month' | 'range'>('fy')
   const [pickedMonth, setPickedMonth] = useState<string>('')  // "2026-05"
@@ -298,32 +299,62 @@ export default function ReceiptsPage() {
   ]
 
   async function syncFys(fys: string[]) {
-    setSyncing(true); setSyncMsg('')
+    setSyncing(true); setSyncMsg(''); setSyncLog([])
     let totalSaved = 0, totalFetched = 0, totalIn = 0, totalOut = 0
-    const todayIso = new Date().toISOString().slice(0, 10)
+    const todayMs = Date.now()
+    const log = (line: string) => setSyncLog(prev => [...prev, line])
+
+    // Build per-month chunks across every selected FY so each call to
+    // /ksi-hdfc-sync handles a single month — stays well under the
+    // Vercel function timeout.
+    const chunks: { from: string; to: string; label: string; fy: string }[] = []
+    for (const fy of fys) {
+      const startYear = 2000 + parseInt(fy.split('-')[0])
+      const endYear = startYear + 1
+      const fyEnd = new Date(endYear, 2, 31)
+      const endDate = fyEnd.getTime() < todayMs ? fyEnd : new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00')
+      let cur = new Date(startYear, 3, 1)
+      while (cur.getTime() <= endDate.getTime()) {
+        const monthEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
+        const chunkEnd = monthEnd.getTime() > endDate.getTime() ? endDate : monthEnd
+        const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        const label = `${cur.toLocaleString('en-IN', { month: 'short' })} ${String(cur.getFullYear()).slice(2)}`
+        chunks.push({ from: iso(cur), to: iso(chunkEnd), label, fy })
+        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+      }
+    }
+    log(`▶ FY ${fys.join(', ')} · ${chunks.length} months to sync`)
+
     try {
-      for (const fy of fys) {
-        const startYear = 2000 + parseInt(fy.split('-')[0])
-        const endYear = startYear + 1
-        const fromIso = `${startYear}-04-01`
-        const fyEndIso = `${endYear}-03-31`
-        const toIso = fyEndIso > todayIso ? todayIso : fyEndIso
-        setSyncMsg(`Syncing FY ${fy}…`)
+      for (let i = 0; i < chunks.length; i++) {
+        const c = chunks[i]
+        const startedAt = Date.now()
+        setSyncMsg(`Syncing ${c.label} (${i + 1}/${chunks.length})…`)
         const r = await fetch('/api/tally/ksi-hdfc-sync', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ from: fromIso, to: toIso }),
+          body: JSON.stringify({ from: c.from, to: c.to }),
         })
         const d = await r.json()
-        if (!r.ok) { setSyncMsg(d.error || `Sync failed for FY ${fy}`); return }
+        const sec = ((Date.now() - startedAt) / 1000).toFixed(1)
+        if (!r.ok) {
+          log(`✗ ${c.label}  ${sec}s  ${d.error || r.statusText}`)
+          setSyncMsg(`Failed at ${c.label}: ${d.error || r.statusText}. Partial: ${totalSaved}/${totalFetched}.`)
+          mutate()
+          return
+        }
+        log(`✓ ${c.label}  ${sec}s  ${d.saved}/${d.fetched} rows · IN ₹${fmtMoney(d.inflow || 0)} · OUT ₹${fmtMoney(d.outflow || 0)}`)
         totalSaved += d.saved || 0
         totalFetched += d.fetched || 0
         totalIn += d.inflow || 0
         totalOut += d.outflow || 0
       }
-      setSyncMsg(`Synced ${totalSaved}/${totalFetched} rows across ${fys.length} FY · IN ₹${fmtMoney(totalIn)} · OUT ₹${fmtMoney(totalOut)}`)
+      log(`✅ Done · ${totalSaved}/${totalFetched} rows · IN ₹${fmtMoney(totalIn)} · OUT ₹${fmtMoney(totalOut)}`)
+      setSyncMsg(`Synced ${totalSaved}/${totalFetched} rows across ${chunks.length} months · IN ₹${fmtMoney(totalIn)} · OUT ₹${fmtMoney(totalOut)}`)
       mutate()
     } catch (e: any) {
-      setSyncMsg(e?.message || 'Network error')
+      log(`✗ Network error: ${e?.message || 'unknown'}`)
+      setSyncMsg(`${e?.message || 'Network error'}. Partial: ${totalSaved}/${totalFetched}.`)
+      mutate()
     } finally { setSyncing(false) }
   }
 
@@ -433,6 +464,19 @@ export default function ReceiptsPage() {
         </button>
         {syncMsg && <span className="text-[11px] text-gray-600 dark:text-gray-400 truncate">{syncMsg}</span>}
       </div>
+
+      {syncLog.length > 0 && (
+        <div className="mb-3 max-h-44 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-2 font-mono text-[10px] leading-tight space-y-0.5">
+          {syncLog.map((line, i) => {
+            const color = line.startsWith('✗') ? 'text-rose-600 dark:text-rose-400'
+              : line.startsWith('✓') ? 'text-emerald-700 dark:text-emerald-400'
+              : line.startsWith('✅') ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+              : line.startsWith('▶') ? 'text-indigo-600 dark:text-indigo-400 font-semibold'
+              : 'text-gray-600 dark:text-gray-400'
+            return <div key={i} className={color}>{line}</div>
+          })}
+        </div>
+      )}
 
       {/* Party search */}
       <div className="flex items-center gap-1.5 mb-2">

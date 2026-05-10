@@ -78,6 +78,7 @@ export default function SalesPage() {
   const [partySearch, setPartySearch] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
+  const [syncLog, setSyncLog] = useState<string[]>([])
 
   const { data, mutate, isLoading } = useSWR<{ invoices: Invoice[]; fyTotals: FyTotal[]; categoryMap: Record<string, string> }>(
     `/api/accounts/sales?fy=${activeFy}`, fetcher,
@@ -167,24 +168,59 @@ export default function SalesPage() {
   }, [rows, effectiveCatMap])
 
   async function syncFy(fy: string) {
-    setSyncing(true); setSyncMsg('')
+    setSyncing(true); setSyncMsg(''); setSyncLog([])
     const startYear = 2000 + parseInt(fy.split('-')[0])
     const endYear = startYear + 1
-    const fromIso = `${startYear}-04-01`
-    const fyEndIso = `${endYear}-03-31`
-    const todayIso = new Date().toISOString().slice(0, 10)
-    const toIso = fyEndIso > todayIso ? todayIso : fyEndIso
+    const fyEndDate = new Date(endYear, 2, 31) // March 31 of end year
+    const todayMs = Date.now()
+    const endDate = fyEndDate.getTime() < todayMs ? fyEndDate : new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00')
+
+    // Build per-month chunks so each /ksi-sales-sync call stays well
+    // under Vercel's serverless timeout (3 Tally calls + ~80 upserts
+    // per month is comfortable).
+    const chunks: { from: string; to: string; label: string }[] = []
+    let cur = new Date(startYear, 3, 1) // April 1 of start year
+    while (cur.getTime() <= endDate.getTime()) {
+      const monthEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
+      const chunkEnd = monthEnd.getTime() > endDate.getTime() ? endDate : monthEnd
+      const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      const label = cur.toLocaleString('en-IN', { month: 'short' }) + ' ' + String(cur.getFullYear()).slice(2)
+      chunks.push({ from: iso(cur), to: iso(chunkEnd), label })
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+    }
+    const log = (line: string) => setSyncLog(prev => [...prev, line])
+    log(`▶ FY ${fy} · ${chunks.length} months to sync`)
+
+    let totalSaved = 0, totalFetched = 0
     try {
-      const res = await fetch('/api/tally/ksi-sales-sync', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: fromIso, to: toIso }),
-      })
-      const d = await res.json()
-      if (!res.ok) { setSyncMsg(d.error || 'Sync failed'); return }
-      setSyncMsg(`Synced ${d.saved}/${d.fetched} invoices`)
+      for (let i = 0; i < chunks.length; i++) {
+        const c = chunks[i]
+        const startedAt = Date.now()
+        setSyncMsg(`Syncing ${c.label} (${i + 1}/${chunks.length})…`)
+        const res = await fetch('/api/tally/ksi-sales-sync', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: c.from, to: c.to }),
+        })
+        const d = await res.json()
+        const sec = ((Date.now() - startedAt) / 1000).toFixed(1)
+        if (!res.ok) {
+          log(`✗ ${c.label}  ${sec}s  ${d.error || res.statusText}`)
+          setSyncMsg(`Failed at ${c.label}: ${d.error || res.statusText}. Partial: ${totalSaved}/${totalFetched}.`)
+          mutate()
+          return
+        }
+        log(`✓ ${c.label}  ${sec}s  ${d.saved}/${d.fetched} invoices`)
+        totalSaved += d.saved || 0
+        totalFetched += d.fetched || 0
+      }
+      log(`✅ Done · ${totalSaved}/${totalFetched} invoices across ${chunks.length} months`)
+      setSyncMsg(`Synced ${totalSaved}/${totalFetched} invoices across ${chunks.length} months`)
       mutate()
-    } catch (e: any) { setSyncMsg(e?.message || 'Network error') }
-    finally { setSyncing(false) }
+    } catch (e: any) {
+      log(`✗ Network error: ${e?.message || 'unknown'}`)
+      setSyncMsg(`${e?.message || 'Network error'}. Partial: ${totalSaved}/${totalFetched}.`)
+      mutate()
+    } finally { setSyncing(false) }
   }
 
   return (
@@ -255,6 +291,7 @@ export default function SalesPage() {
           activeFy={activeFy}
           syncing={syncing}
           syncMsg={syncMsg}
+          syncLog={syncLog}
           syncFy={syncFy}
           sortBy={sortBy} setSortBy={setSortBy}
           filterMode={filterMode} setFilterMode={setFilterMode}
@@ -274,7 +311,7 @@ export default function SalesPage() {
 }
 
 function VouchersView(props: any) {
-  const { rows, isLoading, activeFy, syncing, syncMsg, syncFy, sortBy, setSortBy,
+  const { rows, isLoading, activeFy, syncing, syncMsg, syncLog, syncFy, sortBy, setSortBy,
     filterMode, setFilterMode, pickedMonth, setPickedMonth, rangeFrom, setRangeFrom,
     rangeTo, setRangeTo, partySearch, setPartySearch, monthOptions, totals, catMap } = props
   return (
@@ -314,6 +351,18 @@ function VouchersView(props: any) {
           className="flex-1 min-w-[140px] px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs" />
       </div>
       {syncMsg && <div className="text-[11px] text-gray-500 mb-2">{syncMsg}</div>}
+      {syncLog && syncLog.length > 0 && (
+        <div className="mb-3 max-h-44 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-2 font-mono text-[10px] leading-tight space-y-0.5">
+          {syncLog.map((line: string, i: number) => {
+            const color = line.startsWith('✗') ? 'text-rose-600 dark:text-rose-400'
+              : line.startsWith('✓') ? 'text-emerald-700 dark:text-emerald-400'
+              : line.startsWith('✅') ? 'text-emerald-700 dark:text-emerald-400 font-semibold'
+              : line.startsWith('▶') ? 'text-indigo-600 dark:text-indigo-400 font-semibold'
+              : 'text-gray-600 dark:text-gray-400'
+            return <div key={i} className={color}>{line}</div>
+          })}
+        </div>
+      )}
 
       {/* Sort pills */}
       <div className="flex items-center gap-1.5 mb-3 flex-wrap">
