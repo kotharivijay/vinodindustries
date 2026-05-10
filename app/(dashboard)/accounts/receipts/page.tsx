@@ -1292,7 +1292,11 @@ function BulkLinkSheet({
                         {(row.discountAmount || 0) > 0 && <> − disc ₹{fmtMoney(row.discountAmount || 0)}</>}
                       </span>
                       <span className="flex items-center gap-2">
-                        <span className={`font-semibold ${cashShort > 1 ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                        <span className={`font-semibold ${
+                          cashShort > 1 ? 'text-amber-600 dark:text-amber-400'
+                          : isOver ? 'text-rose-600 dark:text-rose-400'
+                          : 'text-emerald-600 dark:text-emerald-400'
+                        }`}>
                           {cashShort > 1 ? `short ₹${fmtMoney(cashShort)}` : isOver ? '⚠ over' : '✓ closes'}
                         </span>
                         {row.allowPartial && cashShort > 1 && (
