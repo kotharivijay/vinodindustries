@@ -349,7 +349,7 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
               <div className="min-w-0">
                 <div className="text-[11px] flex items-center gap-1.5 flex-wrap">
                   <span>{bucketDot(inv.dueDays)}</span>
-                  <span className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
+                  <span className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchNumber}</span>
                   <span className="text-gray-500">{fmtDate(inv.date)}</span>
                   <span className="text-rose-600 dark:text-rose-400 font-semibold">{inv.dueDays}d</span>
                 </div>
@@ -496,7 +496,7 @@ function InvoiceCard({ inv, onClick }: { inv: OutInvoice & { partyName: string }
           <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
             <span className="text-base">{bucketDot(inv.dueDays)}</span>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
-              {inv.vchType} {inv.vchNumber}
+              {inv.vchNumber}
             </span>
             <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold">{inv.dueDays}d due</span>
           </div>
