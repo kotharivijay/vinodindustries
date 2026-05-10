@@ -19,7 +19,7 @@ const fmtDateSlash = (iso: string) => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
-interface OutInvoice { id: number; vchNumber: string; vchType: string; date: string; totalAmount: number; pending: number; dueDays: number }
+interface OutInvoice { id: number; vchNumber: string; vchType: string; date: string; totalAmount: number; pending: number; dueDays: number; skipAutoLink?: boolean; skipAutoLinkReason?: string | null }
 interface OutParty { name: string; totalPending: number; oldestDueDays: number; invoiceCount: number; onAccount: number; invoices: OutInvoice[] }
 interface OutReceipt { id: number; vchNumber: string; vchType: string; date: string; partyName: string; amount: number; linkedCash: number; carryOver: number; unallocated: number; daysSince: number; bankRef: string | null; instrumentNo: string | null; narration: string | null }
 interface OutResponse {
@@ -333,7 +333,8 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
       // can attach them together.
       if (typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files })) {
         try {
-          await (navigator as any).share({ title: `Outstanding — ${party.name}`, text, files })
+          // Image only — no text caption per user preference.
+          await (navigator as any).share({ title: `Outstanding — ${party.name}`, files })
           return
         } catch { return /* user cancelled */ }
       }
@@ -400,6 +401,12 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
                   <span className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchNumber}</span>
                   <span className="text-gray-500">{fmtDate(inv.date)}</span>
                   <span className="text-rose-600 dark:text-rose-400 font-semibold">{inv.dueDays}d</span>
+                  {inv.skipAutoLink && (
+                    <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300"
+                      title={inv.skipAutoLinkReason || 'Skipped from auto-link'}>
+                      🚫
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-right shrink-0">
@@ -493,17 +500,26 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
               {pageLabel && <span style={{ fontWeight: 400, color: '#000000' }}> — {pageLabel}</span>}
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #000000' }}>
+                  <th style={{ padding: '4px 0', textAlign: 'left', fontSize: 9, color: '#000000', fontWeight: 700, letterSpacing: 0.4, width: 18 }}></th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: 9, color: '#000000', fontWeight: 700, letterSpacing: 0.4 }}>Invoice No</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: 9, color: '#000000', fontWeight: 700, letterSpacing: 0.4 }}>Date</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'right', fontSize: 9, color: '#000000', fontWeight: 700, letterSpacing: 0.4 }}>Amount</th>
+                  <th style={{ padding: '4px 0', textAlign: 'right', fontSize: 9, color: '#000000', fontWeight: 700, letterSpacing: 0.4, width: 70 }}>Due</th>
+                </tr>
+              </thead>
               <tbody>
                 {cardInvoices.map(inv => (
                   <tr key={inv.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '4px 0', width: 18 }}>{bucketDot(inv.dueDays)}</td>
                     <td style={{ padding: '4px 6px', fontFamily: 'ui-monospace, SFMono-Regular, monospace', color: '#000000' }}>{inv.vchNumber}</td>
                     <td style={{ padding: '4px 6px', color: '#000000' }}>{fmtDateSlash(inv.date)}</td>
-                    <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600, color: '#000000' }}>
+                    <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 700, color: '#000000' }}>
                       ₹{fmtMoney(inv.pending)}
                     </td>
-                    <td style={{ padding: '4px 0', textAlign: 'right', color: '#000000', fontWeight: 600, width: 38 }}>
-                      {inv.dueDays}d
+                    <td style={{ padding: '4px 0', textAlign: 'right', color: '#000000', fontWeight: 600, width: 70 }}>
+                      {inv.dueDays} days
                     </td>
                   </tr>
                 ))}
@@ -518,6 +534,14 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
               On-account receipts ({onAccountReceipts.length})
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #000000' }}>
+                  <th style={{ padding: '4px 0', textAlign: 'left', fontSize: 9, color: '#000000', fontWeight: 700, letterSpacing: 0.4, width: 18 }}></th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: 9, color: '#000000', fontWeight: 700, letterSpacing: 0.4 }}>Date</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'right', fontSize: 9, color: '#000000', fontWeight: 700, letterSpacing: 0.4 }}>Amount</th>
+                  <th style={{ padding: '4px 0', textAlign: 'right', fontSize: 9, color: '#000000', fontWeight: 700, letterSpacing: 0.4, width: 110 }}>Pending</th>
+                </tr>
+              </thead>
               <tbody>
                 {onAccountReceipts.map(r => {
                   const partial = r.linkedCash > 0.5 || r.carryOver > 0.5
@@ -525,11 +549,11 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
                     <tr key={r.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                       <td style={{ padding: '4px 0', width: 18 }}>💰</td>
                       <td style={{ padding: '4px 6px', color: '#000000' }}>{fmtDateSlash(r.date)}</td>
-                      <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600, color: '#000000' }}>
+                      <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 700, color: '#000000' }}>
                         ₹{fmtMoney(r.amount)}
                       </td>
                       <td style={{ padding: '4px 0', textAlign: 'right', color: '#000000', width: 110, fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
-                        {partial ? `pend ₹${fmtMoney(r.unallocated)}` : ''}
+                        {partial ? `₹${fmtMoney(r.unallocated)}` : ''}
                       </td>
                     </tr>
                   )
@@ -560,6 +584,12 @@ function InvoiceCard({ inv, onClick }: { inv: OutInvoice & { partyName: string }
               {inv.vchNumber}
             </span>
             <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold">{inv.dueDays}d due</span>
+            {inv.skipAutoLink && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300"
+                title={inv.skipAutoLinkReason || 'Skipped from auto-link'}>
+                🚫 SKIPPED
+              </span>
+            )}
           </div>
           <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{inv.partyName}</div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400">{fmtDate(inv.date)}</div>

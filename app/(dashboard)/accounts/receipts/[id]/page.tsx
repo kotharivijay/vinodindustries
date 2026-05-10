@@ -27,6 +27,7 @@ interface Invoice {
   narration: string | null; reference: string | null; buyerPO: string | null; transporter: string | null; agentName: string | null
   lines: Line[]; ledgers: Ledger[]; allocations: Allocation[]
   allocated: number; tds: number; discount: number; consumed: number; pending: number
+  skipAutoLink?: boolean; skipAutoLinkReason?: string | null
 }
 interface Receipt {
   id: number; date: string; vchNumber: string; partyName: string; amount: number; narration: string | null
@@ -462,6 +463,29 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
   }
 
+  // Toggle the persistent skip-from-auto-link flag on this invoice.
+  // Same endpoint as the bulk sheet; flag survives Tally re-syncs.
+  async function toggleSkip() {
+    const skip = !inv.skipAutoLink
+    let reason: string | null = null
+    if (skip) {
+      const r = window.prompt('Skip reason (optional, e.g. "disputed quality"):') ?? null
+      if (r === null) return
+      reason = r.trim() || null
+    }
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/accounts/sales/${inv.id}/skip`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skip, reason }),
+      })
+      const d = await res.json()
+      if (!res.ok) return alert(d.error || 'Failed')
+      onChange()
+    } catch (e: any) { alert(e?.message || 'Network error') }
+    finally { setBusy(false) }
+  }
+
   // Unlinking always cascades — every receipt allocation for this
   // invoice is removed, not just the current one. Confirmation message
   // lists the other affected receipts so the action is never silent.
@@ -504,6 +528,12 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
             {myAlloc && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
                 ✓ Linked ₹{fmtMoney(myAlloc.allocatedAmount)}
+              </span>
+            )}
+            {inv.skipAutoLink && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300"
+                title={inv.skipAutoLinkReason || 'Skipped from auto-link'}>
+                🚫 SKIP{inv.skipAutoLinkReason ? ` · ${inv.skipAutoLinkReason}` : ''}
               </span>
             )}
           </div>
@@ -638,9 +668,19 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
                 🏷 Discount
               </button>
               <button onClick={() => setOpen(true)}
-                disabled={receiptRemaining <= 0}
+                disabled={receiptRemaining <= 0 || !!inv.skipAutoLink}
+                title={inv.skipAutoLink ? 'Invoice marked Skip — Allow to link first' : ''}
                 className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold">
                 🔗 Link
+              </button>
+              <button onClick={toggleSkip} disabled={busy}
+                title={inv.skipAutoLink ? 'Allow this bill to be auto-linked again' : 'Skip this bill from bulk-link FIFO'}
+                className={`text-[11px] px-2.5 py-1 rounded-full border font-semibold disabled:opacity-50 ${
+                  inv.skipAutoLink
+                    ? 'bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300'
+                    : 'bg-white dark:bg-gray-700 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20'
+                }`}>
+                {inv.skipAutoLink ? '✓ Allow' : '🚫 Skip'}
               </button>
             </>
           )}
