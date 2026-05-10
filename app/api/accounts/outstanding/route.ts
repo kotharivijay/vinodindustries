@@ -29,6 +29,7 @@ export async function GET(_req: NextRequest) {
     select: {
       id: true, vchNumber: true, vchType: true, date: true,
       partyName: true, totalAmount: true,
+      skipAutoLink: true, skipAutoLinkReason: true,
       allocations: { select: { allocatedAmount: true, tdsAmount: true, discountAmount: true } },
     },
   })
@@ -88,6 +89,8 @@ export async function GET(_req: NextRequest) {
         id: inv.id, vchNumber: inv.vchNumber, vchType: inv.vchType,
         date: inv.date, totalAmount: inv.totalAmount, pending: inv.pending,
         dueDays: dueDays(inv.date),
+        skipAutoLink: !!inv.skipAutoLink,
+        skipAutoLinkReason: inv.skipAutoLinkReason ?? null,
       }))
       .sort((a: any, b: any) => b.dueDays - a.dueDays || b.pending - a.pending)
     return {

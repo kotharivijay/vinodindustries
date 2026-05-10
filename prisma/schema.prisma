@@ -882,6 +882,12 @@ model KsiSalesInvoice {
   buyerPO       String?
   transporter   String?
   agentName     String?
+  // User-driven skip flag: when true, bulk-link FIFO passes over this
+  // invoice. Survives Tally re-syncs because the sync route only writes
+  // sync-derived fields on upsert. Pattern mirrors KsiHdfcReceipt.hidden.
+  skipAutoLink       Boolean   @default(false)
+  skipAutoLinkReason String?
+  skipAutoLinkAt     DateTime?
   lastSynced    DateTime  @default(now())
   createdAt     DateTime  @default(now())
 
@@ -893,6 +899,7 @@ model KsiSalesInvoice {
   @@index([fy, partyName])
   @@index([fy, date])
   @@index([partyName, date])
+  @@index([skipAutoLink])
 }
 
 // Item-level lines for a sales invoice — keeps the raw qty/rate strings

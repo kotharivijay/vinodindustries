@@ -165,6 +165,9 @@ export async function POST(req: NextRequest) {
       taxableAmount: inv.taxableAmount,
       partyGstin: inv.partyGstin,
       pending: pendingPerInvoice[inv.id],
+      // Persistent skip flag — bulk-link FIFO passes over these.
+      skipAutoLink: !!inv.skipAutoLink,
+      skipAutoLinkReason: inv.skipAutoLinkReason ?? null,
     }))
 
   // ── 3a. Dry-run: build FIFO plan and return ─────────────────────────
@@ -206,6 +209,10 @@ export async function POST(req: NextRequest) {
     const plan: PlanRow[] = []
     let i = 0
     for (const inv of pendingInvoices) {
+      // Skipped invoices are passed over by FIFO — receipt cash flows
+      // to the next eligible invoice. They still appear in the dryRun
+      // response so the client can render the badge + reason.
+      if (inv.skipAutoLink) continue
       let need = inv.pending
       const splits: AllocSplit[] = []
       while (need > 0 && i < sortedReceipts.length) {
@@ -272,6 +279,15 @@ export async function POST(req: NextRequest) {
     if (invPending === undefined) {
       return NextResponse.json({
         error: `Invoice ${row.invoiceId} not in candidate set (party / advance filter)`,
+      }, { status: 400 })
+    }
+    // Reject any caller-supplied row pointing at a skipped invoice —
+    // the user must explicitly unskip it first.
+    const invRow = invoices.find((i: any) => i.id === row.invoiceId)
+    if (invRow?.skipAutoLink) {
+      return NextResponse.json({
+        error: `Invoice ${invRow.vchNumber} is marked Skip — unskip it first.`,
+        skippedInvoiceId: row.invoiceId,
       }, { status: 400 })
     }
     let cashForInvoice = 0
