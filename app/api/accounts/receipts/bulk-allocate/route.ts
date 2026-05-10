@@ -94,18 +94,33 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 2. Candidate invoices ───────────────────────────────────────────
+  // Default candidate set = invoices dated *strictly before* the newest
+  // selected receipt (= "old" bills the receipt could plausibly settle).
+  // "Advance invoices" toggle widens the set to include invoices dated
+  // on-or-after the newest receipt — the typical advance-payment case.
   const newestReceiptDate = receipts.reduce(
     (d: Date, r: any) => (r.date.getTime() > d.getTime() ? r.date : d),
     new Date(0),
   )
-  const invoices = await db.ksiSalesInvoice.findMany({
-    where: {
-      partyName: { contains: partyKey, mode: 'insensitive' },
-      ...(includeAdvance ? {} : { date: { lte: newestReceiptDate } }),
-    },
+  const partyInvoices = await db.ksiSalesInvoice.findMany({
+    where: { partyName: { contains: partyKey, mode: 'insensitive' } },
     include: { allocations: true },
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
   })
+  // Partition into old vs advance so we can return an advanceCount
+  // even when the toggle is off (used to label the pill).
+  const newestMs = newestReceiptDate.getTime()
+  const advancePartyInvoices = partyInvoices.filter((inv: any) => inv.date.getTime() >= newestMs)
+  const advancePendingCount = advancePartyInvoices.filter((inv: any) => {
+    const consumed = (inv.allocations || []).reduce(
+      (s: number, a: any) => s + (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0),
+      0,
+    )
+    return inv.totalAmount - consumed > 0.5
+  }).length
+  const invoices = includeAdvance
+    ? partyInvoices
+    : partyInvoices.filter((inv: any) => inv.date.getTime() < newestMs)
 
   const pendingPerInvoice: Record<number, number> = {}
   for (const inv of invoices) {
@@ -213,6 +228,7 @@ export async function POST(req: NextRequest) {
       })),
       invoices: pendingInvoices,
       includeAdvance,
+      advanceCount: advancePendingCount,
     })
   }
 
