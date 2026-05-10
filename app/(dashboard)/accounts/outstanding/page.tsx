@@ -230,6 +230,23 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
 }) {
   const shareCardRef = useRef<HTMLDivElement>(null)
   const [sharing, setSharing] = useState(false)
+  // Drives what subset of the party's invoices the off-screen share
+  // card renders for the current page when generating a multi-page
+  // PNG. Null = show everything (default UI snapshot).
+  const [pageRender, setPageRender] = useState<{
+    invoices: OutInvoice[]
+    pageIdx: number
+    totalPages: number
+    includeOnAccount: boolean
+  } | null>(null)
+  // Tuned so the page comfortably fits a portrait mobile screen with
+  // header + three summary chips + footer.
+  const ROWS_PER_SHARE_PAGE = 16
+  const cardInvoices = pageRender?.invoices ?? party.invoices
+  const cardShowOnAccount = pageRender ? pageRender.includeOnAccount : true
+  const pageLabel = pageRender && pageRender.totalPages > 1
+    ? `Page ${pageRender.pageIdx + 1} of ${pageRender.totalPages}`
+    : null
   function buildShareText() {
     const lines: string[] = []
     lines.push(`📋 *Outstanding* — ${party.name}`)
@@ -274,45 +291,76 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
     const text = buildShareText()
     setSharing(true)
     try {
-      // Render the hidden card to PNG and share as a file. Falls back
-      // to text-only share if the browser can't share files (most
-      // desktop browsers).
-      if (shareCardRef.current) {
-        const html2canvas = (await import('html2canvas')).default
-        const canvas = await html2canvas(shareCardRef.current, {
-          scale: 2,
-          backgroundColor: '#ffffff',
-          logging: false,
-          useCORS: true,
+      if (!shareCardRef.current) throw new Error('share card not mounted')
+      const html2canvas = (await import('html2canvas')).default
+
+      // Slice the invoice list into ~16-row pages so the PNG height
+      // fits a portrait mobile screen. The on-account section is
+      // appended only on the last page so it shows up exactly once.
+      const safeName = party.name.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')
+      const chunks: OutInvoice[][] = []
+      for (let i = 0; i < party.invoices.length; i += ROWS_PER_SHARE_PAGE) {
+        chunks.push(party.invoices.slice(i, i + ROWS_PER_SHARE_PAGE))
+      }
+      // No invoices but maybe on-account → still produce one page.
+      if (chunks.length === 0) chunks.push([])
+
+      const files: File[] = []
+      for (let i = 0; i < chunks.length; i++) {
+        const isLast = i === chunks.length - 1
+        setPageRender({
+          invoices: chunks[i], pageIdx: i, totalPages: chunks.length,
+          includeOnAccount: isLast && onAccountReceipts.length > 0,
         })
-        const blob: Blob | null = await new Promise(resolve => canvas.toBlob(b => resolve(b), 'image/png'))
+        // Wait two animation frames + a microtask so React commits the
+        // state into the off-screen DOM before html2canvas captures it.
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(null))))
+        const canvas = await html2canvas(shareCardRef.current!, {
+          scale: 2, backgroundColor: '#ffffff', logging: false, useCORS: true,
+        })
+        const blob: Blob | null = await new Promise(r => canvas.toBlob(b => r(b), 'image/png'))
         if (blob) {
-          const safeName = party.name.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')
-          const file = new File([blob], `outstanding-${safeName}.png`, { type: 'image/png' })
-          if (typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files: [file] })) {
-            try {
-              await (navigator as any).share({ title: `Outstanding — ${party.name}`, text, files: [file] })
-              return
-            } catch { /* user cancelled — don't fall through */ return }
-          }
-          // Browser can't share files — download the PNG so the user
-          // can attach it manually to WhatsApp.
-          const url = URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = url
-          a.download = file.name
-          document.body.appendChild(a); a.click(); a.remove()
-          URL.revokeObjectURL(url)
-          return
+          const suffix = chunks.length > 1 ? `-p${i + 1}of${chunks.length}` : ''
+          files.push(new File([blob], `outstanding-${safeName}${suffix}.png`, { type: 'image/png' }))
         }
       }
+      setPageRender(null)
+
+      if (files.length === 0) throw new Error('no PNG generated')
+
+      // Native share with files — supports multi-file on iOS Safari 15+
+      // and Chrome 102+ Android. Send all pages in one go so WhatsApp
+      // can attach them together.
+      if (typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files })) {
+        try {
+          await (navigator as any).share({ title: `Outstanding — ${party.name}`, text, files })
+          return
+        } catch { return /* user cancelled */ }
+      }
+      // Some browsers only allow one file; try one-by-one.
+      if (files.length > 1 && typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files: [files[0]] })) {
+        for (const f of files) {
+          try { await (navigator as any).share({ title: f.name, files: [f] }) } catch { return }
+        }
+        return
+      }
+      // Fallback: download all PNGs sequentially.
+      for (const f of files) {
+        const url = URL.createObjectURL(f)
+        const a = document.createElement('a')
+        a.href = url; a.download = f.name
+        document.body.appendChild(a); a.click(); a.remove()
+        URL.revokeObjectURL(url)
+        await new Promise(r => setTimeout(r, 200))
+      }
+      return
     } catch (err: any) {
       console.error('Image share failed', err)
-      // fall through to text share
     } finally {
       setSharing(false)
+      setPageRender(null)
     }
-    // Fallback: text-only share
+    // Last-resort text fallback
     if (typeof navigator !== 'undefined' && (navigator as any).share) {
       try { await (navigator as any).share({ title: `Outstanding — ${party.name}`, text }); return } catch { /* */ }
     }
@@ -403,45 +451,58 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
          doesn't see it. Inline styles keep html2canvas happy (no CSS
          vars or unsupported colour functions). */}
       <div ref={shareCardRef}
-        style={{ position: 'fixed', left: '-9999px', top: 0, width: 480, background: '#ffffff', color: '#111111',
+        style={{ position: 'fixed', left: '-9999px', top: 0, width: 480, background: '#ffffff', color: '#000000',
           padding: 20, fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', boxSizing: 'border-box' }}
         aria-hidden>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: '#6b7280' }}>OUTSTANDING</div>
-          <div style={{ fontSize: 10, color: '#6b7280' }}>{fmtDateSlash(new Date().toISOString())}</div>
+        {/* Firm header — repeated on every page so each PNG is
+           self-identifying when shared as separate images. */}
+        <div style={{ borderBottom: '2px solid #000000', paddingBottom: 6, marginBottom: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: 0.5, color: '#000000' }}>
+            KOTHARI SYNTHETIC INDUSTRIES
+          </div>
+          <div style={{ fontSize: 10, color: '#000000', marginTop: 2 }}>Outstanding Statement</div>
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 10 }}>{party.name}</div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1.2, color: '#000000' }}>OUTSTANDING</div>
+          <div style={{ fontSize: 10, color: '#000000' }}>
+            {fmtDateSlash(new Date().toISOString())}
+            {pageLabel && <span style={{ marginLeft: 8, fontWeight: 700 }}>· {pageLabel}</span>}
+          </div>
+        </div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: '#000000', marginBottom: 10 }}>{party.name}</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
           <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, padding: '6px 8px' }}>
-            <div style={{ fontSize: 9, color: '#9f1239', textTransform: 'uppercase', letterSpacing: 0.6 }}>Pending</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#9f1239' }}>₹{fmtMoney(party.totalPending)}</div>
+            <div style={{ fontSize: 9, color: '#000000', textTransform: 'uppercase', letterSpacing: 0.6 }}>Pending</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#000000' }}>₹{fmtMoney(party.totalPending)}</div>
           </div>
           <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 8, padding: '6px 8px' }}>
-            <div style={{ fontSize: 9, color: '#3730a3', textTransform: 'uppercase', letterSpacing: 0.6 }}>On-account</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#3730a3' }}>₹{fmtMoney(party.onAccount)}</div>
+            <div style={{ fontSize: 9, color: '#000000', textTransform: 'uppercase', letterSpacing: 0.6 }}>On-account</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#000000' }}>₹{fmtMoney(party.onAccount)}</div>
           </div>
           <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, padding: '6px 8px' }}>
-            <div style={{ fontSize: 9, color: '#065f46', textTransform: 'uppercase', letterSpacing: 0.6 }}>Net receivable</div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#065f46' }}>₹{fmtMoney(party.totalPending - party.onAccount)}</div>
+            <div style={{ fontSize: 9, color: '#000000', textTransform: 'uppercase', letterSpacing: 0.6 }}>Net receivable</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#000000' }}>₹{fmtMoney(party.totalPending - party.onAccount)}</div>
           </div>
         </div>
 
-        {party.invoices.length > 0 && (
+        {cardInvoices.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#000000', marginBottom: 4 }}>
               Invoices ({party.invoiceCount}) · oldest first
+              {pageLabel && <span style={{ fontWeight: 400, color: '#000000' }}> — {pageLabel}</span>}
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
               <tbody>
-                {party.invoices.map(inv => (
+                {cardInvoices.map(inv => (
                   <tr key={inv.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '4px 0', width: 18 }}>{bucketDot(inv.dueDays)}</td>
-                    <td style={{ padding: '4px 6px', fontFamily: 'ui-monospace, SFMono-Regular, monospace', color: '#1e3a8a' }}>{inv.vchNumber}</td>
-                    <td style={{ padding: '4px 6px', color: '#6b7280' }}>{fmtDateSlash(inv.date)}</td>
-                    <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600 }}>
+                    <td style={{ padding: '4px 6px', fontFamily: 'ui-monospace, SFMono-Regular, monospace', color: '#000000' }}>{inv.vchNumber}</td>
+                    <td style={{ padding: '4px 6px', color: '#000000' }}>{fmtDateSlash(inv.date)}</td>
+                    <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600, color: '#000000' }}>
                       ₹{fmtMoney(inv.pending)}
                     </td>
-                    <td style={{ padding: '4px 0', textAlign: 'right', color: '#b91c1c', fontWeight: 600, width: 38 }}>
+                    <td style={{ padding: '4px 0', textAlign: 'right', color: '#000000', fontWeight: 600, width: 38 }}>
                       {inv.dueDays}d
                     </td>
                   </tr>
@@ -451,9 +512,9 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
           </div>
         )}
 
-        {onAccountReceipts.length > 0 && (
+        {cardShowOnAccount && onAccountReceipts.length > 0 && (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#000000', marginBottom: 4 }}>
               On-account receipts ({onAccountReceipts.length})
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
@@ -463,11 +524,11 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
                   return (
                     <tr key={r.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                       <td style={{ padding: '4px 0', width: 18 }}>💰</td>
-                      <td style={{ padding: '4px 6px', color: '#6b7280' }}>{fmtDateSlash(r.date)}</td>
-                      <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600 }}>
+                      <td style={{ padding: '4px 6px', color: '#000000' }}>{fmtDateSlash(r.date)}</td>
+                      <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 600, color: '#000000' }}>
                         ₹{fmtMoney(r.amount)}
                       </td>
-                      <td style={{ padding: '4px 0', textAlign: 'right', color: '#3730a3', width: 110, fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
+                      <td style={{ padding: '4px 0', textAlign: 'right', color: '#000000', width: 110, fontFamily: 'ui-monospace, SFMono-Regular, monospace' }}>
                         {partial ? `pend ₹${fmtMoney(r.unallocated)}` : ''}
                       </td>
                     </tr>
@@ -478,8 +539,8 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
           </div>
         )}
 
-        <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#9ca3af' }}>
-          <span>KSI · Outstanding Statement</span>
+        <div style={{ borderTop: '1px solid #000000', paddingTop: 6, display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#000000' }}>
+          <span>KSI · Outstanding Statement{pageLabel ? ` · ${pageLabel}` : ''}</span>
           <span>Generated {fmtDateSlash(new Date().toISOString())}</span>
         </div>
       </div>
