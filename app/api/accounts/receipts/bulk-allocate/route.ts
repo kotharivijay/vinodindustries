@@ -94,10 +94,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 2. Candidate invoices ───────────────────────────────────────────
-  // Default candidate set = invoices dated *strictly before* the newest
-  // selected receipt (= "old" bills the receipt could plausibly settle).
-  // "Advance invoices" toggle widens the set to include invoices dated
-  // on-or-after the newest receipt — the typical advance-payment case.
+  // Default candidate set = invoices dated *on or before* the newest
+  // selected receipt — same-day bills are "old" (most users settle a
+  // bill issued same-day with the same receipt).
+  // "Advance invoices" toggle widens to include invoices dated
+  // *strictly after* the newest receipt — the genuine advance-payment
+  // case where the bill hasn't been issued yet.
   const newestReceiptDate = receipts.reduce(
     (d: Date, r: any) => (r.date.getTime() > d.getTime() ? r.date : d),
     new Date(0),
@@ -108,9 +110,10 @@ export async function POST(req: NextRequest) {
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
   })
   // Partition into old vs advance so we can return an advanceCount
-  // even when the toggle is off (used to label the pill).
+  // even when the toggle is off (used to label the pill). Boundaries
+  // are mutually exclusive: <= goes to "old", > goes to "advance".
   const newestMs = newestReceiptDate.getTime()
-  const advancePartyInvoices = partyInvoices.filter((inv: any) => inv.date.getTime() >= newestMs)
+  const advancePartyInvoices = partyInvoices.filter((inv: any) => inv.date.getTime() > newestMs)
   const advancePendingCount = advancePartyInvoices.filter((inv: any) => {
     const consumed = (inv.allocations || []).reduce(
       (s: number, a: any) => s + (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0),
@@ -120,7 +123,7 @@ export async function POST(req: NextRequest) {
   }).length
   const invoices = includeAdvance
     ? partyInvoices
-    : partyInvoices.filter((inv: any) => inv.date.getTime() < newestMs)
+    : partyInvoices.filter((inv: any) => inv.date.getTime() <= newestMs)
 
   const pendingPerInvoice: Record<number, number> = {}
   for (const inv of invoices) {

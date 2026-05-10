@@ -1015,7 +1015,7 @@ function BulkLinkSheet({
               </>
             )}
             <button onClick={() => setIncludeAdvance(v => !v)}
-              title="Advance invoices = pending bills dated on or after the newest selected receipt"
+              title="Advance invoices = pending bills dated AFTER the newest selected receipt (same-day bills are already in the default set)"
               className={`px-2 py-0.5 rounded-full border transition ${
                 includeAdvance
                   ? 'bg-amber-100 dark:bg-amber-900/40 border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-200'
@@ -1026,7 +1026,7 @@ function BulkLinkSheet({
                 : `+ Advance invoices${data?.advanceCount ? ` (${data.advanceCount})` : ''}`}
             </button>
             <span className="text-gray-400 text-[10px]">
-              {includeAdvance ? 'incl. bills dated ≥ newest receipt' : 'bills dated < newest receipt'}
+              {includeAdvance ? 'incl. bills dated > newest receipt' : 'bills dated ≤ newest receipt'}
             </span>
           </div>
         </div>
