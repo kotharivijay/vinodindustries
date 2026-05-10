@@ -55,9 +55,19 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   }
 
   // Pull invoices for the party (case-insensitive partial match: Tally
-  // sometimes uses slightly different capitalisations).
+  // sometimes uses slightly different capitalisations) AND any invoice
+  // that has an allocation to this receipt — even if its party name
+  // doesn't match. Catches mis-linked allocations (e.g. when a fuzzy
+  // party search at bulk-link time pulled in cross-party bills) so
+  // the user can always see and unlink them.
+  const linkedInvoiceIds = (receipt.allocations || []).map((a: any) => a.invoiceId)
   const invoices = await db.ksiSalesInvoice.findMany({
-    where: { partyName: { contains: receipt.partyName.split('(')[0].trim(), mode: 'insensitive' } },
+    where: {
+      OR: [
+        { partyName: { contains: receipt.partyName.split('(')[0].trim(), mode: 'insensitive' } },
+        ...(linkedInvoiceIds.length > 0 ? [{ id: { in: linkedInvoiceIds } }] : []),
+      ],
+    },
     include: {
       lines: { orderBy: { lineNo: 'asc' } },
       ledgers: true,

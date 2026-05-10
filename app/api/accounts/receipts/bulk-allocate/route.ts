@@ -86,6 +86,21 @@ export async function POST(req: NextRequest) {
     }, { status: 400 })
   }
 
+  // Stricter check: all selected receipts must share the same canonical
+  // party name. The user's loose search query (e.g. "Kesh") could
+  // otherwise pick up "Keshav Synthetics" + "Keshari Textile" together
+  // and the FIFO would happily cross-link them. Canonical = name with
+  // any "(Branch)" suffix dropped, whitespace collapsed, lower-cased.
+  const canonicalize = (n: string) => n.split('(')[0].trim().toLowerCase().replace(/\s+/g, ' ')
+  const receiptCanonical = new Set<string>(receipts.map((r: any) => canonicalize(r.partyName)))
+  if (receiptCanonical.size > 1) {
+    return NextResponse.json({
+      error: `Selected receipts span ${receiptCanonical.size} different parties: ${[...receiptCanonical].join(', ')}. Refine the party search to one party first.`,
+      receiptParties: [...receiptCanonical],
+    }, { status: 400 })
+  }
+  const truePartyCanonical: string = [...receiptCanonical][0] ?? ''
+
   const conflicts = receipts
     .filter((r: any) => r.allocations.length > 0)
     .map((r: any) => ({ receiptId: r.id, vchNumber: r.vchNumber, existingLinks: r.allocations.length }))
@@ -104,10 +119,19 @@ export async function POST(req: NextRequest) {
     (d: Date, r: any) => (r.date.getTime() > d.getTime() ? r.date : d),
     new Date(0),
   )
-  const partyInvoices = await db.ksiSalesInvoice.findMany({
+  const partyInvoicesRaw = await db.ksiSalesInvoice.findMany({
     where: { partyName: { contains: partyKey, mode: 'insensitive' } },
     include: { allocations: true },
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
+  })
+  // Tighten with canonical match so a coarse "Kesh" search doesn't
+  // pull in another party with the same prefix. Bidirectional: an
+  // invoice party whose canonical name CONTAINS the receipts' true
+  // canonical (or vice-versa) counts as a match — covers branch
+  // suffixes and "M/s" prefixes.
+  const partyInvoices = partyInvoicesRaw.filter((inv: any) => {
+    const c = canonicalize(inv.partyName)
+    return c === truePartyCanonical || c.includes(truePartyCanonical) || truePartyCanonical.includes(c)
   })
   // Partition into old vs advance so we can return an advanceCount
   // even when the toggle is off (used to label the pill). Boundaries
