@@ -581,6 +581,16 @@ export default function ReceiptsPage() {
                           linked ₹{fmtMoney(r.linkedCash)}
                         </div>
                       )}
+                      {r.linkedTds > 0 && (
+                        <div className="text-[10px] text-amber-600 dark:text-amber-400 tabular-nums" title="Total TDS across linked invoices">
+                          + TDS ₹{fmtMoney(r.linkedTds)}
+                        </div>
+                      )}
+                      {r.linkedDiscount > 0 && (
+                        <div className="text-[10px] text-rose-600 dark:text-rose-400 tabular-nums" title="Total discount across linked invoices">
+                          + disc ₹{fmtMoney(r.linkedDiscount)}
+                        </div>
+                      )}
                       {carryOver > 0 && (
                         <div className="text-[10px] text-gray-500 dark:text-gray-400 italic tabular-nums" title="Carry-over to prior FY (e.g. FY 24-25)">
                           carry-over ₹{fmtMoney(carryOver)}
