@@ -253,7 +253,12 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
       lines.push('')
       lines.push(`*On-account receipts:*`)
       for (const r of onAccountReceipts) {
-        lines.push(`💰 ${fmtDateSlash(r.date)}  ₹${fmtMoney(r.unallocated)}`)
+        // Fully unallocated → just date + amount.
+        // Partially allocated (linked > 0 or carry-over > 0) → also
+        // show the pending portion next to the original amount.
+        const partial = r.linkedCash > 0.5 || r.carryOver > 0.5
+        const tail = partial ? `  pend ₹${fmtMoney(r.unallocated)}` : ''
+        lines.push(`💰 ${fmtDateSlash(r.date)}  ₹${fmtMoney(r.amount)}${tail}`)
       }
     }
     if (party.invoiceCount > 0 && party.onAccount > 0) {
