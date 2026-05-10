@@ -33,6 +33,7 @@ export default function OutstandingPage() {
   const [page, setPage] = useState(0)
   const [bucketFilter, setBucketFilter] = useState<DueBucket | 'all'>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [partyQuery, setPartyQuery] = useState('')
 
   function toggleExpand(name: string) {
     setExpanded(prev => {
@@ -46,9 +47,20 @@ export default function OutstandingPage() {
   function setTabAndReset(t: Tab) { setTab(t); setPage(0) }
   function setBucketAndReset(b: DueBucket | 'all') { setBucketFilter(b); setPage(0) }
 
-  const parties = data?.parties ?? []
-  const receipts = data?.receipts ?? []
+  const allParties = data?.parties ?? []
+  const allReceipts = data?.receipts ?? []
   const totals = data?.totals
+  const q = partyQuery.trim().toLowerCase()
+
+  // Search filter is applied to all three tabs by partyName.
+  const parties = useMemo(
+    () => q ? allParties.filter(p => p.name.toLowerCase().includes(q)) : allParties,
+    [allParties, q],
+  )
+  const receipts = useMemo(
+    () => q ? allReceipts.filter(r => r.partyName.toLowerCase().includes(q)) : allReceipts,
+    [allReceipts, q],
+  )
 
   const flatInvoices = useMemo(() => {
     const list: (OutInvoice & { partyName: string })[] = []
@@ -99,6 +111,20 @@ export default function OutstandingPage() {
         </div>
       )}
 
+      {/* Party search */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <input type="search" value={partyQuery}
+          onChange={e => { setPartyQuery(e.target.value); setPage(0) }}
+          placeholder="🔍 Search party…"
+          className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[12px] placeholder-gray-400" />
+        {partyQuery && (
+          <button onClick={() => { setPartyQuery(''); setPage(0) }}
+            className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400">
+            ✕ Clear
+          </button>
+        )}
+      </div>
+
       {/* Tabs */}
       <div className="flex gap-1.5 mb-3 text-[11px] flex-wrap">
         <TabBtn active={tab === 'party'} onClick={() => setTabAndReset('party')}>👥 Party-wise ({parties.length})</TabBtn>
@@ -123,8 +149,10 @@ export default function OutstandingPage() {
         {tab === 'party' && paged.items.map((p: OutParty) => (
           <PartyCard key={p.name} party={p}
             isExpanded={expanded.has(p.name)}
+            onAccountReceipts={allReceipts.filter(r => r.partyName === p.name)}
             onToggle={() => toggleExpand(p.name)}
             onInvoiceClick={inv => router.push(`/accounts/sales/${inv.id}`)}
+            onReceiptClick={r => router.push(`/accounts/receipts/${r.id}?view=all`)}
           />
         ))}
         {tab === 'invoice' && paged.items.map((inv: OutInvoice & { partyName: string }) => (
@@ -191,8 +219,9 @@ function bucketDot(days: number) {
   return DUE_BUCKETS.find(b => b.id === bucketFor(days))?.color ?? '⚪'
 }
 
-function PartyCard({ party, isExpanded, onToggle, onInvoiceClick }: {
-  party: OutParty; isExpanded: boolean; onToggle: () => void; onInvoiceClick: (inv: OutInvoice) => void
+function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceClick, onReceiptClick }: {
+  party: OutParty; isExpanded: boolean; onAccountReceipts: OutReceipt[];
+  onToggle: () => void; onInvoiceClick: (inv: OutInvoice) => void; onReceiptClick: (r: OutReceipt) => void
 }) {
   function buildShareText() {
     const lines: string[] = []
@@ -207,6 +236,13 @@ function PartyCard({ party, isExpanded, onToggle, onInvoiceClick }: {
       for (const inv of party.invoices) {
         const dot = bucketDot(inv.dueDays)
         lines.push(`${dot} ${inv.dueDays}d  ${inv.vchType} ${inv.vchNumber}  ${fmtDate(inv.date)}  ₹${fmtMoney(inv.pending)}`)
+      }
+    }
+    if (onAccountReceipts.length > 0) {
+      lines.push('')
+      lines.push(`*On-account receipts:*`)
+      for (const r of onAccountReceipts) {
+        lines.push(`💰 #${r.vchNumber}  ${fmtDate(r.date)}  ₹${fmtMoney(r.unallocated)} (of ₹${fmtMoney(r.amount)})`)
       }
     }
     if (party.invoiceCount > 0 && party.onAccount > 0) {
@@ -267,9 +303,34 @@ function PartyCard({ party, isExpanded, onToggle, onInvoiceClick }: {
               </div>
             </button>
           ))}
-          {party.onAccount > 0 && (
-            <div className="text-[10px] text-indigo-600 dark:text-indigo-400 italic mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700">
-              💰 On-account ₹{fmtMoney(party.onAccount)} — cash unallocated; can settle the bills above.
+          {onAccountReceipts.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700 space-y-0.5">
+              <div className="text-[10px] text-indigo-700 dark:text-indigo-300 font-semibold">
+                💰 On-account · ₹{fmtMoney(party.onAccount)}
+              </div>
+              {onAccountReceipts.map(r => (
+                <button key={r.id} onClick={() => onReceiptClick(r)}
+                  className="w-full text-left flex items-start justify-between gap-2 py-1 px-1.5 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-[11px]">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-mono text-emerald-700 dark:text-emerald-300">#{r.vchNumber}</span>
+                      <span className="text-gray-500">{fmtDate(r.date)}</span>
+                      <span className="text-gray-400">{r.daysSince}d ago</span>
+                    </div>
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                      Receipt ₹{fmtMoney(r.amount)}
+                      {r.linkedCash > 0 && <> · linked ₹{fmtMoney(r.linkedCash)}</>}
+                      {r.carryOver > 0 && <> · ⏪ ₹{fmtMoney(r.carryOver)}</>}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-bold text-indigo-700 dark:text-indigo-400 tabular-nums">
+                      ₹{fmtMoney(r.unallocated)}
+                    </div>
+                    <div className="text-[9px] text-emerald-600 dark:text-emerald-400">→ Allocate</div>
+                  </div>
+                </button>
+              ))}
             </div>
           )}
           <div className="flex justify-end pt-1.5">
