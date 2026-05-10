@@ -13,6 +13,11 @@ const fmtDate = (iso: string) => {
   const d = new Date(iso)
   return `${String(d.getDate()).padStart(2, '0')}-${d.toLocaleString('en-IN', { month: 'short' })}-${String(d.getFullYear()).slice(2)}`
 }
+// dd/mm/yyyy — used in WhatsApp share text per user preference.
+const fmtDateSlash = (iso: string) => {
+  const d = new Date(iso)
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
 
 interface OutInvoice { id: number; vchNumber: string; vchType: string; date: string; totalAmount: number; pending: number; dueDays: number }
 interface OutParty { name: string; totalPending: number; oldestDueDays: number; invoiceCount: number; onAccount: number; invoices: OutInvoice[] }
@@ -226,23 +231,29 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
   function buildShareText() {
     const lines: string[] = []
     lines.push(`📋 *Outstanding* — ${party.name}`)
-    lines.push(`As of ${fmtDate(new Date().toISOString())}`)
+    lines.push(`As of ${fmtDateSlash(new Date().toISOString())}`)
     lines.push('')
     lines.push(`*Pending: ₹${fmtMoney(party.totalPending)}* across ${party.invoiceCount} invoice${party.invoiceCount === 1 ? '' : 's'}`)
     if (party.onAccount > 0) lines.push(`*On-account: ₹${fmtMoney(party.onAccount)}* (cash sitting unallocated)`)
     lines.push('')
     if (party.invoices.length > 0) {
       lines.push(`*Invoices (oldest first):*`)
+      // Voucher type dropped, date is dd/mm/yyyy, days moved to the
+      // last column. Padding keeps amounts and days aligned in
+      // monospaced WhatsApp rendering.
       for (const inv of party.invoices) {
         const dot = bucketDot(inv.dueDays)
-        lines.push(`${dot} ${inv.dueDays}d  ${inv.vchType} ${inv.vchNumber}  ${fmtDate(inv.date)}  ₹${fmtMoney(inv.pending)}`)
+        const num = inv.vchNumber.padEnd(13)
+        const date = fmtDateSlash(inv.date)
+        const amt = `₹${fmtMoney(inv.pending)}`.padEnd(12)
+        lines.push(`${dot} ${num} ${date}  ${amt} ${String(inv.dueDays).padStart(3)}d`)
       }
     }
     if (onAccountReceipts.length > 0) {
       lines.push('')
       lines.push(`*On-account receipts:*`)
       for (const r of onAccountReceipts) {
-        lines.push(`💰 #${r.vchNumber}  ${fmtDate(r.date)}  ₹${fmtMoney(r.unallocated)} (of ₹${fmtMoney(r.amount)})`)
+        lines.push(`💰 ${fmtDateSlash(r.date)}  ₹${fmtMoney(r.unallocated)}`)
       }
     }
     if (party.invoiceCount > 0 && party.onAccount > 0) {
