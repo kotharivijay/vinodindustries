@@ -97,18 +97,15 @@ export default function OutstandingPage() {
 
       {totals && (
         <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-3 mb-3">
-          <div className="grid grid-cols-3 gap-2 text-center text-[10px]">
+          <div className="grid grid-cols-2 gap-2 text-center text-[10px]">
             <div>
-              <div className="text-gray-500 dark:text-gray-400">Outstanding</div>
-              <div className="text-rose-700 dark:text-rose-400 font-bold tabular-nums">₹{fmtMoney(totals.outstanding)}</div>
+              <div className="text-gray-500 dark:text-gray-400">Outstanding (net of on-account)</div>
+              <div className="text-rose-700 dark:text-rose-400 font-bold tabular-nums">₹{fmtMoney(totals.netReceivable)}</div>
+              <div className="text-[9px] text-gray-400 mt-0.5">gross ₹{fmtMoney(totals.outstanding)}</div>
             </div>
             <div>
               <div className="text-gray-500 dark:text-gray-400">On-account</div>
               <div className="text-indigo-700 dark:text-indigo-400 font-bold tabular-nums">₹{fmtMoney(totals.onAccount)}</div>
-            </div>
-            <div>
-              <div className="text-gray-500 dark:text-gray-400">Net receivable</div>
-              <div className="text-emerald-700 dark:text-emerald-400 font-bold tabular-nums">₹{fmtMoney(totals.netReceivable)}</div>
             </div>
           </div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 text-center">
@@ -253,7 +250,8 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
     lines.push(`📋 *Outstanding* — ${party.name}`)
     lines.push(`As of ${fmtDateSlash(new Date().toISOString())}`)
     lines.push('')
-    lines.push(`*Pending: ₹${fmtMoney(party.totalPending)}* across ${party.invoiceCount} invoice${party.invoiceCount === 1 ? '' : 's'}`)
+    const netDue = party.totalPending - party.onAccount
+    lines.push(`*Outstanding: ₹${fmtMoney(netDue)}* (gross ₹${fmtMoney(party.totalPending)} across ${party.invoiceCount} invoice${party.invoiceCount === 1 ? '' : 's'})`)
     if (party.onAccount > 0) lines.push(`*On-account: ₹${fmtMoney(party.onAccount)}* (cash sitting unallocated)`)
     lines.push('')
     if (party.invoices.length > 0) {
@@ -386,7 +384,7 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
             </div>
           </div>
           <div className="text-right shrink-0">
-            <div className="text-base font-bold text-rose-700 dark:text-rose-400 tabular-nums">₹{fmtMoney(party.totalPending)}</div>
+            <div className="text-base font-bold text-rose-700 dark:text-rose-400 tabular-nums">₹{fmtMoney(party.totalPending - party.onAccount)}</div>
             <div className="text-[10px] text-gray-400">{isExpanded ? '▲' : '▼'}</div>
           </div>
         </div>
