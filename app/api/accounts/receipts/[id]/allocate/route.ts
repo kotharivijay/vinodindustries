@@ -17,8 +17,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!Number.isFinite(invoiceId) || !Number.isFinite(allocatedAmount) || allocatedAmount <= 0) {
     return NextResponse.json({ error: 'invoiceId + positive allocatedAmount required' }, { status: 400 })
   }
-  const tds = Number.isFinite(tdsAmount) && tdsAmount > 0 ? Number(tdsAmount) : 0
-  const disc = Number.isFinite(discountAmount) && discountAmount > 0 ? Number(discountAmount) : 0
   const ratePct = Number.isFinite(tdsRatePct) ? Number(tdsRatePct) : null
 
   const db = prisma as any
@@ -33,6 +31,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     include: { allocations: true },
   })
   if (!inv) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+
+  // Credit Notes carry no TDS / Discount — force them to 0 server-side
+  // even if the client mis-sends a value.
+  const isCN = inv.vchType === 'Credit Note'
+  const tds = isCN ? 0 : (Number.isFinite(tdsAmount) && tdsAmount > 0 ? Number(tdsAmount) : 0)
+  const disc = isCN ? 0 : (Number.isFinite(discountAmount) && discountAmount > 0 ? Number(discountAmount) : 0)
+
   const existingFromOthers = (inv.allocations || [])
     .filter((a: any) => a.receiptId !== receiptId)
     .reduce((s: number, a: any) => s + (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0), 0)

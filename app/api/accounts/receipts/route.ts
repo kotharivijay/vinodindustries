@@ -63,19 +63,25 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Credit Notes are opposite-nature to sales invoices: their allocated
+  // cash REDUCES the receipt's settled total instead of adding to it
+  // (the party's credit cancels out cash they'd otherwise owe). TDS and
+  // Discount are always 0 on CN rows.
   const byReceipt: Record<number, {
     linkedCount: number; linkedCash: number; linkedTds: number; linkedDiscount: number;
     linkedInvoices: { vchType: string; vchNumber: string; allocatedAmount: number; tdsAmount: number; discountAmount: number; pending: number }[]
   }> = {}
   for (const a of allocs) {
     const acc = byReceipt[a.receiptId] ??= { linkedCount: 0, linkedCash: 0, linkedTds: 0, linkedDiscount: 0, linkedInvoices: [] }
+    const isCN = a.invoice.vchType === 'Credit Note'
     acc.linkedCount += 1
-    acc.linkedCash += a.allocatedAmount
+    acc.linkedCash += isCN ? -a.allocatedAmount : a.allocatedAmount
     acc.linkedTds += a.tdsAmount
     acc.linkedDiscount += a.discountAmount
     acc.linkedInvoices.push({
       vchType: a.invoice.vchType, vchNumber: a.invoice.vchNumber,
-      allocatedAmount: a.allocatedAmount, tdsAmount: a.tdsAmount, discountAmount: a.discountAmount,
+      allocatedAmount: isCN ? -a.allocatedAmount : a.allocatedAmount,
+      tdsAmount: a.tdsAmount, discountAmount: a.discountAmount,
       pending: pendingByInvoice[a.invoiceId] ?? 0,
     })
   }

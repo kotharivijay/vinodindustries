@@ -27,12 +27,14 @@ interface Invoice {
   narration: string | null; reference: string | null; buyerPO: string | null; transporter: string | null; agentName: string | null
   lines: Line[]; ledgers: Ledger[]; allocations: Allocation[]
   allocated: number; tds: number; discount: number; consumed: number; pending: number
+  isCN?: boolean
   skipAutoLink?: boolean; skipAutoLinkReason?: string | null
 }
 interface Receipt {
   id: number; date: string; vchNumber: string; partyName: string; amount: number; narration: string | null
   instrumentNo: string | null; bankRef: string | null
   carryOverPriorFy?: number
+  tallyPushedAt?: string | null
   allocations: { invoiceId: number; allocatedAmount: number; tdsAmount?: number; discountAmount?: number }[]
 }
 
@@ -53,6 +55,9 @@ export default function ReceiptDetailPage() {
   const [editingCarry, setEditingCarry] = useState(false)
   const [carryInput, setCarryInput] = useState('')
   const [savingCarry, setSavingCarry] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [forceArmed, setForceArmed] = useState(false)
+  const [pushResult, setPushResult] = useState<{ ok: boolean; results: { kind: string; ok: boolean; created: number; altered: number; errors: number; exceptions: number; lineError?: string; lastVchId?: string }[]; summary: { receiptAmt: number; signedCashUsed: number; onAccount: number; tdsTotal: number; discTotal: number; bills: number } } | null>(null)
   // Default invoice list filter on the "all" tab:
   //   pending > 0 AND date ≤ receipt.date
   // Toggle to drop both filters and show every party invoice up to
@@ -79,7 +84,14 @@ export default function ReceiptDetailPage() {
     : view === 'batch'
       ? allInvoices.filter(inv => batchInvoiceIds.has(inv.id))
       : allInvoices.filter(inv => inv.pending > 0.5 && new Date(inv.date).getTime() <= (showAll ? todayMs : receiptDateMs))
-  const receiptUsed = r.allocations.reduce((s, a) => s + (a.allocatedAmount || 0), 0)
+  // Credit Notes flip sign — a CN allocation REDUCES receipt usage (the
+  // party's credit cancels out some of the cash they'd otherwise owe us).
+  const invTypeById = new Map(allInvoices.map(inv => [inv.id, inv.vchType]))
+  const receiptUsed = r.allocations.reduce((s, a) => {
+    const isCN = invTypeById.get(a.invoiceId) === 'Credit Note'
+    const cash = a.allocatedAmount || 0
+    return s + (isCN ? -cash : cash)
+  }, 0)
   const receiptRemaining = Math.max(0, r.amount - receiptUsed)
 
   async function saveCarryOver() {
@@ -97,6 +109,42 @@ export default function ReceiptDetailPage() {
       mutate()
     } catch (e: any) { alert(e?.message || 'Network error') }
     finally { setSavingCarry(false) }
+  }
+
+  async function pushToTally(force = false) {
+    if (!r) return
+    const tdsTotal = Math.round(r.allocations.reduce((s, a) => s + (a.tdsAmount || 0), 0))
+    const discTotal = Math.round(r.allocations.reduce((s, a) => s + (a.discountAmount || 0), 0))
+    const billsCount = r.allocations.length
+    const lines = [
+      `${force ? 'FORCE RE-PUSH' : 'Push'} receipt #${r.vchNumber} to Tally?`,
+      '',
+      `• Alter receipt with ${billsCount} bill-wise allocation${billsCount === 1 ? '' : 's'}`,
+    ]
+    if (tdsTotal > 0) lines.push(`• Create TDS Journal · ₹${fmtMoney(tdsTotal)}`)
+    if (discTotal > 0) lines.push(`• Create Discount Journal · ₹${fmtMoney(discTotal)}`)
+    if (receiptRemaining > 0) lines.push(`• Leftover ₹${fmtMoney(receiptRemaining)} → On Account`)
+    if (force) {
+      lines.push('')
+      lines.push('⚠ This will create DUPLICATE TDS / Discount journals. Delete the old ones in Tally first.')
+    }
+    if (!confirm(lines.join('\n'))) return
+    setPushBusy(true); setPushResult(null)
+    try {
+      const res = await fetch(`/api/accounts/receipts/${id}/push-to-tally${force ? '?force=1' : ''}`, { method: 'POST' })
+      const d = await res.json()
+      setPushResult(d)
+      if (!d.ok) {
+        const failureLines = (d.results || []).filter((x: any) => !x.ok).map((x: any) => `${x.kind}: ${x.lineError || 'errors=' + x.errors}`).join('\n')
+        alert(`Push failed — see details below.\n${failureLines || d.error || ''}`)
+      }
+      // Always disarm the force pill after a push attempt — user must
+      // re-activate it for another force re-push (prevents back-to-back
+      // duplicate journals on a stuck click).
+      setForceArmed(false)
+      mutate()
+    } catch (e: any) { alert(e?.message || 'Network error') }
+    finally { setPushBusy(false) }
   }
 
   async function syncSales() {
@@ -176,6 +224,74 @@ export default function ReceiptDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Push to Tally — only when the receipt has linked invoices. */}
+      {linkedCount > 0 && (
+        <div className={`border rounded-xl p-3 mb-3 ${r.tallyPushedAt ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700/40' : 'bg-violet-50 dark:bg-violet-900/20 border-violet-200 dark:border-violet-700/40'}`}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="min-w-0">
+              <div className={`text-xs font-semibold ${r.tallyPushedAt ? 'text-emerald-800 dark:text-emerald-200' : 'text-violet-800 dark:text-violet-200'}`}>
+                {r.tallyPushedAt ? `✓ Pushed to Tally · ${new Date(r.tallyPushedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : '📤 Push to Tally'}
+              </div>
+              <div className={`text-[11px] mt-0.5 ${r.tallyPushedAt ? 'text-emerald-700 dark:text-emerald-300' : 'text-violet-700 dark:text-violet-300'}`}>
+                {r.tallyPushedAt ? 'Receipt altered + journals booked. Re-push only if you changed allocations.' : (
+                  <>Alters receipt with bill-wise{(() => {
+                    const tdsT = Math.round(r.allocations.reduce((s, a) => s + (a.tdsAmount || 0), 0))
+                    const dT = Math.round(r.allocations.reduce((s, a) => s + (a.discountAmount || 0), 0))
+                    const parts: string[] = []
+                    if (tdsT > 0) parts.push(`TDS Journal ₹${fmtMoney(tdsT)}`)
+                    if (dT > 0) parts.push(`Discount Journal ₹${fmtMoney(dT)}`)
+                    return parts.length > 0 ? ` · ${parts.join(' · ')}` : ''
+                  })()}{receiptRemaining > 0 && ` · On Account ₹${fmtMoney(receiptRemaining)}`}</>
+                )}
+              </div>
+            </div>
+            {r.tallyPushedAt ? (
+              <button onClick={() => setForceArmed(v => !v)} disabled={pushBusy}
+                title="Arms the force re-push button below. Disarms after each push."
+                className={`text-[11px] px-2.5 py-1 rounded-full border font-semibold shrink-0 disabled:opacity-50 ${
+                  forceArmed
+                    ? 'bg-rose-600 border-rose-600 text-white'
+                    : 'bg-white dark:bg-gray-800 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20'
+                }`}>
+                {forceArmed ? '⚠ Force re-push · ARMED' : '⚠ Force re-push'}
+              </button>
+            ) : (
+              <button onClick={() => pushToTally(false)} disabled={pushBusy}
+                className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-semibold shrink-0">
+                {pushBusy ? 'Pushing…' : '📤 Push'}
+              </button>
+            )}
+          </div>
+          {r.tallyPushedAt && forceArmed && (
+            <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-700/40 space-y-2">
+              <div className="text-[11px] text-rose-700 dark:text-rose-300 leading-relaxed">
+                ⚠ <span className="font-semibold">Cleanup in Tally FIRST.</span> Delete the existing receipt's bill-wise + the TDS / Discount journals tied to this receipt before re-pushing. Otherwise you'll end up with duplicate journals and a wrong party ledger.
+              </div>
+              <button onClick={() => pushToTally(true)} disabled={pushBusy}
+                className="w-full px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-semibold">
+                {pushBusy ? 'Pushing…' : '📤 Force re-push now'}
+              </button>
+            </div>
+          )}
+          {pushResult && (
+            <div className="mt-2 pt-2 border-t border-violet-200 dark:border-violet-700/40 space-y-0.5 text-[11px]">
+              {pushResult.results.map((x, i) => (
+                <div key={i} className={`flex items-center justify-between gap-2 ${x.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
+                  <span>{x.ok ? '✓' : '✗'} {x.kind}</span>
+                  <span className="font-mono text-[10px]">
+                    {x.altered > 0 && `ALTERED=${x.altered} `}
+                    {x.created > 0 && `CREATED=${x.created} `}
+                    {x.lastVchId && `vchid=${x.lastVchId} `}
+                    {x.errors > 0 && `ERR=${x.errors} `}
+                    {x.lineError && <span className="text-rose-600">· {x.lineError}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Bulk-batch siblings — every other receipt that was committed
          in the same /bulk-allocate call as this one. Tap to open. */}
@@ -368,6 +484,8 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
   )
   const taxable = Math.max(0, grossTaxable - voucherDiscount + voucherExtraCharge)
 
+  const isCN = inv.vchType === 'Credit Note'
+
   const [open, setOpen] = useState(false)
   const [tdsRate, setTdsRate] = useState<string>(myAlloc?.tdsAmount && myAlloc.tdsAmount > 0 ? '' : String(DEFAULT_TDS_RATE))
   const [tdsAmt, setTdsAmt] = useState<string>(myAlloc?.tdsAmount ? String(myAlloc.tdsAmount.toFixed(2)) : '')
@@ -376,16 +494,19 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
   const [note, setNote] = useState<string>(myAlloc?.note ?? '')
   const [busy, setBusy] = useState(false)
 
-  // Final amount the receipt will allocate = ask − tds − discount
-  const numTds = parseFloat(tdsAmt) || 0
-  const numDisc = parseFloat(discAmt) || 0
+  // Final amount the receipt will allocate = ask − tds − discount.
+  // Credit Notes carry no TDS / Discount and aren't capped by receipt cash
+  // (they FREE up cash; allocating a CN actually increases receiptRemaining).
+  const numTds = isCN ? 0 : (parseFloat(tdsAmt) || 0)
+  const numDisc = isCN ? 0 : (parseFloat(discAmt) || 0)
   const final = useMemo(() => Math.max(0, ask - numTds - numDisc), [ask, numTds, numDisc])
   const cappedFinal = useMemo(() => {
+    if (isCN) return final
     // Cap at receipt remaining + any portion already allocated to this invoice
     const myCash = myAlloc?.allocatedAmount ?? 0
     const cap = receiptRemaining + myCash
     return Math.min(final, cap)
-  }, [final, receiptRemaining, myAlloc])
+  }, [final, receiptRemaining, myAlloc, isCN])
 
   function autoTds() {
     const rate = parseFloat(tdsRate) || DEFAULT_TDS_RATE
@@ -657,21 +778,25 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
             </>
           ) : (
             <>
-              <button onClick={() => { autoTds(); setOpen(true) }}
-                disabled={receiptRemaining <= 0}
-                className="text-[11px] px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold disabled:opacity-40">
-                💰 TDS @{DEFAULT_TDS_RATE}%
-              </button>
+              {!isCN && (
+                <>
+                  <button onClick={() => { autoTds(); setOpen(true) }}
+                    disabled={receiptRemaining <= 0}
+                    className="text-[11px] px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold disabled:opacity-40">
+                    💰 TDS @{DEFAULT_TDS_RATE}%
+                  </button>
+                  <button onClick={() => setOpen(true)}
+                    disabled={receiptRemaining <= 0}
+                    className="text-[11px] px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold disabled:opacity-40">
+                    🏷 Discount
+                  </button>
+                </>
+              )}
               <button onClick={() => setOpen(true)}
-                disabled={receiptRemaining <= 0}
-                className="text-[11px] px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold disabled:opacity-40">
-                🏷 Discount
-              </button>
-              <button onClick={() => setOpen(true)}
-                disabled={receiptRemaining <= 0 || !!inv.skipAutoLink}
+                disabled={(!isCN && receiptRemaining <= 0) || !!inv.skipAutoLink}
                 title={inv.skipAutoLink ? 'Invoice marked Skip — Allow to link first' : ''}
-                className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold">
-                🔗 Link
+                className={`text-[11px] px-2.5 py-1 rounded-full disabled:opacity-40 text-white font-semibold ${isCN ? 'bg-violet-600 hover:bg-violet-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                {isCN ? '↙ Knock-off CN' : '🔗 Link'}
               </button>
               <button onClick={toggleSkip} disabled={busy}
                 title={inv.skipAutoLink ? 'Allow this bill to be auto-linked again' : 'Skip this bill from bulk-link FIFO'}
@@ -687,45 +812,54 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
         </div>
       ) : (
         <div className="mt-2.5 pt-2.5 border-t border-emerald-200 dark:border-emerald-700/30 space-y-2">
-          {/* Pills row */}
-          <div className="flex items-center gap-2 flex-wrap text-[11px]">
-            <button onClick={autoTds} type="button"
-              className="px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold">
-              💰 TDS @{tdsRate || DEFAULT_TDS_RATE}%
-            </button>
-            <span className="text-gray-400">on taxable ₹{fmtMoney(taxable)}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px]">
-            <span className="text-gray-500 w-12">TDS</span>
-            <input type="number" value={tdsRate} onChange={e => setTdsRate(e.target.value)}
-              placeholder="rate%" step="0.01"
-              className="w-16 px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" />
-            <span className="text-gray-400">%</span>
-            <input type="number" value={tdsAmt} onChange={e => setTdsAmt(e.target.value)}
-              placeholder="amount"
-              className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 tabular-nums" />
-            <span className="text-gray-400">₹</span>
-          </div>
+          {isCN && (
+            <div className="text-[11px] px-2 py-1.5 rounded bg-violet-50 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-700/40 text-violet-800 dark:text-violet-200">
+              ↙ Credit Note — knock-off only. No TDS / Discount applies. The CN amount reduces the receipt's settled cash.
+            </div>
+          )}
+          {!isCN && (
+            <>
+              {/* Pills row */}
+              <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                <button onClick={autoTds} type="button"
+                  className="px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold">
+                  💰 TDS @{tdsRate || DEFAULT_TDS_RATE}%
+                </button>
+                <span className="text-gray-400">on taxable ₹{fmtMoney(taxable)}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px]">
+                <span className="text-gray-500 w-12">TDS</span>
+                <input type="number" value={tdsRate} onChange={e => setTdsRate(e.target.value)}
+                  placeholder="rate%" step="0.01"
+                  className="w-16 px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" />
+                <span className="text-gray-400">%</span>
+                <input type="number" value={tdsAmt} onChange={e => setTdsAmt(e.target.value)}
+                  placeholder="amount"
+                  className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 tabular-nums" />
+                <span className="text-gray-400">₹</span>
+              </div>
 
-          <div className="flex items-center gap-2 flex-wrap text-[11px]">
-            <button type="button"
-              className="px-2 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold">
-              🏷 Discount
-            </button>
-            <span className="text-gray-400">% or ₹</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-[11px]">
-            <span className="text-gray-500 w-12">Disc</span>
-            <input type="number" value={discPct} onChange={e => setDiscPct(e.target.value)}
-              onBlur={applyDiscPct}
-              placeholder="%" step="0.01"
-              className="w-16 px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" />
-            <span className="text-gray-400">%</span>
-            <input type="number" value={discAmt} onChange={e => setDiscAmt(e.target.value)}
-              placeholder="amount"
-              className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 tabular-nums" />
-            <span className="text-gray-400">₹</span>
-          </div>
+              <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                <button type="button"
+                  className="px-2 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold">
+                  🏷 Discount
+                </button>
+                <span className="text-gray-400">% or ₹</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px]">
+                <span className="text-gray-500 w-12">Disc</span>
+                <input type="number" value={discPct} onChange={e => setDiscPct(e.target.value)}
+                  onBlur={applyDiscPct}
+                  placeholder="%" step="0.01"
+                  className="w-16 px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" />
+                <span className="text-gray-400">%</span>
+                <input type="number" value={discAmt} onChange={e => setDiscAmt(e.target.value)}
+                  placeholder="amount"
+                  className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 tabular-nums" />
+                <span className="text-gray-400">₹</span>
+              </div>
+            </>
+          )}
 
           {/* Final summary */}
           <div className="bg-gray-50 dark:bg-gray-700/40 rounded-lg p-2 text-[11px]">

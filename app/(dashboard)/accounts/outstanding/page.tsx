@@ -19,7 +19,7 @@ const fmtDateSlash = (iso: string) => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
 }
 
-interface OutInvoice { id: number; vchNumber: string; vchType: string; date: string; totalAmount: number; pending: number; dueDays: number; skipAutoLink?: boolean; skipAutoLinkReason?: string | null }
+interface OutInvoice { id: number; vchNumber: string; vchType: string; date: string; totalAmount: number; pending: number; isCN?: boolean; dueDays: number; skipAutoLink?: boolean; skipAutoLinkReason?: string | null }
 interface OutParty { name: string; totalPending: number; oldestDueDays: number; invoiceCount: number; onAccount: number; invoices: OutInvoice[] }
 interface OutReceipt { id: number; vchNumber: string; vchType: string; date: string; partyName: string; amount: number; linkedCash: number; carryOver: number; unallocated: number; daysSince: number; bankRef: string | null; instrumentNo: string | null; narration: string | null }
 interface OutResponse {
@@ -262,9 +262,9 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
       // monospaced WhatsApp rendering.
       for (const inv of party.invoices) {
         const dot = bucketDot(inv.dueDays)
-        const num = inv.vchNumber.padEnd(13)
+        const num = (inv.vchNumber + (inv.isCN ? ' (CN)' : '')).padEnd(13)
         const date = fmtDateSlash(inv.date)
-        const amt = `₹${fmtMoney(inv.pending)}`.padEnd(12)
+        const amt = `${inv.isCN ? '−' : ''}₹${fmtMoney(inv.pending)}`.padEnd(12)
         lines.push(`${dot} ${num} ${date}  ${amt} ${String(inv.dueDays).padStart(3)}d`)
       }
     }
@@ -401,6 +401,9 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
                   <span className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchNumber}</span>
                   <span className="text-gray-500">{fmtDate(inv.date)}</span>
                   <span className="text-rose-600 dark:text-rose-400 font-semibold">{inv.dueDays}d</span>
+                  {inv.isCN && (
+                    <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300" title="Credit Note — reduces party balance">CN</span>
+                  )}
                   {inv.skipAutoLink && (
                     <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300"
                       title={inv.skipAutoLinkReason || 'Skipped from auto-link'}>
@@ -410,7 +413,9 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-[11px] font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(inv.pending)}</div>
+                <div className={`text-[11px] font-bold tabular-nums ${inv.isCN ? 'text-violet-700 dark:text-violet-300' : 'text-gray-800 dark:text-gray-100'}`}>
+                  {inv.isCN ? '−' : ''}₹{fmtMoney(inv.pending)}
+                </div>
               </div>
             </button>
           ))}
@@ -513,10 +518,12 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
                 {cardInvoices.map(inv => (
                   <tr key={inv.id} style={{ borderTop: '1px solid #f3f4f6' }}>
                     <td style={{ padding: '4px 0', width: 18 }}>{bucketDot(inv.dueDays)}</td>
-                    <td style={{ padding: '4px 6px', fontFamily: 'ui-monospace, SFMono-Regular, monospace', color: '#000000' }}>{inv.vchNumber}</td>
+                    <td style={{ padding: '4px 6px', fontFamily: 'ui-monospace, SFMono-Regular, monospace', color: '#000000' }}>
+                      {inv.vchNumber}{inv.isCN ? ' (CN)' : ''}
+                    </td>
                     <td style={{ padding: '4px 6px', color: '#000000' }}>{fmtDateSlash(inv.date)}</td>
                     <td style={{ padding: '4px 6px', textAlign: 'right', fontFamily: 'ui-monospace, SFMono-Regular, monospace', fontWeight: 700, color: '#000000' }}>
-                      ₹{fmtMoney(inv.pending)}
+                      {inv.isCN ? '−' : ''}₹{fmtMoney(inv.pending)}
                     </td>
                     <td style={{ padding: '4px 0', textAlign: 'right', color: '#000000', fontWeight: 600, width: 70 }}>
                       {inv.dueDays} days
@@ -584,6 +591,9 @@ function InvoiceCard({ inv, onClick }: { inv: OutInvoice & { partyName: string }
               {inv.vchNumber}
             </span>
             <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold">{inv.dueDays}d due</span>
+            {inv.isCN && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300" title="Credit Note — reduces party balance">CN</span>
+            )}
             {inv.skipAutoLink && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300"
                 title={inv.skipAutoLinkReason || 'Skipped from auto-link'}>
@@ -595,7 +605,7 @@ function InvoiceCard({ inv, onClick }: { inv: OutInvoice & { partyName: string }
           <div className="text-[10px] text-gray-500 dark:text-gray-400">{fmtDate(inv.date)}</div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-base font-bold text-rose-700 dark:text-rose-400 tabular-nums">₹{fmtMoney(inv.pending)}</div>
+          <div className={`text-base font-bold tabular-nums ${inv.isCN ? 'text-violet-700 dark:text-violet-300' : 'text-rose-700 dark:text-rose-400'}`}>{inv.isCN ? '−' : ''}₹{fmtMoney(inv.pending)}</div>
           {inv.totalAmount !== inv.pending && (
             <div className="text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">of ₹{fmtMoney(inv.totalAmount)}</div>
           )}

@@ -129,7 +129,11 @@ export async function POST(req: NextRequest) {
   // invoice party whose canonical name CONTAINS the receipts' true
   // canonical (or vice-versa) counts as a match — covers branch
   // suffixes and "M/s" prefixes.
+  // Also drop Credit Notes — they are opposite-nature to sales invoices
+  // and must be knocked off manually from the receipt detail page, not
+  // pulled into FIFO.
   const partyInvoices = partyInvoicesRaw.filter((inv: any) => {
+    if (inv.vchType === 'Credit Note') return false
     const c = canonicalize(inv.partyName)
     return c === truePartyCanonical || c.includes(truePartyCanonical) || truePartyCanonical.includes(c)
   })

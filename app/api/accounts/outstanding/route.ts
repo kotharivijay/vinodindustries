@@ -33,30 +33,44 @@ export async function GET(_req: NextRequest) {
       allocations: { select: { allocatedAmount: true, tdsAmount: true, discountAmount: true } },
     },
   })
+  // Credit Notes are opposite-nature: pending CN balance is a party CREDIT
+  // (we owe them), not a debit. We compute per-row pending normally so the
+  // row still shows up in the invoice list, then subtract CN pending at
+  // party-totals time below.
   const pendingInvoices = invoiceRows
     .map((inv: any) => {
+      const isCN = inv.vchType === 'Credit Note'
       const consumed = (inv.allocations || []).reduce(
         (s: number, a: any) => s + (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0),
         0,
       )
       const pending = round2(Math.max(0, inv.totalAmount - consumed))
-      return { ...inv, pending }
+      return { ...inv, isCN, pending }
     })
     .filter((inv: any) => inv.pending > 0.5)
 
-  // ── Receipts: unallocated = amount − Σ allocatedAmount − carryOverPriorFy
+  // ── Receipts: unallocated = amount − Σ(signed linkedCash) − carryOverPriorFy.
+  // CN allocations subtract from linkedCash (they don't consume receipt cash).
   const receiptRows = await db.ksiHdfcReceipt.findMany({
     where: { direction: 'in', hidden: false },
     select: {
       id: true, vchNumber: true, vchType: true, date: true,
       partyName: true, amount: true, carryOverPriorFy: true,
       bankRef: true, instrumentNo: true, narration: true,
-      allocations: { select: { allocatedAmount: true, tdsAmount: true, discountAmount: true } },
+      allocations: {
+        select: {
+          allocatedAmount: true, tdsAmount: true, discountAmount: true,
+          invoice: { select: { vchType: true } },
+        },
+      },
     },
   })
   const onAccountReceipts = receiptRows
     .map((r: any) => {
-      const linkedCash = (r.allocations || []).reduce((s: number, a: any) => s + (a.allocatedAmount || 0), 0)
+      const linkedCash = (r.allocations || []).reduce((s: number, a: any) => {
+        const isCN = a.invoice?.vchType === 'Credit Note'
+        return s + (isCN ? -a.allocatedAmount : a.allocatedAmount)
+      }, 0)
       const linkedTds = (r.allocations || []).reduce((s: number, a: any) => s + (a.tdsAmount || 0), 0)
       const linkedDiscount = (r.allocations || []).reduce((s: number, a: any) => s + (a.discountAmount || 0), 0)
       const carryOver = r.carryOverPriorFy || 0
@@ -72,13 +86,15 @@ export async function GET(_req: NextRequest) {
     onAccByParty.set(key, round2((onAccByParty.get(key) || 0) + r.unallocated))
   }
 
+  // Party total = Σ invoice pending − Σ CN pending. CN is a credit
+  // sitting on the party's ledger that offsets future invoices.
   const byParty = new Map<string, { invoices: any[]; totalPending: number }>()
   for (const inv of pendingInvoices) {
     const key = inv.partyName
     if (!byParty.has(key)) byParty.set(key, { invoices: [], totalPending: 0 })
     const e = byParty.get(key)!
     e.invoices.push(inv)
-    e.totalPending = round2(e.totalPending + inv.pending)
+    e.totalPending = round2(e.totalPending + (inv.isCN ? -inv.pending : inv.pending))
   }
 
   // Parties response — sorted by totalPending desc; each party's
@@ -88,6 +104,7 @@ export async function GET(_req: NextRequest) {
       .map((inv: any) => ({
         id: inv.id, vchNumber: inv.vchNumber, vchType: inv.vchType,
         date: inv.date, totalAmount: inv.totalAmount, pending: inv.pending,
+        isCN: !!inv.isCN,
         dueDays: dueDays(inv.date),
         skipAutoLink: !!inv.skipAutoLink,
         skipAutoLinkReason: inv.skipAutoLinkReason ?? null,

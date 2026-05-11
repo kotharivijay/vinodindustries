@@ -845,6 +845,11 @@ model KsiHdfcReceipt {
   // when bulk-linking, and counts toward Δ on the list page so a
   // receipt can read fully matched without explicit invoice rows.
   carryOverPriorFy Float  @default(0)
+  // Set the moment a successful "Push to Tally" completes (receipt
+  // ALTER + any TDS / Discount journals). The detail-page Push button
+  // disables when this is non-null to prevent accidental duplicate
+  // journal vouchers. Clearing it (via a force-repush path) re-enables.
+  tallyPushedAt DateTime?
   lastSynced    DateTime  @default(now())
   createdAt     DateTime  @default(now())
 
