@@ -45,6 +45,7 @@ interface Receipt {
   hidden: boolean
   hiddenReason: string | null
   carryOverPriorFy: number
+  tallyPushedAt: string | null
   linkedCount: number
   linkedCash: number
   linkedTds: number
@@ -298,6 +299,26 @@ export default function ReceiptsPage() {
     { fy: '26-27', label: 'FY 26-27' },
   ]
 
+  async function syncTallyAllocations() {
+    const from = window.prompt('Sync from date (YYYY-MM-DD)?', '2025-04-01')
+    if (!from) return
+    const to = window.prompt('Sync to date (YYYY-MM-DD)?', new Date().toISOString().slice(0, 10))
+    if (!to) return
+    if (!confirm(`Read every Receipt voucher from Tally between ${from} and ${to} and auto-stamp the ones already linked bill-wise (Agst Ref) as "pushed"?\n\nReceipts sitting On Account in Tally are left alone.`)) return
+    setSyncing(true); setSyncMsg('Reading Receipt vouchers from Tally…')
+    try {
+      const res = await fetch('/api/accounts/receipts/sync-tally-allocations', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setSyncMsg(d.error || 'Failed'); return }
+      setSyncMsg(`Tally: ${d.tally.total} receipts · ${d.tally.billWise} bill-wise · ${d.tally.onAccountOnly} on-account. Stamped ${d.stamped.updated} (already ${d.stamped.alreadyStamped}, not in DB ${d.stamped.notFound}).`)
+      mutate()
+    } catch (e: any) { setSyncMsg(e?.message || 'Network error') }
+    finally { setSyncing(false) }
+  }
+
   async function syncFys(fys: string[]) {
     setSyncing(true); setSyncMsg(''); setSyncLog([])
     let totalSaved = 0, totalFetched = 0, totalIn = 0, totalOut = 0
@@ -444,6 +465,11 @@ export default function ReceiptsPage() {
           className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold">
           {syncing ? 'Syncing…' : `Sync FY ${[...activeFys].sort().join(', ')} from Tally`}
         </button>
+        <button onClick={syncTallyAllocations} disabled={syncing}
+          title="Read every Receipt voucher from Tally and auto-mark bill-wise (Agst Ref) ones as already pushed — prevents accidental duplicate journals."
+          className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-semibold">
+          📤 Detect Pushed
+        </button>
         <button onClick={() => setSelectMode(v => !v)}
           title={selectMode ? 'Tap a card to toggle selection. Tap Select again to exit.' : 'Enable multiselect (cards become clickable for actions when off)'}
           className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
@@ -576,6 +602,12 @@ export default function ReceiptsPage() {
                       }`}
                         title={`${r.linkedCount} invoice(s) linked · Bank Recpt ₹${fmtMoney(r.linkedCash)}${r.linkedTds > 0 ? ` · TDS ₹${fmtMoney(r.linkedTds)}` : ''}${r.linkedDiscount > 0 ? ` · disc ₹${fmtMoney(r.linkedDiscount)}` : ''}`}>
                         🔗 {r.linkedCount}{matched ? ' ✓' : ''}
+                      </span>
+                    )}
+                    {r.tallyPushedAt && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300"
+                        title={`Pushed to Tally · ${new Date(r.tallyPushedAt).toLocaleString('en-IN')}`}>
+                        📤 Pushed
                       </span>
                     )}
                     {r.hidden && (
