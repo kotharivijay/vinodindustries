@@ -61,21 +61,34 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // party search at bulk-link time pulled in cross-party bills) so
   // the user can always see and unlink them.
   const linkedInvoiceIds = (receipt.allocations || []).map((a: any) => a.invoiceId)
-  const invoices = await db.ksiSalesInvoice.findMany({
-    where: {
-      OR: [
-        { partyName: { contains: receipt.partyName.split('(')[0].trim(), mode: 'insensitive' } },
-        ...(linkedInvoiceIds.length > 0 ? [{ id: { in: linkedInvoiceIds } }] : []),
-      ],
-    },
-    include: {
-      lines: { orderBy: { lineNo: 'asc' } },
-      ledgers: true,
-      allocations: { include: { receipt: { select: { id: true, vchNumber: true, date: true, amount: true } } } },
-    },
-    orderBy: { date: 'desc' },
-    take: 100,
-  })
+  // Two-stage fetch: (1) the latest 100 of the party's invoices for the
+  // "all" tab, and (2) every linked invoice — unconditionally, so a
+  // receipt whose linked bill happens to be older than the 100 most
+  // recent for that party still surfaces on the detail page. Merge,
+  // dedupe by id, keep date-desc order.
+  const includeShape = {
+    lines: { orderBy: { lineNo: 'asc' } as const },
+    ledgers: true,
+    allocations: { include: { receipt: { select: { id: true, vchNumber: true, date: true, amount: true } } } },
+  }
+  const [recentForParty, alwaysIncludeLinked] = await Promise.all([
+    db.ksiSalesInvoice.findMany({
+      where: { partyName: { contains: receipt.partyName.split('(')[0].trim(), mode: 'insensitive' } },
+      include: includeShape,
+      orderBy: { date: 'desc' },
+      take: 100,
+    }),
+    linkedInvoiceIds.length > 0
+      ? db.ksiSalesInvoice.findMany({
+          where: { id: { in: linkedInvoiceIds } },
+          include: includeShape,
+        })
+      : Promise.resolve([]),
+  ])
+  const byId = new Map<number, any>()
+  for (const inv of recentForParty) byId.set(inv.id, inv)
+  for (const inv of alwaysIncludeLinked) byId.set(inv.id, inv)
+  const invoices = [...byId.values()].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   // Category map for ledger classification (Net Ask uses extras + discounts)
   const categories = await db.ksiSalesLedgerCategory.findMany()
