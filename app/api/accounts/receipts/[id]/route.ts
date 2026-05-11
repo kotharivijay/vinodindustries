@@ -71,12 +71,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     ledgers: true,
     allocations: { include: { receipt: { select: { id: true, vchNumber: true, date: true, amount: true } } } },
   }
-  const [recentForParty, alwaysIncludeLinked] = await Promise.all([
+  // Pull every invoice for this party — the previous `take: 100`
+  // hid older bills (e.g. Sohni's KSI/25-26/7 at position 204 of 205)
+  // so a user re-linking an unlinked old invoice couldn't find it on
+  // the candidate list. KSI parties top out a few hundred invoices,
+  // so loading them all is fine; the in-memory filter on `pending > 0`
+  // does the heavy lifting at render time.
+  const [partyInvoices, alwaysIncludeLinked] = await Promise.all([
     db.ksiSalesInvoice.findMany({
       where: { partyName: { contains: receipt.partyName.split('(')[0].trim(), mode: 'insensitive' } },
       include: includeShape,
       orderBy: { date: 'desc' },
-      take: 100,
     }),
     linkedInvoiceIds.length > 0
       ? db.ksiSalesInvoice.findMany({
@@ -86,7 +91,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       : Promise.resolve([]),
   ])
   const byId = new Map<number, any>()
-  for (const inv of recentForParty) byId.set(inv.id, inv)
+  for (const inv of partyInvoices) byId.set(inv.id, inv)
   for (const inv of alwaysIncludeLinked) byId.set(inv.id, inv)
   const invoices = [...byId.values()].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 

@@ -523,6 +523,36 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
     setDiscAmt(String(calc))
   }
 
+  // Zero out TDS or Discount on the existing allocation without touching
+  // cash. Used when the user wants to carry the full TDS / discount on a
+  // sibling receipt for the same invoice instead of letting the bulk-link
+  // proportional split decide.
+  async function clearField(field: 'tds' | 'disc') {
+    if (!myAlloc) return
+    const label = field === 'tds' ? 'TDS' : 'Discount'
+    if (!confirm(`Set ${label} = 0 on this allocation? Cash stays at ₹${fmtMoney(myAlloc.allocatedAmount)}.`)) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/accounts/receipts/${receiptId}/allocate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId: inv.id,
+          allocatedAmount: myAlloc.allocatedAmount,
+          tdsAmount: field === 'tds' ? 0 : (myAlloc.tdsAmount ?? 0),
+          discountAmount: field === 'disc' ? 0 : (myAlloc.discountAmount ?? 0),
+          tdsRatePct: null,
+          note: myAlloc.note ?? null,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert(d.error || 'Failed'); return }
+      if (field === 'tds') setTdsAmt('')
+      if (field === 'disc') setDiscAmt('')
+      onChange()
+    } catch (e: any) { alert(e?.message || 'Network error') }
+    finally { setBusy(false) }
+  }
+
   async function save() {
     if (cappedFinal <= 0) { alert('Final allocation is zero — adjust TDS/Discount.'); return }
     setBusy(true)
@@ -762,6 +792,20 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
         <div className="flex flex-wrap items-center justify-end gap-1.5 mt-2">
           {myAlloc ? (
             <>
+              {!isCN && (myAlloc.tdsAmount ?? 0) > 0 && (
+                <button onClick={() => clearField('tds')} disabled={busy}
+                  title={`Set TDS to 0 (keeps cash ₹${fmtMoney(myAlloc.allocatedAmount)} unchanged)`}
+                  className="text-[11px] px-2.5 py-1 rounded-full border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50">
+                  💰 TDS → 0
+                </button>
+              )}
+              {!isCN && (myAlloc.discountAmount ?? 0) > 0 && (
+                <button onClick={() => clearField('disc')} disabled={busy}
+                  title={`Set Discount to 0 (keeps cash ₹${fmtMoney(myAlloc.allocatedAmount)} unchanged)`}
+                  className="text-[11px] px-2.5 py-1 rounded-full border border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-50">
+                  🏷 Disc → 0
+                </button>
+              )}
               <button onClick={shareWhatsApp}
                 title="Share this link's summary on WhatsApp"
                 className="text-[11px] px-2.5 py-1 rounded-full border border-emerald-300 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">

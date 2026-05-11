@@ -23,7 +23,6 @@ export async function GET(req: NextRequest) {
         ledgers: true,
       },
       orderBy: [{ date: 'desc' }, { vchNumber: 'desc' }],
-      take: 1000,
     }),
     db.ksiSalesInvoice.groupBy({
       by: ['fy'],

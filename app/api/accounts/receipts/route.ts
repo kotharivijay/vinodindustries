@@ -25,7 +25,6 @@ export async function GET(req: NextRequest) {
   const rows = await db.ksiHdfcReceipt.findMany({
     where,
     orderBy: [{ date: 'desc' }, { vchNumber: 'desc' }],
-    take: 1000,
   })
 
   // Allocation summary per receipt — drives the Linked / Unlinked filter
