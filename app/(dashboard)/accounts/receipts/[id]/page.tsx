@@ -266,7 +266,7 @@ export default function ReceiptDetailPage() {
           {r.tallyPushedAt && forceArmed && (
             <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-700/40 space-y-2">
               <div className="text-[11px] text-rose-700 dark:text-rose-300 leading-relaxed">
-                ⚠ <span className="font-semibold">Cleanup in Tally FIRST.</span> Delete the existing receipt's bill-wise + the TDS / Discount journals tied to this receipt before re-pushing. Otherwise you'll end up with duplicate journals and a wrong party ledger.
+                ⚠ <span className="font-semibold">Cleanup in Tally FIRST.</span> Delete the existing receipt&apos;s bill-wise + the TDS / Discount journals tied to this receipt before re-pushing. Otherwise you will end up with duplicate journals and a wrong party ledger.
               </div>
               <button onClick={() => pushToTally(true)} disabled={pushBusy}
                 className="w-full px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-semibold">
@@ -814,7 +814,7 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
         <div className="mt-2.5 pt-2.5 border-t border-emerald-200 dark:border-emerald-700/30 space-y-2">
           {isCN && (
             <div className="text-[11px] px-2 py-1.5 rounded bg-violet-50 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-700/40 text-violet-800 dark:text-violet-200">
-              ↙ Credit Note — knock-off only. No TDS / Discount applies. The CN amount reduces the receipt's settled cash.
+              ↙ Credit Note — knock-off only. No TDS / Discount applies. The CN amount reduces the receipt&apos;s settled cash.
             </div>
           )}
           {!isCN && (
