@@ -62,6 +62,7 @@ const ksiNavGroups = [
       { href: '/accounts/receipts', label: 'Receipts (HDFC)', icon: '🏦' },
       { href: '/accounts/sales', label: 'Sales / Process Register', icon: '📈' },
       { href: '/accounts/outstanding', label: 'Outstanding', icon: '💰' },
+      { href: '/accounts/ledger', label: 'Party Ledger', icon: '📜' },
       { href: '/ksi/ledgers', label: 'Ledger Master', icon: '📒' },
       { href: '/ksi/ledger-tags', label: 'Ledger Tags', icon: '🏷️' },
     ],
