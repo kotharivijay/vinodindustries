@@ -21,7 +21,8 @@ const fmtDateSlash = (iso: string) => {
 
 interface OutInvoice { id: number; vchNumber: string; vchType: string; date: string; totalAmount: number; pending: number; isCN?: boolean; dueDays: number; skipAutoLink?: boolean; skipAutoLinkReason?: string | null }
 interface OutParty { name: string; totalPending: number; oldestDueDays: number; invoiceCount: number; onAccount: number; invoices: OutInvoice[] }
-interface OutReceipt { id: number; vchNumber: string; vchType: string; date: string; partyName: string; amount: number; linkedCash: number; carryOver: number; unallocated: number; daysSince: number; bankRef: string | null; instrumentNo: string | null; narration: string | null }
+interface OutReceiptLinkedInvoice { vchNumber: string; vchType: string; date: string | null; allocatedAmount: number; tdsAmount: number; discountAmount: number; isCN: boolean }
+interface OutReceipt { id: number; vchNumber: string; vchType: string; date: string; partyName: string; amount: number; linkedCash: number; linkedTds?: number; linkedDiscount?: number; linkedInvoices?: OutReceiptLinkedInvoice[]; carryOver: number; unallocated: number; daysSince: number; bankRef: string | null; instrumentNo: string | null; narration: string | null }
 interface OutResponse {
   totals: { outstanding: number; onAccount: number; netReceivable: number; parties: number; invoices: number; receipts: number }
   parties: OutParty[]
@@ -616,6 +617,7 @@ function InvoiceCard({ inv, onClick }: { inv: OutInvoice & { partyName: string }
 }
 
 function OnAccountCard({ receipt, onClick }: { receipt: OutReceipt; onClick: () => void }) {
+  const partial = (receipt.linkedCash || 0) > 0.5 || (receipt.linkedInvoices?.length ?? 0) > 0 || (receipt.carryOver || 0) > 0.5
   return (
     <button onClick={onClick}
       className="w-full text-left bg-white dark:bg-gray-800 border border-indigo-200 dark:border-indigo-700/40 rounded-xl p-3 shadow-sm hover:border-indigo-400">
@@ -628,6 +630,9 @@ function OnAccountCard({ receipt, onClick }: { receipt: OutReceipt; onClick: () 
             </span>
             <span className="text-[10px] text-gray-500">{fmtDate(receipt.date)}</span>
             <span className="text-[10px] text-gray-400">{receipt.daysSince}d ago</span>
+            {partial && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200">PARTIAL</span>
+            )}
           </div>
           <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{receipt.partyName}</div>
           {(receipt.bankRef || receipt.instrumentNo) && (
@@ -637,6 +642,8 @@ function OnAccountCard({ receipt, onClick }: { receipt: OutReceipt; onClick: () 
           )}
           <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
             Receipt ₹{fmtMoney(receipt.amount)} · linked ₹{fmtMoney(receipt.linkedCash)}
+            {(receipt.linkedTds ?? 0) > 0 && <> · TDS ₹{fmtMoney(receipt.linkedTds!)}</>}
+            {(receipt.linkedDiscount ?? 0) > 0 && <> · disc ₹{fmtMoney(receipt.linkedDiscount!)}</>}
             {receipt.carryOver > 0 && <> · ⏪ ₹{fmtMoney(receipt.carryOver)}</>}
           </div>
         </div>
@@ -646,6 +653,24 @@ function OnAccountCard({ receipt, onClick }: { receipt: OutReceipt; onClick: () 
           <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">→ Allocate</div>
         </div>
       </div>
+      {(receipt.linkedInvoices?.length ?? 0) > 0 && (
+        <div className="mt-2 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700 space-y-0.5">
+          <div className="text-[10px] text-gray-500 font-semibold">Linked invoices ({receipt.linkedInvoices!.length})</div>
+          {receipt.linkedInvoices!.map((inv, i) => (
+            <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
+              <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                <span className={`font-mono ${inv.isCN ? 'text-violet-700 dark:text-violet-300' : 'text-indigo-600 dark:text-indigo-300'}`}>{inv.vchNumber}{inv.isCN ? ' (CN)' : ''}</span>
+                {inv.date && <span className="text-gray-500">{fmtDate(inv.date)}</span>}
+                {inv.tdsAmount > 0 && <span className="text-amber-700 dark:text-amber-400">TDS ₹{fmtMoney(inv.tdsAmount)}</span>}
+                {inv.discountAmount > 0 && <span className="text-rose-700 dark:text-rose-400">disc ₹{fmtMoney(inv.discountAmount)}</span>}
+              </div>
+              <span className={`tabular-nums font-semibold shrink-0 ${inv.isCN ? 'text-violet-700 dark:text-violet-300' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                {inv.allocatedAmount < 0 ? '−' : ''}₹{fmtMoney(Math.abs(inv.allocatedAmount))}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </button>
   )
 }

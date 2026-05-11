@@ -60,7 +60,7 @@ export async function GET(_req: NextRequest) {
       allocations: {
         select: {
           allocatedAmount: true, tdsAmount: true, discountAmount: true,
-          invoice: { select: { vchType: true } },
+          invoice: { select: { vchNumber: true, vchType: true, date: true } },
         },
       },
     },
@@ -73,9 +73,21 @@ export async function GET(_req: NextRequest) {
       }, 0)
       const linkedTds = (r.allocations || []).reduce((s: number, a: any) => s + (a.tdsAmount || 0), 0)
       const linkedDiscount = (r.allocations || []).reduce((s: number, a: any) => s + (a.discountAmount || 0), 0)
+      const linkedInvoices = (r.allocations || []).map((a: any) => {
+        const isCN = a.invoice?.vchType === 'Credit Note'
+        return {
+          vchNumber: a.invoice?.vchNumber || '',
+          vchType: a.invoice?.vchType || '',
+          date: a.invoice?.date || null,
+          allocatedAmount: round2(isCN ? -a.allocatedAmount : a.allocatedAmount),
+          tdsAmount: round2(a.tdsAmount || 0),
+          discountAmount: round2(a.discountAmount || 0),
+          isCN,
+        }
+      })
       const carryOver = r.carryOverPriorFy || 0
       const unallocated = round2(Math.max(0, r.amount - linkedCash - carryOver))
-      return { ...r, linkedCash: round2(linkedCash), linkedTds: round2(linkedTds), linkedDiscount: round2(linkedDiscount), carryOver, unallocated }
+      return { ...r, linkedCash: round2(linkedCash), linkedTds: round2(linkedTds), linkedDiscount: round2(linkedDiscount), linkedInvoices, carryOver, unallocated }
     })
     .filter((r: any) => r.unallocated > 0.5)
 
@@ -135,7 +147,9 @@ export async function GET(_req: NextRequest) {
     id: r.id, vchNumber: r.vchNumber, vchType: r.vchType, date: r.date,
     partyName: r.partyName, amount: r.amount,
     bankRef: r.bankRef, instrumentNo: r.instrumentNo, narration: r.narration,
-    linkedCash: r.linkedCash, carryOver: r.carryOver, unallocated: r.unallocated,
+    linkedCash: r.linkedCash, linkedTds: r.linkedTds, linkedDiscount: r.linkedDiscount,
+    linkedInvoices: r.linkedInvoices || [],
+    carryOver: r.carryOver, unallocated: r.unallocated,
     daysSince: dueDays(r.date),
   })).sort((a: any, b: any) => b.unallocated - a.unallocated)
 

@@ -122,8 +122,8 @@ export default function GreyListPage() {
   type StockSortDir = 'asc' | 'desc'
   const [stockSortField, setStockSortField] = useState<StockSortField>(() => initial.stockSortField ?? lsSort.stockSortField ?? 'date')
   const [stockSortDir, setStockSortDir] = useState<StockSortDir>(() => initial.stockSortDir ?? lsSort.stockSortDir ?? 'desc')
-  const [filters, setFilters] = useState<{ party: string; quality: string; lotNo: string; lrNo: string }>(
-    () => initial.filters ?? { party: '', quality: '', lotNo: '', lrNo: '' }
+  const [filters, setFilters] = useState<{ party: string; quality: string; lotNo: string; lrNo: string; baleNo: string }>(
+    () => initial.filters ?? { party: '', quality: '', lotNo: '', lrNo: '', baleNo: '' }
   )
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [cfImporting, setCfImporting] = useState(false)
@@ -251,6 +251,7 @@ export default function GreyListPage() {
           e.quality.name.toLowerCase().includes(q) ||
           e.lotNo.toLowerCase().includes(q) ||
           (e.transportLrNo ?? '').toLowerCase().includes(q) ||
+          (e.baleNo ?? '').toLowerCase().includes(q) ||
           String(e.challanNo).includes(q) ||
           String(e.sn ?? '').includes(q)
         )
@@ -258,7 +259,8 @@ export default function GreyListPage() {
         const matchQuality = !filters.quality || e.quality.name.toLowerCase().includes(filters.quality.toLowerCase())
         const matchLot = !filters.lotNo || e.lotNo.toLowerCase().includes(filters.lotNo.toLowerCase())
         const matchLr = !filters.lrNo || (e.transportLrNo ?? '').toLowerCase().includes(filters.lrNo.toLowerCase())
-        return matchSearch && matchParty && matchQuality && matchLot && matchLr
+        const matchBaleNo = !filters.baleNo || (e.baleNo ?? '').toLowerCase().includes(filters.baleNo.toLowerCase())
+        return matchSearch && matchParty && matchQuality && matchLot && matchLr && matchBaleNo
       })
       .sort((a, b) => {
         const av = getValue(a, sortField)
@@ -557,13 +559,13 @@ export default function GreyListPage() {
           <div className="mb-4 flex items-center gap-3">
             <input
               type="text"
-              placeholder="Search by party, quality, lot no, LR no, challan, SN..."
+              placeholder="Search by party, quality, lot no, LR no, bale no, challan, SN..."
               className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               value={search}
               onChange={(e) => { setSearchRaw(e.target.value); setDebouncedSearch(e.target.value) }}
             />
-            {(search || filters.party || filters.quality || filters.lotNo || filters.lrNo) && (
-              <button onClick={() => { setSearchRaw(''); setDebouncedSearch(''); setFilters({ party: '', quality: '', lotNo: '', lrNo: '' }) }} className="text-xs text-gray-400 hover:text-red-500">
+            {(search || filters.party || filters.quality || filters.lotNo || filters.lrNo || filters.baleNo) && (
+              <button onClick={() => { setSearchRaw(''); setDebouncedSearch(''); setFilters({ party: '', quality: '', lotNo: '', lrNo: '', baleNo: '' }) }} className="text-xs text-gray-400 hover:text-red-500">
                 Clear filters
               </button>
             )}
@@ -675,7 +677,10 @@ export default function GreyListPage() {
                           <input className={fi} placeholder="filter..." value={filters.lrNo} onChange={e=>{e.stopPropagation();setFilter('lrNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
                         </th>
                         <PlainTh label="Bale" />
-                        <PlainTh label="Bale No" />
+                        <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                          <span>Bale No</span>
+                          <input className={fi} placeholder="filter..." value={filters.baleNo} onChange={e=>{e.stopPropagation();setFilter('baleNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
+                        </th>
                         <PlainTh label="Ech Bale" />
                         <PlainTh label="Weaver" />
                         <SortTh field="tDesp" label="T_DESP" />
