@@ -41,7 +41,7 @@ function getValue(e: GreyEntry, field: SortField): string | number {
     case 'quality': return e.quality.name.toLowerCase()
     case 'than': return e.than
     case 'lotNo': return e.lotNo.toLowerCase()
-    case 'lrNo': return (e.lrNo ?? e.transportLrNo ?? '').toLowerCase()
+    case 'lrNo': return (e.transportLrNo ?? '').toLowerCase()
     case 'tDesp': return e.tDesp
     case 'stock': return e.stock
   }
@@ -250,13 +250,14 @@ export default function GreyListPage() {
           e.party.name.toLowerCase().includes(q) ||
           e.quality.name.toLowerCase().includes(q) ||
           e.lotNo.toLowerCase().includes(q) ||
+          (e.transportLrNo ?? '').toLowerCase().includes(q) ||
           String(e.challanNo).includes(q) ||
           String(e.sn ?? '').includes(q)
         )
         const matchParty = !filters.party || e.party.name.toLowerCase().includes(filters.party.toLowerCase())
         const matchQuality = !filters.quality || e.quality.name.toLowerCase().includes(filters.quality.toLowerCase())
         const matchLot = !filters.lotNo || e.lotNo.toLowerCase().includes(filters.lotNo.toLowerCase())
-        const matchLr = !filters.lrNo || (e.lrNo ?? e.transportLrNo ?? '').toLowerCase().includes(filters.lrNo.toLowerCase())
+        const matchLr = !filters.lrNo || (e.transportLrNo ?? '').toLowerCase().includes(filters.lrNo.toLowerCase())
         return matchSearch && matchParty && matchQuality && matchLot && matchLr
       })
       .sort((a, b) => {
@@ -556,7 +557,7 @@ export default function GreyListPage() {
           <div className="mb-4 flex items-center gap-3">
             <input
               type="text"
-              placeholder="Search by party, quality, lot no, challan, SN..."
+              placeholder="Search by party, quality, lot no, LR no, challan, SN..."
               className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               value={search}
               onChange={(e) => { setSearchRaw(e.target.value); setDebouncedSearch(e.target.value) }}
@@ -632,7 +633,7 @@ export default function GreyListPage() {
                           <span>Weight: {e.weight ?? '—'}</span>
                           <span>Gray Mtr: {e.grayMtr ?? '—'}</span>
                           <span>Transport: {e.transport.name}</span>
-                          <span>LR No: {e.lrNo ?? e.transportLrNo ?? '—'}</span>
+                          <span>LR No: {e.transportLrNo ?? '—'}</span>
                           <span>Bale: {e.bale ?? '—'}</span>
                           <span>Bale No: {e.baleNo ?? '—'}</span>
                           <span>Ech Bale: {e.echBaleThan ?? '—'}</span>
@@ -697,7 +698,7 @@ export default function GreyListPage() {
                             <LotLink lotNo={e.lotNo} storageKey={GREY_VIEW_KEY} className="hover:underline">{e.lotNo}</LotLink>
                           </td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.transport.name}</td>
-                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.lrNo ?? e.transportLrNo ?? '—'}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.transportLrNo ?? '—'}</td>
                           <td className="px-3 py-2.5 dark:text-gray-300">{e.bale ?? '—'}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.baleNo ?? '—'}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.echBaleThan ?? '—'}</td>

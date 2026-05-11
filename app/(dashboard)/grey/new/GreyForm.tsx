@@ -221,11 +221,8 @@ export default function GreyForm() {
           <Field label="Transport *">
             <ComboSelect options={masters.transports} value={form.transportId} onChange={id => set('transportId', id)} onAddNew={n => addMaster('transports', n)} placeholder="Select transport..." />
           </Field>
-          <Field label="Transport LR No">
-            <input type="text" className={inp} value={form.transportLrNo} onChange={e => set('transportLrNo', e.target.value)} />
-          </Field>
           <Field label="LR No">
-            <input type="text" className={inp} value={form.lrNo} onChange={e => set('lrNo', e.target.value)} />
+            <input type="text" className={inp} value={form.transportLrNo} onChange={e => set('transportLrNo', e.target.value)} />
           </Field>
 
           <Field label="Bale">
