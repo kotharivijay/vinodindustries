@@ -249,7 +249,12 @@ export async function POST(req: NextRequest) {
     )
     const totalCarryOver = round2(totalExistingCarryOver + carryOverAmt)
     const leftoverReceipt = round2(Object.values(rcptRemaining).reduce((s: number, v: number) => s + v, 0))
-    const totalInvoicePending = pendingInvoices.reduce((s: number, v: { pending: number }) => s + v.pending, 0)
+    // CN pending is a party CREDIT (we owe), so it offsets invoice
+    // pending instead of adding to it. Total net dues = invoices − CNs.
+    const totalInvoicePending = pendingInvoices.reduce(
+      (s: number, v: { pending: number; isCN?: boolean }) => s + (v.isCN ? -v.pending : v.pending),
+      0,
+    )
     const leftoverInvoice = round2(Math.max(0, totalInvoicePending - totalLinked))
 
     return NextResponse.json({

@@ -847,13 +847,16 @@ function BulkLinkSheet({
         // those invoices belong in the editable list anyway, since the
         // client's TDS-aware re-FIFO will reach them.
         setRows(d.invoices.map((inv: DryRunInvoice): RowState => {
+          const isCN = inv.vchType === 'Credit Note' || inv.isCN
           const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
           return {
             invoiceId: inv.id,
             selected: true,
             allowPartial: false,
-            tdsRatePct: DEFAULT_TDS_RATE,
-            tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100),
+            // CN rows never carry TDS or settlement discount — Tally
+            // adjusts the party ledger directly via bill-wise knock-off.
+            tdsRatePct: isCN ? null : DEFAULT_TDS_RATE,
+            tdsAmount: isCN ? 0 : Math.round((taxable * DEFAULT_TDS_RATE) / 100),
             discountPct: null,
             discountAmount: 0,
           }
@@ -898,6 +901,7 @@ function BulkLinkSheet({
     const row = rows[idx]
     const inv = data?.invoices.find(i => i.id === row.invoiceId)
     if (!inv || !inv.taxableAmount || inv.taxableAmount <= 0) return
+    if (inv.isCN || inv.vchType === 'Credit Note') return  // no TDS on CN
     const rate = row.tdsRatePct ?? DEFAULT_TDS_RATE
     updateRow(idx, { tdsAmount: Math.round((inv.taxableAmount * rate) / 100) })
   }
@@ -905,6 +909,7 @@ function BulkLinkSheet({
     const row = rows[idx]
     const inv = data?.invoices.find(i => i.id === row.invoiceId)
     if (!inv || !inv.taxableAmount || inv.taxableAmount <= 0) return
+    if (inv.isCN || inv.vchType === 'Credit Note') return  // no settlement discount on CN
     const pct = row.discountPct ?? 0
     if (pct <= 0) return
     updateRow(idx, { discountAmount: Math.round((inv.taxableAmount * pct) / 100) })
@@ -961,6 +966,10 @@ function BulkLinkSheet({
       if (!inv) { map.set(row.invoiceId, []); continue }
       // Persistent skip flag — FIFO doesn't allocate cash to these.
       if (inv.skipAutoLink) { map.set(row.invoiceId, []); continue }
+      // Credit Notes are opposite-nature: their allocation would FREE
+      // receipt cash, not consume it. Auto-FIFO must never pull cash
+      // into a CN row — knock-off is manual via the receipt detail page.
+      if (inv.isCN) { map.set(row.invoiceId, []); continue }
       const targetCash = Math.max(0, round2(inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0)))
       // Auto mode: skip invoices that can't be fully closed unless the
       // user explicitly opted into partial linking on this row. Manual
@@ -1345,9 +1354,11 @@ function BulkLinkSheet({
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-sm font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(inv.totalAmount)}</div>
+                    <div className={`text-sm font-bold tabular-nums ${inv.isCN ? 'text-violet-700 dark:text-violet-300' : 'text-gray-800 dark:text-gray-100'}`}>
+                      {inv.isCN ? '−' : ''}₹{fmtMoney(inv.totalAmount)}
+                    </div>
                     <div className={`text-[10px] ${inv.isCN ? 'text-violet-600 dark:text-violet-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      pending ₹{fmtMoney(inv.pending)}
+                      pending {inv.isCN ? '−' : ''}₹{fmtMoney(inv.pending)}
                     </div>
                   </div>
                 </div>
