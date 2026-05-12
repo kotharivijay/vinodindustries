@@ -1103,6 +1103,7 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
     }
     return { netCash, tds, disc, cnFreed, invCash }
   }, [ranked])
+  // Save disabled when over-allocated (delta would be negative > ₹1).
   const overflow = totals.netCash > receiptRemaining + 1
   const allocatable = ranked.filter(r => r.cash > 0).length
 
@@ -1241,11 +1242,17 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
               <div className="text-[9px] text-gray-500 uppercase">After save · Δ</div>
               {(() => {
                 const delta = receiptRemaining - totals.netCash
-                const isNeg = delta < -0.005
+                const isShort = delta < -0.5  // need MORE than receipt has → shortfall
+                const isExtra = delta > 0.5   // receipt has leftover after allocations
                 return (
-                  <div className={`font-bold tabular-nums ${isNeg ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
-                    {isNeg ? '−' : ''}₹{fmtMoney(Math.abs(delta))}
-                    {isNeg && ' — OVER'}
+                  <div className={`font-bold tabular-nums ${
+                    isShort ? 'text-rose-700 dark:text-rose-300'
+                    : isExtra ? 'text-amber-700 dark:text-amber-300'
+                    : 'text-emerald-700 dark:text-emerald-300'
+                  }`}>
+                    {isShort ? '−' : ''}₹{fmtMoney(Math.abs(delta))}
+                    {isShort && ' — short'}
+                    {isExtra && ' — extra'}
                   </div>
                 )
               })()}
