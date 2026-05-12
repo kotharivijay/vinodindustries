@@ -63,6 +63,13 @@ export default function ReceiptDetailPage() {
   // Toggle to drop both filters and show every party invoice up to
   // today, including fully-settled ones.
   const [showAll, setShowAll] = useState(false)
+  // Multi-link draft mode: user ticks several invoices, sees a preview
+  // of the combined math (TDS @ 2% auto-applied per row), then saves
+  // all at once. Avoids opening each card's Edit panel one by one.
+  const [draftMode, setDraftMode] = useState(false)
+  const [draftSelected, setDraftSelected] = useState<Set<number>>(new Set())
+  const [previewingDraft, setPreviewingDraft] = useState(false)
+  const [savingDraft, setSavingDraft] = useState(false)
 
   if (isLoading) return <div className="max-w-3xl mx-auto p-3"><BackButton fallback="/accounts/receipts" /><div className="text-center py-8 text-gray-400 text-sm">Loading…</div></div>
   if (!data?.receipt) return <div className="max-w-3xl mx-auto p-3"><BackButton fallback="/accounts/receipts" /><div className="p-8 text-center text-rose-500">Receipt not found</div></div>
@@ -385,6 +392,15 @@ export default function ReceiptDetailPage() {
             {showAll ? '✓ Till today' : '📅 Show till today'}
           </button>
         )}
+        <button onClick={() => { setDraftMode(v => !v); if (draftMode) setDraftSelected(new Set()) }}
+          title="Tick multiple invoices, preview the cash/TDS math together, then save all at once"
+          className={`px-2.5 py-1 rounded-full border transition ${
+            draftMode
+              ? 'bg-violet-600 text-white border-violet-600'
+              : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+          }`}>
+          {draftMode ? `✓ Multi-link · ${draftSelected.size} ticked` : '☐ Multi-link'}
+        </button>
       </div>
       {syncMsg && <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">{syncMsg}</div>}
 
@@ -415,24 +431,72 @@ export default function ReceiptDetailPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2 pb-20">
           {invoices.map(inv => (
             <InvoiceCard key={inv.id} inv={inv} receiptId={Number(id)}
               receipt={r}
               receiptRemaining={receiptRemaining}
               categoryMap={data?.categoryMap ?? {}}
               partyName={r.partyName}
+              draftMode={draftMode}
+              draftSelected={draftSelected.has(inv.id)}
+              onToggleDraft={() => {
+                setDraftSelected(prev => {
+                  const s = new Set(prev)
+                  s.has(inv.id) ? s.delete(inv.id) : s.add(inv.id)
+                  return s
+                })
+              }}
               onChange={() => mutate()} />
           ))}
         </div>
+      )}
+
+      {/* Multi-link bottom bar */}
+      {draftMode && draftSelected.size > 0 && (
+        <div className="fixed bottom-3 left-3 right-3 z-30 max-w-3xl mx-auto bg-gray-900 text-gray-100 rounded-xl shadow-2xl border border-violet-500/40 px-3 py-2.5 flex items-center gap-2 flex-wrap">
+          <div className="flex-1 min-w-0 text-xs">
+            <span className="font-semibold">{draftSelected.size} invoice{draftSelected.size === 1 ? '' : 's'}</span>
+            <span className="ml-1.5 text-gray-300">in draft</span>
+          </div>
+          <button onClick={() => setDraftSelected(new Set())}
+            className="text-xs text-gray-300 hover:text-white px-2.5 py-1.5 rounded-lg border border-gray-600">
+            Clear
+          </button>
+          <button onClick={() => setPreviewingDraft(true)}
+            className="bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+            🔍 Preview {draftSelected.size}
+          </button>
+        </div>
+      )}
+
+      {/* Draft Preview modal */}
+      {previewingDraft && draftMode && (
+        <DraftPreviewModal
+          receiptId={Number(id)}
+          receipt={r}
+          receiptRemaining={receiptRemaining}
+          invoices={allInvoices.filter(inv => draftSelected.has(inv.id))}
+          onClose={() => setPreviewingDraft(false)}
+          onSaved={(saved) => {
+            setPreviewingDraft(false)
+            setDraftSelected(new Set())
+            setDraftMode(false)
+            setSyncMsg(`Linked ${saved} invoice${saved === 1 ? '' : 's'}.`)
+            mutate()
+          }}
+          savingDraft={savingDraft}
+          setSavingDraft={setSavingDraft} />
       )}
     </div>
   )
 }
 
-function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, partyName, onChange }: {
+function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, partyName, draftMode = false, draftSelected = false, onToggleDraft, onChange }: {
   inv: Invoice; receiptId: number; receipt: Receipt; receiptRemaining: number;
   categoryMap: Record<string, string>; partyName: string;
+  draftMode?: boolean; draftSelected?: boolean;
+  onToggleDraft?: () => void;
   onChange: () => void
 }) {
   // Prefer the stored taxableAmount; fall back to summing item lines so
@@ -665,12 +729,25 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
     finally { setBusy(false) }
   }
 
+  // Draft eligibility: only fresh-link candidates (not CN, not skipped,
+  // not already linked to this receipt). Other cards still render in
+  // draft mode but without the checkbox.
+  const draftEligible = draftMode && !isCN && !inv.skipAutoLink && !myAlloc
   return (
     <div className={`bg-white dark:bg-gray-800 border rounded-xl p-3 transition ${
-      myAlloc ? 'border-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-700/40' : 'border-gray-100 dark:border-gray-700'
+      draftSelected ? 'border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700/60'
+      : myAlloc ? 'border-emerald-400 ring-1 ring-emerald-200 dark:ring-emerald-700/40'
+      : 'border-gray-100 dark:border-gray-700'
     }`}>
       <div className="flex items-start justify-between gap-2 mb-1">
-        <div className="min-w-0">
+        <div className="min-w-0 flex items-start gap-2">
+          {draftEligible && (
+            <input type="checkbox" checked={draftSelected}
+              onChange={() => onToggleDraft?.()}
+              title="Add to multi-link draft"
+              className="mt-1 w-4 h-4 accent-violet-600 shrink-0 cursor-pointer" />
+          )}
+          <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
               {inv.vchType} {inv.vchNumber}
@@ -689,6 +766,7 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
             )}
           </div>
           {inv.partyGstin && <div className="text-[10px] text-gray-500 dark:text-gray-400">GSTIN: {inv.partyGstin}</div>}
+          </div>
         </div>
         <div className="text-right shrink-0">
           <div className="text-base font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(inv.totalAmount)}</div>
@@ -945,6 +1023,193 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Draft preview modal — opens when the user has ticked one or more
+// invoices in Multi-link mode. Auto-applies TDS @ 2% on each row's
+// taxable, computes cash = pending − tds − discount, caps each row's
+// cash at receiptRemaining (FIFO order), shows the math, and lets the
+// user save all selected allocations in one go via /allocate per row.
+function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onClose, onSaved, savingDraft, setSavingDraft }: {
+  receiptId: number; receipt: Receipt; receiptRemaining: number;
+  invoices: Invoice[];
+  onClose: () => void; onSaved: (saved: number) => void;
+  savingDraft: boolean; setSavingDraft: (v: boolean) => void
+}) {
+  // Per-row TDS / disc state. Initialised from auto-2% on the
+  // invoice's taxable (falling back to item-sum) so the user sees a
+  // populated draft on first open.
+  const [drafts, setDrafts] = useState<Map<number, { tdsAmount: number; discountAmount: number }>>(() => {
+    const m = new Map<number, { tdsAmount: number; discountAmount: number }>()
+    for (const inv of invoices) {
+      const itemSum = inv.lines.reduce((s, l) => s + l.amount, 0)
+      const grossTaxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : itemSum
+      const voucherDiscount = inv.ledgers.reduce((s, l) => {
+        const lname = l.ledgerName.toLowerCase()
+        // Heuristic: any ledger with "less" or "discount" reduces taxable.
+        return /less|discount/.test(lname) ? s + Math.abs(l.amount) : s
+      }, 0)
+      const taxable = Math.max(0, grossTaxable - voucherDiscount)
+      m.set(inv.id, { tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100), discountAmount: 0 })
+    }
+    return m
+  })
+
+  // FIFO cap: each row's cash = min(pending - tds - disc, remaining receipt pool).
+  const ranked = useMemo(() => {
+    let pool = receiptRemaining
+    return invoices.map(inv => {
+      const d = drafts.get(inv.id) || { tdsAmount: 0, discountAmount: 0 }
+      const target = Math.max(0, inv.pending - d.tdsAmount - d.discountAmount)
+      const cash = Math.max(0, Math.min(target, pool))
+      pool = Math.max(0, pool - cash)
+      const settled = cash + d.tdsAmount + d.discountAmount
+      const diff = inv.pending - settled
+      return { inv, tds: d.tdsAmount, disc: d.discountAmount, cash, settled, diff }
+    })
+  }, [invoices, drafts, receiptRemaining])
+
+  const totals = useMemo(() => ({
+    cash: ranked.reduce((s, r) => s + r.cash, 0),
+    tds: ranked.reduce((s, r) => s + r.tds, 0),
+    disc: ranked.reduce((s, r) => s + r.disc, 0),
+  }), [ranked])
+  const used = totals.cash
+  const overflow = used > receiptRemaining + 1
+  const allocatable = ranked.filter(r => r.cash > 0).length
+
+  function setRowField(id: number, field: 'tdsAmount' | 'discountAmount', val: number) {
+    setDrafts(prev => {
+      const n = new Map(prev)
+      const cur = n.get(id) || { tdsAmount: 0, discountAmount: 0 }
+      n.set(id, { ...cur, [field]: Math.max(0, val || 0) })
+      return n
+    })
+  }
+
+  async function saveAll() {
+    if (savingDraft) return
+    setSavingDraft(true)
+    let saved = 0
+    let firstErr: string | null = null
+    try {
+      for (const r of ranked) {
+        if (r.cash <= 0) continue
+        const res = await fetch(`/api/accounts/receipts/${receiptId}/allocate`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            invoiceId: r.inv.id,
+            allocatedAmount: r.cash,
+            tdsAmount: r.tds,
+            discountAmount: r.disc,
+            tdsRatePct: DEFAULT_TDS_RATE,
+          }),
+        })
+        const d = await res.json()
+        if (!res.ok) { firstErr = `${r.inv.vchNumber}: ${d.error || 'failed'}`; break }
+        saved++
+      }
+      if (firstErr) alert(`Saved ${saved} of ${ranked.length}. Stopped at: ${firstErr}`)
+      onSaved(saved)
+    } catch (e: any) {
+      alert(e?.message || 'Network error')
+    } finally { setSavingDraft(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3" onClick={() => !savingDraft && onClose()}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-bold text-gray-800 dark:text-gray-100">🔍 Multi-link Draft</div>
+            <div className="text-[10px] text-gray-500 dark:text-gray-400">Receipt #{receipt.vchNumber} · ₹{fmtMoney(receipt.amount)} · remaining ₹{fmtMoney(receiptRemaining)}</div>
+          </div>
+          <button onClick={onClose} disabled={savingDraft}
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xs">✕</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3">
+          <table className="w-full text-[11px] border-collapse">
+            <thead>
+              <tr className="border-b-2 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                <th className="px-1.5 py-1 text-left">Invoice</th>
+                <th className="px-1.5 py-1 text-right">Pending</th>
+                <th className="px-1.5 py-1 text-right" style={{ width: 70 }}>TDS</th>
+                <th className="px-1.5 py-1 text-right" style={{ width: 70 }}>Disc</th>
+                <th className="px-1.5 py-1 text-right">Cash</th>
+                <th className="px-1.5 py-1 text-right">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranked.map(({ inv, tds, disc, cash, diff }) => {
+                const status = cash <= 0 ? '— no cash left'
+                  : Math.abs(diff) <= 1 ? '✓ closes'
+                  : diff > 0 ? `short ₹${fmtMoney(diff)}`
+                  : `over ₹${fmtMoney(-diff)}`
+                const statusColor = cash <= 0 ? 'text-gray-400'
+                  : Math.abs(diff) <= 1 ? 'text-emerald-700 dark:text-emerald-300'
+                  : diff > 0 ? 'text-amber-700 dark:text-amber-300'
+                  : 'text-rose-700 dark:text-rose-300'
+                return (
+                  <tr key={inv.id} className="border-b border-gray-100 dark:border-gray-700/60">
+                    <td className="px-1.5 py-1">
+                      <div className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchNumber}</div>
+                      <div className="text-[9px] text-gray-500">{inv.vchType} · {fmtDate(inv.date)}</div>
+                    </td>
+                    <td className="px-1.5 py-1 text-right tabular-nums">₹{fmtMoney(inv.pending)}</td>
+                    <td className="px-1.5 py-1">
+                      <input type="number" value={tds || ''} onChange={e => setRowField(inv.id, 'tdsAmount', parseFloat(e.target.value))}
+                        className="w-full px-1 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums text-right" />
+                    </td>
+                    <td className="px-1.5 py-1">
+                      <input type="number" value={disc || ''} onChange={e => setRowField(inv.id, 'discountAmount', parseFloat(e.target.value))}
+                        className="w-full px-1 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums text-right" />
+                    </td>
+                    <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-300">
+                      {cash > 0 ? `₹${fmtMoney(cash)}` : '—'}
+                    </td>
+                    <td className={`px-1.5 py-1 text-right font-semibold ${statusColor}`}>{status}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            <tfoot className="border-t-2 border-gray-300 dark:border-gray-600">
+              <tr className="font-bold text-gray-800 dark:text-gray-100">
+                <td className="px-1.5 py-2 text-left">Totals ({allocatable}/{ranked.length} allocatable)</td>
+                <td className="px-1.5 py-2 text-right">—</td>
+                <td className="px-1.5 py-2 text-right tabular-nums text-amber-700 dark:text-amber-300">₹{fmtMoney(totals.tds)}</td>
+                <td className="px-1.5 py-2 text-right tabular-nums text-rose-700 dark:text-rose-300">₹{fmtMoney(totals.disc)}</td>
+                <td className="px-1.5 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-300">₹{fmtMoney(totals.cash)}</td>
+                <td className="px-1.5 py-2 text-right">—</td>
+              </tr>
+            </tfoot>
+          </table>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
+              <div className="text-[9px] text-gray-500 uppercase">Receipt remaining</div>
+              <div className="font-bold tabular-nums">₹{fmtMoney(receiptRemaining)}</div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
+              <div className="text-[9px] text-gray-500 uppercase">After save · Δ</div>
+              <div className={`font-bold tabular-nums ${overflow ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
+                ₹{fmtMoney(receiptRemaining - used)}
+                {overflow && ' — OVER'}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2">
+          <button onClick={onClose} disabled={savingDraft}
+            className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
+            ← Back
+          </button>
+          <button onClick={saveAll} disabled={savingDraft || allocatable === 0 || overflow}
+            className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white text-xs font-semibold">
+            {savingDraft ? 'Saving…' : `✓ Save All ${allocatable} link${allocatable === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
