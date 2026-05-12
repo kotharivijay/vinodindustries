@@ -63,6 +63,9 @@ export default function OutstandingPage() {
   async function runTallyMatch() {
     setMatching(true)
     try {
+      // The endpoint hits Tally live (Group Summary report for Sundry
+      // Debtors + Sundry Creditors), so the returned numbers reflect
+      // the actual current closing balance — no separate sync needed.
       const res = await fetch('/api/accounts/outstanding/tally-match')
       const d = await res.json()
       if (!res.ok) { alert(d.error || 'Failed'); return }
