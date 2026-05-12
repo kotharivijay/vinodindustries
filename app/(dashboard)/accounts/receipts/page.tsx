@@ -87,6 +87,11 @@ interface RowState {
   tdsAmount: number
   discountPct: number | null
   discountAmount: number
+  // For CN rows only — how much of the CN to knock off in this bulk
+  // operation. Defaults to inv.pending so the full CN is consumed.
+  // Always attributed to the oldest selected receipt at commit time;
+  // the server flips the sign so it FREES cash on that receipt.
+  cnKnockoffAmount?: number
 }
 type BulkMode = 'auto' | 'manual'
 const DEFAULT_TDS_RATE = 2
@@ -851,7 +856,9 @@ function BulkLinkSheet({
           const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
           return {
             invoiceId: inv.id,
-            selected: true,
+            // Default CN rows to UNticked so the user opts in
+            // explicitly — most bulk-link ops don't include CNs.
+            selected: !isCN,
             allowPartial: false,
             // CN rows never carry TDS or settlement discount — Tally
             // adjusts the party ledger directly via bill-wise knock-off.
@@ -859,6 +866,7 @@ function BulkLinkSheet({
             tdsAmount: isCN ? 0 : Math.round((taxable * DEFAULT_TDS_RATE) / 100),
             discountPct: null,
             discountAmount: 0,
+            cnKnockoffAmount: isCN ? inv.pending : 0,
           }
         }))
       })
@@ -960,16 +968,30 @@ function BulkLinkSheet({
     }
     let totalRemaining = round2(Object.values(remaining).reduce((s, v) => s + v, 0))
     let i = 0
+    // Phase 1 — handle CN rows first. Each ticked CN gets a single
+    // split to the oldest selected receipt for the user-typed knock-off
+    // amount. The server flips the sign at commit time so the receipt's
+    // cash pool effectively GROWS by that amount, freeing it for the
+    // invoice rows we FIFO below.
+    const firstReceipt = data.receipts[0]
+    for (const row of rows) {
+      const inv = data.invoices.find(x => x.id === row.invoiceId)
+      if (!inv?.isCN) continue
+      if (!row.selected || inv.skipAutoLink) { map.set(row.invoiceId, []); continue }
+      const ko = Math.max(0, Math.min(row.cnKnockoffAmount || 0, inv.pending))
+      if (ko <= 0 || !firstReceipt) { map.set(row.invoiceId, []); continue }
+      map.set(row.invoiceId, [{ receiptId: firstReceipt.id, allocatedAmount: ko }])
+      remaining[firstReceipt.id] = round2((remaining[firstReceipt.id] || 0) + ko)
+      totalRemaining = round2(totalRemaining + ko)
+    }
     for (const row of rows) {
       if (!row.selected) { map.set(row.invoiceId, []); continue }
       const inv = data.invoices.find(x => x.id === row.invoiceId)
       if (!inv) { map.set(row.invoiceId, []); continue }
       // Persistent skip flag — FIFO doesn't allocate cash to these.
       if (inv.skipAutoLink) { map.set(row.invoiceId, []); continue }
-      // Credit Notes are opposite-nature: their allocation would FREE
-      // receipt cash, not consume it. Auto-FIFO must never pull cash
-      // into a CN row — knock-off is manual via the receipt detail page.
-      if (inv.isCN) { map.set(row.invoiceId, []); continue }
+      // CN handled in Phase 1 above; FIFO skips it entirely.
+      if (inv.isCN) continue
       const targetCash = Math.max(0, round2(inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0)))
       // Auto mode: skip invoices that can't be fully closed unless the
       // user explicitly opted into partial linking on this row. Manual
@@ -1012,9 +1034,15 @@ function BulkLinkSheet({
       // totals — we don't claim TDS / discount on a bill that's not
       // being settled.
       if (splits.length === 0) continue
-      cash += splits.reduce((s, a) => s + a.allocatedAmount, 0)
-      tds += row.tdsAmount || 0
-      disc += row.discountAmount || 0
+      // CN allocations REDUCE net cash receipts will spend (server
+      // commits them as negative-sign Agst Ref to free up receipt
+      // cash on Tally's bill-wise side).
+      const sign = inv?.isCN ? -1 : 1
+      cash += sign * splits.reduce((s, a) => s + a.allocatedAmount, 0)
+      if (!inv?.isCN) {
+        tds += row.tdsAmount || 0
+        disc += row.discountAmount || 0
+      }
     }
     const carryTotal = round2(existingCarryOver + carryOverApplied)
     return { sumReceipts, cash, tds, disc, carryOver: carryTotal, delta: round2(sumReceipts - cash - carryTotal) }
@@ -1364,11 +1392,25 @@ function BulkLinkSheet({
                 </div>
 
                 {/* Cash splits — auto-rebuilt by re-FIFO whenever TDS / Disc change.
-                   CN rows are not auto-FIFO'd — they need manual knock-off
-                   from the receipt detail page. */}
+                   CN rows show a manual knock-off input that gets attributed
+                   to the oldest selected receipt (freeing that much cash). */}
                 {inv.isCN ? (
-                  <div className="text-[10px] text-violet-700 dark:text-violet-300 italic mt-1 px-2 py-1 rounded bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700/30">
-                    ↙ CN knock-off is manual — open any receipt for this party and tap <span className="font-semibold">↙ Knock-off CN</span> on this row. Bulk-link doesn&apos;t auto-allocate Credit Notes.
+                  <div className="mt-1 space-y-1">
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <span className="text-violet-700 dark:text-violet-300 font-semibold whitespace-nowrap">↙ Knock-off ₹</span>
+                      <input type="number" value={row.cnKnockoffAmount || 0}
+                        onChange={e => updateRow(idx, { cnKnockoffAmount: Math.max(0, parseFloat(e.target.value) || 0) })}
+                        className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-violet-300 dark:border-violet-700 bg-white dark:bg-gray-700 text-[11px] tabular-nums" />
+                      <span className="text-[10px] text-gray-400 whitespace-nowrap">of ₹{fmtMoney(inv.pending)}</span>
+                    </div>
+                    {splits.length > 0 && (() => {
+                      const r0 = data.receipts.find(x => x.id === splits[0].receiptId)
+                      return (
+                        <div className="text-[10px] text-violet-600 dark:text-violet-400">
+                          → frees ₹{fmtMoney(splits[0].allocatedAmount)} on #{r0?.vchNumber} {fmtDate(r0?.date ?? '')}
+                        </div>
+                      )
+                    })()}
                   </div>
                 ) : (
                   <div className="text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5 mt-1">
