@@ -205,13 +205,9 @@ export default function ReceiptsPage() {
     if (lastViewedId == null || isLoading) return
     if (!lastViewedRef.current) return
     lastViewedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    // Drop the highlight after a short pulse so subsequent navigations
-    // don't keep highlighting the same row.
-    const t = setTimeout(() => {
-      try { sessionStorage.removeItem('receipts.lastViewedId') } catch {}
-      setLastViewedId(null)
-    }, 2500)
-    return () => clearTimeout(t)
+    // Highlight stays until the user clicks another card — that click
+    // writes a new id to sessionStorage and the next back-nav remount
+    // reads it. No auto-clear.
   }, [lastViewedId, isLoading, data])
 
   function toggleSelect(id: number) {
