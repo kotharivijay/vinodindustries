@@ -57,7 +57,7 @@ interface Receipt {
 type LinkFilter = 'all' | 'linked' | 'unlinked'
 
 interface DryRunReceipt { id: number; vchType: string; vchNumber: string; date: string; amount: number; partyName: string; carryOverPriorFy?: number; additionalCarryOver?: number }
-interface DryRunInvoice { id: number; vchType: string; vchNumber: string; date: string; totalAmount: number; taxableAmount: number | null; partyGstin: string | null; pending: number; skipAutoLink?: boolean; skipAutoLinkReason?: string | null }
+interface DryRunInvoice { id: number; vchType: string; vchNumber: string; date: string; totalAmount: number; taxableAmount: number | null; partyGstin: string | null; pending: number; isCN?: boolean; skipAutoLink?: boolean; skipAutoLinkReason?: string | null }
 interface DryRunSplit { receiptId: number; allocatedAmount: number }
 interface DryRunPlanRow { invoiceId: number; allocations: DryRunSplit[] }
 interface DryRunResponse {
@@ -807,6 +807,10 @@ function BulkLinkSheet({
   const [error, setError] = useState<string | null>(null)
   const [conflicts, setConflicts] = useState<{ receiptId: number; vchNumber: string; existingLinks: number }[] | null>(null)
   const [committing, setCommitting] = useState(false)
+  // Two-step commit: clicking "Preview" opens a read-only review modal
+  // listing every selected row's cash / TDS / discount math + totals.
+  // Only after "Save All" inside that modal does /bulk-allocate run.
+  const [reviewingDraft, setReviewingDraft] = useState(false)
   const [batchNote, setBatchNote] = useState('')
   // Total prior-FY carry-over to deduct from the receipts pool before
   // FIFO. Distributed FIFO across selected receipts oldest-first;
@@ -1113,7 +1117,7 @@ function BulkLinkSheet({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 w-full max-w-3xl max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col"
+      <div className="relative bg-white dark:bg-gray-900 w-full max-w-3xl max-h-[92vh] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col"
         onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -1324,33 +1328,54 @@ function BulkLinkSheet({
                         className="mt-0.5 w-4 h-4 accent-emerald-600 cursor-pointer" />
                     )}
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                        inv.isCN
+                          ? 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'
+                          : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                      }`}>
                         {inv.vchType} {inv.vchNumber}
                       </span>
                       <span className="text-[10px] text-gray-500">{fmtDate(inv.date)}</span>
+                      {inv.isCN && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300"
+                          title="Credit Note — knocking it off here REDUCES the cash a receipt consumes (negative-sign Agst Ref in Tally)">
+                          ↙ CN knock-off
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm font-bold text-gray-800 dark:text-gray-100 tabular-nums">₹{fmtMoney(inv.totalAmount)}</div>
-                    <div className="text-[10px] text-rose-600 dark:text-rose-400">pending ₹{fmtMoney(inv.pending)}</div>
+                    <div className={`text-[10px] ${inv.isCN ? 'text-violet-600 dark:text-violet-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      pending ₹{fmtMoney(inv.pending)}
+                    </div>
                   </div>
                 </div>
 
-                {/* Cash splits — auto-rebuilt by re-FIFO whenever TDS / Disc change */}
-                <div className="text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5 mt-1">
-                  {splits.length === 0 && <div className="text-gray-400 italic">No Bank Recpt assigned (receipts exhausted)</div>}
-                  {splits.map((s, i) => {
-                    const rcpt = data.receipts.find(r => r.id === s.receiptId)
-                    return (
-                      <div key={i} className="flex justify-between">
-                        <span className="font-mono text-emerald-700 dark:text-emerald-300">#{rcpt?.vchNumber} {fmtDate(rcpt?.date ?? '')}</span>
-                        <span className="tabular-nums">₹{fmtMoney(s.allocatedAmount)}</span>
-                      </div>
-                    )
-                  })}
-                </div>
+                {/* Cash splits — auto-rebuilt by re-FIFO whenever TDS / Disc change.
+                   CN rows are not auto-FIFO'd — they need manual knock-off
+                   from the receipt detail page. */}
+                {inv.isCN ? (
+                  <div className="text-[10px] text-violet-700 dark:text-violet-300 italic mt-1 px-2 py-1 rounded bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700/30">
+                    ↙ CN knock-off is manual — open any receipt for this party and tap <span className="font-semibold">↙ Knock-off CN</span> on this row. Bulk-link doesn&apos;t auto-allocate Credit Notes.
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5 mt-1">
+                    {splits.length === 0 && <div className="text-gray-400 italic">No Bank Recpt assigned (receipts exhausted)</div>}
+                    {splits.map((s, i) => {
+                      const rcpt = data.receipts.find(r => r.id === s.receiptId)
+                      return (
+                        <div key={i} className="flex justify-between">
+                          <span className="font-mono text-emerald-700 dark:text-emerald-300">#{rcpt?.vchNumber} {fmtDate(rcpt?.date ?? '')}</span>
+                          <span className="tabular-nums">₹{fmtMoney(s.allocatedAmount)}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
 
-                {/* TDS row */}
+                {/* TDS row — not applicable on CN rows. */}
+                {!inv.isCN && (
                 <div className="flex items-center gap-1.5 text-[11px] mt-1.5">
                   <button type="button" onClick={() => applyTdsRate(idx)}
                     className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold">
@@ -1368,8 +1393,10 @@ function BulkLinkSheet({
                     className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums" />
                   <span className="text-gray-400 text-[10px] whitespace-nowrap">on ₹{fmtMoney(taxable)}</span>
                 </div>
+                )}
 
-                {/* Discount row */}
+                {/* Discount row — not applicable on CN rows. */}
+                {!inv.isCN && (
                 <div className="flex items-center gap-1.5 text-[11px] mt-1">
                   <button type="button"
                     className="px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold">
@@ -1386,6 +1413,7 @@ function BulkLinkSheet({
                     placeholder="₹"
                     className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums" />
                 </div>
+                )}
 
                 {/* Cash formula line: cash = pending − TDS − discount */}
                 <div className={`mt-1.5 text-[10px] flex justify-between gap-2 ${
@@ -1524,13 +1552,111 @@ function BulkLinkSheet({
                 className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
                 Cancel
               </button>
-              <button onClick={commit} disabled={committing || loading || (selectedCount === 0 && carryOverNum === 0) || overAllocated.length > 0 || !!conflicts || carryOverExceeds}
+              <button onClick={() => setReviewingDraft(true)} disabled={committing || loading || (selectedCount === 0 && carryOverNum === 0) || overAllocated.length > 0 || !!conflicts || carryOverExceeds}
                 className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold">
-                {committing ? 'Linking…' : `Confirm ${selectedCount} link${selectedCount === 1 ? '' : 's'}${carryOverNum > 0 ? ` + carry-over` : ''}`}
+                🔍 Preview {selectedCount} link{selectedCount === 1 ? '' : 's'}{carryOverNum > 0 ? ` + carry-over` : ''}
               </button>
             </>
           )}
         </div>
+
+        {/* Draft Review modal — final sanity check before /bulk-allocate */}
+        {reviewingDraft && data && !committed && (
+          <div className="absolute inset-0 z-10 bg-black/40 flex items-center justify-center p-3" onClick={() => !committing && setReviewingDraft(false)}>
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <div className="text-sm font-bold text-gray-800 dark:text-gray-100">🔍 Draft Review — {partyName}</div>
+                <button onClick={() => setReviewingDraft(false)} disabled={committing}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xs">✕</button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3">
+                <table className="w-full text-[11px] border-collapse">
+                  <thead>
+                    <tr className="border-b-2 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                      <th className="px-1.5 py-1 text-left">Invoice</th>
+                      <th className="px-1.5 py-1 text-right">Pending</th>
+                      <th className="px-1.5 py-1 text-right">Cash</th>
+                      <th className="px-1.5 py-1 text-right">TDS</th>
+                      <th className="px-1.5 py-1 text-right">Disc</th>
+                      <th className="px-1.5 py-1 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.filter(r => r.selected).map(row => {
+                      const inv = data.invoices.find(i => i.id === row.invoiceId)
+                      if (!inv) return null
+                      const splits = splitsByInvoice.get(row.invoiceId) || []
+                      const cash = splits.reduce((s, a) => s + a.allocatedAmount, 0)
+                      const tds = row.tdsAmount || 0
+                      const disc = row.discountAmount || 0
+                      const consumed = cash + tds + disc
+                      const diff = round2(inv.pending - consumed)
+                      const status = inv.isCN
+                        ? (cash > 0.5 ? `↙ knock-off ₹${fmtMoney(cash)}` : 'no allocation')
+                        : Math.abs(diff) <= 1 ? '✓ closes' : diff > 0 ? `short ₹${fmtMoney(diff)}` : `over ₹${fmtMoney(-diff)}`
+                      const statusColor = inv.isCN
+                        ? 'text-violet-700 dark:text-violet-300'
+                        : Math.abs(diff) <= 1 ? 'text-emerald-700 dark:text-emerald-300'
+                        : diff > 0 ? 'text-amber-700 dark:text-amber-300'
+                        : 'text-rose-700 dark:text-rose-300'
+                      return (
+                        <tr key={inv.id} className="border-b border-gray-100 dark:border-gray-700/60">
+                          <td className="px-1.5 py-1">
+                            <div className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchNumber}</div>
+                            <div className="text-[9px] text-gray-500">{inv.vchType} · {fmtDate(inv.date)}{inv.isCN ? ' · CN' : ''}</div>
+                          </td>
+                          <td className="px-1.5 py-1 text-right tabular-nums">₹{fmtMoney(inv.pending)}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums">{cash > 0 ? `₹${fmtMoney(cash)}` : '—'}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums">{tds > 0 ? `₹${fmtMoney(tds)}` : '—'}</td>
+                          <td className="px-1.5 py-1 text-right tabular-nums">{disc > 0 ? `₹${fmtMoney(disc)}` : '—'}</td>
+                          <td className={`px-1.5 py-1 text-right font-semibold ${statusColor}`}>{status}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot className="border-t-2 border-gray-300 dark:border-gray-600">
+                    <tr className="font-bold text-gray-800 dark:text-gray-100">
+                      <td className="px-1.5 py-2 text-left">Totals ({selectedCount} bills)</td>
+                      <td className="px-1.5 py-2 text-right tabular-nums">—</td>
+                      <td className="px-1.5 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-300">₹{fmtMoney(totals.cash)}</td>
+                      <td className="px-1.5 py-2 text-right tabular-nums text-amber-700 dark:text-amber-300">₹{fmtMoney(totals.tds)}</td>
+                      <td className="px-1.5 py-2 text-right tabular-nums text-rose-700 dark:text-rose-300">₹{fmtMoney(totals.disc)}</td>
+                      <td className="px-1.5 py-2 text-right tabular-nums">—</td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
+                    <div className="text-[9px] text-gray-500 uppercase">Receipts pool</div>
+                    <div className="font-bold tabular-nums">₹{fmtMoney(totals.sumReceipts)}</div>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
+                    <div className="text-[9px] text-gray-500 uppercase">After bank recpt + carry-over · Δ</div>
+                    <div className={`font-bold tabular-nums ${Math.abs(totals.delta) <= 1 ? 'text-emerald-700 dark:text-emerald-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                      ₹{fmtMoney(totals.delta)}
+                      {Math.abs(totals.delta) <= 1 ? ' ✓' : ' — will sit on-account'}
+                    </div>
+                  </div>
+                </div>
+                {batchNote.trim() && (
+                  <div className="mt-3 text-[11px] bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/40 rounded p-2">
+                    <span className="font-semibold">📌 Notes:</span> {batchNote.trim()}
+                  </div>
+                )}
+              </div>
+              <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2">
+                <button onClick={() => setReviewingDraft(false)} disabled={committing}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
+                  ← Back to Edit
+                </button>
+                <button onClick={async () => { await commit(); setReviewingDraft(false) }} disabled={committing}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold">
+                  {committing ? 'Saving…' : `✓ Save All ${selectedCount} link${selectedCount === 1 ? '' : 's'}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

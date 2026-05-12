@@ -129,11 +129,11 @@ export async function POST(req: NextRequest) {
   // invoice party whose canonical name CONTAINS the receipts' true
   // canonical (or vice-versa) counts as a match — covers branch
   // suffixes and "M/s" prefixes.
-  // Also drop Credit Notes — they are opposite-nature to sales invoices
-  // and must be knocked off manually from the receipt detail page, not
-  // pulled into FIFO.
+  // Credit Notes ARE included in the candidate list so the user can
+  // knock them off via bulk-link too, but FIFO auto-plan skips them
+  // (opposite-nature: a CN allocation reduces receipt cash spent, not
+  // adds to it). User edits CN rows manually in the dry-run UI.
   const partyInvoices = partyInvoicesRaw.filter((inv: any) => {
-    if (inv.vchType === 'Credit Note') return false
     const c = canonicalize(inv.partyName)
     return c === truePartyCanonical || c.includes(truePartyCanonical) || truePartyCanonical.includes(c)
   })
@@ -169,6 +169,7 @@ export async function POST(req: NextRequest) {
       taxableAmount: inv.taxableAmount,
       partyGstin: inv.partyGstin,
       pending: pendingPerInvoice[inv.id],
+      isCN: inv.vchType === 'Credit Note',
       // Persistent skip flag — bulk-link FIFO passes over these.
       skipAutoLink: !!inv.skipAutoLink,
       skipAutoLinkReason: inv.skipAutoLinkReason ?? null,
@@ -217,6 +218,10 @@ export async function POST(req: NextRequest) {
       // to the next eligible invoice. They still appear in the dryRun
       // response so the client can render the badge + reason.
       if (inv.skipAutoLink) continue
+      // CNs are opposite-nature — they appear in the candidate list
+      // but never auto-allocate via FIFO. User edits them manually
+      // in the bulk-link sheet to knock them off.
+      if (inv.isCN) continue
       let need = inv.pending
       const splits: AllocSplit[] = []
       while (need > 0 && i < sortedReceipts.length) {
@@ -294,6 +299,7 @@ export async function POST(req: NextRequest) {
         skippedInvoiceId: row.invoiceId,
       }, { status: 400 })
     }
+    const isCN = invRow?.vchType === 'Credit Note'
     let cashForInvoice = 0
     for (const split of row.allocations) {
       if (!split || !Number.isFinite(split.receiptId) || !rcptById[split.receiptId]) {
@@ -302,11 +308,16 @@ export async function POST(req: NextRequest) {
       if (!Number.isFinite(split.allocatedAmount) || split.allocatedAmount <= 0) {
         return NextResponse.json({ error: 'allocatedAmount must be > 0' }, { status: 400 })
       }
-      cashSpentByReceipt[split.receiptId] = (cashSpentByReceipt[split.receiptId] || 0) + split.allocatedAmount
+      // CN allocations free up receipt cash (negative impact); regular
+      // invoice allocations consume cash (positive). Bill-wise behaviour
+      // mirrors Tally's Agst Ref sign convention.
+      const sign = isCN ? -1 : 1
+      cashSpentByReceipt[split.receiptId] = (cashSpentByReceipt[split.receiptId] || 0) + sign * split.allocatedAmount
       cashForInvoice += split.allocatedAmount
     }
-    const tds = Number.isFinite(row.tdsAmount) && row.tdsAmount! > 0 ? Number(row.tdsAmount) : 0
-    const disc = Number.isFinite(row.discountAmount) && row.discountAmount! > 0 ? Number(row.discountAmount) : 0
+    // CN rows never carry TDS / settlement discount.
+    const tds = isCN ? 0 : (Number.isFinite(row.tdsAmount) && row.tdsAmount! > 0 ? Number(row.tdsAmount) : 0)
+    const disc = isCN ? 0 : (Number.isFinite(row.discountAmount) && row.discountAmount! > 0 ? Number(row.discountAmount) : 0)
     const consumed = cashForInvoice + tds + disc
     // Allow 1-rupee tolerance for rounding noise.
     if (consumed > invPending + 1) {
@@ -336,8 +347,10 @@ export async function POST(req: NextRequest) {
     tdsRatePct: number | null; note: string | null;
   }> = {}
   for (const row of rows) {
-    const tdsTotal = Number.isFinite(row.tdsAmount) && row.tdsAmount! > 0 ? Number(row.tdsAmount) : 0
-    const discTotal = Number.isFinite(row.discountAmount) && row.discountAmount! > 0 ? Number(row.discountAmount) : 0
+    const invRow = invoices.find((i: any) => i.id === row.invoiceId)
+    const isCN = invRow?.vchType === 'Credit Note'
+    const tdsTotal = isCN ? 0 : (Number.isFinite(row.tdsAmount) && row.tdsAmount! > 0 ? Number(row.tdsAmount) : 0)
+    const discTotal = isCN ? 0 : (Number.isFinite(row.discountAmount) && row.discountAmount! > 0 ? Number(row.discountAmount) : 0)
     const ratePct = Number.isFinite(row.tdsRatePct) ? Number(row.tdsRatePct) : null
     // Bulk-level note overrides per-row notes when present, so every
     // row in the batch shares the same string (used for sibling
