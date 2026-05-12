@@ -1552,9 +1552,9 @@ function BulkLinkSheet({
                 className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
                 Cancel
               </button>
-              <button onClick={() => setReviewingDraft(true)} disabled={committing || loading || (selectedCount === 0 && carryOverNum === 0) || overAllocated.length > 0 || !!conflicts || carryOverExceeds}
+              <button onClick={() => setReviewingDraft(true)} disabled={committing || loading || rows.length === 0 || overAllocated.length > 0 || !!conflicts || carryOverExceeds}
                 className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold">
-                🔍 Preview {selectedCount} link{selectedCount === 1 ? '' : 's'}{carryOverNum > 0 ? ` + carry-over` : ''}
+                🔍 Preview ({rows.length} bills · {selectedCount} ticked{carryOverNum > 0 ? ` + carry-over` : ''})
               </button>
             </>
           )}
@@ -1573,6 +1573,7 @@ function BulkLinkSheet({
                 <table className="w-full text-[11px] border-collapse">
                   <thead>
                     <tr className="border-b-2 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                      <th className="px-1.5 py-1 text-center" style={{ width: 22 }}>✓</th>
                       <th className="px-1.5 py-1 text-left">Invoice</th>
                       <th className="px-1.5 py-1 text-right">Pending</th>
                       <th className="px-1.5 py-1 text-right">Cash</th>
@@ -1582,25 +1583,30 @@ function BulkLinkSheet({
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.filter(r => r.selected).map(row => {
+                    {rows.map(row => {
                       const inv = data.invoices.find(i => i.id === row.invoiceId)
                       if (!inv) return null
                       const splits = splitsByInvoice.get(row.invoiceId) || []
-                      const cash = splits.reduce((s, a) => s + a.allocatedAmount, 0)
-                      const tds = row.tdsAmount || 0
-                      const disc = row.discountAmount || 0
+                      const cash = row.selected ? splits.reduce((s, a) => s + a.allocatedAmount, 0) : 0
+                      const tds = row.selected ? (row.tdsAmount || 0) : 0
+                      const disc = row.selected ? (row.discountAmount || 0) : 0
                       const consumed = cash + tds + disc
                       const diff = round2(inv.pending - consumed)
-                      const status = inv.isCN
-                        ? (cash > 0.5 ? `↙ knock-off ₹${fmtMoney(cash)}` : 'no allocation')
-                        : Math.abs(diff) <= 1 ? '✓ closes' : diff > 0 ? `short ₹${fmtMoney(diff)}` : `over ₹${fmtMoney(-diff)}`
-                      const statusColor = inv.isCN
-                        ? 'text-violet-700 dark:text-violet-300'
-                        : Math.abs(diff) <= 1 ? 'text-emerald-700 dark:text-emerald-300'
-                        : diff > 0 ? 'text-amber-700 dark:text-amber-300'
-                        : 'text-rose-700 dark:text-rose-300'
+                      const status = !row.selected
+                        ? '— skipped'
+                        : inv.isCN
+                          ? (cash > 0.5 ? `↙ knock-off ₹${fmtMoney(cash)}` : 'no allocation')
+                          : Math.abs(diff) <= 1 ? '✓ closes' : diff > 0 ? `short ₹${fmtMoney(diff)}` : `over ₹${fmtMoney(-diff)}`
+                      const statusColor = !row.selected
+                        ? 'text-gray-400'
+                        : inv.isCN
+                          ? 'text-violet-700 dark:text-violet-300'
+                          : Math.abs(diff) <= 1 ? 'text-emerald-700 dark:text-emerald-300'
+                          : diff > 0 ? 'text-amber-700 dark:text-amber-300'
+                          : 'text-rose-700 dark:text-rose-300'
                       return (
-                        <tr key={inv.id} className="border-b border-gray-100 dark:border-gray-700/60">
+                        <tr key={inv.id} className={`border-b border-gray-100 dark:border-gray-700/60 ${!row.selected ? 'opacity-50' : ''}`}>
+                          <td className="px-1.5 py-1 text-center">{row.selected ? '✓' : '—'}</td>
                           <td className="px-1.5 py-1">
                             <div className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchNumber}</div>
                             <div className="text-[9px] text-gray-500">{inv.vchType} · {fmtDate(inv.date)}{inv.isCN ? ' · CN' : ''}</div>
@@ -1616,7 +1622,8 @@ function BulkLinkSheet({
                   </tbody>
                   <tfoot className="border-t-2 border-gray-300 dark:border-gray-600">
                     <tr className="font-bold text-gray-800 dark:text-gray-100">
-                      <td className="px-1.5 py-2 text-left">Totals ({selectedCount} bills)</td>
+                      <td className="px-1.5 py-2 text-center">{selectedCount}</td>
+                      <td className="px-1.5 py-2 text-left">Totals ({selectedCount}/{rows.length} ticked)</td>
                       <td className="px-1.5 py-2 text-right tabular-nums">—</td>
                       <td className="px-1.5 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-300">₹{fmtMoney(totals.cash)}</td>
                       <td className="px-1.5 py-2 text-right tabular-nums text-amber-700 dark:text-amber-300">₹{fmtMoney(totals.tds)}</td>
@@ -1649,9 +1656,10 @@ function BulkLinkSheet({
                   className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
                   ← Back to Edit
                 </button>
-                <button onClick={async () => { await commit(); setReviewingDraft(false) }} disabled={committing}
+                <button onClick={async () => { await commit(); setReviewingDraft(false) }} disabled={committing || (selectedCount === 0 && carryOverNum === 0)}
+                  title={selectedCount === 0 && carryOverNum === 0 ? 'Tick at least one row in the editor before saving' : ''}
                   className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold">
-                  {committing ? 'Saving…' : `✓ Save All ${selectedCount} link${selectedCount === 1 ? '' : 's'}`}
+                  {committing ? 'Saving…' : selectedCount === 0 ? '✓ Save (none ticked)' : `✓ Save All ${selectedCount} link${selectedCount === 1 ? '' : 's'}`}
                 </button>
               </div>
             </div>
