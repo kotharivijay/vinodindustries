@@ -188,7 +188,7 @@ export default function ReceiptDetailPage() {
           </div>
           <div className="text-right shrink-0">
             <div className="text-lg font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">₹{fmtMoney(r.amount)}</div>
-            <div className="text-[10px] text-gray-500 mt-0.5">remaining ₹{fmtMoney(receiptRemaining)}</div>
+            <div className="text-[12px] text-gray-900 dark:text-white mt-0.5">remaining ₹{fmtMoney(receiptRemaining)}</div>
             {editingCarry ? (
               <div className="mt-1 flex items-center gap-1 justify-end">
                 <span className="text-[10px] text-amber-700 dark:text-amber-300">⏪ ₹</span>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
@@ -109,6 +109,11 @@ export default function ReceiptsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [syncing, setSyncing] = useState(false)
   const [syncMsg, setSyncMsg] = useState<string>('')
+  // Highlight + scroll-restore for back-nav: the detail page sets a
+  // `receipts.lastViewedId` cookie on outbound click; on return we read
+  // it once, scroll that card into view, and pulse a violet ring.
+  const [lastViewedId, setLastViewedId] = useState<number | null>(null)
+  const lastViewedRef = useRef<HTMLDivElement | null>(null)
   const [syncLog, setSyncLog] = useState<string[]>([])
   // Date filter — 'fy' (whole FY tab), 'month' (specific month), 'range'
   const [filterMode, setFilterMode] = useState<'fy' | 'month' | 'range'>('fy')
@@ -182,6 +187,32 @@ export default function ReceiptsPage() {
   // sessionStorage restoration; selections now persist across filter
   // changes (use Clear or exit Select mode to reset).
   useEffect(() => { if (!selectMode) setSelected(new Set()) }, [selectMode])
+
+  // Read the last-viewed receipt id once on mount (set by an outbound
+  // card click). The card-rendering pass below adds the violet ring
+  // and assigns lastViewedRef; once data has loaded, scroll the marked
+  // card into view and clear the stored id so we don't pin forever.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('receipts.lastViewedId')
+      if (raw) {
+        const n = parseInt(raw)
+        if (Number.isFinite(n)) setLastViewedId(n)
+      }
+    } catch {}
+  }, [])
+  useEffect(() => {
+    if (lastViewedId == null || isLoading) return
+    if (!lastViewedRef.current) return
+    lastViewedRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // Drop the highlight after a short pulse so subsequent navigations
+    // don't keep highlighting the same row.
+    const t = setTimeout(() => {
+      try { sessionStorage.removeItem('receipts.lastViewedId') } catch {}
+      setLastViewedId(null)
+    }, 2500)
+    return () => clearTimeout(t)
+  }, [lastViewedId, isLoading, data])
 
   function toggleSelect(id: number) {
     setSelected(prev => {
@@ -571,18 +602,24 @@ export default function ReceiptsPage() {
           const isSelected = selected.has(r.id)
           const onCardClick = () => {
             if (selectMode) toggleSelect(r.id)
-            else router.push(`/accounts/receipts/${r.id}${r.linkedCount > 0 ? '?view=linked' : ''}`)
+            else {
+              try { sessionStorage.setItem('receipts.lastViewedId', String(r.id)) } catch {}
+              router.push(`/accounts/receipts/${r.id}${r.linkedCount > 0 ? '?view=linked' : ''}`)
+            }
           }
           const carryOver = r.carryOverPriorFy || 0
           const diff = r.amount - r.linkedCash - carryOver
           const matched = (r.linkedCount > 0 || carryOver > 0) && Math.abs(diff) <= 1
+          const isLastViewed = r.id === lastViewedId
           return (
             <div key={r.id} role="button" tabIndex={0}
+              ref={el => { if (isLastViewed) lastViewedRef.current = el }}
+              data-receipt-id={r.id}
               onClick={onCardClick}
               onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCardClick() } }}
               className={`flex items-start gap-2 bg-white dark:bg-gray-800 border rounded-xl p-3 shadow-sm cursor-pointer transition hover:border-emerald-300 dark:hover:border-emerald-600/40 ${
                 r.hidden ? 'opacity-60 border-amber-200 dark:border-amber-700/40' : 'border-gray-100 dark:border-gray-700'
-              } ${isSelected ? 'ring-2 ring-emerald-500 border-emerald-500' : ''}`}>
+              } ${isSelected ? 'ring-2 ring-emerald-500 border-emerald-500' : ''} ${isLastViewed ? 'ring-2 ring-violet-500 border-violet-500' : ''}`}>
               {selectMode && (
                 <input type="checkbox" checked={isSelected} readOnly
                   className="mt-1.5 w-4 h-4 accent-emerald-600 shrink-0 pointer-events-none" />
