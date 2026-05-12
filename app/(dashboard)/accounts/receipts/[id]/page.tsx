@@ -1061,21 +1061,31 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
   })
 
   // Two-phase pool: CN rows ADD to the receipt pool (freeing cash for
-  // invoices below them), then invoice FIFO consumes from the boosted
-  // pool. Stable order: CNs first regardless of input order.
+  // invoices below them), then invoice rows consume FIFO oldest-first
+  // (date asc, then id asc as tiebreak) from the boosted pool. CNs run
+  // first as a group regardless of their own dates.
   const ranked = useMemo(() => {
     let pool = receiptRemaining
-    const cnRows = invoices.filter(inv => inv.vchType === 'Credit Note').map(inv => {
+    const cnInvoices = invoices
+      .filter(inv => inv.vchType === 'Credit Note')
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id)
+    const cnRows = cnInvoices.map(inv => {
       const d = drafts.get(inv.id) || { tdsAmount: 0, discountAmount: 0, cnKnockoff: 0 }
       const ko = Math.max(0, Math.min(d.cnKnockoff, inv.pending))
       pool = pool + ko  // CN frees cash on the receipt
       return { inv, tds: 0, disc: 0, cash: ko, settled: ko, diff: inv.pending - ko, isCN: true }
     })
+    // Sort invoices oldest-first so the receipt's cash drains into the
+    // earliest pending bills before the newer ones — matches the same
+    // FIFO rule the bulk-link sheet uses.
+    const sortedInvoices = invoices
+      .filter(inv => inv.vchType !== 'Credit Note')
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id)
     // Don't cap invoice cash at pool — let the user see TRUE over-allocation
     // in the Δ panel ("After save · Δ" goes negative). Server's commit
     // path will refuse a save that exceeds the receipt's amount, and
     // the modal disables Save All when overflow > ₹1.
-    const invRows = invoices.filter(inv => inv.vchType !== 'Credit Note').map(inv => {
+    const invRows = sortedInvoices.map(inv => {
       const d = drafts.get(inv.id) || { tdsAmount: 0, discountAmount: 0, cnKnockoff: 0 }
       const cash = Math.max(0, inv.pending - d.tdsAmount - d.discountAmount)
       pool = pool - cash  // can go negative when over-allocated
