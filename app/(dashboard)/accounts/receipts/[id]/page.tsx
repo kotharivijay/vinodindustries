@@ -1071,11 +1071,14 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
       pool = pool + ko  // CN frees cash on the receipt
       return { inv, tds: 0, disc: 0, cash: ko, settled: ko, diff: inv.pending - ko, isCN: true }
     })
+    // Don't cap invoice cash at pool — let the user see TRUE over-allocation
+    // in the Δ panel ("After save · Δ" goes negative). Server's commit
+    // path will refuse a save that exceeds the receipt's amount, and
+    // the modal disables Save All when overflow > ₹1.
     const invRows = invoices.filter(inv => inv.vchType !== 'Credit Note').map(inv => {
       const d = drafts.get(inv.id) || { tdsAmount: 0, discountAmount: 0, cnKnockoff: 0 }
-      const target = Math.max(0, inv.pending - d.tdsAmount - d.discountAmount)
-      const cash = Math.max(0, Math.min(target, pool))
-      pool = Math.max(0, pool - cash)
+      const cash = Math.max(0, inv.pending - d.tdsAmount - d.discountAmount)
+      pool = pool - cash  // can go negative when over-allocated
       const settled = cash + d.tdsAmount + d.discountAmount
       return { inv, tds: d.tdsAmount, disc: d.discountAmount, cash, settled, diff: inv.pending - settled, isCN: false }
     })
@@ -1226,10 +1229,16 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
             </div>
             <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
               <div className="text-[9px] text-gray-500 uppercase">After save · Δ</div>
-              <div className={`font-bold tabular-nums ${overflow ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
-                ₹{fmtMoney(receiptRemaining - totals.netCash)}
-                {overflow && ' — OVER'}
-              </div>
+              {(() => {
+                const delta = receiptRemaining - totals.netCash
+                const isNeg = delta < -0.005
+                return (
+                  <div className={`font-bold tabular-nums ${isNeg ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
+                    {isNeg ? '−' : ''}₹{fmtMoney(Math.abs(delta))}
+                    {isNeg && ' — OVER'}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>
