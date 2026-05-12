@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../../../BackButton'
@@ -1116,6 +1116,30 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
     })
   }
 
+  // Share the draft summary as a PNG via WhatsApp / native share sheet.
+  const shareRef = useRef<HTMLDivElement>(null)
+  const [sharing, setSharing] = useState(false)
+  async function shareDraftPng() {
+    if (!shareRef.current) return
+    setSharing(true)
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const canvas = await html2canvas(shareRef.current, { backgroundColor: '#ffffff', scale: 2 })
+      canvas.toBlob(async (blob) => {
+        if (!blob) return
+        const fname = `MultiLink-Receipt${receipt.vchNumber}.png`
+        const file = new File([blob], fname, { type: 'image/png' })
+        if (typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files: [file] })) {
+          try { await (navigator as any).share({ files: [file], title: `Multi-link Receipt #${receipt.vchNumber}` }); return } catch {}
+        }
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = fname; a.click()
+        URL.revokeObjectURL(url)
+      }, 'image/png')
+    } finally { setSharing(false) }
+  }
+
   async function saveAll() {
     if (savingDraft) return
     setSavingDraft(true)
@@ -1157,6 +1181,17 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
             className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xs">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto p-3">
+        <div ref={shareRef} className="bg-white rounded-lg p-3" style={{ color: '#000' }}>
+          <div className="flex items-start justify-between gap-2 mb-2 pb-2 border-b border-gray-200">
+            <div>
+              <div className="text-sm font-bold">{receipt.partyName}</div>
+              <div className="text-[10px] text-gray-600">Receipt #{receipt.vchNumber} · {fmtDate(receipt.date)} · ₹{fmtMoney(receipt.amount)}</div>
+            </div>
+            <div className="text-[10px] text-gray-600 text-right">
+              <div>Multi-link draft</div>
+              <div>{ranked.length} bill{ranked.length === 1 ? '' : 's'}</div>
+            </div>
+          </div>
           <table className="w-full text-[11px] border-collapse">
             <thead>
               <tr className="border-b-2 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 uppercase tracking-wide">
@@ -1259,10 +1294,15 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
             </div>
           </div>
         </div>
-        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2">
+        </div>
+        <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex items-center justify-end gap-2 flex-wrap">
           <button onClick={onClose} disabled={savingDraft}
             className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 text-xs">
             ← Back
+          </button>
+          <button onClick={shareDraftPng} disabled={sharing || savingDraft}
+            className="px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-50 text-xs font-semibold">
+            {sharing ? 'Rendering…' : '📤 Share PNG'}
           </button>
           <button onClick={saveAll} disabled={savingDraft || allocatable === 0 || overflow}
             className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white text-xs font-semibold">
