@@ -729,10 +729,10 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
     finally { setBusy(false) }
   }
 
-  // Draft eligibility: only fresh-link candidates (not CN, not skipped,
-  // not already linked to this receipt). Other cards still render in
-  // draft mode but without the checkbox.
-  const draftEligible = draftMode && !isCN && !inv.skipAutoLink && !myAlloc
+  // Draft eligibility: fresh-link candidates including CN rows. CN
+  // knock-off in the modal frees receipt cash for the other rows.
+  // Skipped or already-linked cards still render but without checkbox.
+  const draftEligible = draftMode && !inv.skipAutoLink && !myAlloc
   return (
     <div className={`bg-white dark:bg-gray-800 border rounded-xl p-3 transition ${
       draftSelected ? 'border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700/60'
@@ -1038,52 +1038,65 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
   onClose: () => void; onSaved: (saved: number) => void;
   savingDraft: boolean; setSavingDraft: (v: boolean) => void
 }) {
-  // Per-row TDS / disc state. Initialised from auto-2% on the
-  // invoice's taxable (falling back to item-sum) so the user sees a
-  // populated draft on first open.
-  const [drafts, setDrafts] = useState<Map<number, { tdsAmount: number; discountAmount: number }>>(() => {
-    const m = new Map<number, { tdsAmount: number; discountAmount: number }>()
+  // Per-row state — TDS/Discount for invoices, cnKnockoff for CN rows.
+  // Initialised from auto-2% TDS (or full pending for CN) so the modal
+  // opens with a populated draft.
+  const [drafts, setDrafts] = useState<Map<number, { tdsAmount: number; discountAmount: number; cnKnockoff: number }>>(() => {
+    const m = new Map<number, { tdsAmount: number; discountAmount: number; cnKnockoff: number }>()
     for (const inv of invoices) {
+      if (inv.vchType === 'Credit Note') {
+        m.set(inv.id, { tdsAmount: 0, discountAmount: 0, cnKnockoff: inv.pending })
+        continue
+      }
       const itemSum = inv.lines.reduce((s, l) => s + l.amount, 0)
       const grossTaxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : itemSum
       const voucherDiscount = inv.ledgers.reduce((s, l) => {
         const lname = l.ledgerName.toLowerCase()
-        // Heuristic: any ledger with "less" or "discount" reduces taxable.
         return /less|discount/.test(lname) ? s + Math.abs(l.amount) : s
       }, 0)
       const taxable = Math.max(0, grossTaxable - voucherDiscount)
-      m.set(inv.id, { tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100), discountAmount: 0 })
+      m.set(inv.id, { tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100), discountAmount: 0, cnKnockoff: 0 })
     }
     return m
   })
 
-  // FIFO cap: each row's cash = min(pending - tds - disc, remaining receipt pool).
+  // Two-phase pool: CN rows ADD to the receipt pool (freeing cash for
+  // invoices below them), then invoice FIFO consumes from the boosted
+  // pool. Stable order: CNs first regardless of input order.
   const ranked = useMemo(() => {
     let pool = receiptRemaining
-    return invoices.map(inv => {
-      const d = drafts.get(inv.id) || { tdsAmount: 0, discountAmount: 0 }
+    const cnRows = invoices.filter(inv => inv.vchType === 'Credit Note').map(inv => {
+      const d = drafts.get(inv.id) || { tdsAmount: 0, discountAmount: 0, cnKnockoff: 0 }
+      const ko = Math.max(0, Math.min(d.cnKnockoff, inv.pending))
+      pool = pool + ko  // CN frees cash on the receipt
+      return { inv, tds: 0, disc: 0, cash: ko, settled: ko, diff: inv.pending - ko, isCN: true }
+    })
+    const invRows = invoices.filter(inv => inv.vchType !== 'Credit Note').map(inv => {
+      const d = drafts.get(inv.id) || { tdsAmount: 0, discountAmount: 0, cnKnockoff: 0 }
       const target = Math.max(0, inv.pending - d.tdsAmount - d.discountAmount)
       const cash = Math.max(0, Math.min(target, pool))
       pool = Math.max(0, pool - cash)
       const settled = cash + d.tdsAmount + d.discountAmount
-      const diff = inv.pending - settled
-      return { inv, tds: d.tdsAmount, disc: d.discountAmount, cash, settled, diff }
+      return { inv, tds: d.tdsAmount, disc: d.discountAmount, cash, settled, diff: inv.pending - settled, isCN: false }
     })
+    return [...cnRows, ...invRows]
   }, [invoices, drafts, receiptRemaining])
 
-  const totals = useMemo(() => ({
-    cash: ranked.reduce((s, r) => s + r.cash, 0),
-    tds: ranked.reduce((s, r) => s + r.tds, 0),
-    disc: ranked.reduce((s, r) => s + r.disc, 0),
-  }), [ranked])
-  const used = totals.cash
-  const overflow = used > receiptRemaining + 1
+  const totals = useMemo(() => {
+    let netCash = 0, tds = 0, disc = 0, cnFreed = 0, invCash = 0
+    for (const r of ranked) {
+      if (r.isCN) { cnFreed += r.cash; netCash -= r.cash }
+      else { invCash += r.cash; netCash += r.cash; tds += r.tds; disc += r.disc }
+    }
+    return { netCash, tds, disc, cnFreed, invCash }
+  }, [ranked])
+  const overflow = totals.netCash > receiptRemaining + 1
   const allocatable = ranked.filter(r => r.cash > 0).length
 
-  function setRowField(id: number, field: 'tdsAmount' | 'discountAmount', val: number) {
+  function setRowField(id: number, field: 'tdsAmount' | 'discountAmount' | 'cnKnockoff', val: number) {
     setDrafts(prev => {
       const n = new Map(prev)
-      const cur = n.get(id) || { tdsAmount: 0, discountAmount: 0 }
+      const cur = n.get(id) || { tdsAmount: 0, discountAmount: 0, cnKnockoff: 0 }
       n.set(id, { ...cur, [field]: Math.max(0, val || 0) })
       return n
     })
@@ -1137,37 +1150,55 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
                 <th className="px-1.5 py-1 text-right">Pending</th>
                 <th className="px-1.5 py-1 text-right" style={{ width: 70 }}>TDS</th>
                 <th className="px-1.5 py-1 text-right" style={{ width: 70 }}>Disc</th>
-                <th className="px-1.5 py-1 text-right">Cash</th>
+                <th className="px-1.5 py-1 text-right">Cash / KO</th>
                 <th className="px-1.5 py-1 text-right">Status</th>
               </tr>
             </thead>
             <tbody>
-              {ranked.map(({ inv, tds, disc, cash, diff }) => {
-                const status = cash <= 0 ? '— no cash left'
-                  : Math.abs(diff) <= 1 ? '✓ closes'
-                  : diff > 0 ? `short ₹${fmtMoney(diff)}`
-                  : `over ₹${fmtMoney(-diff)}`
-                const statusColor = cash <= 0 ? 'text-gray-400'
+              {ranked.map(({ inv, tds, disc, cash, diff, isCN }) => {
+                const status = isCN
+                  ? (cash > 0 ? `↙ frees ₹${fmtMoney(cash)}` : 'no knock-off')
+                  : cash <= 0 ? '— no cash left'
+                    : Math.abs(diff) <= 1 ? '✓ closes'
+                    : diff > 0 ? `short ₹${fmtMoney(diff)}`
+                    : `over ₹${fmtMoney(-diff)}`
+                const statusColor = isCN ? 'text-violet-700 dark:text-violet-300'
+                  : cash <= 0 ? 'text-gray-400'
                   : Math.abs(diff) <= 1 ? 'text-emerald-700 dark:text-emerald-300'
                   : diff > 0 ? 'text-amber-700 dark:text-amber-300'
                   : 'text-rose-700 dark:text-rose-300'
                 return (
-                  <tr key={inv.id} className="border-b border-gray-100 dark:border-gray-700/60">
+                  <tr key={inv.id} className={`border-b border-gray-100 dark:border-gray-700/60 ${isCN ? 'bg-violet-50/30 dark:bg-violet-900/10' : ''}`}>
                     <td className="px-1.5 py-1">
-                      <div className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchNumber}</div>
+                      <div className={`font-mono ${isCN ? 'text-violet-700 dark:text-violet-300' : 'text-indigo-600 dark:text-indigo-300'}`}>
+                        {inv.vchNumber}{isCN ? ' (CN)' : ''}
+                      </div>
                       <div className="text-[9px] text-gray-500">{inv.vchType} · {fmtDate(inv.date)}</div>
                     </td>
-                    <td className="px-1.5 py-1 text-right tabular-nums">₹{fmtMoney(inv.pending)}</td>
-                    <td className="px-1.5 py-1">
-                      <input type="number" value={tds || ''} onChange={e => setRowField(inv.id, 'tdsAmount', parseFloat(e.target.value))}
-                        className="w-full px-1 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums text-right" />
+                    <td className={`px-1.5 py-1 text-right tabular-nums ${isCN ? 'text-violet-700 dark:text-violet-300' : ''}`}>
+                      {isCN ? '−' : ''}₹{fmtMoney(inv.pending)}
                     </td>
                     <td className="px-1.5 py-1">
-                      <input type="number" value={disc || ''} onChange={e => setRowField(inv.id, 'discountAmount', parseFloat(e.target.value))}
-                        className="w-full px-1 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums text-right" />
+                      {isCN ? <span className="text-gray-300 text-[10px]">—</span> :
+                        <input type="number" value={tds || ''} onChange={e => setRowField(inv.id, 'tdsAmount', parseFloat(e.target.value))}
+                          className="w-full px-1 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums text-right" />
+                      }
                     </td>
-                    <td className="px-1.5 py-1 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-300">
-                      {cash > 0 ? `₹${fmtMoney(cash)}` : '—'}
+                    <td className="px-1.5 py-1">
+                      {isCN ? <span className="text-gray-300 text-[10px]">—</span> :
+                        <input type="number" value={disc || ''} onChange={e => setRowField(inv.id, 'discountAmount', parseFloat(e.target.value))}
+                          className="w-full px-1 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums text-right" />
+                      }
+                    </td>
+                    <td className="px-1.5 py-1">
+                      {isCN ? (
+                        <input type="number" value={cash || ''} onChange={e => setRowField(inv.id, 'cnKnockoff', parseFloat(e.target.value))}
+                          className="w-full px-1 py-0.5 rounded border border-violet-300 dark:border-violet-700 bg-white dark:bg-gray-700 text-[11px] tabular-nums text-right text-violet-700 dark:text-violet-300 font-semibold" />
+                      ) : (
+                        <div className="text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-300">
+                          {cash > 0 ? `₹${fmtMoney(cash)}` : '—'}
+                        </div>
+                      )}
                     </td>
                     <td className={`px-1.5 py-1 text-right font-semibold ${statusColor}`}>{status}</td>
                   </tr>
@@ -1176,11 +1207,13 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
             </tbody>
             <tfoot className="border-t-2 border-gray-300 dark:border-gray-600">
               <tr className="font-bold text-gray-800 dark:text-gray-100">
-                <td className="px-1.5 py-2 text-left">Totals ({allocatable}/{ranked.length} allocatable)</td>
+                <td className="px-1.5 py-2 text-left">Totals ({allocatable}/{ranked.length})</td>
                 <td className="px-1.5 py-2 text-right">—</td>
                 <td className="px-1.5 py-2 text-right tabular-nums text-amber-700 dark:text-amber-300">₹{fmtMoney(totals.tds)}</td>
                 <td className="px-1.5 py-2 text-right tabular-nums text-rose-700 dark:text-rose-300">₹{fmtMoney(totals.disc)}</td>
-                <td className="px-1.5 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-300">₹{fmtMoney(totals.cash)}</td>
+                <td className="px-1.5 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-300">
+                  ₹{fmtMoney(totals.invCash)}{totals.cnFreed > 0 && <span className="text-violet-600 dark:text-violet-400"> − ₹{fmtMoney(totals.cnFreed)}</span>}
+                </td>
                 <td className="px-1.5 py-2 text-right">—</td>
               </tr>
             </tfoot>
@@ -1189,11 +1222,12 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
             <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
               <div className="text-[9px] text-gray-500 uppercase">Receipt remaining</div>
               <div className="font-bold tabular-nums">₹{fmtMoney(receiptRemaining)}</div>
+              {totals.cnFreed > 0 && <div className="text-[9px] text-violet-600 dark:text-violet-400">+ ₹{fmtMoney(totals.cnFreed)} from CN knock-off</div>}
             </div>
             <div className="bg-gray-50 dark:bg-gray-800 rounded p-2">
               <div className="text-[9px] text-gray-500 uppercase">After save · Δ</div>
               <div className={`font-bold tabular-nums ${overflow ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'}`}>
-                ₹{fmtMoney(receiptRemaining - used)}
+                ₹{fmtMoney(receiptRemaining - totals.netCash)}
                 {overflow && ' — OVER'}
               </div>
             </div>
