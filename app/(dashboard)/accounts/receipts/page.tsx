@@ -29,6 +29,8 @@ interface LinkedInvoice {
   tdsAmount: number
   discountAmount: number
   pending: number
+  invoiceTotalAmount?: number
+  invoiceNetAmount?: number
 }
 interface Receipt {
   id: number
@@ -663,19 +665,22 @@ export default function ReceiptsPage() {
                   )}
                   {r.linkedCount > 0 && (
                     <div className="mt-1 text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5">
-                      {r.linkedInvoices.slice(0, 4).map((inv, i) => (
+                      {r.linkedInvoices.map((inv, i) => (
                         <div key={i}>
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
                             <span className="tabular-nums">₹{fmtMoney(inv.allocatedAmount)}</span>
                             {inv.tdsAmount > 0 && <span className="text-amber-600 dark:text-amber-400">+TDS ₹{fmtMoney(inv.tdsAmount)}</span>}
                             {inv.discountAmount > 0 && <span className="text-rose-600 dark:text-rose-400">+disc ₹{fmtMoney(inv.discountAmount)}</span>}
+                            {typeof inv.invoiceNetAmount === 'number' && inv.invoiceNetAmount !== 0 && (
+                              <span className="text-pink-500 dark:text-pink-400 tabular-nums font-semibold"
+                                title={`Invoice net = total ₹${fmtMoney(inv.invoiceTotalAmount || 0)} − Σ TDS − Σ settlement disc (across all allocations on this invoice)`}>
+                                NET ₹{fmtMoney(inv.invoiceNetAmount)}
+                              </span>
+                            )}
                           </div>
                         </div>
                       ))}
-                      {r.linkedInvoices.length > 4 && (
-                        <div className="text-gray-400">+{r.linkedInvoices.length - 4} more…</div>
-                      )}
                     </div>
                   )}
                 </div>

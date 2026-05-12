@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
@@ -40,6 +40,38 @@ export default function OutstandingPage() {
   const [bucketFilter, setBucketFilter] = useState<DueBucket | 'all'>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [partyQuery, setPartyQuery] = useState('')
+  // Tally match: maps party name → Tally closing balance (signed).
+  // Populated on demand by hitting /tally-match; the green ring on a
+  // party card means |webapp_net − tally_closing| ≤ ₹1. Persisted in
+  // sessionStorage so a hard reload doesn't lose the reconciliation.
+  const [tallyByParty, setTallyByParty] = useState<Record<string, number> | null>(null)
+  const [tallyLastSynced, setTallyLastSynced] = useState<string | null>(null)
+  const [matching, setMatching] = useState(false)
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('outstanding.tallyMatch')
+      if (!raw) return
+      const s = JSON.parse(raw)
+      if (s && s.byParty && typeof s.byParty === 'object') {
+        setTallyByParty(s.byParty)
+        setTallyLastSynced(s.lastSynced || null)
+      }
+    } catch {}
+  }, [])
+
+  async function runTallyMatch() {
+    setMatching(true)
+    try {
+      const res = await fetch('/api/accounts/outstanding/tally-match')
+      const d = await res.json()
+      if (!res.ok) { alert(d.error || 'Failed'); return }
+      setTallyByParty(d.byParty)
+      setTallyLastSynced(d.lastSynced || null)
+      try { sessionStorage.setItem('outstanding.tallyMatch', JSON.stringify({ byParty: d.byParty, lastSynced: d.lastSynced })) } catch {}
+    } catch (e: any) { alert(e?.message || 'Network error') }
+    finally { setMatching(false) }
+  }
 
   function toggleExpand(name: string) {
     setExpanded(prev => {
@@ -114,19 +146,30 @@ export default function OutstandingPage() {
         </div>
       )}
 
-      {/* Party search */}
-      <div className="flex items-center gap-1.5 mb-2">
+      {/* Party search + Tally-match action */}
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         <input type="search" value={partyQuery}
           onChange={e => { setPartyQuery(e.target.value); setPage(0) }}
           placeholder="🔍 Search party…"
-          className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[12px] placeholder-gray-400" />
+          className="flex-1 min-w-[160px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[12px] placeholder-gray-400" />
         {partyQuery && (
           <button onClick={() => { setPartyQuery(''); setPage(0) }}
             className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400">
             ✕ Clear
           </button>
         )}
+        <button onClick={runTallyMatch} disabled={matching}
+          title="Compare each party's net (webapp) with Tally's outstanding closing balance. Matched cards get a green ring."
+          className="text-[11px] px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold">
+          {matching ? 'Matching…' : '🔎 Match with Tally'}
+        </button>
       </div>
+      {tallyByParty && (
+        <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
+          <span className="inline-block w-2.5 h-2.5 rounded-full ring-2 ring-emerald-500 bg-emerald-500/30" />
+          <span>Green ring = matches Tally closing within ₹1. Tally data: {Object.keys(tallyByParty).length} parties{tallyLastSynced ? ` · synced ${new Date(tallyLastSynced).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}` : ''}.</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1.5 mb-3 text-[11px] flex-wrap">
@@ -156,6 +199,7 @@ export default function OutstandingPage() {
             onToggle={() => toggleExpand(p.name)}
             onInvoiceClick={inv => router.push(`/accounts/sales/${inv.id}`)}
             onReceiptClick={r => router.push(`/accounts/receipts/${r.id}?view=all`)}
+            tallyClosing={tallyByParty?.[p.name]}
           />
         ))}
         {tab === 'invoice' && paged.items.map((inv: OutInvoice & { partyName: string }) => (
@@ -222,10 +266,14 @@ function bucketDot(days: number) {
   return DUE_BUCKETS.find(b => b.id === bucketFor(days))?.color ?? '⚪'
 }
 
-function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceClick, onReceiptClick }: {
+function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceClick, onReceiptClick, tallyClosing }: {
   party: OutParty; isExpanded: boolean; onAccountReceipts: OutReceipt[];
   onToggle: () => void; onInvoiceClick: (inv: OutInvoice) => void; onReceiptClick: (r: OutReceipt) => void
+  tallyClosing?: number
 }) {
+  const webNet = party.totalPending - party.onAccount
+  const tallyDiff = typeof tallyClosing === 'number' ? webNet - tallyClosing : null
+  const matchesTally = tallyDiff !== null && Math.abs(tallyDiff) <= 1
   const shareCardRef = useRef<HTMLDivElement>(null)
   const [sharing, setSharing] = useState(false)
   // Drives what subset of the party's invoices the off-screen share
@@ -368,7 +416,11 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
   }
 
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-sm">
+    <div className={`bg-white dark:bg-gray-800 border rounded-xl shadow-sm transition ${
+      matchesTally
+        ? 'border-emerald-500 ring-2 ring-emerald-500 dark:ring-emerald-400'
+        : 'border-gray-100 dark:border-gray-700'
+    }`}>
       <button onClick={onToggle} className="w-full text-left p-3">
         <div className="flex items-start justify-between gap-2 mb-1">
           <div className="min-w-0">
@@ -385,6 +437,17 @@ function PartyCard({ party, isExpanded, onAccountReceipts, onToggle, onInvoiceCl
           </div>
           <div className="text-right shrink-0">
             <div className="text-base font-bold text-rose-700 dark:text-rose-400 tabular-nums">₹{fmtMoney(party.totalPending - party.onAccount)}</div>
+            {tallyDiff !== null && (
+              matchesTally ? (
+                <div className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums" title={`Tally closing ₹${fmtMoney(tallyClosing!)} — matches within ₹1`}>
+                  ✓ Tally
+                </div>
+              ) : (
+                <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 tabular-nums" title={`Tally closing ₹${fmtMoney(tallyClosing!)}. Δ = webapp − tally`}>
+                  Δ {tallyDiff >= 0 ? '+' : '−'}₹{fmtMoney(Math.abs(tallyDiff))}
+                </div>
+              )
+            )}
             <div className="text-[10px] text-gray-400">{isExpanded ? '▲' : '▼'}</div>
           </div>
         </div>

@@ -45,6 +45,14 @@ export async function GET(req: NextRequest) {
   // Used to show "pending ₹X" next to the linked invoice line.
   const invoiceIds = Array.from(new Set(allocs.map((a: any) => a.invoiceId)))
   const pendingByInvoice: Record<number, number> = {}
+  // Per-invoice rollups used by the linked-invoice rows on each receipt
+  // card. `netAmount` is the user-defined "what we actually netted from
+  // this invoice" =
+  //   items − voucher discount + extra charges + GST
+  //     − settlement TDS − settlement discount
+  // which simplifies to: invoice.totalAmount − Σ tds − Σ settlement disc
+  // across every allocation on the invoice.
+  const invoiceMeta: Record<number, { totalAmount: number; netAmount: number }> = {}
   if (invoiceIds.length > 0) {
     const invs = await db.ksiSalesInvoice.findMany({
       where: { id: { in: invoiceIds } },
@@ -59,6 +67,12 @@ export async function GET(req: NextRequest) {
         0,
       )
       pendingByInvoice[inv.id] = Math.max(0, inv.totalAmount - consumed)
+      const totalTds = (inv.allocations || []).reduce((s: number, a: any) => s + (a.tdsAmount || 0), 0)
+      const totalDisc = (inv.allocations || []).reduce((s: number, a: any) => s + (a.discountAmount || 0), 0)
+      invoiceMeta[inv.id] = {
+        totalAmount: inv.totalAmount,
+        netAmount: Math.round((inv.totalAmount - totalTds - totalDisc) * 100) / 100,
+      }
     }
   }
 
@@ -68,7 +82,7 @@ export async function GET(req: NextRequest) {
   // Discount are always 0 on CN rows.
   const byReceipt: Record<number, {
     linkedCount: number; linkedCash: number; linkedTds: number; linkedDiscount: number;
-    linkedInvoices: { vchType: string; vchNumber: string; allocatedAmount: number; tdsAmount: number; discountAmount: number; pending: number }[]
+    linkedInvoices: { vchType: string; vchNumber: string; allocatedAmount: number; tdsAmount: number; discountAmount: number; pending: number; invoiceTotalAmount: number; invoiceNetAmount: number }[]
   }> = {}
   for (const a of allocs) {
     const acc = byReceipt[a.receiptId] ??= { linkedCount: 0, linkedCash: 0, linkedTds: 0, linkedDiscount: 0, linkedInvoices: [] }
@@ -82,6 +96,8 @@ export async function GET(req: NextRequest) {
       allocatedAmount: isCN ? -a.allocatedAmount : a.allocatedAmount,
       tdsAmount: a.tdsAmount, discountAmount: a.discountAmount,
       pending: pendingByInvoice[a.invoiceId] ?? 0,
+      invoiceTotalAmount: invoiceMeta[a.invoiceId]?.totalAmount ?? 0,
+      invoiceNetAmount: invoiceMeta[a.invoiceId]?.netAmount ?? 0,
     })
   }
   const enriched = rows.map((r: any) => ({
