@@ -18,7 +18,12 @@ export async function GET() {
     // startStage IS NULL count as unallocated grey stock.
     prisma.greyEntry.findMany({
       where: { startStage: null },
-      select: { lotNo: true, than: true, weight: true, marka: true, grayMtr: true, date: true, challanNo: true, party: { select: { name: true } }, quality: { select: { name: true } } },
+      select: {
+        lotNo: true, than: true, weight: true, marka: true, grayMtr: true,
+        date: true, challanNo: true, transportLrNo: true, viverNameBill: true,
+        party: { select: { name: true } }, quality: { select: { name: true } },
+        weaver: { select: { name: true } },
+      },
     }),
     db.lotOpeningBalance.findMany({
       include: { allocations: true },
@@ -68,6 +73,8 @@ export async function GET() {
     grayMtr: number | null
     date: Date | null
     challanNos: string
+    lrNos: string
+    weaverBills: string
     isOB: boolean
     originalThan: number
     deducted: { despatched: number; folded: number; obAllocated: number }
@@ -81,19 +88,36 @@ export async function GET() {
   const lots: Lot[] = []
 
   // Process current-year grey entries (aggregate by lot across multiple inwards)
-  const greyByLot = new Map<string, { than: number; weight: string | null; marka: string | null; grayMtr: number | null; date: Date; party: string; quality: string; challans: Set<string> }>()
+  const greyByLot = new Map<string, {
+    than: number; weight: string | null; marka: string | null; grayMtr: number | null;
+    date: Date; party: string; quality: string;
+    challans: Set<string>; lrs: Set<string>; weaverBills: Set<string>;
+  }>()
   for (const g of greyEntries) {
     const k = g.lotNo.toLowerCase().trim()
     const existing = greyByLot.get(k)
+    // Build a "Weaver Name · Bill" string for this row, joining the two parts
+    // when both present. Stored as a Set so multi-row lots get deduped.
+    const weaverName = g.weaver?.name?.trim() || null
+    const weaverBillRaw = g.viverNameBill?.trim() || null
+    const weaverBill = weaverName && weaverBillRaw
+      ? `${weaverName} · ${weaverBillRaw}`
+      : (weaverName || weaverBillRaw || null)
     if (existing) {
       existing.than += g.than
       if (g.grayMtr) existing.grayMtr = (existing.grayMtr || 0) + g.grayMtr
       if (g.date > existing.date) existing.date = g.date
       if (g.challanNo != null) existing.challans.add(String(g.challanNo))
+      if (g.transportLrNo) existing.lrs.add(g.transportLrNo)
+      if (weaverBill) existing.weaverBills.add(weaverBill)
       if (!existing.marka && g.marka) existing.marka = g.marka
     } else {
       const challans = new Set<string>()
+      const lrs = new Set<string>()
+      const weaverBills = new Set<string>()
       if (g.challanNo != null) challans.add(String(g.challanNo))
+      if (g.transportLrNo) lrs.add(g.transportLrNo)
+      if (weaverBill) weaverBills.add(weaverBill)
       greyByLot.set(k, {
         than: g.than,
         weight: g.weight,
@@ -102,7 +126,7 @@ export async function GET() {
         date: g.date,
         party: g.party?.name || 'Unknown',
         quality: g.quality?.name || 'Unknown',
-        challans,
+        challans, lrs, weaverBills,
       })
     }
   }
@@ -133,6 +157,8 @@ export async function GET() {
       grayMtr: g.grayMtr,
       date: g.date,
       challanNos: Array.from(g.challans).sort().join(', '),
+      lrNos: Array.from(g.lrs).sort().join(', '),
+      weaverBills: Array.from(g.weaverBills).sort().join(', '),
       isOB: false,
       originalThan: g.than,
       deducted: { despatched, folded, obAllocated: 0 },
@@ -164,6 +190,8 @@ export async function GET() {
       grayMtr: ob.grayMtr,
       date: ob.greyDate,
       challanNos: '',
+      lrNos: '',
+      weaverBills: '',
       isOB: true,
       originalThan: ob.openingThan,
       deducted: { despatched, folded, obAllocated },
@@ -192,6 +220,8 @@ export async function GET() {
         grayMtr: r.grayMtr,
         date: r.createdAt,
         challanNos: '',
+        lrNos: '',
+        weaverBills: '',
         isOB: false,
         originalThan: r.totalThan,
         deducted: { despatched, folded, obAllocated: 0 },

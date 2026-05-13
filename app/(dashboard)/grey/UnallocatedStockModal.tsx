@@ -14,6 +14,8 @@ interface Lot {
   grayMtr: number | null
   date: string | null
   challanNos: string
+  lrNos: string
+  weaverBills: string
   isOB: boolean
   originalThan: number
   deducted: { despatched: number; folded: number; obAllocated: number }
@@ -36,6 +38,11 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
   const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set())
   const [expandedQualities, setExpandedQualities] = useState<Set<string>>(new Set())
   const [sharingPdf, setSharingPdf] = useState(false)
+  // Multi-select for partial PDF export. When zero parties are ticked
+  // the share button falls back to "share all parties" (current visible
+  // set after the search filter).
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedParties, setSelectedParties] = useState<Set<string>>(new Set())
 
   // Restore expansion state from sessionStorage
   useEffect(() => {
@@ -99,53 +106,77 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
     return { ...data, parties }
   }, [data, search])
 
-  // PDF share — same pattern as fold detail. Builds a hierarchical
-  // listing (party → quality → lots) and either opens the native share
-  // sheet (mobile WhatsApp / Mail / Drive) or falls back to a download
-  // + WhatsApp Web on desktop. Respects the active search filter so
-  // the user can share a subset.
+  // PDF share — 8-column table per quality block:
+  //   Date · Lot No · Challan · Weight · LR · Weaver Name Bill · Marka · Than
+  // Respects:
+  //   • the active search filter on the modal
+  //   • the multi-select (only those parties go to PDF; 0 selected = all)
   async function shareStockPdf() {
     if (!filtered || sharingPdf) return
     setSharingPdf(true)
     try {
       const { default: jsPDF } = await import('jspdf')
       const { default: autoTable } = await import('jspdf-autotable')
-      const doc = new jsPDF({ orientation: 'portrait' })
+      const doc = new jsPDF({ orientation: 'landscape' })
+
+      // Apply party multi-select on top of the search filter. Empty
+      // selection = share whatever the search currently shows.
+      const partiesToInclude = selectedParties.size === 0
+        ? filtered.parties
+        : filtered.parties.filter(p => selectedParties.has(p.party))
+      const grandTotal = partiesToInclude.reduce((s, p) => s + p.totalThan, 0)
+      const totalLots = partiesToInclude.reduce((s, p) => s + p.totalLots, 0)
 
       doc.setFontSize(16)
       doc.text('Unallocated Grey Stock', 14, 15)
       doc.setFontSize(10)
-      doc.text(`${filtered.grandTotal} than · ${filtered.totalLots} lots · ${filtered.totalParties} parties`, 14, 22)
+      const subtitleParts: string[] = []
+      subtitleParts.push(`${grandTotal} than · ${totalLots} lots · ${partiesToInclude.length}${selectedParties.size > 0 ? ` of ${filtered.parties.length}` : ''} parties`)
+      doc.text(subtitleParts.join('   ·   '), 14, 22)
       doc.text(`As of ${new Date().toLocaleDateString('en-IN')}${search ? `   ·   filter: "${search}"` : ''}`, 14, 28)
 
+      const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'
       let y = 34
-      for (const p of filtered.parties) {
+      for (const p of partiesToInclude) {
+        if (y > 180) { doc.addPage(); y = 15 }
         doc.setFontSize(11)
         doc.setFont('helvetica', 'bold')
         doc.text(`${p.party}  —  ${p.totalThan} than (${p.totalLots} lots)`, 14, y)
         doc.setFont('helvetica', 'normal')
-        y += 2
+        y += 1.5
 
         for (const q of p.qualities) {
           autoTable(doc, {
-            head: [[{ content: q.quality, colSpan: 4, styles: { fillColor: [99, 102, 241], halign: 'left' } }, { content: `${q.totalThan} than`, styles: { fillColor: [99, 102, 241], halign: 'right' } }]],
-            body: [
-              ...q.lots.map(l => [
-                l.lotNo,
-                l.weight ?? '',
-                l.challanNos ?? '',
-                l.date ? new Date(l.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '',
-                l.remaining,
-              ]),
+            head: [
+              [{ content: q.quality, colSpan: 7, styles: { fillColor: [99, 102, 241], textColor: 255, halign: 'left' } },
+               { content: `${q.totalThan} than`, styles: { fillColor: [99, 102, 241], textColor: 255, halign: 'right' } }],
+              ['Date', 'Lot No', 'Chln', 'Wght', 'LR', 'Weaver Name Bill', 'Marka', 'Than'],
             ],
+            body: q.lots.map(l => [
+              fmtDate(l.date),
+              l.lotNo,
+              l.challanNos || '—',
+              l.weight || '—',
+              l.lrNos || '—',
+              l.weaverBills || '—',
+              l.marka || '—',
+              l.remaining,
+            ]),
             startY: y,
-            styles: { fontSize: 8 },
-            headStyles: { fontStyle: 'bold' },
-            columnStyles: { 0: { fontStyle: 'bold' }, 4: { fontStyle: 'bold', halign: 'right' } },
+            styles: { fontSize: 8, cellPadding: 1.5 },
+            headStyles: { fillColor: [243, 244, 246], textColor: 50, fontStyle: 'bold' },
+            columnStyles: { 1: { fontStyle: 'bold' }, 7: { fontStyle: 'bold', halign: 'right' } },
             margin: { left: 14, right: 14 },
+            // First row (quality banner) keeps its custom fill from above.
+            didParseCell: (data: any) => {
+              if (data.section === 'head' && data.row.index === 0) {
+                data.cell.styles.fillColor = [99, 102, 241]
+                data.cell.styles.textColor = 255
+              }
+            },
           })
           y = (doc as any).lastAutoTable.finalY + 4
-          if (y > 270) { doc.addPage(); y = 15 }
+          if (y > 180) { doc.addPage(); y = 15 }
         }
         y += 4
       }
@@ -195,10 +226,23 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => { setSelectMode(v => !v); if (selectMode) setSelectedParties(new Set()) }}
+              title="Tick specific parties to include only those in the PDF share"
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
+                selectMode
+                  ? 'bg-violet-600 text-white border-violet-600'
+                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+              }`}>
+              {selectMode ? `✓ Select · ${selectedParties.size}` : '☐ Select'}
+            </button>
             <button onClick={shareStockPdf} disabled={!filtered || sharingPdf || loading}
               title="Share the current view as a PDF (WhatsApp / Mail / Drive)"
               className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50">
-              {sharingPdf ? 'Sharing…' : '📤 Share PDF'}
+              {sharingPdf
+                ? 'Sharing…'
+                : selectedParties.size > 0
+                  ? `📤 Share ${selectedParties.size} (PDF)`
+                  : '📤 Share PDF'}
             </button>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none">&times;</button>
           </div>
@@ -225,21 +269,34 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
             <div className="space-y-2">
               {filtered.parties.map(p => {
                 const pOpen = expandedParties.has(p.party)
+                const isPicked = selectedParties.has(p.party)
                 return (
-                  <div key={p.party} className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-                    <button
-                      onClick={() => toggleParty(p.party)}
-                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700/30 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition"
-                    >
-                      <div className="text-left">
-                        <p className="text-sm font-bold text-gray-800 dark:text-gray-100">{p.party}</p>
+                  <div key={p.party} className={`border rounded-xl overflow-hidden ${
+                    isPicked ? 'border-violet-400 dark:border-violet-600 ring-1 ring-violet-300 dark:ring-violet-700/40' : 'border-gray-200 dark:border-gray-700'
+                  }`}>
+                    <div className={`w-full flex items-center gap-2 px-3 py-3 bg-gray-50 dark:bg-gray-700/30 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition cursor-pointer`}
+                      onClick={() => toggleParty(p.party)}>
+                      {selectMode && (
+                        <input type="checkbox" checked={isPicked}
+                          onClick={e => e.stopPropagation()}
+                          onChange={() => {
+                            setSelectedParties(prev => {
+                              const s = new Set(prev)
+                              s.has(p.party) ? s.delete(p.party) : s.add(p.party)
+                              return s
+                            })
+                          }}
+                          className="w-4 h-4 accent-violet-600 shrink-0 cursor-pointer" />
+                      )}
+                      <div className="text-left flex-1 min-w-0">
+                        <p className="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">{p.party}</p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{p.qualities.length} quality · {p.totalLots} lots</p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 shrink-0">
                         <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{p.totalThan}</span>
                         <span className={`text-gray-400 text-xs transition-transform ${pOpen ? 'rotate-90' : ''}`}>▶</span>
                       </div>
-                    </button>
+                    </div>
 
                     {pOpen && (
                       <div className="px-3 pb-3 pt-2 space-y-1.5 border-t border-gray-100 dark:border-gray-700">
