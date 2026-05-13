@@ -31,6 +31,10 @@ function todayISO() {
   return `${y}-${m}-${day}`
 }
 
+function truncate(s: string, n: number) {
+  return s.length > n ? s.slice(0, n - 1) + '…' : s
+}
+
 function useDebounce(value: string, delay = 200) {
   const [debounced, setDebounced] = useState(value)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -72,6 +76,10 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>('')
+  // Tab inside the modal: 'save' = create a checking slip in DB
+  //                       'program' = share an as-yet-unchecked lot list on WhatsApp (no DB write)
+  const [innerTab, setInnerTab] = useState<'save' | 'program'>('save')
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     if (!slipNo && nextSlip?.next) setSlipNo(nextSlip.next)
@@ -147,6 +155,146 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
     setCheckerName(name)
   }
 
+  // Render the selected lots as a portrait PNG and share via WhatsApp.
+  // Canvas-drawn (no html2canvas) — mirrors the pattern used in
+  // app/(dashboard)/vi/orders/page.tsx and app/(dashboard)/vi/outstanding/page.tsx.
+  async function handleShareProgram() {
+    setError('')
+    if (selected.size === 0) { setError('Select at least one lot'); return }
+    setSharing(true)
+    try {
+      const rows = entries.filter(e => selected.has(e.id))
+      // Group consecutive bale rows by lotNo so each row in the PNG is one
+      // bale entry (matches the slip-entry layout the user asked for).
+      rows.sort((a, b) => a.lotNo.localeCompare(b.lotNo))
+      const totalThan = rows.reduce((s, r) => s + r.than, 0)
+      const W = 720
+      const headerH = 90
+      const tableHeaderH = 28
+      const rowH = 32
+      const footerH = 70
+      const padY = 8
+      const H = headerH + tableHeaderH + rows.length * rowH + footerH + padY * 2
+
+      const canvas = document.createElement('canvas')
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      canvas.width = W * dpr
+      canvas.height = H * dpr
+      canvas.style.width = W + 'px'
+      canvas.style.height = H + 'px'
+      const ctx = canvas.getContext('2d')!
+      ctx.scale(dpr, dpr)
+
+      // Background
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, W, H)
+
+      // Header band
+      ctx.fillStyle = '#1e293b'
+      ctx.fillRect(0, 0, W, headerH)
+      ctx.fillStyle = '#e94560'
+      ctx.fillRect(0, headerH, W, 3)
+
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 22px Arial'
+      ctx.fillText('KSI — Grey Checking Program', 16, 34)
+      const dateLabel = new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+      ctx.font = '14px Arial'
+      ctx.fillText('Date: ' + dateLabel, 16, 58)
+      ctx.fillText(`${rows.length} bale${rows.length === 1 ? '' : 's'} · ${new Set(rows.map(r => r.lotNo)).size} lots`, 16, 78)
+
+      // Table header
+      const cols = { sn: 16, lot: 56, party: 160, qual: 360, lr: 490, bale: 560, than: 660 }
+      const tHeaderY = headerH + padY
+      ctx.fillStyle = '#f1f5f9'
+      ctx.fillRect(0, tHeaderY, W, tableHeaderH)
+      ctx.fillStyle = '#475569'
+      ctx.font = 'bold 12px Arial'
+      ctx.fillText('#', cols.sn, tHeaderY + 18)
+      ctx.fillText('Lot', cols.lot, tHeaderY + 18)
+      ctx.fillText('Party', cols.party, tHeaderY + 18)
+      ctx.fillText('Quality', cols.qual, tHeaderY + 18)
+      ctx.fillText('LR', cols.lr, tHeaderY + 18)
+      ctx.fillText('Bale', cols.bale, tHeaderY + 18)
+      ctx.textAlign = 'right'
+      ctx.fillText('Than', W - 16, tHeaderY + 18)
+      ctx.textAlign = 'left'
+
+      // Rows
+      ctx.font = '13px Arial'
+      rows.forEach((r, i) => {
+        const y = tHeaderY + tableHeaderH + i * rowH
+        if (i % 2 === 0) {
+          ctx.fillStyle = '#fafafa'
+          ctx.fillRect(0, y, W, rowH)
+        }
+        ctx.fillStyle = '#0f172a'
+        const baseY = y + 20
+        ctx.fillText(String(i + 1), cols.sn, baseY)
+        ctx.fillStyle = '#4338ca'
+        ctx.font = 'bold 13px Arial'
+        ctx.fillText(truncate(r.lotNo, 14), cols.lot, baseY)
+        ctx.fillStyle = '#0f172a'
+        ctx.font = '13px Arial'
+        ctx.fillText(truncate(r.party.name, 22), cols.party, baseY)
+        ctx.fillText(truncate(r.quality.name, 18), cols.qual, baseY)
+        ctx.fillStyle = '#64748b'
+        ctx.fillText(truncate(r.transportLrNo || '—', 10), cols.lr, baseY)
+        ctx.fillText(truncate(r.baleNo || '—', 12), cols.bale, baseY)
+        ctx.fillStyle = '#0f172a'
+        ctx.font = 'bold 13px Arial'
+        ctx.textAlign = 'right'
+        ctx.fillText(String(r.than), W - 16, baseY)
+        ctx.textAlign = 'left'
+        ctx.font = '13px Arial'
+      })
+
+      // Footer
+      const fy = tHeaderY + tableHeaderH + rows.length * rowH + padY
+      ctx.fillStyle = '#1e293b'
+      ctx.fillRect(0, fy, W, footerH)
+      ctx.fillStyle = '#e94560'
+      ctx.fillRect(0, fy, W, 2)
+      ctx.fillStyle = '#ffffff'
+      ctx.font = 'bold 16px Arial'
+      ctx.fillText(`TOTAL  (${rows.length} bales)`, 16, fy + 28)
+      ctx.textAlign = 'right'
+      ctx.font = 'bold 22px Arial'
+      ctx.fillText('Than ' + totalThan, W - 16, fy + 32)
+      ctx.textAlign = 'left'
+      ctx.font = '12px Arial'
+      ctx.fillStyle = '#cbd5e1'
+      ctx.fillText('Please check & report findings.', 16, fy + 56)
+
+      // Convert to PNG and share
+      const blob: Blob = await new Promise((resolve) => canvas.toBlob(b => resolve(b!), 'image/png'))
+      const fname = `grey-checking-program-${date}.png`
+      const file = new File([blob], fname, { type: 'image/png' })
+
+      // Mobile: native share sheet → WhatsApp
+      if ((navigator as any).share && (navigator as any).canShare?.({ files: [file] })) {
+        try {
+          await (navigator as any).share({ files: [file], title: 'Grey Checking Program' })
+          return
+        } catch { /* user cancelled — fall through */ }
+      }
+
+      // Desktop fallback: download PNG + open WhatsApp Web with message
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fname
+      a.click()
+      URL.revokeObjectURL(url)
+      const msg = `KSI — Grey Checking Program (${dateLabel})\n${rows.length} bales · ${totalThan} than\n(Image attached)`
+      window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
+    } catch (e: any) {
+      setError(e?.message ?? 'Share failed')
+    } finally {
+      setSharing(false)
+    }
+  }
+
   async function handleSave() {
     setError('')
     if (!date) return setError('Date required')
@@ -184,17 +332,36 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-3xl my-8">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">🔍 Grey Checking — New Slip</h2>
+          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
+            🔍 Grey Checking — {innerTab === 'save' ? 'New Slip' : 'Checking Program'}
+          </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none">×</button>
+        </div>
+
+        {/* Inner tabs */}
+        <div className="px-5 pt-3 border-b border-gray-100 dark:border-gray-700 flex gap-1">
+          <button
+            onClick={() => setInnerTab('save')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${innerTab === 'save' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            ✏️ Save Slip
+          </button>
+          <button
+            onClick={() => setInnerTab('program')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${innerTab === 'program' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            📋 Checking Program
+          </button>
         </div>
 
         {/* Form fields */}
         <div className="p-5 space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className={`grid grid-cols-1 gap-3 ${innerTab === 'save' ? 'sm:grid-cols-3' : 'sm:grid-cols-1'}`}>
             <div>
               <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Date</label>
               <input type="date" className={inputCls} value={date} onChange={e => setDate(e.target.value)} />
             </div>
+            {innerTab === 'save' && (<>
             <div>
               <label className="block text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Checking Slip No</label>
               <input type="text" className={inputCls} value={slipNo} onChange={e => setSlipNo(e.target.value)} placeholder="CHK-0001" />
@@ -212,6 +379,7 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
                 </select>
               </div>
             </div>
+            </>)}
           </div>
 
           {/* Search row */}
@@ -288,14 +456,24 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
           </div>
           <div className="flex items-center gap-3">
             {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
-            <button onClick={onClose} disabled={saving} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
-            <button
-              onClick={handleSave}
-              disabled={saving || selected.size === 0}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {saving ? 'Saving…' : 'Save Checking'}
-            </button>
+            <button onClick={onClose} disabled={saving || sharing} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
+            {innerTab === 'save' ? (
+              <button
+                onClick={handleSave}
+                disabled={saving || selected.size === 0}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save Checking'}
+              </button>
+            ) : (
+              <button
+                onClick={handleShareProgram}
+                disabled={sharing || selected.size === 0}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
+              >
+                {sharing ? 'Rendering…' : '📤 Share on WhatsApp'}
+              </button>
+            )}
           </div>
         </div>
       </div>
