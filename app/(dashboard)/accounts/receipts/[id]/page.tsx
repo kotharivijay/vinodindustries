@@ -1117,6 +1117,7 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
   }
 
   // Share the draft summary as a PNG via WhatsApp / native share sheet.
+  // The PNG captures whatever theme the user has on (dark / light).
   const shareRef = useRef<HTMLDivElement>(null)
   const [sharing, setSharing] = useState(false)
   async function shareDraftPng() {
@@ -1124,7 +1125,8 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
     setSharing(true)
     try {
       const html2canvas = (await import('html2canvas')).default
-      const canvas = await html2canvas(shareRef.current, { backgroundColor: '#ffffff', scale: 2 })
+      const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+      const canvas = await html2canvas(shareRef.current, { backgroundColor: isDark ? '#111827' : '#ffffff', scale: 2 })
       canvas.toBlob(async (blob) => {
         if (!blob) return
         const fname = `MultiLink-Receipt${receipt.vchNumber}.png`
@@ -1170,10 +1172,10 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3" onClick={() => !savingDraft && onClose()}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-3" onClick={() => !savingDraft && onClose()}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col mx-auto" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div>
+          <div className="text-center sm:text-left">
             <div className="text-sm font-bold text-gray-800 dark:text-gray-100">🔍 Multi-link Draft</div>
             <div className="text-[10px] text-gray-500 dark:text-gray-400">Receipt #{receipt.vchNumber} · ₹{fmtMoney(receipt.amount)} · remaining ₹{fmtMoney(receiptRemaining)}</div>
           </div>
@@ -1181,13 +1183,13 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
             className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-xs">✕</button>
         </div>
         <div className="flex-1 overflow-y-auto p-3">
-        <div ref={shareRef} className="bg-white rounded-lg p-3" style={{ color: '#000' }}>
-          <div className="flex items-start justify-between gap-2 mb-2 pb-2 border-b border-gray-200">
+        <div ref={shareRef} className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg p-3 border border-gray-200 dark:border-gray-700">
+          <div className="flex items-start justify-between gap-2 mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">
             <div>
               <div className="text-sm font-bold">{receipt.partyName}</div>
-              <div className="text-[10px] text-gray-600">Receipt #{receipt.vchNumber} · {fmtDate(receipt.date)} · ₹{fmtMoney(receipt.amount)}</div>
+              <div className="text-[10px] text-gray-600 dark:text-gray-400">Receipt #{receipt.vchNumber} · {fmtDate(receipt.date)} · ₹{fmtMoney(receipt.amount)}</div>
             </div>
-            <div className="text-[10px] text-gray-600 text-right">
+            <div className="text-[10px] text-right text-gray-600 dark:text-gray-400">
               <div>Multi-link draft</div>
               <div>{ranked.length} bill{ranked.length === 1 ? '' : 's'}</div>
             </div>
