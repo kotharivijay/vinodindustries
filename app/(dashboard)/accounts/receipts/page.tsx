@@ -939,9 +939,17 @@ export default function ReceiptsPage() {
                             )}
                             {inv.date && (() => {
                               const days = Math.round((new Date(r.date).getTime() - new Date(inv.date).getTime()) / 86400000)
-                              const label = days === 0 ? '• 0d' : days > 0 ? `• ${days}d` : `• ${-days}d advance`
+                              const isAdvance = days < 0
+                              const absDays = Math.abs(days)
+                              const label = isAdvance ? `• ${absDays} days advance` : `• ${days} days`
+                              const color = isAdvance
+                                ? 'text-gray-500 dark:text-gray-400'
+                                : days <= 30 ? 'text-emerald-600 dark:text-emerald-400'
+                                : days <= 60 ? 'text-amber-600 dark:text-amber-400'
+                                : 'text-rose-600 dark:text-rose-400'
                               return (
-                                <span className="text-gray-500 dark:text-gray-400" title="Days the invoice was open when this receipt arrived (receipt date − invoice date)">
+                                <span className={`${color} font-semibold`}
+                                  title="Days the invoice was open when this receipt arrived (receipt date − invoice date)">
                                   {label}
                                 </span>
                               )
