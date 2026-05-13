@@ -225,6 +225,152 @@ export default function ReceiptsPage() {
     })
   }
 
+  const [sharingLinkedPdf, setSharingLinkedPdf] = useState(false)
+  async function shareLinkedReceiptsPdf() {
+    if (sharingLinkedPdf) return
+    const picked = rows.filter(r => selected.has(r.id) && r.linkedCount > 0)
+    if (picked.length === 0) { alert('Pick at least one LINKED receipt to share.'); return }
+    setSharingLinkedPdf(true)
+    try {
+      const { default: jsPDF } = await import('jspdf')
+      const { default: autoTable } = await import('jspdf-autotable')
+      const doc = new jsPDF({ orientation: 'portrait' })
+      // Sort selected receipts oldest-first for a stable, scannable layout
+      const sorted = [...picked].sort((a, b) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id)
+
+      const fmtD = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
+
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Linked Receipts Report', 14, 14)
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      const totalReceived = sorted.reduce((s, r) => s + r.amount, 0)
+      doc.text(`${sorted.length} receipts · received ₹${fmtMoney(totalReceived)} · as of ${new Date().toLocaleDateString('en-IN')}`, 14, 20)
+
+      let y = 26
+      let totalCash = 0, totalTds = 0, totalDisc = 0, totalCarry = 0, totalOnAcc = 0
+
+      for (const r of sorted) {
+        if (y > 250) { doc.addPage(); y = 15 }
+        // Per-receipt header
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        doc.text(`Receipt #${r.vchNumber} — ${r.partyName}`, 14, y)
+        y += 5
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        const headerBits = [
+          fmtD(r.date),
+          `Bank Recpt ₹${fmtMoney(r.amount)}`,
+        ]
+        if (r.instrumentNo) headerBits.push(`Ref ${r.instrumentNo}`)
+        if (r.bankRef) headerBits.push(`UTR ${r.bankRef}`)
+        if (r.tallyPushedAt) headerBits.push('✓ Pushed to Tally')
+        doc.text(headerBits.join('  ·  '), 14, y)
+        y += 2
+
+        autoTable(doc, {
+          head: [[
+            'Invoice',
+            'Date',
+            { content: 'Original', styles: { halign: 'right' } },
+            { content: 'Cash', styles: { halign: 'right' } },
+            { content: 'TDS', styles: { halign: 'right' } },
+            { content: 'Disc', styles: { halign: 'right' } },
+            'Status',
+          ]],
+          body: r.linkedInvoices.map(inv => {
+            const isCN = inv.allocatedAmount < 0
+            const consumed = Math.abs(inv.allocatedAmount) + inv.tdsAmount + inv.discountAmount
+            const pendingAfter = (inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)) - consumed
+            const status = isCN
+              ? `↙ knock-off ₹${fmtMoney(Math.abs(inv.allocatedAmount))}`
+              : Math.abs(pendingAfter) <= 1 ? '✓ closes'
+              : pendingAfter > 0 ? `−₹${fmtMoney(pendingAfter)} pend`
+              : `over ₹${fmtMoney(-pendingAfter)}`
+            const orig = inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)
+            return [
+              `${inv.vchType} ${inv.vchNumber}`,
+              '',
+              `${isCN ? '−' : ''}₹${fmtMoney(orig)}`,
+              `${isCN ? '−' : ''}₹${fmtMoney(Math.abs(inv.allocatedAmount))}`,
+              inv.tdsAmount > 0 ? `₹${fmtMoney(inv.tdsAmount)}` : '—',
+              inv.discountAmount > 0 ? `₹${fmtMoney(inv.discountAmount)}` : '—',
+              status,
+            ]
+          }),
+          startY: y,
+          styles: { fontSize: 8, cellPadding: 1.5 },
+          headStyles: { fillColor: [99, 102, 241], textColor: 255 },
+          columnStyles: {
+            0: { fontStyle: 'bold' },
+            2: { halign: 'right' },
+            3: { halign: 'right' },
+            4: { halign: 'right' },
+            5: { halign: 'right' },
+          },
+          margin: { left: 14, right: 14 },
+        })
+        y = (doc as any).lastAutoTable.finalY + 2
+
+        // Per-receipt summary line
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'italic')
+        const onAcc = Math.max(0, r.amount - r.linkedCash - r.carryOverPriorFy)
+        totalCash += r.linkedCash
+        totalTds += r.linkedTds
+        totalDisc += r.linkedDiscount
+        totalCarry += r.carryOverPriorFy
+        totalOnAcc += onAcc
+        doc.text(
+          `Linked cash ₹${fmtMoney(r.linkedCash)}  ·  TDS ₹${fmtMoney(r.linkedTds)}  ·  disc ₹${fmtMoney(r.linkedDiscount)}` +
+          (r.carryOverPriorFy > 0 ? `  ·  carry ₹${fmtMoney(r.carryOverPriorFy)}` : '') +
+          (onAcc > 0.5 ? `  ·  on-account ₹${fmtMoney(onAcc)}` : ''),
+          14, y + 4,
+        )
+        doc.setFont('helvetica', 'normal')
+        y += 10
+      }
+
+      // Grand totals at the end
+      if (y > 240) { doc.addPage(); y = 15 }
+      doc.setFontSize(11)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Grand Totals', 14, y)
+      y += 1
+      autoTable(doc, {
+        body: [
+          ['Receipts', `${sorted.length}`],
+          ['Σ Received', `₹${fmtMoney(totalReceived)}`],
+          ['Σ Cash allocated', `₹${fmtMoney(totalCash)}`],
+          ['Σ TDS', `₹${fmtMoney(totalTds)}`],
+          ['Σ Discount', `₹${fmtMoney(totalDisc)}`],
+          ['Σ Carry-over (prior FY)', `₹${fmtMoney(totalCarry)}`],
+          ['Σ On-account', `₹${fmtMoney(totalOnAcc)}`],
+        ],
+        startY: y + 2,
+        styles: { fontSize: 9, cellPadding: 1.5 },
+        columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right' } },
+        margin: { left: 14, right: 14 },
+        theme: 'plain',
+      })
+
+      const blob = doc.output('blob') as Blob
+      const fname = `LinkedReceipts-${new Date().toISOString().slice(0, 10)}.pdf`
+      const file = new File([blob], fname, { type: 'application/pdf' })
+      if (typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files: [file] })) {
+        try { await (navigator as any).share({ files: [file], title: 'Linked Receipts Report' }); return } catch {}
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = fname; a.click()
+      URL.revokeObjectURL(url)
+      window.open(`https://wa.me/?text=${encodeURIComponent('Linked Receipts Report (PDF attached)')}`, '_blank')
+    } finally { setSharingLinkedPdf(false) }
+  }
+
   async function bulkHide(hidden: boolean) {
     if (selected.size === 0) return
     let reason: string | null = null
@@ -772,6 +918,17 @@ export default function ReceiptsPage() {
               🔗 Bulk Link
             </button>
           )}
+          {(() => {
+            const linkedCount = rows.filter(r => selected.has(r.id) && r.linkedCount > 0).length
+            if (linkedCount === 0) return null
+            return (
+              <button onClick={shareLinkedReceiptsPdf} disabled={sharingLinkedPdf}
+                title="Build a PDF report of every selected LINKED receipt with its allocation table, share on WhatsApp"
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+                {sharingLinkedPdf ? 'Building…' : `📤 Share ${linkedCount} Linked (PDF)`}
+              </button>
+            )
+          })()}
           {showHidden ? (
             <button onClick={() => bulkHide(false)}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
