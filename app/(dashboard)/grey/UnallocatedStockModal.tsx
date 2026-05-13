@@ -150,7 +150,10 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
             head: [
               [{ content: q.quality, colSpan: 7, styles: { fillColor: [99, 102, 241], textColor: 255, halign: 'left' } },
                { content: `${q.totalThan} than`, styles: { fillColor: [99, 102, 241], textColor: 255, halign: 'right' } }],
-              ['Date', 'Lot No', 'Chln', 'Wght', 'LR', 'Weaver Name Bill', 'Marka', 'Than'],
+              [
+                'Date', 'Lot No', 'Chln', 'Wght', 'LR', 'Weaver Name Bill', 'Marka',
+                { content: 'Than', styles: { halign: 'right' } },
+              ],
             ],
             body: q.lots.map(l => [
               fmtDate(l.date),
