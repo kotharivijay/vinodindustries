@@ -35,6 +35,7 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
   const [search, setSearch] = useState('')
   const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set())
   const [expandedQualities, setExpandedQualities] = useState<Set<string>>(new Set())
+  const [sharingPdf, setSharingPdf] = useState(false)
 
   // Restore expansion state from sessionStorage
   useEffect(() => {
@@ -98,6 +99,71 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
     return { ...data, parties }
   }, [data, search])
 
+  // PDF share — same pattern as fold detail. Builds a hierarchical
+  // listing (party → quality → lots) and either opens the native share
+  // sheet (mobile WhatsApp / Mail / Drive) or falls back to a download
+  // + WhatsApp Web on desktop. Respects the active search filter so
+  // the user can share a subset.
+  async function shareStockPdf() {
+    if (!filtered || sharingPdf) return
+    setSharingPdf(true)
+    try {
+      const { default: jsPDF } = await import('jspdf')
+      const { default: autoTable } = await import('jspdf-autotable')
+      const doc = new jsPDF({ orientation: 'portrait' })
+
+      doc.setFontSize(16)
+      doc.text('Unallocated Grey Stock', 14, 15)
+      doc.setFontSize(10)
+      doc.text(`${filtered.grandTotal} than · ${filtered.totalLots} lots · ${filtered.totalParties} parties`, 14, 22)
+      doc.text(`As of ${new Date().toLocaleDateString('en-IN')}${search ? `   ·   filter: "${search}"` : ''}`, 14, 28)
+
+      let y = 34
+      for (const p of filtered.parties) {
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        doc.text(`${p.party}  —  ${p.totalThan} than (${p.totalLots} lots)`, 14, y)
+        doc.setFont('helvetica', 'normal')
+        y += 2
+
+        for (const q of p.qualities) {
+          autoTable(doc, {
+            head: [[{ content: q.quality, colSpan: 4, styles: { fillColor: [99, 102, 241], halign: 'left' } }, { content: `${q.totalThan} than`, styles: { fillColor: [99, 102, 241], halign: 'right' } }]],
+            body: [
+              ...q.lots.map(l => [
+                l.lotNo,
+                l.weight ?? '',
+                l.challanNos ?? '',
+                l.date ? new Date(l.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '',
+                l.remaining,
+              ]),
+            ],
+            startY: y,
+            styles: { fontSize: 8 },
+            headStyles: { fontStyle: 'bold' },
+            columnStyles: { 0: { fontStyle: 'bold' }, 4: { fontStyle: 'bold', halign: 'right' } },
+            margin: { left: 14, right: 14 },
+          })
+          y = (doc as any).lastAutoTable.finalY + 4
+          if (y > 270) { doc.addPage(); y = 15 }
+        }
+        y += 4
+      }
+
+      const blob = doc.output('blob') as Blob
+      const fname = `Unallocated-Stock-${new Date().toISOString().slice(0, 10)}.pdf`
+      const file = new File([blob], fname, { type: 'application/pdf' })
+      if (typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files: [file] })) {
+        try { await (navigator as any).share({ files: [file], title: 'Unallocated Grey Stock' }); return } catch {}
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = fname; a.click()
+      URL.revokeObjectURL(url)
+      window.open(`https://wa.me/?text=${encodeURIComponent('Unallocated Grey Stock (PDF attached)')}`, '_blank')
+    } finally { setSharingPdf(false) }
+  }
+
   if (!open) return null
 
   const toggleParty = (p: string) => {
@@ -128,7 +194,14 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none">&times;</button>
+          <div className="flex items-center gap-2">
+            <button onClick={shareStockPdf} disabled={!filtered || sharingPdf || loading}
+              title="Share the current view as a PDF (WhatsApp / Mail / Drive)"
+              className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50">
+              {sharingPdf ? 'Sharing…' : '📤 Share PDF'}
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none">&times;</button>
+          </div>
         </div>
 
         {/* Search */}
