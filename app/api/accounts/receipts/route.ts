@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   const allocs = receiptIds.length > 0
     ? await db.ksiReceiptAllocation.findMany({
         where: { receiptId: { in: receiptIds } },
-        include: { invoice: { select: { id: true, vchNumber: true, vchType: true } } },
+        include: { invoice: { select: { id: true, vchNumber: true, vchType: true, date: true } } },
       })
     : []
 
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
   // Discount are always 0 on CN rows.
   const byReceipt: Record<number, {
     linkedCount: number; linkedCash: number; linkedTds: number; linkedDiscount: number;
-    linkedInvoices: { vchType: string; vchNumber: string; allocatedAmount: number; tdsAmount: number; discountAmount: number; pending: number; invoiceTotalAmount: number; invoiceNetAmount: number }[]
+    linkedInvoices: { vchType: string; vchNumber: string; date: string | null; allocatedAmount: number; tdsAmount: number; discountAmount: number; pending: number; invoiceTotalAmount: number; invoiceNetAmount: number }[]
   }> = {}
   for (const a of allocs) {
     const acc = byReceipt[a.receiptId] ??= { linkedCount: 0, linkedCash: 0, linkedTds: 0, linkedDiscount: 0, linkedInvoices: [] }
@@ -93,6 +93,7 @@ export async function GET(req: NextRequest) {
     acc.linkedDiscount += a.discountAmount
     acc.linkedInvoices.push({
       vchType: a.invoice.vchType, vchNumber: a.invoice.vchNumber,
+      date: a.invoice.date ? a.invoice.date.toISOString() : null,
       allocatedAmount: isCN ? -a.allocatedAmount : a.allocatedAmount,
       tdsAmount: a.tdsAmount, discountAmount: a.discountAmount,
       pending: pendingByInvoice[a.invoiceId] ?? 0,

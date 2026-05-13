@@ -25,6 +25,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 interface LinkedInvoice {
   vchType: string
   vchNumber: string
+  date?: string | null
   allocatedAmount: number
   tdsAmount: number
   discountAmount: number
@@ -322,6 +323,150 @@ export default function ReceiptsPage() {
       URL.revokeObjectURL(url)
       window.open(`https://wa.me/?text=${encodeURIComponent('Linked Receipts Report (PDF attached)')}`, '_blank')
     } finally { setSharingLinkedPdf(false) }
+  }
+
+  // View 2: structured table per receipt. Bank header text + a 7-column
+  // allocation table (Date · Invoice · Original · TDS · Disc · Pending ·
+  // Due Days). Due Days = invoice.date − receipt.date in whole days.
+  const [sharingLinkedV2, setSharingLinkedV2] = useState(false)
+  async function shareLinkedReceiptsPdfV2() {
+    if (sharingLinkedV2) return
+    const picked = rows.filter(r => selected.has(r.id) && r.linkedCount > 0)
+    if (picked.length === 0) { alert('Pick at least one LINKED receipt to share.'); return }
+    setSharingLinkedV2(true)
+    try {
+      const { default: jsPDF } = await import('jspdf')
+      const { default: autoTable } = await import('jspdf-autotable')
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const MARGIN = 12
+
+      const fmtD = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
+      const sorted = [...picked].sort((a, b) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id)
+
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Linked Receipts — View 2', MARGIN, MARGIN + 2)
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'normal')
+      const totalReceived = sorted.reduce((s, r) => s + r.amount, 0)
+      doc.text(`${sorted.length} receipts · received ₹${fmtMoney(totalReceived)} · as of ${new Date().toLocaleDateString('en-IN')}`, MARGIN, MARGIN + 7)
+
+      let y = MARGIN + 12
+      let gTotalCash = 0, gTotalTds = 0, gTotalDisc = 0
+
+      for (const r of sorted) {
+        if (y > 250) { doc.addPage(); y = MARGIN }
+        // ── Per-receipt bank/header block ──
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        doc.text(`#${r.vchNumber} — ${r.partyName}`, MARGIN, y)
+        y += 5
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        const headerLine = [
+          fmtD(r.date),
+          `₹${fmtMoney(r.amount)}`,
+          r.instrumentNo ? `Ref ${r.instrumentNo}` : '',
+          r.bankRef ? `UTR ${r.bankRef}` : '',
+          r.tallyPushedAt ? '✓ Pushed' : '',
+        ].filter(Boolean).join('  ·  ')
+        doc.text(headerLine, MARGIN, y)
+        y += 2
+
+        const receiptMs = new Date(r.date).getTime()
+
+        autoTable(doc, {
+          head: [[
+            'Date',
+            'Invoice',
+            { content: 'Original', styles: { halign: 'right' } },
+            { content: 'TDS', styles: { halign: 'right' } },
+            { content: 'Discount', styles: { halign: 'right' } },
+            { content: 'Pending', styles: { halign: 'right' } },
+            { content: 'Due Days', styles: { halign: 'right' } },
+          ]],
+          body: r.linkedInvoices.map(inv => {
+            const isCN = inv.allocatedAmount < 0
+            const orig = inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)
+            const invDate = (inv as any).date
+              ? new Date((inv as any).date)
+              : null
+            const dueDays = invDate ? Math.round((invDate.getTime() - receiptMs) / 86400000) : null
+            return [
+              invDate ? fmtD(invDate.toISOString()) : '—',
+              `${inv.vchType} ${inv.vchNumber}${isCN ? ' (CN)' : ''}`,
+              `${isCN ? '−' : ''}₹${fmtMoney(orig)}`,
+              inv.tdsAmount > 0 ? `₹${fmtMoney(inv.tdsAmount)}` : '—',
+              inv.discountAmount > 0 ? `₹${fmtMoney(inv.discountAmount)}` : '—',
+              `₹${fmtMoney(inv.pending)}`,
+              dueDays != null ? `${dueDays > 0 ? '+' : ''}${dueDays}` : '—',
+            ]
+          }),
+          startY: y,
+          styles: { fontSize: 8, cellPadding: 1.5 },
+          headStyles: { fillColor: [99, 102, 241], textColor: 255, fontStyle: 'bold' },
+          columnStyles: {
+            1: { fontStyle: 'bold' },
+            2: { halign: 'right' },
+            3: { halign: 'right' },
+            4: { halign: 'right' },
+            5: { halign: 'right' },
+            6: { halign: 'right' },
+          },
+          margin: { left: MARGIN, right: MARGIN },
+        })
+        y = (doc as any).lastAutoTable.finalY + 2
+
+        // Per-receipt summary line
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'italic')
+        const onAcc = Math.max(0, r.amount - r.linkedCash - r.carryOverPriorFy)
+        gTotalCash += r.linkedCash
+        gTotalTds += r.linkedTds
+        gTotalDisc += r.linkedDiscount
+        doc.text(
+          `Linked cash ₹${fmtMoney(r.linkedCash)}  ·  TDS ₹${fmtMoney(r.linkedTds)}  ·  disc ₹${fmtMoney(r.linkedDiscount)}` +
+          (onAcc > 0.5 ? `  ·  on-account ₹${fmtMoney(onAcc)}` : '  ·  ✓ fully matched'),
+          MARGIN, y + 4,
+        )
+        doc.setFont('helvetica', 'normal')
+        y += 11
+      }
+
+      // Grand totals
+      if (y > 240) { doc.addPage(); y = MARGIN }
+      doc.setFontSize(11)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Grand Totals', MARGIN, y + 4)
+      const totalsRows: [string, string][] = [
+        ['Receipts', `${sorted.length}`],
+        ['Σ Received', `₹${fmtMoney(totalReceived)}`],
+        ['Σ Cash allocated', `₹${fmtMoney(gTotalCash)}`],
+        ['Σ TDS', `₹${fmtMoney(gTotalTds)}`],
+        ['Σ Discount', `₹${fmtMoney(gTotalDisc)}`],
+      ]
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'normal')
+      let ty = y + 9
+      for (const [k, v] of totalsRows) {
+        doc.text(k, MARGIN, ty)
+        doc.text(v, doc.internal.pageSize.getWidth() - MARGIN, ty, { align: 'right' })
+        ty += 5
+      }
+
+      const blob = doc.output('blob') as Blob
+      const fname = `LinkedReceipts-V2-${new Date().toISOString().slice(0, 10)}.pdf`
+      const file = new File([blob], fname, { type: 'application/pdf' })
+      if (typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files: [file] })) {
+        try { await (navigator as any).share({ files: [file], title: 'Linked Receipts — View 2' }); return } catch {}
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = fname; a.click()
+      URL.revokeObjectURL(url)
+      window.open(`https://wa.me/?text=${encodeURIComponent('Linked Receipts — View 2 (PDF attached)')}`, '_blank')
+    } finally { setSharingLinkedV2(false) }
   }
 
   async function bulkHide(hidden: boolean) {
@@ -875,11 +1020,18 @@ export default function ReceiptsPage() {
             const linkedCount = rows.filter(r => selected.has(r.id) && r.linkedCount > 0).length
             if (linkedCount === 0) return null
             return (
-              <button onClick={shareLinkedReceiptsPdf} disabled={sharingLinkedPdf}
-                title="Build a PDF report of every selected LINKED receipt with its allocation table, share on WhatsApp"
-                className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
-                {sharingLinkedPdf ? 'Building…' : `📤 Share ${linkedCount} Linked (PDF)`}
-              </button>
+              <>
+                <button onClick={shareLinkedReceiptsPdf} disabled={sharingLinkedPdf}
+                  title="View 1 — snapshot each receipt CARD as it shows on screen"
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+                  {sharingLinkedPdf ? 'Building…' : `📤 V1 (${linkedCount})`}
+                </button>
+                <button onClick={shareLinkedReceiptsPdfV2} disabled={sharingLinkedV2}
+                  title="View 2 — bank header + tabular allocations (Date · Invoice · Original · TDS · Disc · Pending · Due Days)"
+                  className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+                  {sharingLinkedV2 ? 'Building…' : `📤 V2 (${linkedCount})`}
+                </button>
+              </>
             )
           })()}
           {showHidden ? (
