@@ -392,7 +392,11 @@ export default function ReceiptsPage() {
             const invDate = (inv as any).date
               ? new Date((inv as any).date)
               : null
-            const dueDays = invDate ? Math.round((invDate.getTime() - receiptMs) / 86400000) : null
+            // Days the invoice was already open when this receipt
+            // arrived = receipt.date − invoice.date. Positive for the
+            // typical "receipt settles old bill" case; negative when
+            // the receipt is an advance (invoice dated after).
+            const dueDays = invDate ? Math.round((receiptMs - invDate.getTime()) / 86400000) : null
             return [
               invDate ? fmtD(invDate.toISOString()) : '—',
               `${inv.vchType} ${inv.vchNumber}${isCN ? ' (CN)' : ''}`,
@@ -400,7 +404,7 @@ export default function ReceiptsPage() {
               inv.tdsAmount > 0 ? `₹${fmtMoney(inv.tdsAmount)}` : '—',
               inv.discountAmount > 0 ? `₹${fmtMoney(inv.discountAmount)}` : '—',
               `₹${fmtMoney(inv.pending)}`,
-              dueDays != null ? `${dueDays > 0 ? '+' : ''}${dueDays}` : '—',
+              dueDays != null ? (dueDays >= 0 ? `${dueDays}d` : `${-dueDays}d adv`) : '—',
             ]
           }),
           startY: y,
@@ -930,6 +934,15 @@ export default function ReceiptsPage() {
                                 NET ₹{fmtMoney(inv.invoiceNetAmount)}
                               </span>
                             )}
+                            {inv.date && (() => {
+                              const days = Math.round((new Date(r.date).getTime() - new Date(inv.date).getTime()) / 86400000)
+                              const label = days === 0 ? '• 0d' : days > 0 ? `• ${days}d` : `• ${-days}d advance`
+                              return (
+                                <span className="text-gray-500 dark:text-gray-400" title="Days the invoice was open when this receipt arrived (receipt date − invoice date)">
+                                  {label}
+                                </span>
+                              )
+                            })()}
                           </div>
                         </div>
                       ))}
