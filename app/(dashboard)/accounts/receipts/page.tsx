@@ -344,13 +344,20 @@ export default function ReceiptsPage() {
       const sorted = [...picked].sort((a, b) =>
         new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id)
 
+      // jsPDF's built-in helvetica doesn't have the ₹ glyph (WinAnsi
+      // encoded), so it renders as an apostrophe. Use "Rs " everywhere
+      // currency appears in raw text. Cleaner formatter: strip .00 on
+      // whole-rupee amounts so the lines read cleanly.
+      const rs = (n: number) => `Rs ${fmtMoney(n).replace(/\.00$/, '')}`
+      const num = (n: number) => fmtMoney(n).replace(/\.00$/, '')
+
       doc.setFontSize(14)
       doc.setFont('helvetica', 'bold')
       doc.text('Linked Receipts — View 2', MARGIN, MARGIN + 2)
       doc.setFontSize(9)
       doc.setFont('helvetica', 'normal')
       const totalReceived = sorted.reduce((s, r) => s + r.amount, 0)
-      doc.text(`${sorted.length} receipts · received ₹${fmtMoney(totalReceived)} · as of ${new Date().toLocaleDateString('en-IN')}`, MARGIN, MARGIN + 7)
+      doc.text(`${sorted.length} receipts · ${rs(totalReceived)} received · ${new Date().toLocaleDateString('en-IN')}`, MARGIN, MARGIN + 7)
 
       let y = MARGIN + 12
       let gTotalCash = 0, gTotalTds = 0, gTotalDisc = 0
@@ -360,17 +367,20 @@ export default function ReceiptsPage() {
         // ── Per-receipt bank/header block ──
         doc.setFontSize(11)
         doc.setFont('helvetica', 'bold')
-        doc.text(`#${r.vchNumber} — ${r.partyName}`, MARGIN, y)
+        doc.text(`#${r.vchNumber}  ${r.partyName}`, MARGIN, y)
         y += 5
-        doc.setFontSize(9)
+        doc.setFontSize(8)
         doc.setFont('helvetica', 'normal')
+        // Use 3 spaces between fields instead of "  ·  " — reads
+        // tighter and avoids the wide-spaced look the bullet was
+        // creating.
         const headerLine = [
           fmtD(r.date),
-          `₹${fmtMoney(r.amount)}`,
+          rs(r.amount),
           r.instrumentNo ? `Ref ${r.instrumentNo}` : '',
           r.bankRef ? `UTR ${r.bankRef}` : '',
           r.tallyPushedAt ? '✓ Pushed' : '',
-        ].filter(Boolean).join('  ·  ')
+        ].filter(Boolean).join('   ')
         doc.text(headerLine, MARGIN, y)
         y += 2
 
@@ -384,7 +394,7 @@ export default function ReceiptsPage() {
             { content: 'TDS', styles: { halign: 'right' } },
             { content: 'Discount', styles: { halign: 'right' } },
             { content: 'Pending', styles: { halign: 'right' } },
-            { content: 'Due Days', styles: { halign: 'right' } },
+            { content: 'Days', styles: { halign: 'right' } },
           ]],
           body: r.linkedInvoices.map(inv => {
             const isCN = inv.allocatedAmount < 0
@@ -392,19 +402,15 @@ export default function ReceiptsPage() {
             const invDate = (inv as any).date
               ? new Date((inv as any).date)
               : null
-            // Days the invoice was already open when this receipt
-            // arrived = receipt.date − invoice.date. Positive for the
-            // typical "receipt settles old bill" case; negative when
-            // the receipt is an advance (invoice dated after).
             const dueDays = invDate ? Math.round((receiptMs - invDate.getTime()) / 86400000) : null
             return [
               invDate ? fmtD(invDate.toISOString()) : '—',
               `${isCN ? 'CN ' : ''}${inv.vchNumber}`,
-              `${isCN ? '−' : ''}₹${fmtMoney(orig)}`,
-              inv.tdsAmount > 0 ? `₹${fmtMoney(inv.tdsAmount)}` : '—',
-              inv.discountAmount > 0 ? `₹${fmtMoney(inv.discountAmount)}` : '—',
-              `₹${fmtMoney(inv.pending)}`,
-              dueDays != null ? (dueDays >= 0 ? `${dueDays}d` : `${-dueDays}d adv`) : '—',
+              `${isCN ? '−' : ''}${num(orig)}`,
+              inv.tdsAmount > 0 ? num(inv.tdsAmount) : '—',
+              inv.discountAmount > 0 ? num(inv.discountAmount) : '—',
+              num(inv.pending),
+              dueDays != null ? (dueDays >= 0 ? `${dueDays}` : `${-dueDays} adv`) : '—',
             ]
           }),
           startY: y,
@@ -423,15 +429,15 @@ export default function ReceiptsPage() {
         y = (doc as any).lastAutoTable.finalY + 2
 
         // Per-receipt summary line
-        doc.setFontSize(9)
+        doc.setFontSize(8)
         doc.setFont('helvetica', 'italic')
         const onAcc = Math.max(0, r.amount - r.linkedCash - r.carryOverPriorFy)
         gTotalCash += r.linkedCash
         gTotalTds += r.linkedTds
         gTotalDisc += r.linkedDiscount
         doc.text(
-          `Linked cash ₹${fmtMoney(r.linkedCash)}  ·  TDS ₹${fmtMoney(r.linkedTds)}  ·  disc ₹${fmtMoney(r.linkedDiscount)}` +
-          (onAcc > 0.5 ? `  ·  on-account ₹${fmtMoney(onAcc)}` : '  ·  ✓ fully matched'),
+          `Linked ${rs(r.linkedCash)}  ·  TDS ${rs(r.linkedTds)}  ·  disc ${rs(r.linkedDiscount)}` +
+          (onAcc > 0.5 ? `  ·  on-account ${rs(onAcc)}` : '  ·  ✓ fully matched'),
           MARGIN, y + 4,
         )
         doc.setFont('helvetica', 'normal')
@@ -445,10 +451,10 @@ export default function ReceiptsPage() {
       doc.text('Grand Totals', MARGIN, y + 4)
       const totalsRows: [string, string][] = [
         ['Receipts', `${sorted.length}`],
-        ['Σ Received', `₹${fmtMoney(totalReceived)}`],
-        ['Σ Cash allocated', `₹${fmtMoney(gTotalCash)}`],
-        ['Σ TDS', `₹${fmtMoney(gTotalTds)}`],
-        ['Σ Discount', `₹${fmtMoney(gTotalDisc)}`],
+        ['Σ Received', rs(totalReceived)],
+        ['Σ Cash allocated', rs(gTotalCash)],
+        ['Σ TDS', rs(gTotalTds)],
+        ['Σ Discount', rs(gTotalDisc)],
       ]
       doc.setFontSize(9)
       doc.setFont('helvetica', 'normal')
