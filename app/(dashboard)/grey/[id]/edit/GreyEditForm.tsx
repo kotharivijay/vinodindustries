@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ComboSelect from '@/components/ComboSelect'
 
-interface Option { id: number; name: string }
+interface Option { id: number; name: string; tag?: string | null; lotPrefixes?: string[] | null }
 interface Masters { parties: Option[]; qualities: Option[]; weavers: Option[]; transports: Option[] }
 
 export default function GreyEditForm({ id }: { id: string }) {
@@ -21,7 +21,7 @@ export default function GreyEditForm({ id }: { id: string }) {
     transportId: null as number | null, transportLrNo: '',
     bale: '', baleNo: '', echBaleThan: '',
     weaverId: null as number | null, viverNameBill: '',
-    lrNo: '', lotNo: '',
+    lrNo: '', lotNo: '', marka: '',
   })
 
   useEffect(() => {
@@ -49,6 +49,7 @@ export default function GreyEditForm({ id }: { id: string }) {
         viverNameBill: entry.viverNameBill ?? '',
         lrNo: entry.lrNo ?? '',
         lotNo: entry.lotNo,
+        marka: entry.marka ?? '',
       })
       setLoading(false)
     })
@@ -139,6 +140,12 @@ export default function GreyEditForm({ id }: { id: string }) {
           <Field label="A-Lot No *">
             <input type="text" className={inp} value={form.lotNo} onChange={e => set('lotNo', e.target.value)} required />
           </Field>
+
+          {masters.parties.find(p => p.id === form.partyId)?.tag === 'Pali PC Job' && (
+            <Field label="Marka">
+              <input type="text" className={inp} value={form.marka} onChange={e => set('marka', e.target.value)} placeholder="Enter marka..." />
+            </Field>
+          )}
 
           <Field label="Transport *">
             <ComboSelect options={masters.transports} value={form.transportId} onChange={id => set('transportId', id)} onAddNew={n => addMaster('transports', n)} placeholder="Select transport..." />

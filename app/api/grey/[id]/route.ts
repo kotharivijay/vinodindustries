@@ -45,6 +45,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       viverNameBill: data.viverNameBill || null,
       lrNo: data.lrNo || null,
       lotNo: data.lotNo,
+      marka: data.marka != null ? (data.marka.trim() || null) : undefined,
     },
     include: { party: true, quality: true, transport: true, weaver: true },
   })
