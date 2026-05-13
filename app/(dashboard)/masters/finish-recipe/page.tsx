@@ -268,6 +268,11 @@ export default function FinishRecipeMasterPage() {
   const [selectedTagRecipeId, setSelectedTagRecipeId] = useState<number | null>(null)
   const [tagging, setTagging] = useState(false)
   const [showNewRecipe, setShowNewRecipe] = useState(false)
+  // Toggle: when on, the tag picker shows recipes from ALL parties
+  // (not just the currently-selected party). Lets the user borrow a
+  // recipe definition from any other party in one click.
+  const [tagScopeAll, setTagScopeAll] = useState(false)
+  const [tagSearch, setTagSearch] = useState('')
 
   // Load qualities when party changes — only qualities related to this party
   useEffect(() => {
@@ -329,20 +334,32 @@ export default function FinishRecipeMasterPage() {
       .catch(() => setLoadingRecipe(false))
   }, [selectedPartyId, selectedQualityId])
 
-  // Fetch party recipes for tagging
+  // Fetch recipes for tagging. Default = current party only; if
+  // tagScopeAll is on, fetch every recipe so the user can borrow from
+  // any other party.
   const fetchPartyRecipesForTag = useCallback(async () => {
-    if (!selectedPartyId) return
+    if (!selectedPartyId && !tagScopeAll) return
     setLoadingPartyRecipes(true)
     setSelectedTagRecipeId(null)
     try {
-      const res = await fetch(`/api/finish/recipe?partyId=${selectedPartyId}`)
+      const url = tagScopeAll
+        ? `/api/finish/recipe`
+        : `/api/finish/recipe?partyId=${selectedPartyId}`
+      const res = await fetch(url)
       const data = await res.json()
       setPartyRecipes(Array.isArray(data) ? data : [])
     } catch {
       setPartyRecipes([])
     }
     setLoadingPartyRecipes(false)
-  }, [selectedPartyId])
+  }, [selectedPartyId, tagScopeAll])
+
+  // Re-fetch the tag candidates whenever the user flips the scope pill
+  // while the tag UI is open. Otherwise the toggle wouldn't do anything
+  // until they click Cancel + Tag again.
+  useEffect(() => {
+    if (showTagUI) fetchPartyRecipesForTag()
+  }, [tagScopeAll, showTagUI, fetchPartyRecipesForTag])
 
   const handleTagToExisting = useCallback(() => {
     setShowTagUI(true)
@@ -582,16 +599,53 @@ export default function FinishRecipeMasterPage() {
             </div>
           )}
 
+          {/* Scope pills + search — flip between "this party only" and
+              "any party". When searching, match against the recipe's
+              party name, quality, variant, or chemical names. */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] text-gray-500">Pick from:</span>
+            <button onClick={() => setTagScopeAll(false)}
+              className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition ${
+                !tagScopeAll
+                  ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700'
+                  : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+              }`}>
+              This party
+            </button>
+            <button onClick={() => setTagScopeAll(true)}
+              className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition ${
+                tagScopeAll
+                  ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-700'
+                  : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+              }`}>
+              All parties
+            </button>
+            {tagScopeAll && (
+              <input type="search" value={tagSearch} onChange={e => setTagSearch(e.target.value)}
+                placeholder="🔍 Search party / quality / chemical…"
+                className="flex-1 min-w-[160px] px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-xs text-gray-800 dark:text-gray-100" />
+            )}
+          </div>
+
           {loadingPartyRecipes ? (
             <div className="p-4 text-center text-gray-400 dark:text-gray-500">Loading recipes...</div>
           ) : partyRecipes.length === 0 ? (
             <div className="p-4 text-center text-gray-400 dark:text-gray-500">
-              No existing recipes for this party. Create a new one instead.
+              {tagScopeAll ? 'No recipes exist yet anywhere.' : 'No existing recipes for this party.'} Create a new one instead.
             </div>
           ) : (
             <>
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {partyRecipes.map(r => (
+                {(tagScopeAll && tagSearch.trim()
+                  ? partyRecipes.filter(r => {
+                      const q = tagSearch.toLowerCase()
+                      return r.party?.name.toLowerCase().includes(q)
+                        || r.quality.name.toLowerCase().includes(q)
+                        || (r.variant ?? '').toLowerCase().includes(q)
+                        || r.items.some(it => it.name.toLowerCase().includes(q))
+                    })
+                  : partyRecipes
+                ).map(r => (
                   <label
                     key={r.id}
                     className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${
@@ -608,9 +662,17 @@ export default function FinishRecipeMasterPage() {
                       className="mt-0.5 accent-indigo-600"
                     />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{r.quality.name}</span>
-                        <span className="text-xs text-gray-400 dark:text-gray-500">{r.items.length} chemical{r.items.length !== 1 ? 's' : ''}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{r.quality.name}</span>
+                          {r.variant && r.variant !== 'Standard' && (
+                            <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-1.5">· {r.variant}</span>
+                          )}
+                          {tagScopeAll && r.party?.id !== selectedPartyId && (
+                            <div className="text-[10px] text-indigo-600 dark:text-indigo-400 truncate">from {r.party?.name}</div>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{r.items.length} chemical{r.items.length !== 1 ? 's' : ''}</span>
                       </div>
                       <div className="flex flex-wrap gap-2 mt-1 text-xs text-gray-500 dark:text-gray-400">
                         {r.finishWidth && <span>FW: {r.finishWidth}</span>}
