@@ -96,14 +96,38 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(null)
   }
 
-  // Recipes for a party
+  // Recipes for a party. Combines the party's OWN recipes with any
+  // recipes the party reaches via tags (cross-party borrows) so the
+  // finish-create form picker can offer both. Tag-borrowed recipes are
+  // returned with isTagged=true and taggedAsQualityId so the form knows
+  // they're virtual under THIS party + the target quality.
   if (partyId) {
-    const recipes = await db.finishRecipe.findMany({
-      where: { partyId: parseInt(partyId) },
+    const pId = parseInt(partyId)
+    const ownRecipes = await db.finishRecipe.findMany({
+      where: { partyId: pId },
       include: recipeInclude,
       orderBy: { updatedAt: 'desc' },
     })
-    return NextResponse.json(recipes)
+    const ownRecipeIds = new Set<number>(ownRecipes.map((r: any) => r.id))
+    const tags = await db.finishRecipeTag.findMany({
+      where: { partyId: pId },
+      include: {
+        quality: { select: { id: true, name: true } },
+        recipe: { include: recipeInclude },
+      },
+    })
+    const taggedRecipes = tags
+      .filter((t: any) => !ownRecipeIds.has(t.recipe.id)) // don't dup if party owns the same recipe
+      .map((t: any) => ({
+        ...t.recipe,
+        isTagged: true,
+        taggedFromParty: t.recipe.party.name,
+        // What the user sees this recipe AS under this party — the tag
+        // target quality + the recipe is read-only.
+        quality: t.quality,
+        taggedAsQualityId: t.qualityId,
+      }))
+    return NextResponse.json([...ownRecipes, ...taggedRecipes])
   }
 
   // All recipes
