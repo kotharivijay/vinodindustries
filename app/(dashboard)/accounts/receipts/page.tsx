@@ -938,7 +938,7 @@ export default function ReceiptsPage() {
                             {inv.tdsAmount > 0 && <span className="text-amber-600 dark:text-amber-400">−TDS ₹{fmtMoney(inv.tdsAmount)}</span>}
                             {inv.discountAmount > 0 && <span className="text-rose-600 dark:text-rose-400">−disc ₹{fmtMoney(inv.discountAmount)}</span>}
                             {typeof inv.invoiceNetAmount === 'number' && inv.invoiceNetAmount !== 0 && (
-                              <span className="text-pink-500 dark:text-pink-400 tabular-nums font-semibold"
+                              <span className="text-emerald-600 dark:text-emerald-400 tabular-nums font-semibold"
                                 title={`Invoice net = total ₹${fmtMoney(inv.invoiceTotalAmount || 0)} − Σ TDS − Σ settlement disc (across all allocations on this invoice)`}>
                                 NET ₹{fmtMoney(inv.invoiceNetAmount)}
                               </span>
