@@ -58,10 +58,54 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params
   const entryId = parseInt(id)
-  const entry = await prisma.greyEntry.findUnique({ where: { id: entryId }, select: { challanNo: true, lotNo: true, than: true } })
+  const entry = await prisma.greyEntry.findUnique({
+    where: { id: entryId },
+    select: { challanNo: true, lotNo: true, than: true },
+  })
+  if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Block deletion if the lot has any downstream activity. Most downstream
+  // tables store lotNo as a plain string (no FK), so the DB won't refuse the
+  // delete — we enforce it here. CheckingSlipLot is FK'd to greyEntryId
+  // directly, so we can pinpoint the exact bale row.
+  const db = prisma as any
+  const lotNo = entry.lotNo
+  const [
+    checkingByRow,
+    foldBatch, foldSlip,
+    dyeing, finish,
+    packing,
+    despatchParent, despatchLot,
+  ] = await Promise.all([
+    db.checkingSlipLot.count({ where: { greyEntryId: entryId } }),
+    db.foldBatchLot.count({ where: { lotNo } }),
+    db.foldingSlipLot.count({ where: { lotNo } }),
+    db.dyeingEntryLot.count({ where: { lotNo } }),
+    db.finishEntryLot.count({ where: { lotNo } }),
+    db.packingLot.count({ where: { lotNo } }),
+    db.despatchEntry.count({ where: { lotNo, despatchLots: { none: {} } } }),
+    db.despatchEntryLot.count({ where: { lotNo } }),
+  ])
+
+  const blockers: string[] = []
+  if (checkingByRow) blockers.push(`Checking slip (${checkingByRow})`)
+  if (foldBatch)     blockers.push(`Fold batch (${foldBatch})`)
+  if (foldSlip)      blockers.push(`Folding slip (${foldSlip})`)
+  if (dyeing)        blockers.push(`Dyeing slip (${dyeing})`)
+  if (finish)        blockers.push(`Finish slip (${finish})`)
+  if (packing)       blockers.push(`Packing slip (${packing})`)
+  if (despatchParent + despatchLot) blockers.push(`Despatch (${despatchParent + despatchLot})`)
+
+  if (blockers.length > 0) {
+    return NextResponse.json({
+      error: `Cannot delete lot ${lotNo} — it is already used in: ${blockers.join(', ')}. Remove those entries first.`,
+      blockers,
+    }, { status: 409 })
+  }
+
   await logDelete({
-    module: 'grey', slipType: 'Grey', slipNo: entry?.challanNo ?? null,
-    lotNo: entry?.lotNo ?? null, than: entry?.than ?? null, recordId: entryId,
+    module: 'grey', slipType: 'Grey', slipNo: entry.challanNo,
+    lotNo: entry.lotNo, than: entry.than, recordId: entryId,
   })
   await prisma.greyEntry.delete({ where: { id: entryId } })
   return NextResponse.json({ ok: true })

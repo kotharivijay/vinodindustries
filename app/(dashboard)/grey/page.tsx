@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import GreyImportModal from './GreyImportModal'
 import UnallocatedStockModal from './UnallocatedStockModal'
+import GreyCheckingModal from './GreyCheckingModal'
 import BackButton from '../BackButton'
 import { LotLink, useLotBackHighlight, persistViewState, readViewState } from '@/lib/viewStatePersist'
 
@@ -85,6 +86,7 @@ export default function GreyListPage() {
   const [debouncedSearch, setDebouncedSearch] = useDebounce(initial.search ?? '')
   const [showImport, setShowImport] = useState(false)
   const [showUnallocated, setShowUnallocated] = useState(false)
+  const [showChecking, setShowChecking] = useState(false)
 
   // Auto-reopen unallocated stock modal if user navigated away and came back.
   // App Router restores cached pages on router.back() without remounting, so a
@@ -159,9 +161,17 @@ export default function GreyListPage() {
   async function handleDelete(id: number) {
     if (!confirm('Delete this entry? This cannot be undone.')) return
     setDeletingId(id)
-    await fetch(`/api/grey/${id}`, { method: 'DELETE' })
-    setDeletingId(null)
-    mutate()
+    try {
+      const res = await fetch(`/api/grey/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.error ?? `Delete failed (HTTP ${res.status})`)
+        return
+      }
+      mutate()
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   async function handleCarryForwardImport() {
@@ -320,18 +330,8 @@ export default function GreyListPage() {
           <Link href="/grey/weights" className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700">
             &#x2696;&#xFE0F; Update Weights
           </Link>
-          <button
-            onClick={async () => {
-              const typed = prompt('Type RESET to delete all Grey + Despatch data. This cannot be undone.')
-              if (typed !== 'RESET') return
-              await fetch('/api/grey', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'RESET_GREY' }) })
-              await fetch('/api/despatch', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'RESET_DESPATCH' }) })
-              alert('All Grey + Despatch data deleted.')
-              mutate()
-            }}
-            className="flex items-center gap-2 bg-red-100 text-red-700 border border-red-300 px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-200"
-          >
-            Reset All
+          <button onClick={() => setShowChecking(true)} className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
+            🔍 Grey Checking
           </button>
           <Link href="/grey/new" className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700">
             + New Entry
@@ -735,6 +735,13 @@ export default function GreyListPage() {
         <GreyImportModal
           onClose={() => setShowImport(false)}
           onImported={() => { setShowImport(false); mutate() }}
+        />
+      )}
+
+      {showChecking && (
+        <GreyCheckingModal
+          onClose={() => setShowChecking(false)}
+          onSaved={() => { setShowChecking(false); mutate() }}
         />
       )}
 

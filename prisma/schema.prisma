@@ -88,6 +88,43 @@ model GreyEntry {
   // stock & tDesp are calculated live — not stored
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  checkingLots  CheckingSlipLot[]
+}
+
+// ─── Grey Checking (intermediate review of incoming grey before fold/dye) ─
+model Checker {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model CheckingSlip {
+  id          Int               @id @default(autoincrement())
+  slipNo      String            @unique
+  date        DateTime
+  checkerName String
+  notes       String?
+  status      String            @default("confirmed") // draft|confirmed|cancelled
+  lots        CheckingSlipLot[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+}
+
+model CheckingSlipLot {
+  id             Int          @id @default(autoincrement())
+  checkingSlipId Int
+  checkingSlip   CheckingSlip @relation(fields: [checkingSlipId], references: [id], onDelete: Cascade)
+  greyEntryId    Int
+  greyEntry      GreyEntry    @relation(fields: [greyEntryId], references: [id])
+  // snapshot of GreyEntry values at time of checking — keeps the slip
+  // immutable even if the source grey row is edited later
+  lotNo          String
+  than           Int
+  baleNo         String?
+  createdAt      DateTime     @default(now())
+
+  @@unique([checkingSlipId, greyEntryId])
 }
 
 // ─── Jet Dyeing Machine ────────────────────────────────────────────────────
