@@ -31,7 +31,19 @@ interface StockSummaryRow {
 
 type SortField = 'sn' | 'date' | 'party' | 'quality' | 'than' | 'lotNo' | 'lrNo' | 'tDesp' | 'stock'
 type SortDir = 'asc' | 'desc'
-type Tab = 'entries' | 'stock'
+type Tab = 'entries' | 'stock' | 'checking'
+
+interface CheckingSlipRow {
+  id: number
+  slipNo: string
+  date: string
+  checkerName: string
+  notes: string | null
+  status: string
+  createdAt: string
+  lots: { id: number; lotNo: string; than: number; baleNo: string | null }[]
+  _count?: { lots: number }
+}
 type StockFilter = 'all' | 'instock' | 'cleared'
 
 function getValue(e: GreyEntry, field: SortField): string | number {
@@ -66,6 +78,10 @@ export default function GreyListPage() {
   })
   type StageBreakdown = { fold: number; dye: number; finish: number; pack: number }
   const { data: stagesByLot = {} } = useSWR<Record<string, StageBreakdown>>('/api/grey/stages', fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+  })
+  const { data: checkingSlips = [], mutate: mutateChecking } = useSWR<CheckingSlipRow[]>('/api/grey/checking', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30_000,
   })
@@ -365,6 +381,13 @@ export default function GreyListPage() {
           Stock Summary
           <span className="ml-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full px-2 py-0.5">{stockSummary.length} lots</span>
         </button>
+        <button
+          onClick={() => setTab('checking')}
+          className={`px-5 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${tab === 'checking' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
+        >
+          Checking Slips
+          <span className="ml-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full px-2 py-0.5">{checkingSlips.length}</span>
+        </button>
       </div>
 
       {/* ── STOCK SUMMARY TAB ── */}
@@ -552,6 +575,11 @@ export default function GreyListPage() {
         </div>
         )
       })()}
+
+      {/* ── CHECKING SLIPS TAB ── */}
+      {tab === 'checking' && (
+        <CheckingSlipsPanel slips={checkingSlips} onMutate={mutateChecking} />
+      )}
 
       {/* ── ALL ENTRIES TAB ── */}
       {tab === 'entries' && (
@@ -741,7 +769,7 @@ export default function GreyListPage() {
       {showChecking && (
         <GreyCheckingModal
           onClose={() => setShowChecking(false)}
-          onSaved={() => { setShowChecking(false); mutate() }}
+          onSaved={() => { setShowChecking(false); mutate(); mutateChecking(); setTab('checking') }}
         />
       )}
 
@@ -785,6 +813,126 @@ function StageChips({ lotNo, greyThan, tDesp, stages }: {
           {c.label} <span className="font-bold">{c.than}</span>
         </span>
       ))}
+    </div>
+  )
+}
+
+function CheckingSlipsPanel({ slips, onMutate }: {
+  slips: CheckingSlipRow[]
+  onMutate: () => void
+}) {
+  const [search, setSearch] = useState('')
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim()
+    if (!q) return slips
+    return slips.filter(s =>
+      s.slipNo.toLowerCase().includes(q) ||
+      s.checkerName.toLowerCase().includes(q) ||
+      (s.notes ?? '').toLowerCase().includes(q) ||
+      s.lots.some(l => l.lotNo.toLowerCase().includes(q))
+    )
+  }, [slips, search])
+
+  async function handleDelete(id: number) {
+    if (!confirm('Delete this checking slip?')) return
+    setDeletingId(id)
+    try {
+      const res = await fetch(`/api/grey/checking/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.error ?? 'Delete failed')
+        return
+      }
+      onMutate()
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-3">
+        <input
+          type="text"
+          placeholder="Search by slip no, checker, lot, notes..."
+          className="w-full max-w-md border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        <span className="text-xs text-gray-400 ml-auto">{filtered.length} of {slips.length}</span>
+      </div>
+
+      {slips.length === 0 ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-12 text-center text-gray-400 dark:text-gray-500">
+          No checking slips saved yet. Click <strong>🔍 Grey Checking</strong> above to create one.
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-12 text-center text-gray-400 dark:text-gray-500">
+          No matching slips.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map(s => {
+            const totalThan = s.lots.reduce((acc, l) => acc + l.than, 0)
+            const isOpen = expandedId === s.id
+            return (
+              <div key={s.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-base font-bold text-indigo-700 dark:text-indigo-400">{s.slipNo}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{new Date(s.date).toLocaleDateString('en-IN')}</span>
+                      {s.status === 'cancelled' && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full font-medium">Cancelled</span>}
+                    </div>
+                    <p className="text-sm text-gray-700 dark:text-gray-200 mt-0.5">
+                      Checker: <span className="font-medium">{s.checkerName}</span>
+                    </p>
+                    {s.notes && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{s.notes}</p>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wide">Total Than</div>
+                    <div className="text-xl font-bold text-indigo-700 dark:text-indigo-400 leading-none">{totalThan}</div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{s.lots.length} lot{s.lots.length === 1 ? '' : 's'}</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    onClick={() => setExpandedId(isOpen ? null : s.id)}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                  >
+                    {isOpen ? '▲ Hide lots' : `▼ Show ${s.lots.length} lot${s.lots.length === 1 ? '' : 's'}`}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(s.id)}
+                    disabled={deletingId === s.id}
+                    className="text-xs text-red-400 hover:text-red-600 font-medium ml-auto disabled:opacity-40"
+                  >
+                    {deletingId === s.id ? '...' : 'Delete'}
+                  </button>
+                </div>
+                {isOpen && (
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {s.lots.map(l => (
+                      <div key={l.id} className="bg-gray-50 dark:bg-gray-700/40 rounded-lg p-2 text-sm flex items-center justify-between">
+                        <div className="min-w-0">
+                          <LotLink lotNo={l.lotNo} storageKey={GREY_VIEW_KEY} className="font-semibold text-indigo-700 dark:text-indigo-400 hover:underline">
+                            🔖 {l.lotNo}
+                          </LotLink>
+                          {l.baleNo && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">Bale {l.baleNo}</span>}
+                        </div>
+                        <span className="font-bold text-gray-800 dark:text-gray-100">{l.than}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

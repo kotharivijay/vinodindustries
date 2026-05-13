@@ -48,6 +48,16 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
   const { data: entries = [] } = useSWR<GreyEntry[]>('/api/grey', fetcher, { revalidateOnFocus: false })
   const { data: checkers = [], mutate: mutateCheckers } = useSWR<Checker[]>('/api/checkers', fetcher, { revalidateOnFocus: false })
   const { data: nextSlip } = useSWR<{ next: string }>('/api/grey/checking/next-slip-no', fetcher, { revalidateOnFocus: false })
+  // Hide every bale of a lot once that lot has been checked on any slip.
+  // Per-lot exclusion (not per-bale): if even one bale row of lot PS-53 is
+  // on a saved checking slip, the whole lot disappears from the picker.
+  const { data: existingSlips = [] } = useSWR<{ lots: { lotNo: string }[] }[]>(
+    '/api/grey/checking', fetcher, { revalidateOnFocus: false }
+  )
+  const checkedLots = useMemo(
+    () => new Set(existingSlips.flatMap(s => s.lots.map(l => l.lotNo.toLowerCase()))),
+    [existingSlips]
+  )
 
   const [date, setDate] = useState<string>(todayISO())
   const [slipNo, setSlipNo] = useState<string>('')
@@ -75,33 +85,51 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
     return entries
       .filter(e => e.id > 0) // exclude carry-forward synthetic rows
       .filter(e => e.stock > 0)
+      .filter(e => !checkedLots.has(e.lotNo.toLowerCase())) // hide every bale of an already-checked lot
       .filter(e => !lot || e.lotNo.toLowerCase().includes(lot))
       .filter(e => !party || e.party.name.toLowerCase().includes(party))
       .filter(e => !lr || (e.transportLrNo ?? '').toLowerCase().includes(lr))
       .filter(e => !bale || (e.baleNo ?? '').toLowerCase().includes(bale))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [entries, debLot, debParty, debLr, debBale])
+  }, [entries, debLot, debParty, debLr, debBale, checkedLots])
 
+  // Sum across ALL selected lots, not just those matching the current
+  // search filter. Otherwise typing a filter would silently drop the total
+  // even though the selection itself is unchanged.
   const totalThan = useMemo(() =>
-    filtered.filter(e => selected.has(e.id)).reduce((s, e) => s + e.than, 0),
-    [filtered, selected]
+    entries.filter(e => selected.has(e.id)).reduce((s, e) => s + e.than, 0),
+    [entries, selected]
   )
 
+  // Toggle selection at the LOT level: clicking one bale checks or unchecks
+  // every bale row that shares the same lotNo. No partial-lot selection.
   function toggle(id: number) {
+    const e = entries.find(x => x.id === id)
+    if (!e) return
+    const sameLotIds = entries
+      .filter(x => x.lotNo.toLowerCase() === e.lotNo.toLowerCase())
+      .map(x => x.id)
     setSelected(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
+      const turnOff = sameLotIds.every(i => prev.has(i))
+      if (turnOff) sameLotIds.forEach(i => next.delete(i))
+      else sameLotIds.forEach(i => next.add(i))
       return next
     })
   }
 
   function toggleAllVisible() {
-    const visibleIds = filtered.map(e => e.id)
-    const allOn = visibleIds.every(id => selected.has(id))
+    // Operate on whole lots: any lot that has at least one bale visible is
+    // either fully selected or fully unselected — never partial.
+    const visibleLots = new Set(filtered.map(e => e.lotNo.toLowerCase()))
+    const lotBaleIds = entries
+      .filter(e => visibleLots.has(e.lotNo.toLowerCase()))
+      .map(e => e.id)
+    const allOn = lotBaleIds.every(id => selected.has(id))
     setSelected(prev => {
       const next = new Set(prev)
-      if (allOn) visibleIds.forEach(id => next.delete(id))
-      else visibleIds.forEach(id => next.add(id))
+      if (allOn) lotBaleIds.forEach(id => next.delete(id))
+      else lotBaleIds.forEach(id => next.add(id))
       return next
     })
   }
@@ -196,7 +224,7 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
               <input className={inputCls} placeholder="Bale No…" value={baleSearch} onChange={e => { setBaleSearch(e.target.value); setDebBale(e.target.value) }} />
             </div>
             <div className="flex items-center justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
-              <span>Showing {filtered.length} of {entries.filter(e => e.id > 0 && e.stock > 0).length} in-stock lots</span>
+              <span>Showing {filtered.length} of {entries.filter(e => e.id > 0 && e.stock > 0 && !checkedLots.has(e.lotNo.toLowerCase())).length} unchecked lots</span>
               {filtered.length > 0 && (
                 <button onClick={toggleAllVisible} className="text-indigo-600 hover:text-indigo-800 font-medium">
                   {filtered.every(e => selected.has(e.id)) ? 'Unselect all visible' : 'Select all visible'}
@@ -250,12 +278,13 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
 
         {/* Footer */}
         <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
-          <div className="text-sm">
-            <span className="text-gray-500 dark:text-gray-400">Selected:</span>{' '}
-            <span className="font-semibold text-gray-800 dark:text-gray-100">{selected.size}</span>
-            <span className="text-gray-400 mx-1">·</span>
-            <span className="text-gray-500 dark:text-gray-400">Than:</span>{' '}
-            <span className="font-bold text-indigo-700 dark:text-indigo-400">{totalThan}</span>
+          <div className="flex items-baseline gap-3">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              Selected <span className="font-semibold text-gray-800 dark:text-gray-100">{selected.size}</span> lot{selected.size === 1 ? '' : 's'}
+            </span>
+            <span className="text-gray-300 dark:text-gray-600">·</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">Total Than</span>
+            <span className="text-xl font-bold text-indigo-700 dark:text-indigo-400 leading-none">{totalThan}</span>
           </div>
           <div className="flex items-center gap-3">
             {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
