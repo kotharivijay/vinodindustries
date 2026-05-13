@@ -334,8 +334,8 @@ export default function FoldDetailPage() {
     setConfirming(false)
   }
 
-  async function printProgram() {
-    if (!program) return
+  async function buildProgramPdf() {
+    if (!program) return null
     const { default: jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
     const doc = new jsPDF({ orientation: 'portrait' })
@@ -375,11 +375,40 @@ export default function FoldDetailPage() {
     doc.setFont('helvetica', 'bold')
     doc.text(`Grand Total: ${totalThan} than`, 14, y)
 
-    // Open print dialog
+    return doc
+  }
+
+  async function printProgram() {
+    const doc = await buildProgramPdf()
+    if (!doc) return
     const blob = doc.output('blob')
     const url = URL.createObjectURL(blob)
     const win = window.open(url)
     win?.print()
+  }
+
+  const [sharingPdf, setSharingPdf] = useState(false)
+  async function shareProgramPdf() {
+    if (!program || sharingPdf) return
+    setSharingPdf(true)
+    try {
+      const doc = await buildProgramPdf()
+      if (!doc) return
+      const blob = doc.output('blob') as Blob
+      const fname = `Fold-${program.foldNo}.pdf`
+      const file = new File([blob], fname, { type: 'application/pdf' })
+      // Native share sheet (mobile) → user picks WhatsApp / Mail / Drive.
+      if (typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files: [file] })) {
+        try { await (navigator as any).share({ files: [file], title: `Fold ${program.foldNo}` }); return } catch {}
+      }
+      // Desktop fallback: open WhatsApp Web with a hint message + download
+      // the PDF so the user can attach it manually.
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = fname; a.click()
+      URL.revokeObjectURL(url)
+      window.open(`https://wa.me/?text=${encodeURIComponent(`Fold ${program.foldNo} program (PDF attached)`)}`, '_blank')
+    } finally { setSharingPdf(false) }
   }
 
   if (isLoading) return <div className="p-8 text-gray-400 dark:text-gray-500">Loading...</div>
@@ -416,6 +445,10 @@ export default function FoldDetailPage() {
           <button onClick={() => router.push(`/fold/${id}/edit`)} className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-indigo-700">Edit</button>
           <button onClick={() => router.push(`/dyeing/batch?foldId=${id}`)} className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-purple-700">🎨 Dyeing(Batch)</button>
           <button onClick={printProgram} className="bg-gray-700 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-800">🖨 Print</button>
+          <button onClick={shareProgramPdf} disabled={sharingPdf}
+            className="bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50">
+            {sharingPdf ? 'Sharing…' : '📤 Share PDF'}
+          </button>
         </div>
       </div>
 
