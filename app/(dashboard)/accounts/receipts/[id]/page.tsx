@@ -1040,12 +1040,13 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
 }) {
   // Per-row state — TDS/Discount for invoices, cnKnockoff for CN rows.
   // Initialised from auto-2% TDS (or full pending for CN) so the modal
-  // opens with a populated draft.
-  const [drafts, setDrafts] = useState<Map<number, { tdsAmount: number; discountAmount: number; cnKnockoff: number }>>(() => {
-    const m = new Map<number, { tdsAmount: number; discountAmount: number; cnKnockoff: number }>()
+  // opens with a populated draft. `discountPct` is a live derived input —
+  // typing into it overwrites discountAmount with (pending × pct / 100).
+  const [drafts, setDrafts] = useState<Map<number, { tdsAmount: number; discountAmount: number; cnKnockoff: number; discountPct: string }>>(() => {
+    const m = new Map<number, { tdsAmount: number; discountAmount: number; cnKnockoff: number; discountPct: string }>()
     for (const inv of invoices) {
       if (inv.vchType === 'Credit Note') {
-        m.set(inv.id, { tdsAmount: 0, discountAmount: 0, cnKnockoff: inv.pending })
+        m.set(inv.id, { tdsAmount: 0, discountAmount: 0, cnKnockoff: inv.pending, discountPct: '' })
         continue
       }
       const itemSum = inv.lines.reduce((s, l) => s + l.amount, 0)
@@ -1055,7 +1056,7 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
         return /less|discount/.test(lname) ? s + Math.abs(l.amount) : s
       }, 0)
       const taxable = Math.max(0, grossTaxable - voucherDiscount)
-      m.set(inv.id, { tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100), discountAmount: 0, cnKnockoff: 0 })
+      m.set(inv.id, { tdsAmount: Math.round((taxable * DEFAULT_TDS_RATE) / 100), discountAmount: 0, cnKnockoff: 0, discountPct: '' })
     }
     return m
   })
@@ -1110,8 +1111,28 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
   function setRowField(id: number, field: 'tdsAmount' | 'discountAmount' | 'cnKnockoff', val: number) {
     setDrafts(prev => {
       const n = new Map(prev)
-      const cur = n.get(id) || { tdsAmount: 0, discountAmount: 0, cnKnockoff: 0 }
-      n.set(id, { ...cur, [field]: Math.max(0, val || 0) })
+      const cur = n.get(id) || { tdsAmount: 0, discountAmount: 0, cnKnockoff: 0, discountPct: '' }
+      // Typing in ₹ clears the % so the two inputs don't fight.
+      const patch: any = { [field]: Math.max(0, val || 0) }
+      if (field === 'discountAmount') patch.discountPct = ''
+      n.set(id, { ...cur, ...patch })
+      return n
+    })
+  }
+
+  // Live "%" → ₹ computation for the discount column. Pending is the
+  // base — typing 2 fills discountAmount = round(pending × 0.02).
+  function setDiscPct(id: number, pctStr: string) {
+    const inv = invoices.find(i => i.id === id)
+    if (!inv) return
+    const pct = parseFloat(pctStr)
+    setDrafts(prev => {
+      const n = new Map(prev)
+      const cur = n.get(id) || { tdsAmount: 0, discountAmount: 0, cnKnockoff: 0, discountPct: '' }
+      const amt = Number.isFinite(pct) && pct > 0
+        ? Math.round((inv.pending * pct) / 100)
+        : 0
+      n.set(id, { ...cur, discountPct: pctStr, discountAmount: amt })
       return n
     })
   }
@@ -1200,7 +1221,7 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
                 <th className="px-1.5 py-1 text-left">Invoice</th>
                 <th className="px-1.5 py-1 text-right">Pending</th>
                 <th className="px-1.5 py-1 text-right" style={{ width: 70 }}>TDS</th>
-                <th className="px-1.5 py-1 text-right" style={{ width: 70 }}>Disc</th>
+                <th className="px-1.5 py-1 text-right" style={{ width: 96 }}>Disc (% / ₹)</th>
                 <th className="px-1.5 py-1 text-right">Cash / KO</th>
                 <th className="px-1.5 py-1 text-right">Status</th>
               </tr>
@@ -1236,10 +1257,21 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
                       }
                     </td>
                     <td className="px-1.5 py-1">
-                      {isCN ? <span className="text-gray-300 text-[10px]">—</span> :
-                        <input type="number" value={disc || ''} onChange={e => setRowField(inv.id, 'discountAmount', parseFloat(e.target.value))}
-                          className="w-full px-1 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums text-right" />
-                      }
+                      {isCN ? <span className="text-gray-300 text-[10px]">—</span> : (() => {
+                        const d = drafts.get(inv.id)
+                        return (
+                          <div className="flex items-center gap-1">
+                            <input type="number" step="0.01" value={d?.discountPct ?? ''}
+                              onChange={e => setDiscPct(inv.id, e.target.value)}
+                              placeholder="%"
+                              className="w-10 px-1 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[10px] tabular-nums text-right" />
+                            <span className="text-gray-400 text-[9px]">%</span>
+                            <input type="number" value={disc || ''} onChange={e => setRowField(inv.id, 'discountAmount', parseFloat(e.target.value))}
+                              placeholder="₹"
+                              className="flex-1 min-w-[40px] px-1 py-0.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-[11px] tabular-nums text-right" />
+                          </div>
+                        )
+                      })()}
                     </td>
                     <td className="px-1.5 py-1">
                       {isCN ? (
