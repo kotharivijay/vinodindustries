@@ -674,7 +674,10 @@ export default function ReceiptsPage() {
                         <div key={i}>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
-                            <span className="tabular-nums">₹{fmtMoney(inv.allocatedAmount)}</span>
+                            <span className="tabular-nums"
+                              title={`Original invoice amount (before TDS/discount). Cash allocated on this receipt: ₹${fmtMoney(Math.abs(inv.allocatedAmount))}`}>
+                              {inv.allocatedAmount < 0 ? '−' : ''}₹{fmtMoney(inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount))}
+                            </span>
                             {inv.tdsAmount > 0 && <span className="text-amber-600 dark:text-amber-400">+TDS ₹{fmtMoney(inv.tdsAmount)}</span>}
                             {inv.discountAmount > 0 && <span className="text-rose-600 dark:text-rose-400">+disc ₹{fmtMoney(inv.discountAmount)}</span>}
                             {typeof inv.invoiceNetAmount === 'number' && inv.invoiceNetAmount !== 0 && (
