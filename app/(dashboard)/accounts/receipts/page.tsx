@@ -232,130 +232,83 @@ export default function ReceiptsPage() {
     if (picked.length === 0) { alert('Pick at least one LINKED receipt to share.'); return }
     setSharingLinkedPdf(true)
     try {
-      const { default: jsPDF } = await import('jspdf')
-      const { default: autoTable } = await import('jspdf-autotable')
-      const doc = new jsPDF({ orientation: 'portrait' })
-      // Sort selected receipts oldest-first for a stable, scannable layout
+      const [jsPDFMod, html2canvasMod] = await Promise.all([import('jspdf'), import('html2canvas')])
+      const jsPDF = jsPDFMod.default
+      const html2canvas = html2canvasMod.default
+
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const PAGE_W = doc.internal.pageSize.getWidth()
+      const PAGE_H = doc.internal.pageSize.getHeight()
+      const MARGIN = 8
+      const SPACING = 4 // mm between captured cards
+      const CONTENT_W = PAGE_W - MARGIN * 2
+
+      // Title
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Linked Receipts Report', MARGIN, MARGIN + 5)
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'normal')
+      const totalReceived = picked.reduce((s, r) => s + r.amount, 0)
+      doc.text(`${picked.length} receipts · received ₹${fmtMoney(totalReceived)} · as of ${new Date().toLocaleDateString('en-IN')}`, MARGIN, MARGIN + 10)
+
+      let y = MARGIN + 14
+      const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+
+      // Sort oldest-first for a stable order
       const sorted = [...picked].sort((a, b) =>
         new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id)
 
-      const fmtD = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
-
-      doc.setFontSize(14)
-      doc.setFont('helvetica', 'bold')
-      doc.text('Linked Receipts Report', 14, 14)
-      doc.setFontSize(10)
-      doc.setFont('helvetica', 'normal')
-      const totalReceived = sorted.reduce((s, r) => s + r.amount, 0)
-      doc.text(`${sorted.length} receipts · received ₹${fmtMoney(totalReceived)} · as of ${new Date().toLocaleDateString('en-IN')}`, 14, 20)
-
-      let y = 26
-      let totalCash = 0, totalTds = 0, totalDisc = 0, totalCarry = 0, totalOnAcc = 0
-
       for (const r of sorted) {
-        if (y > 250) { doc.addPage(); y = 15 }
-        // Per-receipt header
-        doc.setFontSize(11)
-        doc.setFont('helvetica', 'bold')
-        doc.text(`Receipt #${r.vchNumber} — ${r.partyName}`, 14, y)
-        y += 5
-        doc.setFontSize(9)
-        doc.setFont('helvetica', 'normal')
-        const headerBits = [
-          fmtD(r.date),
-          `Bank Recpt ₹${fmtMoney(r.amount)}`,
-        ]
-        if (r.instrumentNo) headerBits.push(`Ref ${r.instrumentNo}`)
-        if (r.bankRef) headerBits.push(`UTR ${r.bankRef}`)
-        if (r.tallyPushedAt) headerBits.push('✓ Pushed to Tally')
-        doc.text(headerBits.join('  ·  '), 14, y)
-        y += 2
-
-        autoTable(doc, {
-          head: [[
-            'Invoice',
-            'Date',
-            { content: 'Original', styles: { halign: 'right' } },
-            { content: 'Cash', styles: { halign: 'right' } },
-            { content: 'TDS', styles: { halign: 'right' } },
-            { content: 'Disc', styles: { halign: 'right' } },
-            'Status',
-          ]],
-          body: r.linkedInvoices.map(inv => {
-            const isCN = inv.allocatedAmount < 0
-            const consumed = Math.abs(inv.allocatedAmount) + inv.tdsAmount + inv.discountAmount
-            const pendingAfter = (inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)) - consumed
-            const status = isCN
-              ? `↙ knock-off ₹${fmtMoney(Math.abs(inv.allocatedAmount))}`
-              : Math.abs(pendingAfter) <= 1 ? '✓ closes'
-              : pendingAfter > 0 ? `−₹${fmtMoney(pendingAfter)} pend`
-              : `over ₹${fmtMoney(-pendingAfter)}`
-            const orig = inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)
-            return [
-              `${inv.vchType} ${inv.vchNumber}`,
-              '',
-              `${isCN ? '−' : ''}₹${fmtMoney(orig)}`,
-              `${isCN ? '−' : ''}₹${fmtMoney(Math.abs(inv.allocatedAmount))}`,
-              inv.tdsAmount > 0 ? `₹${fmtMoney(inv.tdsAmount)}` : '—',
-              inv.discountAmount > 0 ? `₹${fmtMoney(inv.discountAmount)}` : '—',
-              status,
-            ]
-          }),
-          startY: y,
-          styles: { fontSize: 8, cellPadding: 1.5 },
-          headStyles: { fillColor: [99, 102, 241], textColor: 255 },
-          columnStyles: {
-            0: { fontStyle: 'bold' },
-            2: { halign: 'right' },
-            3: { halign: 'right' },
-            4: { halign: 'right' },
-            5: { halign: 'right' },
-          },
-          margin: { left: 14, right: 14 },
+        const el = document.querySelector<HTMLElement>(`[data-receipt-id="${r.id}"]`)
+        if (!el) continue
+        // Snapshot the live React-rendered card so the PDF matches the UI
+        // exactly (badges, party name, narration, every linked-invoice line).
+        const canvas = await html2canvas(el, {
+          backgroundColor: isDark ? '#111827' : '#ffffff',
+          scale: 2,
+          useCORS: true,
+          logging: false,
         })
-        y = (doc as any).lastAutoTable.finalY + 2
-
-        // Per-receipt summary line
-        doc.setFontSize(9)
-        doc.setFont('helvetica', 'italic')
-        const onAcc = Math.max(0, r.amount - r.linkedCash - r.carryOverPriorFy)
-        totalCash += r.linkedCash
-        totalTds += r.linkedTds
-        totalDisc += r.linkedDiscount
-        totalCarry += r.carryOverPriorFy
-        totalOnAcc += onAcc
-        doc.text(
-          `Linked cash ₹${fmtMoney(r.linkedCash)}  ·  TDS ₹${fmtMoney(r.linkedTds)}  ·  disc ₹${fmtMoney(r.linkedDiscount)}` +
-          (r.carryOverPriorFy > 0 ? `  ·  carry ₹${fmtMoney(r.carryOverPriorFy)}` : '') +
-          (onAcc > 0.5 ? `  ·  on-account ₹${fmtMoney(onAcc)}` : ''),
-          14, y + 4,
-        )
-        doc.setFont('helvetica', 'normal')
-        y += 10
+        const imgData = canvas.toDataURL('image/png')
+        const imgW = CONTENT_W
+        const imgH = (canvas.height / canvas.width) * imgW
+        // Page break if the next card won't fit
+        if (y + imgH > PAGE_H - MARGIN) {
+          doc.addPage()
+          y = MARGIN
+        }
+        doc.addImage(imgData, 'PNG', MARGIN, y, imgW, imgH)
+        y += imgH + SPACING
       }
 
       // Grand totals at the end
-      if (y > 240) { doc.addPage(); y = 15 }
+      const totalCash = picked.reduce((s, r) => s + r.linkedCash, 0)
+      const totalTds = picked.reduce((s, r) => s + r.linkedTds, 0)
+      const totalDisc = picked.reduce((s, r) => s + r.linkedDiscount, 0)
+      const totalCarry = picked.reduce((s, r) => s + r.carryOverPriorFy, 0)
+      const totalOnAcc = picked.reduce((s, r) => s + Math.max(0, r.amount - r.linkedCash - r.carryOverPriorFy), 0)
+      if (y + 35 > PAGE_H - MARGIN) { doc.addPage(); y = MARGIN }
       doc.setFontSize(11)
       doc.setFont('helvetica', 'bold')
-      doc.text('Grand Totals', 14, y)
-      y += 1
-      autoTable(doc, {
-        body: [
-          ['Receipts', `${sorted.length}`],
-          ['Σ Received', `₹${fmtMoney(totalReceived)}`],
-          ['Σ Cash allocated', `₹${fmtMoney(totalCash)}`],
-          ['Σ TDS', `₹${fmtMoney(totalTds)}`],
-          ['Σ Discount', `₹${fmtMoney(totalDisc)}`],
-          ['Σ Carry-over (prior FY)', `₹${fmtMoney(totalCarry)}`],
-          ['Σ On-account', `₹${fmtMoney(totalOnAcc)}`],
-        ],
-        startY: y + 2,
-        styles: { fontSize: 9, cellPadding: 1.5 },
-        columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'right' } },
-        margin: { left: 14, right: 14 },
-        theme: 'plain',
-      })
+      doc.text('Grand Totals', MARGIN, y + 4)
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'normal')
+      const rows2 = [
+        ['Receipts', `${sorted.length}`],
+        ['Σ Received', `₹${fmtMoney(totalReceived)}`],
+        ['Σ Cash allocated', `₹${fmtMoney(totalCash)}`],
+        ['Σ TDS', `₹${fmtMoney(totalTds)}`],
+        ['Σ Discount', `₹${fmtMoney(totalDisc)}`],
+        ['Σ Carry-over (prior FY)', `₹${fmtMoney(totalCarry)}`],
+        ['Σ On-account', `₹${fmtMoney(totalOnAcc)}`],
+      ]
+      let ty = y + 9
+      for (const [k, v] of rows2) {
+        doc.text(k, MARGIN, ty)
+        doc.text(v, PAGE_W - MARGIN, ty, { align: 'right' })
+        ty += 5
+      }
 
       const blob = doc.output('blob') as Blob
       const fname = `LinkedReceipts-${new Date().toISOString().slice(0, 10)}.pdf`
