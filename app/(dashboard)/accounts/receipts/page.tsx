@@ -399,7 +399,7 @@ export default function ReceiptsPage() {
             const dueDays = invDate ? Math.round((receiptMs - invDate.getTime()) / 86400000) : null
             return [
               invDate ? fmtD(invDate.toISOString()) : '—',
-              `${inv.vchType} ${inv.vchNumber}${isCN ? ' (CN)' : ''}`,
+              `${isCN ? 'CN ' : ''}${inv.vchNumber}`,
               `${isCN ? '−' : ''}₹${fmtMoney(orig)}`,
               inv.tdsAmount > 0 ? `₹${fmtMoney(inv.tdsAmount)}` : '—',
               inv.discountAmount > 0 ? `₹${fmtMoney(inv.discountAmount)}` : '—',
@@ -921,7 +921,10 @@ export default function ReceiptsPage() {
                       {r.linkedInvoices.map((inv, i) => (
                         <div key={i}>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
+                            <span className="font-mono text-indigo-600 dark:text-indigo-300">
+                              {inv.vchType === 'Credit Note' && <span className="text-violet-600 dark:text-violet-400 mr-1">CN</span>}
+                              {inv.vchNumber}
+                            </span>
                             <span className="tabular-nums"
                               title={`Original invoice amount (before TDS/discount). Cash allocated on this receipt: ₹${fmtMoney(Math.abs(inv.allocatedAmount))}`}>
                               {inv.allocatedAmount < 0 ? '−' : ''}₹{fmtMoney(inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount))}
