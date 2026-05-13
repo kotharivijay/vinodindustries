@@ -11,7 +11,7 @@ interface GreyEntry {
   bale: number | null
   baleNo: string | null
   transportLrNo: string | null
-  party: { name: string }
+  party: { name: string; tag?: string | null }
   quality: { name: string }
   stock: number
 }
@@ -52,16 +52,27 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
   const { data: entries = [] } = useSWR<GreyEntry[]>('/api/grey', fetcher, { revalidateOnFocus: false })
   const { data: checkers = [], mutate: mutateCheckers } = useSWR<Checker[]>('/api/checkers', fetcher, { revalidateOnFocus: false })
   const { data: nextSlip } = useSWR<{ next: string }>('/api/grey/checking/next-slip-no', fetcher, { revalidateOnFocus: false })
-  // Hide every bale of a lot once that lot has been checked on any slip.
-  // Per-lot exclusion (not per-bale): if even one bale row of lot PS-53 is
-  // on a saved checking slip, the whole lot disappears from the picker.
-  const { data: existingSlips = [] } = useSWR<{ lots: { lotNo: string }[] }[]>(
+  // For each lot, track how much than has already been checked across every
+  // saved slip. Non-PC-Job lots check all-or-nothing in one slip, so this
+  // matches the previous "is this lot on a slip" behavior. Pali PC Job lots
+  // can be checked partially across multiple slips, so we sum than per lot
+  // and only hide the lot once the running total reaches the grey total.
+  const { data: existingSlips = [] } = useSWR<{ lots: { lotNo: string; than: number }[] }[]>(
     '/api/grey/checking', fetcher, { revalidateOnFocus: false }
   )
-  const checkedLots = useMemo(
-    () => new Set(existingSlips.flatMap(s => s.lots.map(l => l.lotNo.toLowerCase()))),
-    [existingSlips]
-  )
+  const checkedThanByLot = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const s of existingSlips) {
+      for (const l of s.lots) {
+        const k = l.lotNo.toLowerCase()
+        m.set(k, (m.get(k) || 0) + (l.than || 0))
+      }
+    }
+    return m
+  }, [existingSlips])
+  const isPcJob = (e: GreyEntry) => e.party.tag === 'Pali PC Job'
+  const remainingThan = (e: GreyEntry) =>
+    Math.max(0, e.than - (checkedThanByLot.get(e.lotNo.toLowerCase()) || 0))
 
   const [date, setDate] = useState<string>(todayISO())
   const [slipNo, setSlipNo] = useState<string>('')
@@ -73,7 +84,11 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
   const [lrSearch, setLrSearch] = useState(''); const [debLr, setDebLr] = useDebounce('')
   const [baleSearch, setBaleSearch] = useState(''); const [debBale, setDebBale] = useDebounce('')
 
-  const [selected, setSelected] = useState<Set<number>>(new Set())
+  // Selection now carries the than value to be recorded per lot. For non-PC-Job
+  // lots this is always entry.than (full lot). For Pali PC Job lots it defaults
+  // to remainingThan(entry) and the operator can lower it via the input on the
+  // card before saving.
+  const [selected, setSelected] = useState<Map<number, number>>(new Map())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>('')
   // Tab inside the modal: 'save' = create a checking slip in DB
@@ -93,51 +108,62 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
     return entries
       .filter(e => e.id > 0) // exclude carry-forward synthetic rows
       .filter(e => e.stock > 0)
-      .filter(e => !checkedLots.has(e.lotNo.toLowerCase())) // hide every bale of an already-checked lot
+      .filter(e => remainingThan(e) > 0) // hide once the lot's check-than is fully recorded
       .filter(e => !lot || e.lotNo.toLowerCase().includes(lot))
       .filter(e => !party || e.party.name.toLowerCase().includes(party))
       .filter(e => !lr || (e.transportLrNo ?? '').toLowerCase().includes(lr))
       .filter(e => !bale || (e.baleNo ?? '').toLowerCase().includes(bale))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [entries, debLot, debParty, debLr, debBale, checkedLots])
+  }, [entries, debLot, debParty, debLr, debBale, checkedThanByLot])
 
-  // Sum across ALL selected lots, not just those matching the current
-  // search filter. Otherwise typing a filter would silently drop the total
-  // even though the selection itself is unchanged.
-  const totalThan = useMemo(() =>
-    entries.filter(e => selected.has(e.id)).reduce((s, e) => s + e.than, 0),
-    [entries, selected]
-  )
+  // Sum across ALL selected lots' chosen than (not the lot total). For PC Job
+  // partials, this reflects the actual than being recorded on this slip.
+  const totalThan = useMemo(() => {
+    let s = 0
+    for (const v of selected.values()) s += v
+    return s
+  }, [selected])
 
-  // Toggle selection at the LOT level: clicking one bale checks or unchecks
-  // every bale row that shares the same lotNo. No partial-lot selection.
+  // Default than for a fresh selection — full lot for normal parties,
+  // remaining-than for PC Job (so partial checks pre-fill the typical case).
+  const defaultThanFor = (e: GreyEntry) => isPcJob(e) ? remainingThan(e) : e.than
+
+  // Toggle selection at the LOT level (still — even with partial than, the lot
+  // is the atomic selection unit; the than amount is just editable on PC Job).
   function toggle(id: number) {
     const e = entries.find(x => x.id === id)
     if (!e) return
-    const sameLotIds = entries
-      .filter(x => x.lotNo.toLowerCase() === e.lotNo.toLowerCase())
-      .map(x => x.id)
+    const sameLot = entries.filter(x => x.lotNo.toLowerCase() === e.lotNo.toLowerCase())
     setSelected(prev => {
-      const next = new Set(prev)
-      const turnOff = sameLotIds.every(i => prev.has(i))
-      if (turnOff) sameLotIds.forEach(i => next.delete(i))
-      else sameLotIds.forEach(i => next.add(i))
+      const next = new Map(prev)
+      const turnOff = sameLot.every(x => next.has(x.id))
+      if (turnOff) sameLot.forEach(x => next.delete(x.id))
+      else sameLot.forEach(x => next.set(x.id, defaultThanFor(x)))
+      return next
+    })
+  }
+
+  // Update the editable than for a PC Job lot (clamps to [1, remainingThan]).
+  function setEntryThan(id: number, raw: number) {
+    const e = entries.find(x => x.id === id)
+    if (!e) return
+    const max = remainingThan(e)
+    const clamped = Math.max(1, Math.min(max, Math.floor(raw) || 0))
+    setSelected(prev => {
+      const next = new Map(prev)
+      if (next.has(id)) next.set(id, clamped)
       return next
     })
   }
 
   function toggleAllVisible() {
-    // Operate on whole lots: any lot that has at least one bale visible is
-    // either fully selected or fully unselected — never partial.
     const visibleLots = new Set(filtered.map(e => e.lotNo.toLowerCase()))
-    const lotBaleIds = entries
-      .filter(e => visibleLots.has(e.lotNo.toLowerCase()))
-      .map(e => e.id)
-    const allOn = lotBaleIds.every(id => selected.has(id))
+    const lotEntries = entries.filter(e => visibleLots.has(e.lotNo.toLowerCase()))
+    const allOn = lotEntries.every(e => selected.has(e.id))
     setSelected(prev => {
-      const next = new Set(prev)
-      if (allOn) lotBaleIds.forEach(id => next.delete(id))
-      else lotBaleIds.forEach(id => next.add(id))
+      const next = new Map(prev)
+      if (allOn) lotEntries.forEach(e => next.delete(e.id))
+      else lotEntries.forEach(e => next.set(e.id, defaultThanFor(e)))
       return next
     })
   }
@@ -163,11 +189,14 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
     if (selected.size === 0) { setError('Select at least one lot'); return }
     setSharing(true)
     try {
-      const rows = entries.filter(e => selected.has(e.id))
-      // Group consecutive bale rows by lotNo so each row in the PNG is one
-      // bale entry (matches the slip-entry layout the user asked for).
+      // Each selected entry carries its checking-than (full lot for non-PC-Job,
+      // possibly partial for PC Job). The PNG reflects the actual than the
+      // checker will record, not the lot's full than.
+      const rows = entries
+        .filter(e => selected.has(e.id))
+        .map(e => ({ ...e, checkThan: selected.get(e.id) ?? e.than }))
       rows.sort((a, b) => a.lotNo.localeCompare(b.lotNo))
-      const totalThan = rows.reduce((s, r) => s + r.than, 0)
+      const totalThan = rows.reduce((s, r) => s + r.checkThan, 0)
       const W = 720
       const headerH = 90
       const tableHeaderH = 28
@@ -244,7 +273,7 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
         ctx.fillStyle = '#0f172a'
         ctx.font = 'bold 13px Arial'
         ctx.textAlign = 'right'
-        ctx.fillText(String(r.than), W - 16, baseY)
+        ctx.fillText(String(r.checkThan), W - 16, baseY)
         ctx.textAlign = 'left'
         ctx.font = '13px Arial'
       })
@@ -312,7 +341,7 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
           date,
           checkerName: checkerName.trim(),
           notes: notes.trim() || null,
-          greyEntryIds: Array.from(selected),
+          lots: Array.from(selected.entries()).map(([greyEntryId, than]) => ({ greyEntryId, than })),
         }),
       })
       const data = await res.json()
@@ -392,7 +421,7 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
               <input className={inputCls} placeholder="Bale No…" value={baleSearch} onChange={e => { setBaleSearch(e.target.value); setDebBale(e.target.value) }} />
             </div>
             <div className="flex items-center justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
-              <span>Showing {filtered.length} of {entries.filter(e => e.id > 0 && e.stock > 0 && !checkedLots.has(e.lotNo.toLowerCase())).length} unchecked lots</span>
+              <span>Showing {filtered.length} of {entries.filter(e => e.id > 0 && e.stock > 0 && remainingThan(e) > 0).length} lots with than to check</span>
               {filtered.length > 0 && (
                 <button onClick={toggleAllVisible} className="text-indigo-600 hover:text-indigo-800 font-medium">
                   {filtered.every(e => selected.has(e.id)) ? 'Unselect all visible' : 'Select all visible'}
@@ -407,6 +436,10 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
               <div className="p-6 text-center text-sm text-gray-400 dark:text-gray-500">No matching lots.</div>
             ) : filtered.map(e => {
               const checked = selected.has(e.id)
+              const pcJob = isPcJob(e)
+              const remaining = remainingThan(e)
+              const alreadyChecked = e.than - remaining
+              const currentThan = selected.get(e.id) ?? remaining
               return (
                 <label
                   key={e.id}
@@ -423,10 +456,39 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
                       <span className="font-semibold text-indigo-700 dark:text-indigo-400">🔖 {e.lotNo}</span>
                       <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{e.party.name}</span>
                       <span className="text-xs text-gray-500 dark:text-gray-400">· {e.quality.name}</span>
+                      {pcJob && (
+                        <span className="text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full">
+                          PC JOB
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       LR {e.transportLrNo || '—'} · Bale {e.bale ?? '—'} · Bale No {e.baleNo || '—'}
                     </div>
+                    {pcJob && (
+                      <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                        Remaining: <strong>{remaining}</strong> / {e.than}
+                        {alreadyChecked > 0 && <span className="text-gray-400 dark:text-gray-500"> · {alreadyChecked} already checked</span>}
+                      </div>
+                    )}
+                    {pcJob && checked && (
+                      <div
+                        className="mt-2 flex items-center gap-2"
+                        onClick={ev => ev.preventDefault()}
+                      >
+                        <span className="text-[11px] text-gray-600 dark:text-gray-300">Checking now:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={remaining}
+                          value={currentThan}
+                          onClick={ev => ev.stopPropagation()}
+                          onChange={ev => setEntryThan(e.id, parseInt(ev.target.value, 10))}
+                          className="w-20 border border-amber-300 dark:border-amber-600 rounded px-2 py-0.5 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                        />
+                        <span className="text-[11px] text-gray-400">than (max {remaining})</span>
+                      </div>
+                    )}
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-[10px] text-gray-400 uppercase tracking-wide">Than</div>
