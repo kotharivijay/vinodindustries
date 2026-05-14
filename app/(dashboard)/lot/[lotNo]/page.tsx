@@ -539,9 +539,12 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                     {lotMeter != null && lotMeter > 0 && <span className="text-xs text-gray-500">Meter: {lotMeter}</span>}
                     {totalCost > 0 && <span className="text-xs text-gray-500">Cost: &#8377;{totalCost.toFixed(0)}</span>}
                     {e.finishDespSlipNo && (
-                      <span className="text-xs font-medium text-teal-600 bg-teal-50 dark:bg-teal-900/30 dark:text-teal-300 px-1.5 py-0.5 rounded">
+                      <Link
+                        href={`/finish?focusDesp=${encodeURIComponent(e.finishDespSlipNo)}`}
+                        className="text-xs font-medium text-teal-600 bg-teal-50 dark:bg-teal-900/30 dark:text-teal-300 px-1.5 py-0.5 rounded hover:bg-teal-100 dark:hover:bg-teal-900/50 hover:underline"
+                      >
                         Desp Slip: {e.finishDespSlipNo}
-                      </span>
+                      </Link>
                     )}
                   </div>
                   {!e._isOB && e.lots?.length > 1 && (

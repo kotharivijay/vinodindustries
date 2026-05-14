@@ -1278,6 +1278,16 @@ export default function FinishStockPage() {
     })
   }, [tab, packView, expandedDesp, packExpandedParties, packExpandedQualities])
 
+  // Deep-link: /finish?focusDesp=1432 (from the lot-track Desp Slip pill)
+  // opens the Packing tab in Desp Slip-wise view with that slip expanded.
+  useEffect(() => {
+    const focusDesp = new URLSearchParams(window.location.search).get('focusDesp')
+    if (!focusDesp) return
+    setTab('packing')
+    setPackView('desp')
+    setExpandedDesp(prev => new Set(prev).add(focusDesp))
+  }, [])
+
   // Restore scroll + ring-highlight the clicked lot card after back-nav (both views).
   useLotBackHighlight(FINISH_VIEW_KEY, tab === 'packing' && (packView === 'desp' || packView === 'party'))
   const [despSearch, setDespSearch] = useState('')
