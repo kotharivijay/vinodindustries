@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 const db = prisma as any
 
@@ -148,7 +149,7 @@ export async function POST(req: NextRequest) {
       notes: notes || null,
       sources: {
         create: sources.map((s: any) => ({
-          originalLotNo: s.lotNo,
+          originalLotNo: normalizeLotNo(s.lotNo) ?? '',
           than: parseInt(s.than) || 0,
           party: s.party || lotInfoMap.get(s.lotNo.toLowerCase().trim())?.party || null,
           reason: s.reason || reason,
@@ -184,7 +185,7 @@ export async function PATCH(req: NextRequest) {
       if (u.reason !== undefined) data.reason = u.reason || existing.reason
       if (u.notes !== undefined) data.notes = u.notes || null
       if (u.originalLotNo !== undefined) {
-        const v = String(u.originalLotNo).trim()
+        const v = normalizeLotNo(u.originalLotNo)
         if (v) data.originalLotNo = v
       }
       if (Object.keys(data).length === 0) continue
@@ -253,7 +254,7 @@ export async function PATCH(req: NextRequest) {
       await db.reProcessSource.create({
         data: {
           reprocessId: existing.id,
-          originalLotNo: s.lotNo,
+          originalLotNo: normalizeLotNo(s.lotNo) ?? '',
           than: parseInt(s.than) || 0,
           party: s.party || info?.party || null,
           reason: s.reason || existing.reason,
@@ -295,7 +296,7 @@ export async function PATCH(req: NextRequest) {
             const allocThan = i === sources.length - 1 ? remaining : Math.min(s.than, remaining)
             if (allocThan <= 0) continue
             await db.dyeingEntryLot.create({
-              data: { entryId: dl.entryId, lotNo: s.originalLotNo, than: allocThan },
+              data: { entryId: dl.entryId, lotNo: normalizeLotNo(s.originalLotNo) ?? '', than: allocThan },
             })
             remaining -= allocThan
           }
@@ -313,7 +314,7 @@ export async function PATCH(req: NextRequest) {
             const allocThan = i === sources.length - 1 ? remaining : Math.min(s.than, remaining)
             if (allocThan <= 0) continue
             await db.finishEntryLot.create({
-              data: { entryId: fl.entryId, lotNo: s.originalLotNo, than: allocThan, meter: fl.meter, status: fl.status, doneThan: fl.doneThan },
+              data: { entryId: fl.entryId, lotNo: normalizeLotNo(s.originalLotNo) ?? '', than: allocThan, meter: fl.meter, status: fl.status, doneThan: fl.doneThan },
             })
             remaining -= allocThan
           }
@@ -331,7 +332,7 @@ export async function PATCH(req: NextRequest) {
             const allocThan = i === sources.length - 1 ? remaining : Math.min(s.than, remaining)
             if (allocThan <= 0) continue
             await db.foldBatchLot.create({
-              data: { foldBatchId: fbl.foldBatchId, lotNo: s.originalLotNo, than: allocThan },
+              data: { foldBatchId: fbl.foldBatchId, lotNo: normalizeLotNo(s.originalLotNo) ?? '', than: allocThan },
             })
             remaining -= allocThan
           }
@@ -342,13 +343,13 @@ export async function PATCH(req: NextRequest) {
       // Update DyeingEntry.lotNo header field
       await db.dyeingEntry.updateMany({
         where: { lotNo: { equals: reproNo, mode: 'insensitive' } },
-        data: { lotNo: sources[0].originalLotNo },
+        data: { lotNo: normalizeLotNo(sources[0].originalLotNo) ?? '' },
       })
 
       // Update FinishEntry.lotNo header field
       await db.finishEntry.updateMany({
         where: { lotNo: { equals: reproNo, mode: 'insensitive' } },
-        data: { lotNo: sources[0].originalLotNo },
+        data: { lotNo: normalizeLotNo(sources[0].originalLotNo) ?? '' },
       })
     }
     await db.reProcessLot.update({ where: { id: existing.id }, data })

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logDelete } from '@/lib/deleteLog'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -36,8 +37,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const db = prisma as any
 
   const lots = data.lots?.length
-    ? data.lots.map((m: any) => ({ lotNo: String(m.lotNo).trim(), than: parseInt(m.than) || 0, meter: m.meter != null ? parseFloat(m.meter) : null }))
-    : [{ lotNo: String(data.lotNo || '').trim(), than: parseInt(data.than) || 0, meter: null }]
+    ? data.lots.map((m: any) => ({ lotNo: normalizeLotNo(m.lotNo) ?? '', than: parseInt(m.than) || 0, meter: m.meter != null ? parseFloat(m.meter) : null }))
+    : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: null }]
 
   try {
     await db.finishEntry.update({

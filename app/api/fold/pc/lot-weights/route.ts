@@ -38,9 +38,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Fetch grey entries for all lots at once
+    // Fetch grey entries for all lots at once. `allLotNos` comes from
+    // FoldBatchLot — casing can differ from GreyEntry, so the `in` filter is
+    // case-insensitive and the map is keyed on a normalized lotNo.
+    const norm = (s: string) => s.toLowerCase().trim()
     const greyEntries = await db.greyEntry.findMany({
-      where: { lotNo: { in: Array.from(allLotNos) } },
+      where: { lotNo: { in: Array.from(allLotNos), mode: 'insensitive' } },
       select: { lotNo: true, weight: true, grayMtr: true, than: true },
     })
 
@@ -48,13 +51,14 @@ export async function GET(req: NextRequest) {
     // A lot may have multiple grey entries; aggregate than, take first weight/grayMtr
     const greyMap = new Map<string, { weight: string | null; grayMtr: number | null; than: number }>()
     for (const ge of greyEntries) {
-      const existing = greyMap.get(ge.lotNo)
+      const k = norm(ge.lotNo)
+      const existing = greyMap.get(k)
       if (existing) {
         existing.than += ge.than
         if (!existing.weight && ge.weight) existing.weight = ge.weight
         if (existing.grayMtr == null && ge.grayMtr != null) existing.grayMtr = ge.grayMtr
       } else {
-        greyMap.set(ge.lotNo, { weight: ge.weight, grayMtr: ge.grayMtr, than: ge.than })
+        greyMap.set(k, { weight: ge.weight, grayMtr: ge.grayMtr, than: ge.than })
       }
     }
 
@@ -66,7 +70,7 @@ export async function GET(req: NextRequest) {
         marka: markaList.join(', '),
         shade: shadeName,
         lots: batch.lots.map((lot: any) => {
-          const grey = greyMap.get(lot.lotNo)
+          const grey = greyMap.get(norm(lot.lotNo))
           return {
             lotNo: lot.lotNo,
             than: lot.than,
@@ -103,9 +107,12 @@ export async function POST(req: NextRequest) {
       const { lotNo, weight, avgCut } = lot
       if (!lotNo) continue
 
-      // Find grey entries for this lot
+      // Find grey entries for this lot. Case-insensitive: the lotNo comes
+      // from the request body (sourced from FoldBatchLot), whose casing can
+      // differ from GreyEntry — a case-sensitive match would silently skip
+      // the update.
       const entries = await db.greyEntry.findMany({
-        where: { lotNo },
+        where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
         select: { id: true, than: true },
       })
 
@@ -134,7 +141,7 @@ export async function POST(req: NextRequest) {
       // No avgCut — just update weight on all entries for this lot
       if (Object.keys(updateData).length > 0) {
         await db.greyEntry.updateMany({
-          where: { lotNo },
+          where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
           data: updateData,
         })
         updated++

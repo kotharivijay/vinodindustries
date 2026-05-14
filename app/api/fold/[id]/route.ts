@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logDelete } from '@/lib/deleteLog'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 // GET /api/fold/[id]
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
@@ -143,7 +144,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
             shadeDescription: batch.shadeDescription?.trim() || undefined,
             lots: {
               create: (batch.lots ?? []).map((lot: any) => ({
-                lotNo: lot.lotNo.trim(),
+                lotNo: normalizeLotNo(lot.lotNo) ?? '',
                 partyId: lot.partyId || undefined,
                 qualityId: lot.qualityId || undefined,
                 than: parseInt(lot.than) || 0,

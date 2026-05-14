@@ -28,7 +28,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const lotNos = lots.map((l: any) => l.lotNo)
 
   const dyeingEntries = await db.dyeingEntry.findMany({
-    where: { OR: [{ lotNo: { in: lotNos } }, { lots: { some: { lotNo: { in: lotNos } } } }] },
+    where: { OR: [{ lotNo: { in: lotNos, mode: 'insensitive' } }, { lots: { some: { lotNo: { in: lotNos, mode: 'insensitive' } } } }] },
     select: {
       slipNo: true, shadeName: true,
       lots: { select: { lotNo: true, than: true } },

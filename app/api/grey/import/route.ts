@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { readSheet } from '@/lib/sheets'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 // Column indices (0-based). Row 3 = header, Row 4+ = data
 const COL = {
@@ -333,7 +334,7 @@ export async function PUT(req: NextRequest) {
           viverNameBill: row.weaverName || undefined,
           marka: row.marka || undefined,
           lrNo: row.lrNo || undefined,
-          lotNo: row.lotNo,
+          lotNo: normalizeLotNo(row.lotNo) ?? '',
         },
       })
       imported++

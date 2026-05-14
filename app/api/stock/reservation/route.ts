@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 // GET — list all reservations (for client hydration)
 export async function GET() {
@@ -22,11 +23,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
-  const reservation = await (prisma as any).lotManualReservation.upsert({
-    where: { lotNo },
-    update: { usedThan, note: note ?? null, updatedBy: session.user?.email ?? 'unknown' },
-    create: { lotNo, usedThan, note: note ?? null, updatedBy: session.user?.email ?? 'unknown' },
+  // Match an existing row case-insensitively before upserting — a plain
+  // upsert on the unique `lotNo` would create a duplicate row when the
+  // client sends a different casing than the stored one.
+  const updatedBy = session.user?.email ?? 'unknown'
+  const existing = await (prisma as any).lotManualReservation.findFirst({
+    where: { lotNo: { equals: lotNo, mode: 'insensitive' } },
   })
+  const reservation = existing
+    ? await (prisma as any).lotManualReservation.update({
+        where: { id: existing.id },
+        data: { usedThan, note: note ?? null, updatedBy },
+      })
+    : await (prisma as any).lotManualReservation.create({
+        data: { lotNo: normalizeLotNo(lotNo) ?? '', usedThan, note: note ?? null, updatedBy },
+      })
   return NextResponse.json(reservation)
 }
 

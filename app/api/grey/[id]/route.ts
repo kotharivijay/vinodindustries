@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logDelete } from '@/lib/deleteLog'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -44,7 +45,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       weaverId: data.weaverId != null && data.weaverId !== '' ? parseInt(data.weaverId) : null,
       viverNameBill: data.viverNameBill || null,
       lrNo: data.lrNo || null,
-      lotNo: data.lotNo,
+      lotNo: normalizeLotNo(data.lotNo) ?? '',
       marka: data.marka != null ? (data.marka.trim() || null) : undefined,
     },
     include: { party: true, quality: true, transport: true, weaver: true },
@@ -69,7 +70,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   // delete — we enforce it here. CheckingSlipLot is FK'd to greyEntryId
   // directly, so we can pinpoint the exact bale row.
   const db = prisma as any
-  const lotNo = entry.lotNo
+  // Case-insensitive: downstream tables can store this lot with different
+  // casing than GreyEntry — a case-sensitive count would miss the rows and
+  // let an in-use grey lot be deleted.
+  const lotNo = { equals: entry.lotNo, mode: 'insensitive' as const }
   const [
     checkingByRow,
     foldBatch, foldSlip,
@@ -98,7 +102,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   if (blockers.length > 0) {
     return NextResponse.json({
-      error: `Cannot delete lot ${lotNo} — it is already used in: ${blockers.join(', ')}. Remove those entries first.`,
+      error: `Cannot delete lot ${entry.lotNo} — it is already used in: ${blockers.join(', ')}. Remove those entries first.`,
       blockers,
     }, { status: 409 })
   }

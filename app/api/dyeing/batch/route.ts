@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
 
     // Build lots from the batch lots data
     const lots = data.lots?.length
-      ? data.lots.map((l: any) => ({ lotNo: String(l.lotNo).trim(), than: parseInt(l.than) || 0 }))
+      ? data.lots.map((l: any) => ({ lotNo: normalizeLotNo(l.lotNo) ?? '', than: parseInt(l.than) || 0 }))
       : []
 
     const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)

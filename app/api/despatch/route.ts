@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { appendDespatchRowToSheet, despatchEntryToSheetRow } from '@/lib/sheets'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
         challanNo: parseInt(data.challanNo),
         partyId: parseInt(data.partyId),
         qualityId,
-        lotNo: firstLot.lotNo,
+        lotNo: normalizeLotNo(firstLot.lotNo) ?? '',
         than: totalThan,
         meter: totalMeter > 0 ? totalMeter : null,
         rate: firstLot.rate ? parseFloat(firstLot.rate) : null,
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
         narration: data.lots.map((l: any) => l.description).filter(Boolean).join(', ') || null,
         despatchLots: {
           create: data.lots.map((l: any) => ({
-            lotNo: l.lotNo,
+            lotNo: normalizeLotNo(l.lotNo) ?? '',
             than: parseInt(l.than),
             meter: l.meter ? parseFloat(l.meter) : null,
             rate: l.rate ? parseFloat(l.rate) : null,
@@ -138,7 +139,7 @@ export async function POST(req: NextRequest) {
       partyId: parseInt(data.partyId),
       qualityId,
       grayInwDate: data.grayInwDate ? new Date(data.grayInwDate) : null,
-      lotNo: data.lotNo,
+      lotNo: normalizeLotNo(data.lotNo) ?? '',
       jobDelivery: data.jobDelivery || null,
       than,
       meter,

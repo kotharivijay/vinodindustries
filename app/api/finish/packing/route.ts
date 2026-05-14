@@ -61,17 +61,21 @@ export async function GET() {
 
   const { buildLotInfoMap } = await import('@/lib/lot-info')
   const lotNosArr = Array.from(allLotNos)
+  // `lotNosArr` is collected from FinishEntryLot — its casing can differ
+  // from the despatch / dyeing tables, so every `in` filter must be
+  // case-insensitive or rows silently drop out.
+  const lotNoIn = { in: lotNosArr, mode: 'insensitive' as const }
 
   // Despatched per lot — combine legacy single-lot DespatchEntry rows (no
   // children) with DespatchEntryLot rows so multi-lot challans don't get
   // attributed entirely to the parent's first lot.
   const [despParent, despChild] = await Promise.all([
     prisma.despatchEntry.groupBy({
-      where: { lotNo: { in: lotNosArr }, despatchLots: { none: {} } },
+      where: { lotNo: lotNoIn, despatchLots: { none: {} } },
       by: ['lotNo'], _sum: { than: true },
     }),
     prisma.despatchEntryLot.groupBy({
-      where: { lotNo: { in: lotNosArr } },
+      where: { lotNo: lotNoIn },
       by: ['lotNo'], _sum: { than: true },
     }),
   ])
@@ -86,8 +90,8 @@ export async function GET() {
       where: {
         dyeingDoneAt: { not: null },
         OR: [
-          { lotNo: { in: lotNosArr } },
-          { lots: { some: { lotNo: { in: lotNosArr } } } },
+          { lotNo: lotNoIn },
+          { lots: { some: { lotNo: lotNoIn } } },
         ],
       },
       select: {

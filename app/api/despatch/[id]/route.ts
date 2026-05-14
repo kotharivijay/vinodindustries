@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logDelete } from '@/lib/deleteLog'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -57,7 +58,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         challanNo: parseInt(data.challanNo),
         partyId: parseInt(data.partyId),
         qualityId: lots[0]?.qualityId ? parseInt(String(lots[0].qualityId)) : existing.qualityId,
-        lotNo: lots[0]?.lotNo || existing.lotNo,
+        lotNo: normalizeLotNo(lots[0]?.lotNo) ?? existing.lotNo,
         than: totalThan,
         meter: totalMeter > 0 ? totalMeter : null,
         rate: lots[0]?.rate ?? null,
@@ -68,7 +69,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         bale: data.bale ? parseInt(data.bale) : null,
         despatchLots: {
           create: lots.map(l => ({
-            lotNo: l.lotNo,
+            lotNo: normalizeLotNo(l.lotNo) ?? '',
             than: l.than,
             meter: l.meter,
             rate: l.rate,
@@ -92,7 +93,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const pTotal = rate
     ? parseFloat((((newMeter && newMeter > 0) ? newMeter : newThan) * rate).toFixed(2))
     : null
-  const newLotNo = data.lotNo
+  const newLotNo = normalizeLotNo(data.lotNo) ?? ''
   const newRate = rate
   const newBillNo = data.billNo || null
 

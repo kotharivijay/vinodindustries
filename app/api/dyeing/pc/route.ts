@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
   }
 
   const lots = data.lots.map((l: any) => ({
-    lotNo: String(l.lotNo).trim(),
+    lotNo: normalizeLotNo(l.lotNo) ?? '',
     than: parseInt(l.than) || 0,
   }))
 

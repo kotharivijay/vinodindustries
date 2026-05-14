@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logDelete } from '@/lib/deleteLog'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 const db = prisma as any
 
@@ -29,9 +30,12 @@ export async function POST(req: NextRequest) {
 
   // For OB lots: auto-create FinishEntry + FinishEntryLot
   if (!resolvedLotEntryId && obLotNo) {
-    // Check if a "OB" finish entry (slipNo=0) already exists for this lot
+    // Check if a "OB" finish entry (slipNo=0) already exists for this lot.
+    // Case-insensitive: obLotNo comes from the request body and its casing
+    // may differ from the existing FinishEntryLot — a case-sensitive match
+    // would create a duplicate slipNo=0 entry instead of reusing it.
     const existing = await db.finishEntryLot.findFirst({
-      where: { lotNo: obLotNo, entry: { slipNo: 0 } },
+      where: { lotNo: { equals: obLotNo, mode: 'insensitive' }, entry: { slipNo: 0 } },
       include: { entry: true },
     })
     if (existing) {
@@ -42,12 +46,12 @@ export async function POST(req: NextRequest) {
         data: {
           date: date ? new Date(date) : new Date(),
           slipNo: 0,
-          lotNo: obLotNo,
+          lotNo: normalizeLotNo(obLotNo) ?? '',
           than: parseInt(obThan) || parseInt(than),
           notes: 'Auto-created from OB allocation',
           lots: {
             create: {
-              lotNo: obLotNo,
+              lotNo: normalizeLotNo(obLotNo) ?? '',
               than: parseInt(obThan) || parseInt(than),
               status: 'done',
               doneThan: parseInt(obThan) || parseInt(than),

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { GoogleAuth } from 'google-auth-library'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 const LAST_YEAR_SHEET_ID = '1AGOnIxF5HYZSJuD3Hs4_e5NDfS7gL_zVd-AkQdvF9UA'
 
@@ -86,6 +87,7 @@ export async function POST(req: NextRequest) {
     if (!renameKey && lotNo) {
       lotNo = lotNo + '0'
     }
+    lotNo = normalizeLotNo(lotNo) ?? ''
     const rawSn = (row[0] || '').trim() // A — SN from sheet
     const snValue = rawSn.startsWith('O') ? rawSn : 'O' + rawSn // Prefix O if not already
     const stock = parseInt(row[17]) || 0  // R

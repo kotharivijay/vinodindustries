@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`
@@ -16,7 +17,9 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
   stock_summary: async () => {
     const greyByLot = await prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
     const despatchByLot = await prisma.despatchEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
-    const despatchMap = new Map(despatchByLot.map(d => [d.lotNo, d._sum.than ?? 0]))
+    // Keyed lower-case — DespatchEntry.lotNo casing can differ from GreyEntry's.
+    const despatchMap = new Map<string, number>()
+    for (const d of despatchByLot) despatchMap.set(d.lotNo.toLowerCase(), (despatchMap.get(d.lotNo.toLowerCase()) || 0) + (d._sum.than ?? 0))
 
     let obList: any[] = []
     try { obList = await db.lotOpeningBalance.findMany() } catch {}
@@ -37,7 +40,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
       const key = g.lotNo.toLowerCase()
       processedLots.add(key)
       const ob = obMap.get(key)
-      const stock = (ob?.openingThan ?? 0) + (g._sum.than ?? 0) - (despatchMap.get(g.lotNo) ?? 0)
+      const stock = (ob?.openingThan ?? 0) + (g._sum.than ?? 0) - (despatchMap.get(key) ?? 0)
       if (stock <= 0) continue
       totalStock += stock
       totalLots++
@@ -48,10 +51,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     for (const ob of obList) {
       const key = ob.lotNo.toLowerCase()
       if (processedLots.has(key)) continue
-      let despThan = 0
-      for (const [lotNo, than] of despatchMap) {
-        if (lotNo.toLowerCase() === key) { despThan = than; break }
-      }
+      const despThan = despatchMap.get(key) ?? 0
       const stock = ob.openingThan - despThan
       if (stock <= 0) continue
       totalStock += stock
@@ -109,16 +109,17 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     const lotNos = [...new Set(greyEntries.map(g => g.lotNo))]
     const despatches = await prisma.despatchEntry.groupBy({
       by: ['lotNo'],
-      where: { lotNo: { in: lotNos } },
+      where: { lotNo: { in: lotNos, mode: 'insensitive' } },
       _sum: { than: true },
     })
-    const despMap = new Map(despatches.map(d => [d.lotNo, d._sum.than ?? 0]))
+    // Keyed lower-case — DespatchEntry.lotNo casing can differ from GreyEntry's.
+    const despMap = new Map<string, number>()
+    for (const d of despatches) despMap.set(d.lotNo.toLowerCase(), (despMap.get(d.lotNo.toLowerCase()) || 0) + (d._sum.than ?? 0))
 
-    const lots = Array.from(lotMap.values()).map(l => ({
-      ...l,
-      despatchThan: despMap.get(l.lotNo) ?? 0,
-      stock: l.greyThan - (despMap.get(l.lotNo) ?? 0),
-    })).filter(l => l.stock > 0)
+    const lots = Array.from(lotMap.values()).map(l => {
+      const desp = despMap.get(l.lotNo.toLowerCase()) ?? 0
+      return { ...l, despatchThan: desp, stock: l.greyThan - desp }
+    }).filter(l => l.stock > 0)
 
     const partyName = greyEntries[0]?.party?.name ?? party
     return { party: partyName, totalStock: lots.reduce((s, l) => s + l.stock, 0), lotCount: lots.length, lots }
@@ -137,7 +138,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     const despThan = despatches.reduce((s, d) => s + d.than, 0)
 
     let ob: any = null
-    try { ob = await db.lotOpeningBalance.findUnique({ where: { lotNo } }) } catch {}
+    try { ob = await db.lotOpeningBalance.findFirst({ where: { lotNo: { equals: lotNo, mode: 'insensitive' } } }) } catch {}
 
     const stock = (ob?.openingThan ?? 0) + greyThan - despThan
     return {
@@ -417,7 +418,9 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
 
     const greyByLot = await prisma.greyEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
     const despatchByLot = await prisma.despatchEntry.groupBy({ by: ['lotNo'], _sum: { than: true } })
-    const despatchMap = new Map(despatchByLot.map(d => [d.lotNo, d._sum.than ?? 0]))
+    // Keyed lower-case — DespatchEntry.lotNo casing can differ from GreyEntry's.
+    const despatchMap = new Map<string, number>()
+    for (const d of despatchByLot) despatchMap.set(d.lotNo.toLowerCase(), (despatchMap.get(d.lotNo.toLowerCase()) || 0) + (d._sum.than ?? 0))
 
     let obList: any[] = []
     try { obList = await db.lotOpeningBalance.findMany() } catch {}
@@ -436,7 +439,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
       const key = g.lotNo.toLowerCase()
       processedLots.add(key)
       const ob = obMap.get(key)
-      const stock = (ob?.openingThan ?? 0) + (g._sum.than ?? 0) - (despatchMap.get(g.lotNo) ?? 0)
+      const stock = (ob?.openingThan ?? 0) + (g._sum.than ?? 0) - (despatchMap.get(key) ?? 0)
       if (stock <= 0) continue
       const foldProgrammed = foldMapLocal.get(key) ?? 0
       const dyeingUsed = dyeingUsedMap.get(key) ?? 0
@@ -456,10 +459,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
     for (const ob of obList) {
       const key = ob.lotNo.toLowerCase()
       if (processedLots.has(key)) continue
-      let despThan = 0
-      for (const [lotNo, than] of despatchMap) {
-        if (lotNo.toLowerCase() === key) { despThan = than; break }
-      }
+      const despThan = despatchMap.get(key) ?? 0
       const stock = ob.openingThan - despThan
       if (stock <= 0) continue
       const foldProgrammed = foldMapLocal.get(key) ?? 0
@@ -515,7 +515,7 @@ const QUERY_FUNCTIONS: Record<string, (args: any) => Promise<any>> = {
             shadeName: batch.shadeName?.trim() || undefined,
             lots: {
               create: (batch.lots ?? []).map((lot: any) => ({
-                lotNo: lot.lotNo.trim(),
+                lotNo: normalizeLotNo(lot.lotNo) ?? '',
                 than: parseInt(lot.than) || 0,
               })),
             },

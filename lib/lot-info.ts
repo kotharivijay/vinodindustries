@@ -19,8 +19,11 @@ export async function buildLotInfoMap(lotNos: string[]): Promise<Map<string, Lot
   const map = new Map<string, LotInfo>()
 
   // 1. GreyEntry (primary source)
+  // `mode: 'insensitive'` — callers pass lotNos from DyeingEntryLot /
+  // FinishEntryLot / FoldBatchLot etc., whose casing can differ from
+  // GreyEntry's; without it those lots fall through to null party/quality.
   const greyEntries = await prisma.greyEntry.findMany({
-    where: { lotNo: { in: lotNos } },
+    where: { lotNo: { in: lotNos, mode: 'insensitive' } },
     select: { lotNo: true, weight: true, marka: true, grayMtr: true, than: true, party: { select: { name: true } }, quality: { select: { name: true } } },
     distinct: ['lotNo'],
   })
@@ -34,7 +37,7 @@ export async function buildLotInfoMap(lotNos: string[]): Promise<Map<string, Lot
   if (missingLots.length > 0) {
     try {
       const obEntries = await db.lotOpeningBalance.findMany({
-        where: { lotNo: { in: missingLots } },
+        where: { lotNo: { in: missingLots, mode: 'insensitive' } },
         select: { lotNo: true, party: true, quality: true, weight: true, marka: true, grayMtr: true, greyThan: true },
       })
       for (const ob of obEntries) {

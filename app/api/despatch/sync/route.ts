@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { readDespatchSheet } from '@/lib/sheets'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 // Sheet header order:
 // A Challan No | B Month | C Date | D A-Job Party | E DESCRIPTION | F A-Lot no |
@@ -196,7 +197,7 @@ export async function PUT(req: NextRequest) {
         data: {
           date, challanNo: row.challanNo ?? 0,
           partyId: row.partyId, qualityId: row.qualityId,
-          lotNo: row.lotNo, than: row.than,
+          lotNo: normalizeLotNo(row.lotNo) ?? '', than: row.than,
           rate: row.rate ?? null, pTotal: row.pTotal ?? null,
           transportId, bale: null,
         },

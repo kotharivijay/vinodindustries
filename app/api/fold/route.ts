@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 // GET /api/fold — list all fold programs
 export async function GET() {
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
             shadeDescription: batch.shadeDescription?.trim() || undefined,
             lots: {
               create: (batch.lots ?? []).map((lot: any) => ({
-                lotNo: lot.lotNo.trim(),
+                lotNo: normalizeLotNo(lot.lotNo) ?? '',
                 partyId: lot.partyId || undefined,
                 qualityId: lot.qualityId || undefined,
                 than: parseInt(lot.than) || 0,

@@ -20,7 +20,12 @@ export async function GET() {
     select: { lotNo: true, quality: { select: { name: true } } },
     orderBy: { id: 'asc' },
   })
-  const qualityMap = new Map(qualityEntries.map(e => [e.lotNo, e.quality?.name ?? '']))
+  // All lotNo maps are keyed lower-case + trimmed: the same logical lot can
+  // be stored with different casing across GreyEntry / DespatchEntry /
+  // LotOpeningBalance / ReProcessLot, so every cross-table match must be
+  // case-insensitive (see the SAM-23-Super stock bug).
+  const norm = (s: string) => s.toLowerCase().trim()
+  const qualityMap = new Map(qualityEntries.map(e => [norm(e.lotNo), e.quality?.name ?? '']))
 
   // Despatch totals per lot — combine legacy parents (no children) +
   // multi-lot DespatchEntryLot rows so multi-lot challans don't get
@@ -31,34 +36,41 @@ export async function GET() {
   })
   const despChildren = await prisma.despatchEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } })
   const despatchMap = new Map<string, number>()
-  for (const d of despParent) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
-  for (const d of despChildren) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
+  const addDesp = (lotNo: string, than: number) => {
+    const k = norm(lotNo)
+    despatchMap.set(k, (despatchMap.get(k) || 0) + than)
+  }
+  for (const d of despParent) addDesp(d.lotNo, d._sum.than ?? 0)
+  for (const d of despChildren) addDesp(d.lotNo, d._sum.than ?? 0)
 
-  // Fetch opening balances (carry-forward from last year)
-  let obMap = new Map<string, number>()
+  // Fetch opening balances (carry-forward from last year). Keyed by
+  // normalized lotNo, but the original casing is kept for display.
+  let obMap = new Map<string, { lotNo: string; ob: number }>()
   try {
     const db = prisma as any
     const obs = await db.lotOpeningBalance.findMany({ select: { lotNo: true, openingThan: true } })
-    obMap = new Map(obs.map((o: any) => [o.lotNo, o.openingThan]))
+    obMap = new Map(obs.map((o: any) => [norm(o.lotNo), { lotNo: o.lotNo, ob: o.openingThan }]))
   } catch {}
+
+  const greyKeys = new Set(greyEntries.map(g => norm(g.lotNo)))
 
   const lots = greyEntries
     .map(g => {
+      const key = norm(g.lotNo)
       const greyThan = g._sum.than ?? 0
-      const despatchThan = despatchMap.get(g.lotNo) ?? 0
-      const ob = obMap.get(g.lotNo) ?? 0
+      const despatchThan = despatchMap.get(key) ?? 0
+      const ob = obMap.get(key)?.ob ?? 0
       const stock = ob + greyThan - despatchThan
-      return { lotNo: g.lotNo, greyThan, despatchThan, stock, openingBalance: ob, quality: qualityMap.get(g.lotNo) ?? '' }
+      return { lotNo: g.lotNo, greyThan, despatchThan, stock, openingBalance: ob, quality: qualityMap.get(key) ?? '' }
     })
     .filter(l => l.stock > 0) // Only lots with available stock
 
   // Add lots that ONLY have opening balance (no current year grey entries)
-  for (const [lotNo, ob] of obMap) {
-    if (!lots.some(l => l.lotNo === lotNo)) {
-      const despThan = despatchMap.get(lotNo) ?? 0
-      const stock = ob - despThan
-      if (stock > 0) lots.push({ lotNo, greyThan: 0, despatchThan: despThan, stock, openingBalance: ob, quality: qualityMap.get(lotNo) ?? '' })
-    }
+  for (const [key, { lotNo, ob }] of obMap) {
+    if (greyKeys.has(key)) continue
+    const despThan = despatchMap.get(key) ?? 0
+    const stock = ob - despThan
+    if (stock > 0) lots.push({ lotNo, greyThan: 0, despatchThan: despThan, stock, openingBalance: ob, quality: qualityMap.get(key) ?? '' })
   }
 
   // Active RE-PRO lots — surface till they're merged so dyeing/fold pickers
@@ -69,7 +81,7 @@ export async function GET() {
       where: { status: { in: ['pending', 'in-dyeing', 'finished'] } },
     })
     for (const r of repros) {
-      const despThan = despatchMap.get(r.reproNo) ?? 0
+      const despThan = despatchMap.get(norm(r.reproNo)) ?? 0
       const stock = r.totalThan - despThan
       if (stock <= 0) continue
       lots.push({

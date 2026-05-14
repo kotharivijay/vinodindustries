@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { appendRowToSheet, greyEntryToSheetRow } from '@/lib/sheets'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -29,8 +30,13 @@ export async function GET() {
     }),
   ])
 
+  // despatchMap is keyed lower-case — DespatchEntry / DespatchEntryLot lotNo
+  // casing can differ from GreyEntry / OB / ReProcessLot.
   const despatchMap = new Map<string, number>()
-  const bumpDesp = (lot: string, n: number) => despatchMap.set(lot, (despatchMap.get(lot) || 0) + n)
+  const bumpDesp = (lot: string, n: number) => {
+    const k = lot.toLowerCase()
+    despatchMap.set(k, (despatchMap.get(k) || 0) + n)
+  }
   for (const d of despParentTotals) bumpDesp(d.lotNo, d._sum.than ?? 0)
   for (const d of despLotTotals) bumpDesp(d.lotNo, d._sum.than ?? 0)
 
@@ -46,11 +52,13 @@ export async function GET() {
   const lotsWithGrey = new Set(entries.map(e => e.lotNo.toLowerCase()))
 
   const enriched = entries.map((e) => {
-    const ob = obMap.get(e.lotNo.toLowerCase()) ?? 0
+    const key = e.lotNo.toLowerCase()
+    const ob = obMap.get(key) ?? 0
+    const desp = despatchMap.get(key) ?? 0
     return {
       ...e,
-      tDesp: despatchMap.get(e.lotNo) ?? 0,
-      stock: ob + e.than - (despatchMap.get(e.lotNo) ?? 0),
+      tDesp: desp,
+      stock: ob + e.than - desp,
       openingBalance: ob,
     }
   })
@@ -62,7 +70,7 @@ export async function GET() {
     const allObs = await db.lotOpeningBalance.findMany()
     for (const ob of allObs) {
       if (lotsWithGrey.has(ob.lotNo.toLowerCase())) continue
-      const despThan = despatchMap.get(ob.lotNo) ?? 0
+      const despThan = despatchMap.get(ob.lotNo.toLowerCase()) ?? 0
       const stock = ob.openingThan - despThan
       if (stock <= 0) continue
       obOnlyLots.push({
@@ -100,7 +108,7 @@ export async function GET() {
       where: { status: { in: ['pending', 'in-dyeing', 'finished'] } },
     })
     for (const r of repros) {
-      const despThan = despatchMap.get(r.reproNo) ?? 0
+      const despThan = despatchMap.get(r.reproNo.toLowerCase()) ?? 0
       const stock = r.totalThan - despThan
       if (stock <= 0) continue
       reproLots.push({
@@ -169,7 +177,7 @@ export async function POST(req: NextRequest) {
       weaverId: data.weaverId != null && data.weaverId !== '' ? parseInt(data.weaverId) : undefined,
       viverNameBill: data.viverNameBill || undefined,
       lrNo: data.lrNo || undefined,
-      lotNo: data.lotNo,
+      lotNo: normalizeLotNo(data.lotNo) ?? '',
       marka: data.marka?.trim() || undefined,
     },
     include: { party: true, quality: true, transport: true, weaver: true },

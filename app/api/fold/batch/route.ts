@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 // PATCH /api/fold/batch — update shade or lot on a batch
 export async function PATCH(req: NextRequest) {
@@ -16,16 +17,17 @@ export async function PATCH(req: NextRequest) {
     const db = prisma as any
     const oldLot = await db.foldBatchLot.findUnique({ where: { id: body.lotId }, select: { lotNo: true, than: true, foldBatchId: true } })
 
-    // Look up party + quality from grey entry for this lot
+    // Look up party + quality from grey entry for this lot. Case-insensitive:
+    // body.lotNo casing can differ from GreyEntry's.
     const greyEntry = await prisma.greyEntry.findFirst({
-      where: { lotNo: body.lotNo },
+      where: { lotNo: { equals: body.lotNo, mode: 'insensitive' } },
       select: { partyId: true, qualityId: true },
     })
 
     const lot = await db.foldBatchLot.update({
       where: { id: body.lotId },
       data: {
-        lotNo: body.lotNo,
+        lotNo: normalizeLotNo(body.lotNo) ?? '',
         than: parseInt(body.than) || 0,
         partyId: greyEntry?.partyId ?? null,
         qualityId: greyEntry?.qualityId ?? null,
@@ -42,8 +44,8 @@ export async function PATCH(req: NextRequest) {
         if (dyeEntry) {
           // Update the matching DyeingEntryLot (same old lotNo)
           await db.dyeingEntryLot.updateMany({
-            where: { entryId: dyeEntry.id, lotNo: oldLot.lotNo },
-            data: { lotNo: body.lotNo, than: parseInt(body.than) || 0 },
+            where: { entryId: dyeEntry.id, lotNo: { equals: oldLot.lotNo, mode: 'insensitive' } },
+            data: { lotNo: normalizeLotNo(body.lotNo) ?? '', than: parseInt(body.than) || 0 },
           })
         }
       } catch {}

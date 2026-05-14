@@ -55,9 +55,13 @@ export async function GET() {
       }
     }
 
+    // `allLotNos` comes from FoldBatchLot — casing can differ from the grey /
+    // OB tables, so every `in` filter must be case-insensitive.
+    const lotNoIn = { in: Array.from(allLotNos), mode: 'insensitive' as const }
+
     // Fetch grey entries for weight + quality data
     const greyEntries = await prisma.greyEntry.findMany({
-      where: { lotNo: { in: Array.from(allLotNos) } },
+      where: { lotNo: lotNoIn },
       select: { lotNo: true, weight: true, grayMtr: true, than: true, quality: { select: { name: true } } },
     })
 
@@ -79,7 +83,7 @@ export async function GET() {
 
     // Fetch opening balance weight data for carry-forward lots
     const obEntries = await db.lotOpeningBalance.findMany({
-      where: { lotNo: { in: Array.from(allLotNos) } },
+      where: { lotNo: lotNoIn },
       select: { lotNo: true, weight: true, grayMtr: true, greyThan: true, quality: true, marka: true },
     })
     const obMap = new Map<string, { weight: string | null; grayMtr: number; than: number; quality: string | null }>()
@@ -144,7 +148,7 @@ export async function GET() {
     // Build marka map from grey + OB (upper-cased keys)
     const greyMarkaMap = new Map<string, string>()
     const greyWithMarka = await prisma.greyEntry.findMany({
-      where: { lotNo: { in: Array.from(allLotNos) }, marka: { not: null } },
+      where: { lotNo: lotNoIn, marka: { not: null } },
       select: { lotNo: true, marka: true },
     })
     for (const g of greyWithMarka) { if (g.marka) greyMarkaMap.set(g.lotNo.toUpperCase(), g.marka) }

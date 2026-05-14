@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -71,7 +72,9 @@ export async function GET() {
     const shadeDesc = de.foldBatch?.shade?.description || null
     const dLots = de.lots?.length ? de.lots : []
     for (const lot of dLots) {
-      const ln = lot.lotNo
+      // Normalized key: DyeingEntryLot.lotNo casing can differ from
+      // FinishEntryLot's — the lookups below use the same normalization.
+      const ln = lot.lotNo.toLowerCase().trim()
       if (!dyeingByLot.has(ln)) {
         dyeingByLot.set(ln, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
       }
@@ -88,9 +91,10 @@ export async function GET() {
 
     // Enrich each lot with party, quality, dyeing info
     const enrichedLots = lots.map((l: any) => {
-      const info = lotInfoMap.get(l.lotNo.toLowerCase().trim())
-      const dye = dyeingByLot.get(l.lotNo)
-      const allDyes = dyeingAllByLot.get(l.lotNo) || []
+      const lotKey = l.lotNo.toLowerCase().trim()
+      const info = lotInfoMap.get(lotKey)
+      const dye = dyeingByLot.get(lotKey)
+      const allDyes = dyeingAllByLot.get(lotKey) || []
       return {
         ...l,
         party: info?.party || null,
@@ -112,7 +116,7 @@ export async function GET() {
     // Per-slip allocation: which dyeing slip contributed how much to THIS FP.
     // Same fit-by-than algorithm the print page uses, so the list-page card
     // expansion matches the printed slip exactly.
-    const fpLotNoSet: Set<string> = new Set(lots.map((l: any) => String(l.lotNo)))
+    const fpLotNoSet: Set<string> = new Set(lots.map((l: any) => String(l.lotNo).toLowerCase().trim()))
     const seenSlips = new Set<number>()
     const relevantDyeings: any[] = []
     for (const ln of fpLotNoSet) {
@@ -165,8 +169,8 @@ export async function POST(req: NextRequest) {
   }
 
   const lots = data.marka?.length
-    ? data.marka.map((m: any) => ({ lotNo: String(m.lotNo).trim(), than: parseInt(m.than) || 0, meter: m.meter != null ? parseFloat(m.meter) : null }))
-    : [{ lotNo: String(data.lotNo || '').trim(), than: parseInt(data.than) || 0, meter: data.meter != null ? parseFloat(data.meter) : null }]
+    ? data.marka.map((m: any) => ({ lotNo: normalizeLotNo(m.lotNo) ?? '', than: parseInt(m.than) || 0, meter: m.meter != null ? parseFloat(m.meter) : null }))
+    : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: data.meter != null ? parseFloat(data.meter) : null }]
 
   const chemData = data.chemicals?.length
     ? data.chemicals.map((c: any) => ({

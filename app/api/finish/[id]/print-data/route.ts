@@ -37,9 +37,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   // figures out which subset (and what amount) actually contributed to THIS FP.
   const dyeingEntries = await db.dyeingEntry.findMany({
     where: {
+      // Case-insensitive: lotNos come from FinishEntry.lots, whose casing
+      // can differ from DyeingEntry / DyeingEntryLot.
       OR: [
-        { lotNo: { in: lotNos } },
-        { lots: { some: { lotNo: { in: lotNos } } } },
+        { lotNo: { in: lotNos, mode: 'insensitive' } },
+        { lots: { some: { lotNo: { in: lotNos, mode: 'insensitive' } } } },
       ],
     },
     select: {

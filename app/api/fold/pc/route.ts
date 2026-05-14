@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 const db = prisma as any
 
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
             marka: batch.marka?.trim() || undefined, // comma-separated for multi-marka
             lots: {
               create: (batch.lots ?? []).map((lot: any) => ({
-                lotNo: lot.lotNo.trim(),
+                lotNo: normalizeLotNo(lot.lotNo) ?? '',
                 partyId: lot.partyId || undefined,
                 qualityId: lot.qualityId || undefined,
                 than: parseInt(lot.than) || 0,
@@ -174,7 +175,7 @@ export async function PUT(req: NextRequest) {
             marka: batch.marka?.trim() || undefined,
             lots: {
               create: (batch.lots ?? []).map((lot: any) => ({
-                lotNo: lot.lotNo.trim(),
+                lotNo: normalizeLotNo(lot.lotNo) ?? '',
                 partyId: lot.partyId || undefined,
                 qualityId: lot.qualityId || undefined,
                 than: parseInt(lot.than) || 0,

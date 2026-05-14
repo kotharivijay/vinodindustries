@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -77,8 +78,8 @@ export async function POST(req: NextRequest) {
 
   // Build lots array from marka or single lot
   const lots = data.marka?.length
-    ? data.marka.map((m: any) => ({ lotNo: String(m.lotNo).trim(), than: parseInt(m.than) || 0 }))
-    : [{ lotNo: String(data.lotNo).trim(), than: parseInt(data.than) }]
+    ? data.marka.map((m: any) => ({ lotNo: normalizeLotNo(m.lotNo) ?? '', than: parseInt(m.than) || 0 }))
+    : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) }]
 
   const chemData = data.chemicals?.length
     ? data.chemicals.map((c: any) => ({

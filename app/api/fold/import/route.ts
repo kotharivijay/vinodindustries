@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 // POST /api/fold/import — bulk import folds from structured text
 export async function POST(req: NextRequest) {
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
               shadeName: shade ? undefined : (shadeName?.trim() || undefined),
               lots: {
                 create: (batch.lots ?? []).map((lot: any) => ({
-                  lotNo: String(lot.lotNo).trim(),
+                  lotNo: normalizeLotNo(lot.lotNo) ?? '',
                   partyId: party?.id ?? undefined,
                   qualityId: quality?.id ?? undefined,
                   than: parseInt(lot.than) || 0,

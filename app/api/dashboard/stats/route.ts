@@ -28,8 +28,13 @@ export async function GET() {
     obMap = new Map(obs.map((o: any) => [o.lotNo.toLowerCase(), o.openingThan]))
   } catch {}
 
-  // Compute per-lot balance including opening balance
-  const despatchMap = new Map(despatchByLot.map(d => [d.lotNo, d._sum.than ?? 0]))
+  // Compute per-lot balance including opening balance. despatchMap is keyed
+  // lower-case: DespatchEntry.lotNo casing can differ from GreyEntry's.
+  const despatchMap = new Map<string, number>()
+  for (const d of despatchByLot) {
+    const k = d.lotNo.toLowerCase()
+    despatchMap.set(k, (despatchMap.get(k) || 0) + (d._sum.than ?? 0))
+  }
   const lotsProcessed = new Set<string>()
   let currentStock = 0
   let totalDespatched = 0
@@ -39,7 +44,7 @@ export async function GET() {
     const key = g.lotNo.toLowerCase()
     lotsProcessed.add(key)
     const ob = obMap.get(key) ?? 0
-    const desp = despatchMap.get(g.lotNo) ?? 0
+    const desp = despatchMap.get(key) ?? 0
     totalDespatched += desp
     const balance = ob + (g._sum.than ?? 0) - desp
     if (balance > 0) currentStock += balance
@@ -48,11 +53,7 @@ export async function GET() {
   // Lots with only opening balance (no current year grey)
   for (const [lotKey, ob] of obMap) {
     if (lotsProcessed.has(lotKey)) continue
-    // Find despatch for this lot (case-insensitive match)
-    let desp = 0
-    for (const [lotNo, than] of despatchMap) {
-      if (lotNo.toLowerCase() === lotKey) { desp = than; break }
-    }
+    const desp = despatchMap.get(lotKey) ?? 0
     totalDespatched += desp
     const balance = ob - desp
     if (balance > 0) currentStock += balance

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 const db = prisma as any
 
@@ -164,7 +165,7 @@ export async function POST(req: NextRequest) {
               const info = lotInfoMap.get((l.lotNo || '').toLowerCase().trim())
               const partyId = info?.party ? partyByName.get(info.party.toLowerCase()) ?? null : null
               const qualityId = info?.quality ? qualityByName.get(info.quality.toLowerCase()) ?? null : null
-              return { lotNo: l.lotNo, than: l.than, partyId, qualityId }
+              return { lotNo: normalizeLotNo(l.lotNo) ?? '', than: l.than, partyId, qualityId }
             }),
           },
         },

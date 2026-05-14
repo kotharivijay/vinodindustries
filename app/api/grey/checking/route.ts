@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 const db = prisma as any
 
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
     lotRunningRequest.set(e.lotNo, running)
-    lotCreates.push({ greyEntryId: e.id, lotNo: e.lotNo, than: want, baleNo: e.baleNo })
+    lotCreates.push({ greyEntryId: e.id, lotNo: normalizeLotNo(e.lotNo) ?? '', than: want, baleNo: e.baleNo })
   }
 
   try {

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export const maxDuration = 60
 
@@ -245,7 +246,7 @@ export async function POST(req: NextRequest) {
         challanNo: g.challan,
         partyId: parentPartyId,
         qualityId: parentQualityId,
-        lotNo: first.resolvedLot,
+        lotNo: normalizeLotNo(first.resolvedLot) ?? '',
         than: totalThan,
         meter: totalMeter > 0 ? totalMeter : null,
         billNo: first.billNo,
@@ -263,7 +264,7 @@ export async function POST(req: NextRequest) {
       const lot = await prisma.despatchEntryLot.create({
         data: {
           entryId: entry.id,
-          lotNo: r.resolvedLot,
+          lotNo: normalizeLotNo(r.resolvedLot) ?? '',
           than: r.than,
           meter: r.meter,
           rate: r.rate,

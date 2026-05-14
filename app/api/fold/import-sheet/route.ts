@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { GoogleAuth } from 'google-auth-library'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 export const maxDuration = 60
 
@@ -181,10 +182,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // `allLotNos` comes from the fold spreadsheet — its casing can differ
+    // from every DB table below, so each `in` filter is case-insensitive
+    // (the result maps are already keyed lower-case).
+    const lotNoIn = { in: Array.from(allLotNos), mode: 'insensitive' as const }
+
     // Fetch grey stock for validation
     const greyEntries = await prisma.greyEntry.groupBy({
       by: ['lotNo'],
-      where: { lotNo: { in: Array.from(allLotNos) } },
+      where: { lotNo: lotNoIn },
       _sum: { than: true },
     })
     const greyMap = new Map(greyEntries.map(g => [g.lotNo.toLowerCase().trim(), g._sum.than ?? 0]))
@@ -192,7 +198,7 @@ export async function POST(req: NextRequest) {
     // Fetch despatch totals
     const despEntries = await prisma.despatchEntry.groupBy({
       by: ['lotNo'],
-      where: { lotNo: { in: Array.from(allLotNos) } },
+      where: { lotNo: lotNoIn },
       _sum: { than: true },
     })
     const despMap = new Map(despEntries.map(d => [d.lotNo.toLowerCase().trim(), d._sum.than ?? 0]))
@@ -200,7 +206,7 @@ export async function POST(req: NextRequest) {
     // Fetch already fold-programmed totals
     const foldLots = await db.foldBatchLot.findMany({
       select: { lotNo: true, than: true },
-      where: { lotNo: { in: Array.from(allLotNos) } },
+      where: { lotNo: lotNoIn },
     })
     const foldMap = new Map<string, number>()
     for (const fl of foldLots) {
@@ -210,21 +216,21 @@ export async function POST(req: NextRequest) {
 
     // Opening balances
     const obs = await db.lotOpeningBalance.findMany({
-      where: { lotNo: { in: Array.from(allLotNos) } },
+      where: { lotNo: lotNoIn },
       select: { lotNo: true, openingThan: true },
     })
     const obMap = new Map<string, number>(obs.map((o: any) => [o.lotNo.toLowerCase().trim(), o.openingThan as number]))
 
     // Manual reservations
     const reserves = await db.lotManualReservation.findMany({
-      where: { lotNo: { in: Array.from(allLotNos) } },
+      where: { lotNo: lotNoIn },
       select: { lotNo: true, usedThan: true },
     })
     const reserveMap = new Map<string, number>(reserves.map((r: any) => [r.lotNo.toLowerCase().trim(), r.usedThan as number]))
 
     // Dyeing used without fold (standalone dyeing entries)
     const dyeLots = await db.dyeingEntryLot.findMany({
-      where: { lotNo: { in: Array.from(allLotNos) } },
+      where: { lotNo: lotNoIn },
       select: { lotNo: true, than: true, entry: { select: { foldBatchId: true } } },
     })
     const dyeMap = new Map<string, number>()
@@ -334,7 +340,7 @@ export async function POST(req: NextRequest) {
               shadeDescription: b.shadeName || null,
               lots: {
                 create: b.lots.map(l => ({
-                  lotNo: l.lotNo,
+                  lotNo: normalizeLotNo(l.lotNo) ?? '',
                   than: l.than,
                   partyId: party?.id ?? null,
                   qualityId: quality?.id ?? null,

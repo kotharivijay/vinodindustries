@@ -115,14 +115,16 @@ export async function GET() {
     by: ['lotNo'], _sum: { than: true },
   })
   const despLotByLot = await prisma.despatchEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } })
-  const despatchMap = new Map<string, number>()
-  for (const d of despParentByLot) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
-  for (const d of despLotByLot) despatchMap.set(d.lotNo, (despatchMap.get(d.lotNo) || 0) + (d._sum.than ?? 0))
-
-  // Lower-cased despatch map for the stage-breakdown calculator (other lookups
-  // in this file still use the original mixed-case `despatchMap`).
+  // Keyed lower-case throughout: GreyEntry / DespatchEntry / DespatchEntryLot
+  // can store the same lot with different casing (e.g. "SAM-23-Super" vs
+  // "SAM-23-SUPER"), so every despatch lookup must be case-insensitive.
   const despatchMapLower = new Map<string, number>()
-  for (const [k, v] of despatchMap) despatchMapLower.set(k.toLowerCase(), (despatchMapLower.get(k.toLowerCase()) || 0) + v)
+  const addDesp = (lotNo: string, than: number) => {
+    const k = lotNo.toLowerCase()
+    despatchMapLower.set(k, (despatchMapLower.get(k) || 0) + than)
+  }
+  for (const d of despParentByLot) addDesp(d.lotNo, d._sum.than ?? 0)
+  for (const d of despLotByLot) addDesp(d.lotNo, d._sum.than ?? 0)
 
   /** How much of `stock` sits at each pipeline stage.
    *  Pipeline: Grey → Fold → Dye → Finish → Folding → Pack → Despatch
@@ -244,7 +246,9 @@ export async function GET() {
     const ob = obMap.get(key)
     const obThan = ob?.openingThan ?? 0
     const greyThan = g._sum.than ?? 0
-    const despThan = despatchMap.get(g.lotNo) ?? 0
+    // Case-insensitive: GreyEntry.lotNo and despatch-table lotNo casings can
+    // differ (e.g. "SAM-23-Super" vs "SAM-23-SUPER").
+    const despThan = despatchMapLower.get(key) ?? 0
     const stock = obThan + greyThan - despThan
     if (stock <= 0) continue
 
@@ -285,11 +289,7 @@ export async function GET() {
   for (const ob of obList) {
     const key = ob.lotNo.toLowerCase()
     if (processedLots.has(key)) continue
-    // Find despatch (case-insensitive)
-    let despThan = 0
-    for (const [lotNo, than] of despatchMap) {
-      if (lotNo.toLowerCase() === key) { despThan = than; break }
-    }
+    const despThan = despatchMapLower.get(key) ?? 0
     const stock = ob.openingThan - despThan
     if (stock <= 0) continue
 
@@ -339,7 +339,7 @@ export async function GET() {
     })
     for (const r of repros) {
       const key = r.reproNo.toLowerCase()
-      const despThan = despatchMap.get(r.reproNo) ?? 0
+      const despThan = despatchMapLower.get(key) ?? 0
       const stock = r.totalThan - despThan
       if (stock <= 0) continue
       const foldProgrammed = foldMap.get(key) ?? 0

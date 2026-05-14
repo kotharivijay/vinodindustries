@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { normalizeLotNo } from '@/lib/lot-no'
 
 // POST /api/debug/fix-fr — fix misplaced FRs or wrong than values
 export async function POST(req: NextRequest) {
@@ -41,8 +42,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Action: move FR from real FP to OB entry
-  const { lotNo, frSlipNo, obThan } = body
-  if (!lotNo || !frSlipNo || !obThan) return NextResponse.json({ error: 'lotNo, frSlipNo, obThan required' }, { status: 400 })
+  const { lotNo: rawLotNo, frSlipNo, obThan } = body
+  if (!rawLotNo || !frSlipNo || !obThan) return NextResponse.json({ error: 'lotNo, frSlipNo, obThan required' }, { status: 400 })
+  const lotNo = normalizeLotNo(rawLotNo) ?? ''
 
   const fr = await db.foldingReceipt.findFirst({
     where: { slipNo: frSlipNo, lotEntry: { lotNo: { equals: lotNo, mode: 'insensitive' } } },

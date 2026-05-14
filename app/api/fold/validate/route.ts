@@ -33,16 +33,21 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // `allLotNos` is collected from FoldBatchLot — its casing can differ from
+  // GreyEntry / OB / Despatch / DyeingEntryLot, so every `in` filter below
+  // must be case-insensitive or rows silently drop out (phantom shortages).
+  const lotNoIn = { in: Array.from(allLotNos), mode: 'insensitive' as const }
+
   // Stock check: grey + OB - despatch - other folds - standalone dyeing
   const greyStock = await prisma.greyEntry.groupBy({
     by: ['lotNo'],
-    where: { lotNo: { in: Array.from(allLotNos) } },
+    where: { lotNo: lotNoIn },
     _sum: { than: true },
   })
   const greyMap = new Map(greyStock.map(g => [g.lotNo.toLowerCase().trim(), g._sum.than ?? 0]))
 
   const obStock = await db.lotOpeningBalance.findMany({
-    where: { lotNo: { in: Array.from(allLotNos) } },
+    where: { lotNo: lotNoIn },
     select: { lotNo: true, openingThan: true },
   })
   const obMap = new Map<string, number>(obStock.map((o: any) => [o.lotNo.toLowerCase().trim(), o.openingThan ?? 0]))
@@ -52,12 +57,12 @@ export async function GET(req: NextRequest) {
   // attribute the entire challan to the parent's first lot.
   const despParent = await prisma.despatchEntry.groupBy({
     by: ['lotNo'],
-    where: { lotNo: { in: Array.from(allLotNos) }, despatchLots: { none: {} } },
+    where: { lotNo: lotNoIn, despatchLots: { none: {} } },
     _sum: { than: true },
   })
   const despChild = await prisma.despatchEntryLot.groupBy({
     by: ['lotNo'],
-    where: { lotNo: { in: Array.from(allLotNos) } },
+    where: { lotNo: lotNoIn },
     _sum: { than: true },
   })
   const despMap = new Map<string, number>()
@@ -68,7 +73,7 @@ export async function GET(req: NextRequest) {
   // RE-PRO-N can be a fold input (matches /api/grey/lots model).
   const reproLots = await db.reProcessLot.findMany({
     where: {
-      reproNo: { in: Array.from(allLotNos) },
+      reproNo: lotNoIn,
       status: { in: ['pending', 'in-dyeing', 'finished'] },
     },
     select: { reproNo: true, totalThan: true },
@@ -78,7 +83,7 @@ export async function GET(req: NextRequest) {
 
   // Fold usage (all non-cancelled folds, current + others)
   const foldLots = await db.foldBatchLot.findMany({
-    where: { lotNo: { in: Array.from(allLotNos) }, foldBatch: { cancelled: false } },
+    where: { lotNo: lotNoIn, foldBatch: { cancelled: false } },
     select: { lotNo: true, than: true, foldBatchId: true },
   })
 
@@ -96,7 +101,7 @@ export async function GET(req: NextRequest) {
 
   // Dyeing usage (standalone, without fold)
   const dyeLots = await db.dyeingEntryLot.findMany({
-    where: { lotNo: { in: Array.from(allLotNos) } },
+    where: { lotNo: lotNoIn },
     select: { lotNo: true, than: true, entry: { select: { foldBatchId: true } } },
   })
   const dyeMap = new Map<string, number>()

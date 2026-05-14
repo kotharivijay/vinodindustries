@@ -40,41 +40,46 @@ export async function GET(req: NextRequest) {
     if (!g.marka && g.viverNameBill) g.marka = g.viverNameBill
   }
 
-  // Get despatch totals per lot
+  // Get despatch totals per lot. All lot maps are keyed lower-case +
+  // trimmed: DespatchEntry / LotManualReservation / LotOpeningBalance can
+  // store the same lot with different casing than GreyEntry.
+  const norm = (s: string) => s.toLowerCase().trim()
   const lotNoSet = new Set<string>()
   for (const g of greyEntries) lotNoSet.add(g.lotNo as string)
   const lotNos: string[] = Array.from(lotNoSet)
+  const lotNoIn = { in: lotNos, mode: 'insensitive' as const }
   const despatchTotals = await prisma.despatchEntry.groupBy({
     by: ['lotNo'],
-    where: { lotNo: { in: lotNos } },
+    where: { lotNo: lotNoIn },
     _sum: { than: true },
   })
-  const despatchMap = new Map(despatchTotals.map(d => [d.lotNo, d._sum?.than ?? 0]))
+  const despatchMap = new Map<string, number>()
+  for (const d of despatchTotals) despatchMap.set(norm(d.lotNo), (despatchMap.get(norm(d.lotNo)) || 0) + (d._sum?.than ?? 0))
 
   // Get manual reservations
   let reserveMap = new Map<string, number>()
   try {
     const reserves = await db.lotManualReservation.findMany({
-      where: { lotNo: { in: lotNos } },
+      where: { lotNo: lotNoIn },
       select: { lotNo: true, usedThan: true },
     })
-    reserveMap = new Map(reserves.map((r: any) => [r.lotNo, r.usedThan]))
+    reserveMap = new Map(reserves.map((r: any) => [norm(r.lotNo), r.usedThan]))
   } catch {}
 
   // Get opening balances
   let obMap = new Map<string, number>()
   try {
     const obs = await db.lotOpeningBalance.findMany({
-      where: { lotNo: { in: lotNos } },
+      where: { lotNo: lotNoIn },
       select: { lotNo: true, openingThan: true },
     })
-    obMap = new Map(obs.map((o: any) => [o.lotNo, o.openingThan]))
+    obMap = new Map(obs.map((o: any) => [norm(o.lotNo), o.openingThan]))
   } catch {}
 
   // Group grey entries by lot to sum than
   const lotGreyMap = new Map<string, number>()
   for (const g of greyEntries) {
-    lotGreyMap.set(g.lotNo, (lotGreyMap.get(g.lotNo) ?? 0) + g.than)
+    lotGreyMap.set(norm(g.lotNo), (lotGreyMap.get(norm(g.lotNo)) ?? 0) + g.than)
   }
 
   // Group by marka
@@ -94,10 +99,11 @@ export async function GET(req: NextRequest) {
 
     if (!lotSet.has(g.lotNo)) {
       lotSet.add(g.lotNo)
-      const greyThan = lotGreyMap.get(g.lotNo) ?? g.than
-      const ob = obMap.get(g.lotNo) ?? 0
-      const desp = despatchMap.get(g.lotNo) ?? 0
-      const reserved = reserveMap.get(g.lotNo) ?? 0
+      const key = norm(g.lotNo)
+      const greyThan = lotGreyMap.get(key) ?? g.than
+      const ob = obMap.get(key) ?? 0
+      const desp = despatchMap.get(key) ?? 0
+      const reserved = reserveMap.get(key) ?? 0
       const available = ob + greyThan - desp - reserved
       group.lots.push({
         lotNo: g.lotNo,

@@ -24,13 +24,16 @@ export async function GET(req: NextRequest) {
   const lotNos = lotsParam.split(',').map(l => l.trim()).filter(Boolean)
 
   const greyEntries = await prisma.greyEntry.findMany({
-    where: { lotNo: { in: lotNos } },
+    where: { lotNo: { in: lotNos, mode: 'insensitive' } },
     select: { lotNo: true, weight: true, grayMtr: true, than: true, quality: { select: { name: true } } },
     orderBy: { id: 'asc' },
   })
 
   const result = lotNos.map(lotNo => {
-    const entries = greyEntries.filter(g => g.lotNo === lotNo)
+    // Case-insensitive match: the caller's lotNo casing may differ from
+    // what GreyEntry stores.
+    const key = lotNo.toLowerCase().trim()
+    const entries = greyEntries.filter(g => g.lotNo.toLowerCase().trim() === key)
     let weightPerThan = 0
     let kgPerMtr = 0
     let grayMtr = 0
