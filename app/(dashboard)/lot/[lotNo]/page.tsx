@@ -538,6 +538,11 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                     <span className="font-semibold text-teal-700">Than: {lotThan}</span>
                     {lotMeter != null && lotMeter > 0 && <span className="text-xs text-gray-500">Meter: {lotMeter}</span>}
                     {totalCost > 0 && <span className="text-xs text-gray-500">Cost: &#8377;{totalCost.toFixed(0)}</span>}
+                    {e.finishDespSlipNo && (
+                      <span className="text-xs font-medium text-teal-600 bg-teal-50 dark:bg-teal-900/30 dark:text-teal-300 px-1.5 py-0.5 rounded">
+                        Desp Slip: {e.finishDespSlipNo}
+                      </span>
+                    )}
                   </div>
                   {!e._isOB && e.lots?.length > 1 && (
                     <div className="flex flex-wrap gap-1 mt-1">

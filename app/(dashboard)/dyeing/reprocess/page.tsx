@@ -67,13 +67,16 @@ export default function ReProcessPage() {
   const [notes, setNotes] = useState('')
   const [manualReproNo, setManualReproNo] = useState('') // optional override (e.g. RE-PRO-22)
 
-  // Preview the next auto-assigned RE-PRO number — matches API logic
-  // (latest by createdAt; lots arrive in createdAt-desc order from GET).
+  // Preview the next auto-assigned RE-PRO number — matches API logic:
+  // highest numeric suffix across all lots, +1 (NOT latest-created, since
+  // manual gap-fills can carry a lower number than the newest row).
   const nextAutoReproNo = useMemo(() => {
-    const last = lots?.[0]?.reproNo
-    const m = last?.match(/RE-PRO-(\d+)/)
-    const n = m ? parseInt(m[1], 10) + 1 : 1
-    return `RE-PRO-${n}`
+    let maxNum = 0
+    for (const l of lots || []) {
+      const m = String(l.reproNo).match(/^RE-PRO-(\d+)$/)
+      if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10))
+    }
+    return `RE-PRO-${maxNum + 1}`
   }, [lots])
   const [sourceLots, setSourceLots] = useState<{ lotNo: string; than: string; reason: string }[]>([
     { lotNo: '', than: '', reason: 'patchy' },
@@ -105,7 +108,13 @@ export default function ReProcessPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
-      const data = await res.json()
+      // Server may return an HTML error page on a 500 — don't let res.json()
+      // throw and get swallowed as a generic "Network error".
+      const text = await res.text()
+      let data: any = {}
+      try { data = text ? JSON.parse(text) : {} } catch {
+        data = { error: `Server error (${res.status})` }
+      }
       return { res, data }
     }
 

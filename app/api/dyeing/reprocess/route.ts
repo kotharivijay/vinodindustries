@@ -125,13 +125,16 @@ export async function POST(req: NextRequest) {
     if (existing) return NextResponse.json({ error: `${trimmed} already exists` }, { status: 409 })
     reproNo = trimmed
   } else {
-    const maxRepro = await db.reProcessLot.findFirst({ orderBy: { id: 'desc' }, select: { reproNo: true } })
-    let nextNum = 1
-    if (maxRepro?.reproNo) {
-      const match = maxRepro.reproNo.match(/RE-PRO-(\d+)/)
-      if (match) nextNum = parseInt(match[1]) + 1
+    // Auto-gen: highest numeric suffix across ALL RE-PRO lots, +1.
+    // Must not use max-by-id — manual overrides / gap-fills mean the
+    // newest row can carry a lower number, which would collide.
+    const allRepro = await db.reProcessLot.findMany({ select: { reproNo: true } })
+    let maxNum = 0
+    for (const r of allRepro) {
+      const m = String(r.reproNo).match(/^RE-PRO-(\d+)$/)
+      if (m) maxNum = Math.max(maxNum, parseInt(m[1]))
     }
-    reproNo = `RE-PRO-${nextNum}`
+    reproNo = `RE-PRO-${maxNum + 1}`
   }
 
   const lot = await db.reProcessLot.create({
