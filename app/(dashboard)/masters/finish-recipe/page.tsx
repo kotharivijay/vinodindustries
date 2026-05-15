@@ -368,6 +368,10 @@ export default function FinishRecipeMasterPage() {
   }, [fetchPartyRecipesForTag])
 
   const handleCreateNew = useCallback(() => {
+    if (!selectedPartyId || !selectedQualityId) {
+      alert('Select a party and quality first, then click + New Recipe.')
+      return
+    }
     // Full reset so the editor opens blank — works whether or not a recipe
     // already exists for this party+quality (creating an additional variant).
     setShowNewRecipe(true)
@@ -380,7 +384,7 @@ export default function FinishRecipeMasterPage() {
     setNotes('')
     setItems([{ name: '', chemicalId: null, quantity: '', unit: 'kg' }])
     setMessage('')
-  }, [])
+  }, [selectedPartyId, selectedQualityId])
 
   const handleSaveTag = useCallback(async () => {
     if (!selectedPartyId || !selectedQualityId || !selectedTagRecipeId) return
@@ -549,9 +553,8 @@ export default function FinishRecipeMasterPage() {
         </div>
         <button
           onClick={handleCreateNew}
-          disabled={!selectedPartyId || !selectedQualityId}
-          title={!selectedPartyId || !selectedQualityId ? 'Select party + quality first' : 'Start a fresh recipe (additional variant if one already exists)'}
-          className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold px-4 py-2 rounded-lg shadow-sm whitespace-nowrap"
+          title="Start a fresh recipe (additional variant if one already exists)"
+          className="bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold px-4 py-2 rounded-lg shadow-sm whitespace-nowrap"
         >
           + New Recipe
         </button>
