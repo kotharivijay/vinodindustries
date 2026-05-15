@@ -1931,7 +1931,7 @@ function BulkLinkSheet({
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map(row => {
+                    {rows.map((row, idx) => {
                       const inv = data.invoices.find(i => i.id === row.invoiceId)
                       if (!inv) return null
                       const splits = splitsByInvoice.get(row.invoiceId) || []
@@ -1954,7 +1954,13 @@ function BulkLinkSheet({
                           : 'text-rose-700 dark:text-rose-300'
                       return (
                         <tr key={inv.id} className={`border-b border-gray-100 dark:border-gray-700/60 ${!row.selected ? 'opacity-50' : ''}`}>
-                          <td className="px-1.5 py-1 text-center">{row.selected ? '✓' : '—'}</td>
+                          <td className="px-1.5 py-1 text-center">
+                            <input type="checkbox" checked={row.selected}
+                              onChange={e => updateRow(idx, { selected: e.target.checked })}
+                              disabled={committing}
+                              title={row.selected ? 'Untick to skip this invoice' : 'Tick to include this invoice'}
+                              className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:cursor-not-allowed" />
+                          </td>
                           <td className="px-1.5 py-1">
                             <div className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchNumber}</div>
                             <div className="text-[9px] text-gray-500">{inv.vchType} · {fmtDate(inv.date)}{inv.isCN ? ' · CN' : ''}</div>
