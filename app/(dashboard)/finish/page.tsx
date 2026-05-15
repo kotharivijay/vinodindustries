@@ -3139,8 +3139,9 @@ export default function FinishStockPage() {
                                 <h3 className="text-sm font-bold text-indigo-700 dark:text-indigo-300 truncate">
                                   {g.foldNo === 'Direct Dyeing' ? '🎨 Direct Dyeing (no fold)' : `🗂️ ${g.foldNo}`}
                                 </h3>
-                                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">
-                                  {g.slips.length} slip{g.slips.length !== 1 ? 's' : ''} · {Array.from(g.partySet).join(', ') || '—'}
+                                <p className="text-[10px] mt-0.5 truncate">
+                                  <span className="text-gray-400 dark:text-gray-500">{g.slips.length} slip{g.slips.length !== 1 ? 's' : ''} · </span>
+                                  <span className="text-green-600 dark:text-green-400 font-semibold">{Array.from(g.partySet).join(', ') || '—'}</span>
                                 </p>
                               </div>
                               <div className="flex items-center gap-3 shrink-0">
@@ -3173,7 +3174,7 @@ export default function FinishStockPage() {
                                             <span className="text-indigo-600 dark:text-indigo-400">{shadeDisplay(s.shadeName, s.shadeDescription)}</span>
                                           )}
                                         </div>
-                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">{slipParties}</p>
+                                        <p className="text-[10px] mt-0.5 truncate text-green-600 dark:text-green-400 font-semibold">{slipParties}</p>
                                       </div>
                                       <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0">{s.totalThan} than</span>
                                     </div>
@@ -3184,7 +3185,7 @@ export default function FinishStockPage() {
                                           <span className="text-gray-400 mx-1">·</span>
                                           {l.than} than
                                           <span className="text-gray-400 mx-1">·</span>
-                                          {l.party || '—'}
+                                          <span className="text-green-600 dark:text-green-400 font-semibold">{l.party || '—'}</span>
                                         </span>
                                       ))}
                                     </div>
