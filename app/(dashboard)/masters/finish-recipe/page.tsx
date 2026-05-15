@@ -368,8 +368,18 @@ export default function FinishRecipeMasterPage() {
   }, [fetchPartyRecipesForTag])
 
   const handleCreateNew = useCallback(() => {
+    // Full reset so the editor opens blank — works whether or not a recipe
+    // already exists for this party+quality (creating an additional variant).
     setShowNewRecipe(true)
     setShowTagUI(false)
+    setRecipe(null)
+    setVariantName('')
+    setFinishWidth('')
+    setFinalWidth('')
+    setShortage('')
+    setNotes('')
+    setItems([{ name: '', chemicalId: null, quantity: '', unit: 'kg' }])
+    setMessage('')
   }, [])
 
   const handleSaveTag = useCallback(async () => {
@@ -533,10 +543,18 @@ export default function FinishRecipeMasterPage() {
     <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
         <BackButton />
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Finish Recipe Master</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage finish recipes by party and quality</p>
         </div>
+        <button
+          onClick={handleCreateNew}
+          disabled={!selectedPartyId || !selectedQualityId}
+          title={!selectedPartyId || !selectedQualityId ? 'Select party + quality first' : 'Start a fresh recipe (additional variant if one already exists)'}
+          className="bg-teal-600 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold px-4 py-2 rounded-lg shadow-sm whitespace-nowrap"
+        >
+          + New Recipe
+        </button>
       </div>
 
       {/* Party + Quality searchable dropdowns */}
