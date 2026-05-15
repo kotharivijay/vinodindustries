@@ -68,6 +68,10 @@ interface Challan {
   returnReason: string | null
   cashPaidDate: string | null
   cashPaidNote: string | null
+  biltyNo?: string | null
+  vehicleNo?: string | null
+  transporter?: string | null
+  notes?: string | null
   party: { id: number; displayName: string; parentGroup: string | null; state: string | null; gstRegistrationType: string }
   lines: Line[]
   invoiceLink: { invoiceId: number } | null
@@ -558,6 +562,7 @@ function ChallanCard(props: {
   const isTerminal = TERMINAL_STATUSES.has(c.status)
   const canSelect = !isTerminal && selectableForParty
   const [menuOpen, setMenuOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [returnOpen, setReturnOpen] = useState(false)
   const [cashOpen, setCashOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
@@ -604,6 +609,11 @@ function ChallanCard(props: {
               KSI/IN/{c.seriesFy}/{String(c.internalSeriesNo).padStart(4, '0')}
             </Link>
             <div className="flex items-center gap-1">
+              <button onClick={() => setEditOpen(true)} disabled={isTerminal}
+                title={isTerminal ? `Cannot edit a ${c.status.toLowerCase()} challan` : 'Edit challan header (date, bilty, vehicle, transporter, notes)'}
+                className="text-[10px] font-semibold px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 disabled:opacity-40 disabled:cursor-not-allowed">
+                Edit
+              </button>
               <StatusBadge status={c.status} />
               {actionsOn && (
                 <div className="relative">
@@ -731,6 +741,13 @@ function ChallanCard(props: {
         </div>
       )}
 
+      {editOpen && (
+        <EditChallanModal
+          challan={c}
+          onClose={() => setEditOpen(false)}
+          onSaved={updated => { onChange(updated); setEditOpen(false) }}
+        />
+      )}
       {returnOpen && (
         <ReturnLinesModal
           challan={c}
@@ -773,6 +790,108 @@ function MenuItem({ label, onClick, disabled, danger }: {
       }`}>
       {label}
     </button>
+  )
+}
+
+function EditChallanModal({ challan, onClose, onSaved }: {
+  challan: Challan
+  onClose: () => void
+  onSaved: (updated: Challan) => void
+}) {
+  // Only header fields are editable here. Lines stay inline-editable on the
+  // expanded card; party + challanNo are immutable once the series is locked.
+  const [challanNo] = useState(challan.challanNo)
+  const [challanDate, setChallanDate] = useState(challan.challanDate.slice(0, 10))
+  const [biltyNo, setBiltyNo] = useState(challan.biltyNo ?? '')
+  const [vehicleNo, setVehicleNo] = useState(challan.vehicleNo ?? '')
+  const [transporter, setTransporter] = useState(challan.transporter ?? '')
+  const [notes, setNotes] = useState(challan.notes ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function save() {
+    setSaving(true); setError('')
+    const res = await fetch(`/api/inv/challans/${challan.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challanDate,
+        biltyNo: biltyNo.trim() || null,
+        vehicleNo: vehicleNo.trim() || null,
+        transporter: transporter.trim() || null,
+        notes: notes.trim() || null,
+      }),
+    })
+    setSaving(false)
+    if (!res.ok) { setError((await res.json()).error || 'Save failed'); return }
+    onSaved(await res.json())
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg my-6">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Edit Challan</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">
+              KSI/IN/{challan.seriesFy}/{String(challan.internalSeriesNo).padStart(4, '0')} · {challan.party.displayName}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            Party and series number can&apos;t be changed once the challan is created. Edit lines by expanding the card.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Supplier challan no</span>
+              <input value={challanNo} disabled
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 text-sm text-gray-500" />
+            </label>
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Challan date</span>
+              <input type="date" value={challanDate} onChange={e => setChallanDate(e.target.value)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Bilty no</span>
+              <input value={biltyNo} onChange={e => setBiltyNo(e.target.value)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Vehicle no</span>
+              <input value={vehicleNo} onChange={e => setVehicleNo(e.target.value)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+          </div>
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Transporter</span>
+            <input value={transporter} onChange={e => setTransporter(e.target.value)}
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+          </label>
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Notes</span>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+          </label>
+          {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving}
+            className="px-5 py-2 rounded-lg text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
