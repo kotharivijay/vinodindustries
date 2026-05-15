@@ -795,6 +795,22 @@ export default function FinishStockPage() {
   const [expandedFolds, setExpandedFolds] = useState<Set<string>>(new Set())
   const [reportSearch, setReportSearch] = useState('')
 
+  // Sub-view inside Stock Report — Party-wise (existing 3-level tree) or
+  // Slip-wise (Fold Program → Dyeing Slip flat list, for quick multi-slip
+  // selection and direct finish-slip creation).
+  const [reportView, setReportView] = useState<'party' | 'slip'>(
+    () => (readViewState(FINISH_VIEW_KEY).reportView === 'slip' ? 'slip' : 'party'),
+  )
+  const [expandedSlipFolds, setExpandedSlipFolds] = useState<Set<string>>(new Set())
+  const toggleSlipFold = (foldNo: string) => {
+    setExpandedSlipFolds(prev => {
+      const next = new Set(prev)
+      if (next.has(foldNo)) next.delete(foldNo); else next.add(foldNo)
+      return next
+    })
+  }
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false)
+
   const toggleParty = (party: string) => {
     setExpandedParties(prev => {
       const next = new Set(prev)
@@ -843,6 +859,82 @@ export default function FinishStockPage() {
   }, [entries])
 
   const lotKey = (lot: SelectedLot) => `${lot.slipNo}|${lot.lotNo}`
+
+  /* ── Slip-wise grouping (Fold Program → Dyeing Slip) ─────────────── */
+  // Groups raw stock entries by foldNo so the user can browse and select at
+  // the dyeing-slip level without going through Party → Quality → Fold.
+  // Slips without a fold program land in a "Direct Dyeing" bucket.
+  const slipFoldGroups = useMemo(() => {
+    const map = new Map<string, { foldNo: string; slips: StockEntry[]; totalThan: number; partySet: Set<string> }>()
+    for (const e of entries) {
+      const fold = e.foldNo || 'Direct Dyeing'
+      let g = map.get(fold)
+      if (!g) {
+        g = { foldNo: fold, slips: [], totalThan: 0, partySet: new Set() }
+        map.set(fold, g)
+      }
+      g.slips.push(e)
+      g.totalThan += e.totalThan
+      for (const l of e.lots) if (l.party) g.partySet.add(l.party)
+    }
+    // Sort fold groups: real folds first by numeric/lexicographic, then Direct Dyeing.
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.foldNo === 'Direct Dyeing') return 1
+      if (b.foldNo === 'Direct Dyeing') return -1
+      return a.foldNo.localeCompare(b.foldNo, undefined, { numeric: true })
+    })
+  }, [entries])
+
+  const filteredSlipFoldGroups = useMemo(() => {
+    const q = reportSearch.toLowerCase().trim()
+    if (!q) return slipFoldGroups
+    return slipFoldGroups.map(g => {
+      const slips = g.slips.filter(s =>
+        String(s.slipNo).includes(q)
+        || (s.shadeName || '').toLowerCase().includes(q)
+        || g.foldNo.toLowerCase().includes(q)
+        || s.lots.some(l =>
+          l.lotNo.toLowerCase().includes(q)
+          || (l.party || '').toLowerCase().includes(q)
+          || (l.quality || '').toLowerCase().includes(q),
+        ),
+      )
+      if (slips.length === 0) return null
+      return { ...g, slips, totalThan: slips.reduce((s, x) => s + x.totalThan, 0) }
+    }).filter(Boolean) as typeof slipFoldGroups
+  }, [slipFoldGroups, reportSearch])
+
+  // Auto-open fold groups whose slips match the current search.
+  useEffect(() => {
+    if (reportView !== 'slip') return
+    const q = reportSearch.toLowerCase().trim()
+    if (!q) return
+    const open = new Set<string>()
+    for (const g of filteredSlipFoldGroups) open.add(g.foldNo)
+    setExpandedSlipFolds(prev => new Set([...prev, ...open]))
+  }, [reportSearch, reportView, filteredSlipFoldGroups])
+
+  // Selecting / unselecting a whole dyeing slip = all its lots in selectedLots.
+  const toggleSlipSelection = useCallback((entry: StockEntry) => {
+    const slipLots: SelectedLot[] = entry.lots.map(l => ({
+      lotNo: l.lotNo,
+      than: l.than,
+      party: l.party ?? 'Unknown',
+      quality: l.quality ?? 'Unknown',
+      shade: shadeDisplay(entry.shadeName, entry.shadeDescription) ?? '',
+      slipNo: entry.slipNo,
+    }))
+    setSelectedLots(prev => {
+      const next = new Map(prev)
+      const allSelected = slipLots.every(l => next.has(`${l.slipNo}|${l.lotNo}`))
+      if (allSelected) {
+        slipLots.forEach(l => next.delete(`${l.slipNo}|${l.lotNo}`))
+      } else {
+        slipLots.forEach(l => next.set(`${l.slipNo}|${l.lotNo}`, l))
+      }
+      return next
+    })
+  }, [])
 
   // Report tab: filter partyGroups by search term (party / quality / lot)
   const filteredPartyGroups = useMemo(() => {
@@ -1187,6 +1279,53 @@ export default function FinishStockPage() {
     }
   }, [selectedLots, finishDate, finishSlipNo, finishNotes, finishMandi, finishMeters, finishChemicals, finishTotalMeterOverride, mutateSlips, mutateStock])
 
+  /* ── Quick Create (slip-wise view) ───────────────────────────────── */
+  // POST the currently selected lots straight to /api/finish — no chemicals,
+  // no mandi, no meters. Caller (the QuickCreateFinishModal below) supplies
+  // date + slipNo.
+  const quickCreateFinish = useCallback(async (date: string, slipNo: string) => {
+    if (selectedLots.size === 0) return { ok: false, error: 'No lots selected' }
+    if (!date || !slipNo) return { ok: false, error: 'Date and Slip No are required' }
+    const marka = Array.from(selectedLots.values()).map(l => ({
+      lotNo: l.lotNo.trim(),
+      than: l.than,
+      meter: null,
+    }))
+    try {
+      const res = await fetch('/api/finish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date,
+          slipNo,
+          lotNo: marka[0].lotNo,
+          than: String(marka[0].than),
+          totalMeter: null,
+          marka,
+          chemicals: [],
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        return { ok: false, error: d.error || `Failed (${res.status})` }
+      }
+      setSelectedLots(new Map())
+      setQuickCreateOpen(false)
+      mutateSlips()
+      mutateStock()
+      mutatePacking()
+      return { ok: true }
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'Network error' }
+    }
+  }, [selectedLots, mutateSlips, mutateStock, mutatePacking])
+
+  // Next-available slip number = max + 1 across existing finish slips.
+  const nextFinishSlipNo = useMemo(() => {
+    const max = slipEntries.reduce((m, s) => Math.max(m, s.slipNo || 0), 0)
+    return String(max + 1)
+  }, [slipEntries])
+
   /* ── Packing Stock grouped data ────────────────────────────────── */
 
   const packingPartyGroups = useMemo<PackingPartyGroup[]>(() => {
@@ -1271,12 +1410,12 @@ export default function FinishStockPage() {
   // Persist collapse/tab state so it survives a nav to /lot/[id] and back.
   useEffect(() => {
     persistViewState(FINISH_VIEW_KEY, {
-      tab, packView,
+      tab, packView, reportView,
       expandedDesp: [...expandedDesp],
       packExpandedParties: [...packExpandedParties],
       packExpandedQualities: [...packExpandedQualities],
     })
-  }, [tab, packView, expandedDesp, packExpandedParties, packExpandedQualities])
+  }, [tab, packView, reportView, expandedDesp, packExpandedParties, packExpandedQualities])
 
   // Deep-link: /finish?focusDesp=1432 (from the lot-track Desp Slip pill)
   // opens the Packing tab in Desp Slip-wise view with that slip expanded.
@@ -2765,6 +2904,24 @@ export default function FinishStockPage() {
                   )}
                 </div>
 
+                {/* View toggle — Party-wise (3-level tree) vs Slip-wise (Fold Program → Dyeing Slip) */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">View:</span>
+                  <button onClick={() => setReportView('party')}
+                    className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition ${
+                      reportView === 'party'
+                        ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-700'
+                        : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+                    }`}>Party-wise</button>
+                  <button onClick={() => setReportView('slip')}
+                    className={`text-[11px] px-2.5 py-1 rounded-full border font-medium transition ${
+                      reportView === 'slip'
+                        ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-700'
+                        : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+                    }`}>Slip-wise</button>
+                </div>
+
+                {reportView === 'party' && (<>
                 {/* Party cards */}
                 {filteredPartyGroups.length === 0 && reportSearch && (
                   <div className="p-8 text-center text-gray-400 dark:text-gray-500">No results for &ldquo;{reportSearch}&rdquo;</div>
@@ -2930,6 +3087,117 @@ export default function FinishStockPage() {
                     </div>
                   )
                 })}
+                </>)}
+
+                {reportView === 'slip' && (
+                  <div className="space-y-3">
+                    {filteredSlipFoldGroups.length === 0 && reportSearch && (
+                      <div className="p-8 text-center text-gray-400 dark:text-gray-500">No results for &ldquo;{reportSearch}&rdquo;</div>
+                    )}
+                    {filteredSlipFoldGroups.length === 0 && !reportSearch && (
+                      <div className="p-8 text-center text-gray-400 dark:text-gray-500">No dyeing slips in stock.</div>
+                    )}
+                    {filteredSlipFoldGroups.map(g => {
+                      const isOpen = expandedSlipFolds.has(g.foldNo)
+                      const slipsAllSelected = g.slips.length > 0
+                        && g.slips.every(s => s.lots.every(l => selectedLots.has(`${s.slipNo}|${l.lotNo}`)))
+                      const slipsSomeSelected = g.slips.some(s => s.lots.some(l => selectedLots.has(`${s.slipNo}|${l.lotNo}`)))
+                      const toggleFoldAllSlips = () => {
+                        setSelectedLots(prev => {
+                          const next = new Map(prev)
+                          for (const s of g.slips) for (const l of s.lots) {
+                            const k = `${s.slipNo}|${l.lotNo}`
+                            if (slipsAllSelected) next.delete(k)
+                            else next.set(k, {
+                              lotNo: l.lotNo, than: l.than,
+                              party: l.party ?? 'Unknown',
+                              quality: l.quality ?? 'Unknown',
+                              shade: shadeDisplay(s.shadeName, s.shadeDescription) ?? '',
+                              slipNo: s.slipNo,
+                            })
+                          }
+                          return next
+                        })
+                      }
+                      return (
+                        <div key={g.foldNo} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+                          <div className="flex items-center">
+                            <label className="flex items-center pl-4 cursor-pointer" onClick={e => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={slipsAllSelected}
+                                ref={el => { if (el) el.indeterminate = slipsSomeSelected && !slipsAllSelected }}
+                                onChange={toggleFoldAllSlips}
+                                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500 dark:bg-gray-700"
+                              />
+                            </label>
+                            <button
+                              onClick={() => toggleSlipFold(g.foldNo)}
+                              className="flex-1 flex items-center justify-between px-3 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
+                            >
+                              <div className="text-left min-w-0">
+                                <h3 className="text-sm font-bold text-indigo-700 dark:text-indigo-300 truncate">
+                                  {g.foldNo === 'Direct Dyeing' ? '🎨 Direct Dyeing (no fold)' : `🗂️ ${g.foldNo}`}
+                                </h3>
+                                <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">
+                                  {g.slips.length} slip{g.slips.length !== 1 ? 's' : ''} · {Array.from(g.partySet).join(', ') || '—'}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{g.totalThan} than</span>
+                                <span className={`text-gray-400 dark:text-gray-500 transition-transform ${isOpen ? 'rotate-90' : ''}`}>&#9654;</span>
+                              </div>
+                            </button>
+                          </div>
+                          {isOpen && (
+                            <div className="border-t border-gray-100 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
+                              {g.slips.map(s => {
+                                const slipAllSelected = s.lots.length > 0 && s.lots.every(l => selectedLots.has(`${s.slipNo}|${l.lotNo}`))
+                                const slipSomeSelected = s.lots.some(l => selectedLots.has(`${s.slipNo}|${l.lotNo}`))
+                                const slipParties = Array.from(new Set(s.lots.map(l => l.party || 'Unknown'))).join(', ')
+                                return (
+                                  <div key={s.id} className="px-4 py-2.5">
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={slipAllSelected}
+                                        ref={el => { if (el) el.indeterminate = slipSomeSelected && !slipAllSelected }}
+                                        onChange={() => toggleSlipSelection(s)}
+                                        className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-teal-600 focus:ring-teal-500 dark:bg-gray-700"
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap text-xs">
+                                          <span className="font-bold text-purple-700 dark:text-purple-300">Slip {s.slipNo}</span>
+                                          <span className="text-gray-400">{new Date(s.date).toLocaleDateString('en-IN')}</span>
+                                          {s.shadeName && (
+                                            <span className="text-indigo-600 dark:text-indigo-400">{shadeDisplay(s.shadeName, s.shadeDescription)}</span>
+                                          )}
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">{slipParties}</p>
+                                      </div>
+                                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0">{s.totalThan} than</span>
+                                    </div>
+                                    <div className="mt-2 ml-7 flex flex-wrap gap-1.5">
+                                      {s.lots.map(l => (
+                                        <span key={l.lotNo} className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-full">
+                                          <span className="font-mono">{l.lotNo}</span>
+                                          <span className="text-gray-400 mx-1">·</span>
+                                          {l.than} than
+                                          <span className="text-gray-400 mx-1">·</span>
+                                          {l.party || '—'}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
 
                 {/* ── Sticky bottom bar when lots selected ──────────────── */}
                 {selectedLots.size > 0 && !showFinishForm && (
@@ -2942,13 +3210,36 @@ export default function FinishStockPage() {
                         {[...new Set(Array.from(selectedLots.values()).map(l => l.party))].join(', ')}
                       </p>
                     </div>
-                    <button
-                      onClick={startFinish}
-                      className="bg-white text-teal-700 px-5 py-2 rounded-lg text-sm font-bold hover:bg-teal-50 transition"
-                    >
-                      Start Finish for {selectedLots.size} lots &rarr;
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {reportView === 'slip' && (
+                        <button
+                          onClick={() => setQuickCreateOpen(true)}
+                          title="Create a finish slip directly with the selected lots — date + slip no only, no chemicals/mandi."
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition"
+                        >
+                          ⚡ Quick Create
+                        </button>
+                      )}
+                      <button
+                        onClick={startFinish}
+                        className="bg-white text-teal-700 px-5 py-2 rounded-lg text-sm font-bold hover:bg-teal-50 transition"
+                      >
+                        Start Finish for {selectedLots.size} lots &rarr;
+                      </button>
+                    </div>
                   </div>
+                )}
+
+                {/* ── Quick Create Modal (slip-wise direct flow) ────────── */}
+                {quickCreateOpen && (
+                  <QuickCreateFinishModal
+                    selectedCount={selectedLots.size}
+                    selectedThan={selectedThan}
+                    parties={[...new Set(Array.from(selectedLots.values()).map(l => l.party))]}
+                    defaultSlipNo={nextFinishSlipNo}
+                    onClose={() => setQuickCreateOpen(false)}
+                    onCreate={quickCreateFinish}
+                  />
                 )}
 
                 {/* ── Inline Finish Form ────────────────────────────────── */}
@@ -3616,6 +3907,81 @@ export default function FinishStockPage() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ── Quick Create Finish Slip modal (slip-wise direct flow) ──────── */
+
+function QuickCreateFinishModal({ selectedCount, selectedThan, parties, defaultSlipNo, onClose, onCreate }: {
+  selectedCount: number
+  selectedThan: number
+  parties: string[]
+  defaultSlipNo: string
+  onClose: () => void
+  onCreate: (date: string, slipNo: string) => Promise<{ ok: boolean; error?: string }>
+}) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [date, setDate] = useState(today)
+  const [slipNo, setSlipNo] = useState(defaultSlipNo)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    if (!date || !slipNo.trim()) { setError('Date and Slip No are required'); return }
+    setSaving(true); setError('')
+    const r = await onCreate(date, slipNo.trim())
+    setSaving(false)
+    if (!r.ok) setError(r.error || 'Failed to create')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Quick Create Finish Slip</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-xs">
+            <p className="text-gray-700 dark:text-gray-200">
+              <span className="font-bold">{selectedCount}</span> lot{selectedCount !== 1 ? 's' : ''} selected
+              <span className="text-gray-400 mx-1">·</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400">{selectedThan} than</span>
+            </p>
+            {parties.length > 0 && (
+              <p className="mt-1 text-gray-500 dark:text-gray-400 truncate">Parties: {parties.join(', ')}</p>
+            )}
+            <p className="mt-2 text-[10px] text-gray-500 dark:text-gray-400 italic">
+              No chemicals or mandi will be saved. You can edit those later from the slip register.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Date</span>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Finish Slip No</span>
+              <input type="number" value={slipNo} onChange={e => setSlipNo(e.target.value)} autoFocus
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+          </div>
+          {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose}
+            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving}
+            className="px-5 py-2 rounded-lg text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-bold disabled:opacity-50">
+            {saving ? 'Creating…' : 'Create Slip'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
