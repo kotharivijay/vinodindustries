@@ -6,9 +6,14 @@ import { authOptions } from '@/lib/auth'
 import { appendRowToSheet, greyEntryToSheetRow } from '@/lib/sheets'
 import { normalizeLotNo } from '@/lib/lot-no'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // `?includeZero=1` keeps fully-consumed carry-forward (OB) and RE-PRO lots
+  // in the response so the Grey Inward stock list can show 0-stock OB lots
+  // for audit. Current-year grey rows always show regardless.
+  const includeZero = req.nextUrl.searchParams.get('includeZero') === '1'
 
   // Despatched per lot — combine legacy single-lot DespatchEntry rows
   // (no children) with multi-lot DespatchEntryLot rows. Reading parent
@@ -72,7 +77,7 @@ export async function GET() {
       if (lotsWithGrey.has(ob.lotNo.toLowerCase())) continue
       const despThan = despatchMap.get(ob.lotNo.toLowerCase()) ?? 0
       const stock = ob.openingThan - despThan
-      if (stock <= 0) continue
+      if (!includeZero && stock <= 0) continue
       obOnlyLots.push({
         id: -ob.id, // negative id to distinguish from real entries
         sn: null,
@@ -110,7 +115,7 @@ export async function GET() {
     for (const r of repros) {
       const despThan = despatchMap.get(r.reproNo.toLowerCase()) ?? 0
       const stock = r.totalThan - despThan
-      if (stock <= 0) continue
+      if (!includeZero && stock <= 0) continue
       reproLots.push({
         id: -10000 - r.id,
         sn: null,

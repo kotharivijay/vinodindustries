@@ -72,10 +72,22 @@ function useDebounce(value: string, delay = 200) {
 
 export default function GreyListPage() {
   const router = useRouter()
-  const { data: entries = [], isLoading: loading, mutate } = useSWR<GreyEntry[]>('/api/grey', fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 30_000,
-  })
+  // `includeZero` keeps fully-consumed OB / RE-PRO lots in the Stock list so
+  // the operator can audit zero-stock carry-forward rows. Persisted to
+  // localStorage; off by default. SWR key depends on it so flipping refetches.
+  const [includeZero, setIncludeZero] = useState(false)
+  useEffect(() => {
+    try { setIncludeZero(localStorage.getItem('grey-include-zero') === '1') } catch {}
+  }, [])
+  useEffect(() => {
+    try { localStorage.setItem('grey-include-zero', includeZero ? '1' : '0') } catch {}
+  }, [includeZero])
+
+  const { data: entries = [], isLoading: loading, mutate } = useSWR<GreyEntry[]>(
+    includeZero ? '/api/grey?includeZero=1' : '/api/grey',
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 30_000 },
+  )
   type StageBreakdown = { fold: number; dye: number; finish: number; pack: number }
   const { data: stagesByLot = {} } = useSWR<Record<string, StageBreakdown>>('/api/grey/stages', fetcher, {
     revalidateOnFocus: false,
@@ -445,6 +457,16 @@ export default function GreyListPage() {
                 </button>
               ))}
             </div>
+            {/* Include zero-stock OB / RE-PRO lots — by default the API
+                trims them from the response, so the Cleared filter can't
+                surface fully-consumed carry-forward lots without this. */}
+            <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none ml-1"
+              title="Include OB / RE-PRO lots whose stock is already 0">
+              <input type="checkbox" checked={includeZero}
+                onChange={e => setIncludeZero(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700" />
+              <span className="text-gray-600 dark:text-gray-300 font-medium">Include 0-stock OB</span>
+            </label>
           </div>
 
           {/* Sort row */}
