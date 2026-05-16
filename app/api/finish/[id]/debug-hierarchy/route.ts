@@ -30,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const dyeingEntries = await db.dyeingEntry.findMany({
     where: { OR: [{ lotNo: { in: lotNos, mode: 'insensitive' } }, { lots: { some: { lotNo: { in: lotNos, mode: 'insensitive' } } } }] },
     select: {
-      slipNo: true, shadeName: true,
+      id: true, slipNo: true, shadeName: true,
       lots: { select: { lotNo: true, than: true } },
       foldBatch: { select: { foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
     },
@@ -38,8 +38,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   })
 
   const allocatedFolds = allocateFpToDyeingSlips(
-    lots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than) })),
+    lots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
     dyeingEntries.map((de: any) => ({
+      id: de.id,
       slipNo: de.slipNo,
       shadeName: de.shadeName ?? null,
       lots: de.lots,

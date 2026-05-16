@@ -76,6 +76,10 @@ interface FinishLot {
   party: string | null
   quality: string | null
   mtrPerThan: number | null
+  // dyeSlipNo / shade / foldNo resolved by /api/finish — if dyeingEntryId is
+  // present on this row, those fields point at that EXACT source slip; else
+  // they fall back to the lot-level heuristic.
+  dyeingEntryId: number | null
   dyeSlipNo: number | null
   shadeName: string | null
   shadeDesc: string | null
@@ -464,7 +468,7 @@ export default function FinishStockPage() {
   const [editDespSlipNo, setEditDespSlipNo] = useState('')
   const [editAdditions, setEditAdditions] = useState<FinishAdditionRow[]>([])
   const [editNotes, setEditNotes] = useState('')
-  const [editLots, setEditLots] = useState<{ lotNo: string; than: string; meter: string; slipThans?: { slipNo: number; than: string; shade: string }[] }[]>([])
+  const [editLots, setEditLots] = useState<{ lotNo: string; than: string; meter: string; slipThans?: { slipNo: number; than: string; shade: string }[]; dyeingEntryId?: number | null }[]>([])
   const [editChemicals, setEditChemicals] = useState<FinishChemicalRow[]>([])
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
@@ -523,24 +527,34 @@ export default function FinishStockPage() {
     })))
     setEditNotes(entry.notes ?? '')
     setEditLots(entry.lots.map(l => {
-      const dyeSlips = l.dyeSlips?.length
+      const savedThan = l.than ?? 0
+      // Prefer the exact dye-slip link when the FEL row has one. Each
+      // linked row contributes itself as a single slip-than (its full than).
+      // For legacy unlinked rows, fall back to the lot-level allDyes
+      // heuristic only when its sum still matches savedThan.
+      const directSlips = l.dyeingEntryId != null && l.dyeSlipNo != null
+        ? [{
+            slipNo: l.dyeSlipNo,
+            than: String(savedThan),
+            shade: [l.shadeName, l.shadeDesc].filter(Boolean).join(' — '),
+          }]
+        : []
+      const heuristicSlips = (!directSlips.length && l.dyeSlips?.length)
         ? l.dyeSlips.map((ds: any) => ({
             slipNo: ds.slipNo,
             than: String(ds.dyedThan || 0),
             shade: [ds.shadeName, ds.shadeDesc].filter(Boolean).join(' — '),
           }))
         : []
-      const savedThan = l.than ?? 0
-      const dyeSum = dyeSlips.reduce((s, st) => s + (parseInt(st.than) || 0), 0)
-      // Only show per-slip breakdown when it still matches the saved total.
-      // Otherwise the user has deliberately set a different value — trust the
-      // DB, hide the (now outdated) breakdown so it doesn't re-override on save.
-      const useBreakdown = dyeSlips.length > 0 && dyeSum === savedThan
+      const slips = directSlips.length ? directSlips : heuristicSlips
+      const slipSum = slips.reduce((s, st) => s + (parseInt(st.than) || 0), 0)
+      const useBreakdown = slips.length > 0 && (directSlips.length > 0 || slipSum === savedThan)
       return {
         lotNo: l.lotNo,
         than: String(savedThan),
         meter: l.meter != null ? String(l.meter) : '',
-        slipThans: useBreakdown ? dyeSlips : [],
+        slipThans: useBreakdown ? slips : [],
+        dyeingEntryId: l.dyeingEntryId,
       }
     }))
     setEditChemicals(entry.chemicals.map(c => ({
@@ -667,6 +681,9 @@ export default function FinishStockPage() {
         lotNo: l.lotNo.trim(),
         than: parseInt(l.than) || 0,
         meter: l.meter ? parseFloat(l.meter) : null,
+        // Carry the source-slip link through on save so edits don't strip it.
+        // PUT handler uses hasOwnProperty to distinguish "preserve" vs "set".
+        dyeingEntryId: l.dyeingEntryId ?? null,
       })),
       chemicals: editChemicals
         .filter(c => c.name.trim())

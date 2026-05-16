@@ -45,6 +45,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       ],
     },
     select: {
+      id: true,
       slipNo: true,
       shadeName: true,
       lots: { select: { lotNo: true, than: true } },
@@ -59,8 +60,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   })
 
   const foldGroups = allocateFpToDyeingSlips(
-    fpLots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than) })),
+    fpLots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
     dyeingEntries.map((de: any) => ({
+      id: de.id,
       slipNo: de.slipNo,
       shadeName: de.shadeName ?? null,
       lots: de.lots,

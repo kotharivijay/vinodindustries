@@ -13,6 +13,10 @@
  */
 
 interface DyeingEntryLike {
+  // Optional `id` — when supplied, FEL rows with a matching dyeingEntryId
+  // get allocated directly to this slip (the exact path). Without ids the
+  // allocator falls back to the old fit-by-than heuristic for everything.
+  id?: number
   slipNo: number
   shadeName: string | null
   lots: { lotNo: string; than: number }[]
@@ -36,21 +40,35 @@ export interface AllocatedFoldGroup {
 }
 
 export function allocateFpToDyeingSlips(
-  fpLots: { lotNo: string; than: number }[],
+  fpLots: { lotNo: string; than: number; dyeingEntryId?: number | null }[],
   dyeingEntries: DyeingEntryLike[],
 ): AllocatedFoldGroup[] {
   // Lowercase keying so case mismatches don't break the join
   const remaining = new Map<string, number>()
   const originalCasing = new Map<string, string>() // lotLc → lotNo (original)
+  // FELs with an explicit dyeingEntryId go straight to that slip's bucket;
+  // anything else is summed into `remaining` for the heuristic pass below.
+  // Without summing, multiple FELs sharing a lotNo would overwrite each
+  // other on Map.set — losing than (the FP-177 / PS-57 bug).
+  const directByEntry = new Map<number, Array<{ lotKey: string; than: number; original: string }>>()
   for (const fl of fpLots) {
     const k = fl.lotNo.toLowerCase()
-    remaining.set(k, Number(fl.than))
-    originalCasing.set(k, fl.lotNo)
+    const n = Number(fl.than) || 0
+    if (!originalCasing.has(k)) originalCasing.set(k, fl.lotNo)
+    if (fl.dyeingEntryId != null) {
+      let bucket = directByEntry.get(fl.dyeingEntryId)
+      if (!bucket) { bucket = []; directByEntry.set(fl.dyeingEntryId, bucket) }
+      bucket.push({ lotKey: k, than: n, original: fl.lotNo })
+    } else {
+      remaining.set(k, (remaining.get(k) ?? 0) + n)
+    }
   }
 
   // Sort dyeing entries newest → oldest. (Caller may have already sorted; do
   // it here defensively so this helper is safe to call directly.)
   const entries = [...dyeingEntries].sort((a, b) => b.slipNo - a.slipNo)
+  const entryById = new Map<number, DyeingEntryLike>()
+  for (const de of entries) if (de.id != null) entryById.set(de.id, de)
 
   // slipNo → { meta, lots: Map<lotLc → than allocated> }
   const allocs = new Map<number, {
@@ -65,6 +83,27 @@ export function allocateFpToDyeingSlips(
       foldNo: de.foldBatch?.foldProgram?.foldNo || 'No Fold',
       shadeName: de.shadeName || de.foldBatch?.shade?.name || null,
       shadeDesc: de.foldBatch?.shade?.description || null,
+    }
+  }
+
+  // Pass 0 — direct linkage. Each FEL that carries dyeingEntryId is
+  // allocated to that exact dye slip; no inference needed.
+  for (const [entryId, rows] of directByEntry) {
+    const de = entryById.get(entryId)
+    if (!de) {
+      // Linked dye entry isn't in the supplied list (rare — caller filtered
+      // it out). Fall back by stashing the than back into `remaining` so the
+      // heuristic still tries to place it somewhere visible.
+      for (const r of rows) remaining.set(r.lotKey, (remaining.get(r.lotKey) ?? 0) + r.than)
+      continue
+    }
+    let bucket = allocs.get(de.slipNo)
+    if (!bucket) {
+      bucket = { ...metaOf(de), lots: new Map() }
+      allocs.set(de.slipNo, bucket)
+    }
+    for (const r of rows) {
+      bucket.lots.set(r.lotKey, (bucket.lots.get(r.lotKey) ?? 0) + r.than)
     }
   }
 

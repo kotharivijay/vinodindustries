@@ -50,6 +50,7 @@ export async function GET() {
         ],
       },
       select: {
+        id: true,
         slipNo: true,
         shadeName: true,
         lots: { select: { lotNo: true, than: true } },
@@ -62,6 +63,17 @@ export async function GET() {
       },
     }).catch(() => []),
   ])
+
+  // Per-id index so an FEL row with dyeingEntryId can resolve its exact
+  // source slip's meta (slipNo / shade / fold) without the lot-level
+  // heuristic in dyeingByLot.
+  const dyeingById = new Map<number, { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }>()
+  for (const de of dyeingEntries) {
+    const foldNo = de.foldBatch?.foldProgram?.foldNo || null
+    const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
+    const shadeDesc = de.foldBatch?.shade?.description || null
+    dyeingById.set(de.id, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
+  }
 
   // Index dyeing entries by lotNo so we can quickly pick the relevant subset
   // for each FP's allocator pass below.
@@ -89,11 +101,15 @@ export async function GET() {
     const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than, doneThan: 0, status: 'pending' }]
     const partyNames = [...new Set(lots.map((l: any) => lotInfoMap.get(l.lotNo.toLowerCase().trim())?.party).filter(Boolean))]
 
-    // Enrich each lot with party, quality, dyeing info
+    // Enrich each lot with party, quality, dyeing info. When the FEL row
+    // carries a dyeingEntryId, prefer that EXACT slip's meta over the
+    // lot-level heuristic — so multiple FELs sharing a lotNo can each show
+    // their own source slip (was the FP-177 / PS-57 ×4 display bug).
     const enrichedLots = lots.map((l: any) => {
       const lotKey = l.lotNo.toLowerCase().trim()
       const info = lotInfoMap.get(lotKey)
-      const dye = dyeingByLot.get(lotKey)
+      const direct = l.dyeingEntryId != null ? dyeingById.get(l.dyeingEntryId) : null
+      const dye = direct || dyeingByLot.get(lotKey)
       const allDyes = dyeingAllByLot.get(lotKey) || []
       return {
         ...l,
@@ -128,8 +144,9 @@ export async function GET() {
       }
     }
     const allocations = allocateFpToDyeingSlips(
-      lots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than) })),
+      lots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
       relevantDyeings.map((de: any) => ({
+        id: de.id,
         slipNo: de.slipNo,
         shadeName: de.shadeName ?? null,
         lots: de.lots,
