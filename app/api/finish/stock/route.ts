@@ -33,8 +33,10 @@ export async function GET() {
       },
       orderBy: { dyeingDoneAt: 'desc' },
     }),
+    // Two pieces per finish-lot row: how much was finished, and whether the
+    // user explicitly bound it to a source dye slip (dyeingEntryId).
     db.finishEntryLot.findMany({
-      select: { lotNo: true, than: true },
+      select: { lotNo: true, than: true, dyeingEntryId: true },
     }),
   ])
 
@@ -46,15 +48,58 @@ export async function GET() {
   }
 
   const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
-  const finishedThanMap = new Map<string, number>()
+
+  // Two finish-lot maps:
+  //  • directMap — Pass 1: exact (dyeSlipId, lotNo) → finishedThan. Set when
+  //    the user picked specific slips for the finish entry.
+  //  • unlinkedMap — Pass 2 / legacy: lotNo → finishedThan summed across all
+  //    FELs with NULL dyeingEntryId. Deducted FIFO across remaining slips.
+  const directMap = new Map<string, number>()
+  const unlinkedMap = new Map<string, number>()
   for (const fl of finishLots) {
     const key = fl.lotNo.toLowerCase().trim()
-    finishedThanMap.set(key, (finishedThanMap.get(key) || 0) + fl.than)
+    if (fl.dyeingEntryId != null) {
+      const dk = `${fl.dyeingEntryId}|${key}`
+      directMap.set(dk, (directMap.get(dk) || 0) + fl.than)
+    } else {
+      unlinkedMap.set(key, (unlinkedMap.get(key) || 0) + fl.than)
+    }
   }
 
-  // Build stock list, deducting finished than (FIFO across slips)
+  // Pre-compute remaining-than for each (slipId, lotKey) in two passes.
+  // Pass 2 runs in oldest-first order so the FIFO heuristic credits older
+  // dye slips first — newest slips stay visible until their consumption is
+  // explicit. We keep display order (desc) untouched.
+  const remainingMap = new Map<string, number>()
+  const deductedUnlinked = new Map<string, number>()
+  const slipsAsc = [...doneSlips].sort((a: any, b: any) => {
+    const ta = new Date(a.dyeingDoneAt).getTime()
+    const tb = new Date(b.dyeingDoneAt).getTime()
+    if (ta !== tb) return ta - tb
+    return a.id - b.id
+  })
+  for (const d of slipsAsc) {
+    const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
+    for (const l of lots) {
+      const key = l.lotNo.toLowerCase().trim()
+      // Pass 1 — exact deduction from this slip
+      const direct = Math.min(l.than, directMap.get(`${d.id}|${key}`) || 0)
+      let remaining = l.than - direct
+      // Pass 2 — FIFO across the lot's unlinked finish total
+      if (remaining > 0) {
+        const unlinkedTotal = unlinkedMap.get(key) || 0
+        const alreadyDeducted = deductedUnlinked.get(key) || 0
+        const stillToDeduct = Math.max(0, unlinkedTotal - alreadyDeducted)
+        const fifoDeduct = Math.min(remaining, stillToDeduct)
+        deductedUnlinked.set(key, alreadyDeducted + fifoDeduct)
+        remaining -= fifoDeduct
+      }
+      remainingMap.set(`${d.id}|${key}`, remaining)
+    }
+  }
+
+  // Now build display list in the original desc order using precomputed remaining.
   const stock: any[] = []
-  const deductedMap = new Map<string, number>()
   for (const d of doneSlips) {
     const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
     const lotInfo = lotInfoMap.get((lots[0]?.lotNo || d.lotNo).toLowerCase().trim())
@@ -67,18 +112,11 @@ export async function GET() {
     const pcJobParty = d.isPcJob ? 'PC Job' : null
     const pcJobQuality = d.isPcJob ? (shadeName || 'PC Job') : null
 
-    // Deduct finished than per lot (FIFO: deduct from oldest slips first)
     const adjustedLots: any[] = []
     for (const l of lots) {
       const key = l.lotNo.toLowerCase().trim()
-      const totalFinished = finishedThanMap.get(key) || 0
-      // Track how much already deducted from previous slips
-      if (!deductedMap.has(key)) deductedMap.set(key, 0)
-      const alreadyDeducted = deductedMap.get(key)!
-      const remainingToDeduct = Math.max(0, totalFinished - alreadyDeducted)
-      const deductFromThis = Math.min(l.than, remainingToDeduct)
-      deductedMap.set(key, alreadyDeducted + deductFromThis)
-      const remaining = l.than - deductFromThis
+      const remaining = remainingMap.get(`${d.id}|${key}`) ?? l.than
+      const deductFromThis = l.than - remaining
       if (remaining > 0) {
         const li = lotInfoMap.get(key)
         adjustedLots.push({
@@ -127,11 +165,13 @@ export async function GET() {
     for (const alloc of obDyed) {
       const b = alloc.balance
       const key = b.lotNo.toLowerCase().trim()
-      const totalFinished = finishedThanMap.get(key) || 0
-      const alreadyDeducted = deductedMap.get(key) || 0
+      // OB allocations share the unlinked-finish FIFO pool with legacy dye
+      // slips — any finish than left after the dye-slip pass spills here.
+      const totalFinished = unlinkedMap.get(key) || 0
+      const alreadyDeducted = deductedUnlinked.get(key) || 0
       const remainingToDeduct = Math.max(0, totalFinished - alreadyDeducted)
       const deductFromThis = Math.min(alloc.than, remainingToDeduct)
-      deductedMap.set(key, alreadyDeducted + deductFromThis)
+      deductedUnlinked.set(key, alreadyDeducted + deductFromThis)
       const remaining = alloc.than - deductFromThis
       if (remaining <= 0) continue
 
@@ -206,11 +246,12 @@ export async function GET() {
       }
     }
     for (const [key, info] of grouped) {
-      const totalFinished = finishedThanMap.get(key) || 0
-      const alreadyDeducted = deductedMap.get(key) || 0
+      // startStage='finish' rows share the unlinked-finish FIFO pool too.
+      const totalFinished = unlinkedMap.get(key) || 0
+      const alreadyDeducted = deductedUnlinked.get(key) || 0
       const remainingToDeduct = Math.max(0, totalFinished - alreadyDeducted)
       const deductFromThis = Math.min(info.totalThan, remainingToDeduct)
-      deductedMap.set(key, alreadyDeducted + deductFromThis)
+      deductedUnlinked.set(key, alreadyDeducted + deductFromThis)
       const remaining = info.totalThan - deductFromThis
       if (remaining <= 0) continue
 

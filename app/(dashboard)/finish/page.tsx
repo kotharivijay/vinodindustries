@@ -193,6 +193,11 @@ interface SelectedLot {
   quality: string
   shade: string
   slipNo: number
+  // DyeingEntry.id of the source slip. null for synthetic stock rows
+  // (OB allocations, startStage='finish' rows) where there's no DyeingEntry
+  // to link back to — those continue to use the FIFO heuristic in the stock
+  // route. Positive id → exact link is stored on the FinishEntryLot.
+  dyeingEntryId: number | null
 }
 
 /* ── Packing stock types ──────────────────────────────────────────── */
@@ -844,6 +849,9 @@ export default function FinishStockPage() {
   const allReportLots = useMemo(() => {
     const lots: SelectedLot[] = []
     for (const e of entries) {
+      // Synthetic stock rows use negative ids (OB allocations, startStage
+      // injections). Only real DyeingEntry ids can be stored on FinishEntryLot.
+      const dyeId = e.id > 0 ? e.id : null
       for (const l of e.lots) {
         lots.push({
           lotNo: l.lotNo,
@@ -852,6 +860,7 @@ export default function FinishStockPage() {
           quality: l.quality ?? 'Unknown',
           shade: shadeDisplay(e.shadeName, e.shadeDescription) ?? '',
           slipNo: e.slipNo,
+          dyeingEntryId: dyeId,
         })
       }
     }
@@ -916,6 +925,7 @@ export default function FinishStockPage() {
 
   // Selecting / unselecting a whole dyeing slip = all its lots in selectedLots.
   const toggleSlipSelection = useCallback((entry: StockEntry) => {
+    const dyeId = entry.id > 0 ? entry.id : null
     const slipLots: SelectedLot[] = entry.lots.map(l => ({
       lotNo: l.lotNo,
       than: l.than,
@@ -923,6 +933,7 @@ export default function FinishStockPage() {
       quality: l.quality ?? 'Unknown',
       shade: shadeDisplay(entry.shadeName, entry.shadeDescription) ?? '',
       slipNo: entry.slipNo,
+      dyeingEntryId: dyeId,
     }))
     setSelectedLots(prev => {
       const next = new Map(prev)
@@ -1208,21 +1219,26 @@ export default function FinishStockPage() {
     setFinishSaving(true)
     setFinishError('')
 
-    // Group selected lots by lotNo and sum than (with overrides)
-    const lotMap = new Map<string, { lotNo: string; than: number }>()
-    for (const l of selectedLots.values()) {
+    // One marka row per selected (slip × lot) so each FinishEntryLot can
+    // carry its source dyeingEntryId — the stock route uses this for exact
+    // per-slip deduction instead of falling back to lot-level FIFO. When two
+    // selected rows share the same lotNo (different dye slips), only the
+    // first keeps the user-entered meter so totalMeter doesn't double-count.
+    const seenLotForMeter = new Set<string>()
+    const marka = Array.from(selectedLots.values()).map(l => {
       const overrideKey = `${l.slipNo}::${l.lotNo}`
       const overrideThan = finishThanOverrides[overrideKey] ? parseInt(finishThanOverrides[overrideKey]) : l.than
-      const existing = lotMap.get(l.lotNo)
-      if (existing) existing.than += overrideThan
-      else lotMap.set(l.lotNo, { lotNo: l.lotNo, than: overrideThan })
-    }
-    const lots = Array.from(lotMap.values())
-    const marka = lots.map(l => ({
-      lotNo: l.lotNo.trim(),
-      than: l.than,
-      meter: finishMeters[l.lotNo] ? parseFloat(finishMeters[l.lotNo]) : null,
-    }))
+      const lotMeter = finishMeters[l.lotNo] ? parseFloat(finishMeters[l.lotNo]) : null
+      const useMeter = !seenLotForMeter.has(l.lotNo)
+      seenLotForMeter.add(l.lotNo)
+      return {
+        lotNo: l.lotNo.trim(),
+        than: overrideThan,
+        meter: useMeter ? lotMeter : null,
+        dyeingEntryId: l.dyeingEntryId,
+      }
+    })
+    const lots = marka
 
     const autoMeter = marka.reduce((s, l) => s + (l.meter || 0), 0)
     const totalMeter = finishTotalMeterOverride ? parseFloat(finishTotalMeterOverride) : autoMeter
@@ -1290,6 +1306,7 @@ export default function FinishStockPage() {
       lotNo: l.lotNo.trim(),
       than: l.than,
       meter: null,
+      dyeingEntryId: l.dyeingEntryId,
     }))
     try {
       const res = await fetch('/api/finish', {
@@ -3044,6 +3061,7 @@ export default function FinishStockPage() {
                                                           quality: qg.quality,
                                                           shade: shade ?? '',
                                                           slipNo: slip.slipNo,
+                                                          dyeingEntryId: slip.id > 0 ? slip.id : null,
                                                         }
                                                         const isSelected = selectedLots.has(lotKey(lotData))
                                                         return (
@@ -3114,6 +3132,7 @@ export default function FinishStockPage() {
                               quality: l.quality ?? 'Unknown',
                               shade: shadeDisplay(s.shadeName, s.shadeDescription) ?? '',
                               slipNo: s.slipNo,
+                              dyeingEntryId: s.id > 0 ? s.id : null,
                             })
                           }
                           return next

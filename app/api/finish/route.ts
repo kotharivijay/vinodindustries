@@ -169,8 +169,16 @@ export async function POST(req: NextRequest) {
   }
 
   const lots = data.marka?.length
-    ? data.marka.map((m: any) => ({ lotNo: normalizeLotNo(m.lotNo) ?? '', than: parseInt(m.than) || 0, meter: m.meter != null ? parseFloat(m.meter) : null }))
-    : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: data.meter != null ? parseFloat(data.meter) : null }]
+    ? data.marka.map((m: any) => ({
+        lotNo: normalizeLotNo(m.lotNo) ?? '',
+        than: parseInt(m.than) || 0,
+        meter: m.meter != null ? parseFloat(m.meter) : null,
+        // dyeingEntryId — when the client picked specific dye slips for this
+        // finish (slip-wise view), record the source so the stock route can
+        // deduct exactly instead of falling back to the FIFO heuristic.
+        dyeingEntryId: m.dyeingEntryId != null ? parseInt(m.dyeingEntryId) || null : null,
+      }))
+    : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: data.meter != null ? parseFloat(data.meter) : null, dyeingEntryId: null }]
 
   const chemData = data.chemicals?.length
     ? data.chemicals.map((c: any) => ({

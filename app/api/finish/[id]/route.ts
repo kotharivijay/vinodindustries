@@ -36,8 +36,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const entryId = parseInt(id)
   const db = prisma as any
 
+  // Only carry dyeingEntryId through when the client explicitly supplies it
+  // (preserve existing link when the edit form omits the field).
   const lots = data.lots?.length
-    ? data.lots.map((m: any) => ({ lotNo: normalizeLotNo(m.lotNo) ?? '', than: parseInt(m.than) || 0, meter: m.meter != null ? parseFloat(m.meter) : null }))
+    ? data.lots.map((m: any) => {
+        const base: any = {
+          lotNo: normalizeLotNo(m.lotNo) ?? '',
+          than: parseInt(m.than) || 0,
+          meter: m.meter != null ? parseFloat(m.meter) : null,
+        }
+        if (Object.prototype.hasOwnProperty.call(m, 'dyeingEntryId')) {
+          base.dyeingEntryId = m.dyeingEntryId != null ? (parseInt(m.dyeingEntryId) || null) : null
+        }
+        return base
+      })
     : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: null }]
 
   try {
@@ -75,13 +87,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       incomingKeys.add(key)
       const match = existingByLot.get(key)
       if (match) {
-        await db.finishEntryLot.update({
-          where: { id: match.id },
-          data: { lotNo: l.lotNo, than: l.than, meter: l.meter },
-        })
+        // Only overwrite dyeingEntryId when the client explicitly supplies it
+        // (typed undefined → preserve whatever's stored).
+        const updateData: any = { lotNo: l.lotNo, than: l.than, meter: l.meter }
+        if (l.dyeingEntryId !== undefined) updateData.dyeingEntryId = l.dyeingEntryId
+        await db.finishEntryLot.update({ where: { id: match.id }, data: updateData })
       } else {
         await db.finishEntryLot.create({
-          data: { entryId, lotNo: l.lotNo, than: l.than, meter: l.meter },
+          data: { entryId, lotNo: l.lotNo, than: l.than, meter: l.meter, dyeingEntryId: l.dyeingEntryId ?? null },
         })
       }
     }

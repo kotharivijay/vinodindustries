@@ -184,6 +184,7 @@ model DyeingEntry {
   chemicals         DyeingSlipChemical[]
   lots              DyeingEntryLot[]
   additions         DyeingAddition[]
+  finishUses        FinishEntryLot[]     // back-relation for FinishEntryLot.dyeingEntry
 }
 
 model DyeingEntryLot {
@@ -397,7 +398,14 @@ model FinishEntryLot {
   meter           Float?
   doneThan        Int              @default(0)
   status          String           @default("pending") // pending | partial | done
+  // Source dye slip this finish allocation drew from. When set, the stock
+  // route deducts directly from that specific DyeingEntry instead of
+  // applying the lot-level FIFO heuristic. Nullable for legacy rows.
+  dyeingEntryId   Int?
+  dyeingEntry     DyeingEntry?     @relation(fields: [dyeingEntryId], references: [id], onDelete: SetNull)
   foldingReceipts FoldingReceipt[]
+
+  @@index([dyeingEntryId])
 }
 
 model FoldingReceipt {
