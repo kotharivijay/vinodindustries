@@ -21,6 +21,9 @@ interface DyeingEntryLike {
   shadeName: string | null
   lots: { lotNo: string; than: number }[]
   foldBatch: {
+    // Per-batch description overrides the master so generic recipes (Hitset
+    // / APC) can carry a per-batch descriptor without touching the master.
+    shadeDescription?: string | null
     foldProgram?: { foldNo: string | null } | null
     shade?: { name: string | null; description: string | null } | null
   } | null
@@ -89,7 +92,8 @@ export function allocateFpToDyeingSlips(
     return {
       foldNo: de.foldBatch?.foldProgram?.foldNo || 'No Fold',
       shadeName: de.shadeName || de.foldBatch?.shade?.name || null,
-      shadeDesc: de.foldBatch?.shade?.description || null,
+      // Per-batch wins so Hitset / APC can carry "Red", "Rani", etc.
+      shadeDesc: de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null,
     }
   }
 

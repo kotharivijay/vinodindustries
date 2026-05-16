@@ -29,7 +29,7 @@ export async function GET() {
         machine: { select: { name: true } },
         operator: { select: { name: true } },
         lots: { select: { lotNo: true, than: true } },
-        foldBatch: { select: { batchNo: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
+        foldBatch: { select: { batchNo: true, shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
       },
       orderBy: { dyeingDoneAt: 'desc' },
     }),
@@ -104,7 +104,9 @@ export async function GET() {
     const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
     const lotInfo = lotInfoMap.get((lots[0]?.lotNo || d.lotNo).toLowerCase().trim())
     const shadeName = d.shadeName || d.foldBatch?.shade?.name || null
-    const shadeDesc = d.foldBatch?.shade?.description || null
+    // Per-batch description wins so generic recipes (Hitset / APC) can carry
+    // a per-batch descriptor ("Red", "Rani") without overwriting the master.
+    const shadeDesc = d.foldBatch?.shadeDescription || d.foldBatch?.shade?.description || null
 
     // Piece-color jobs use the customer/owner name as the lotNo and don't
     // have grey/OB records — without explicit handling they fall through to

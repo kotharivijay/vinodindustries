@@ -56,6 +56,7 @@ export async function GET() {
         lots: { select: { lotNo: true, than: true } },
         foldBatch: {
           select: {
+            shadeDescription: true,
             foldProgram: { select: { foldNo: true } },
             shade: { select: { name: true, description: true } },
           },
@@ -71,7 +72,9 @@ export async function GET() {
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
-    const shadeDesc = de.foldBatch?.shade?.description || null
+    // Per-batch shadeDescription wins over the master so generic recipes
+    // (Hitset / APC) can carry a per-batch descriptor.
+    const shadeDesc = de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
     dyeingById.set(de.id, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
   }
 
@@ -81,7 +84,9 @@ export async function GET() {
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
-    const shadeDesc = de.foldBatch?.shade?.description || null
+    // Per-batch shadeDescription wins over the master so generic recipes
+    // (Hitset / APC) can carry a per-batch descriptor.
+    const shadeDesc = de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
     const dLots = de.lots?.length ? de.lots : []
     for (const lot of dLots) {
       // Normalized key: DyeingEntryLot.lotNo casing can differ from

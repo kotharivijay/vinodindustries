@@ -51,6 +51,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       lots: { select: { lotNo: true, than: true } },
       foldBatch: {
         select: {
+          shadeDescription: true,
           foldProgram: { select: { foldNo: true } },
           shade: { select: { name: true, description: true } },
         },

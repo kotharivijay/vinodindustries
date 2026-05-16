@@ -32,7 +32,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     select: {
       id: true, slipNo: true, shadeName: true,
       lots: { select: { lotNo: true, than: true } },
-      foldBatch: { select: { foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
+      foldBatch: { select: { shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
     },
     orderBy: { slipNo: 'desc' },
   })
