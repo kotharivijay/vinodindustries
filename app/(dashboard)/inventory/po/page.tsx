@@ -136,18 +136,22 @@ export default function POListPage() {
                   <div className="absolute z-30 top-full mt-1 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-56 overflow-y-auto">
                     {filteredLedgers.map(l => (
                       <button key={l.id} type="button" onClick={() => pickLedger(l)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between gap-2">
-                        <span className="flex flex-col min-w-0">
-                          <span className="truncate">{l.name}</span>
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-start justify-between gap-2">
+                        {/* min-w-0 + flex-1 lets the text column actually shrink so
+                            `truncate` works and the tag pills don't end up stacked
+                            on top of the ledger name. <div> instead of <span> so the
+                            flex container behaves as a block. */}
+                        <div className="flex-1 min-w-0">
+                          <div className="truncate text-gray-800 dark:text-gray-100">{l.name}</div>
                           {l.tags?.length > 0 && (
-                            <span className="flex flex-wrap gap-1 mt-0.5">
+                            <div className="flex flex-wrap gap-1 mt-0.5">
                               {l.tags.map(t => (
                                 <span key={t} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1 py-0.5 rounded">{t}</span>
                               ))}
-                            </span>
+                            </div>
                           )}
-                        </span>
-                        {l.parent && <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{l.parent}</span>}
+                        </div>
+                        {l.parent && <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0 whitespace-nowrap">{l.parent}</span>}
                       </button>
                     ))}
                   </div>
