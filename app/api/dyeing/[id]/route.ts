@@ -19,6 +19,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         lots: true,
         machine: true,
         operator: true,
+        // foldBatch — needed so the dyeing slip view can render the
+        // per-batch shade descriptor (Hitset / APC → "Red", "Rani").
+        // Without this the UI falls back to entry.shadeName only.
+        foldBatch: {
+          select: {
+            batchNo: true,
+            shadeDescription: true,
+            foldProgram: { select: { foldNo: true } },
+            shade: { select: { name: true, description: true } },
+          },
+        },
         additions: {
           include: { chemicals: { include: { chemical: true } }, machine: true, operator: true },
           orderBy: { roundNo: 'asc' },
