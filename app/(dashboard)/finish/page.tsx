@@ -2192,45 +2192,55 @@ export default function FinishStockPage() {
                   // for RE-PRO lots that span 5–7 dyeing programs) — the old
                   // grouping pinned each lot to one foldNo and hid the rest.
                   const partyMap = new Map<string, Map<string, FinishLot[]>>()
-                  const lotByName = new Map<string, FinishLot>()
-                  for (const lot of entry.lots) lotByName.set(lot.lotNo, lot)
-                  const seenInAllocator = new Set<string>() // `${lotNo}|${foldNo}`
+                  // Index FELs by id (precise) and by lotNo (array — one FP can
+                  // now hold multiple FELs of the same lotNo since each links
+                  // to its own dye slip). Both indexes are needed:
+                  //   • allocator rows with fpLotId resolve via id (exact FEL).
+                  //   • heuristic rows fall back to the lotNo bucket.
+                  const lotById = new Map<number, FinishLot>()
+                  const lotsByName = new Map<string, FinishLot[]>()
+                  for (const lot of entry.lots) {
+                    lotById.set(lot.id, lot)
+                    if (!lotsByName.has(lot.lotNo)) lotsByName.set(lot.lotNo, [])
+                    lotsByName.get(lot.lotNo)!.push(lot)
+                  }
+                  // Track which FELs are placed by the allocator, so the orphan
+                  // pass below can pick up only the ones it missed (e.g. OB-
+                  // sourced rows). Dedup of per-cell list is by FEL id, not
+                  // lotNo — multiple same-lotNo FELs must all render.
+                  const placedFelIds = new Set<number>()
+                  const cellSeenFelIds = new Map<string, Set<number>>() // `${party}|${fold}` → Set<id>
+                  function pushToCell(p: string, f: string, fel: FinishLot) {
+                    if (!partyMap.has(p)) partyMap.set(p, new Map())
+                    const fMap = partyMap.get(p)!
+                    if (!fMap.has(f)) fMap.set(f, [])
+                    const key = `${p}|${f}`
+                    if (!cellSeenFelIds.has(key)) cellSeenFelIds.set(key, new Set())
+                    const seen = cellSeenFelIds.get(key)!
+                    if (seen.has(fel.id)) return
+                    seen.add(fel.id)
+                    fMap.get(f)!.push(fel)
+                  }
                   for (const fg of (entry as any).allocations ?? []) {
+                    const f = fg.foldNo || 'No Fold'
                     for (const slip of fg.slips ?? []) {
                       for (const al of slip.lots ?? []) {
-                        const fpLot = lotByName.get(al.lotNo)
-                        if (!fpLot) continue
-                        const p = fpLot.party || 'Unknown'
-                        const f = fg.foldNo || 'No Fold'
-                        if (!partyMap.has(p)) partyMap.set(p, new Map())
-                        const fMap = partyMap.get(p)!
-                        if (!fMap.has(f)) {
-                          fMap.set(f, [])
-                          // Push the fpLot once per (party,fold) cell so the inner
-                          // lookup (lotById) finds it. Multiple slips inside the
-                          // same fold all reference the same fpLot for status.
-                          fMap.get(f)!.push(fpLot)
-                          seenInAllocator.add(`${al.lotNo}|${f}`)
-                        } else if (!seenInAllocator.has(`${al.lotNo}|${f}`)) {
-                          fMap.get(f)!.push(fpLot)
-                          seenInAllocator.add(`${al.lotNo}|${f}`)
+                        // Resolve to the exact FEL when the allocator linked
+                        // by id; else fall through to every same-lotNo FEL so
+                        // the cell sees them all (was a single-FEL lookup).
+                        const directFel = al.fpLotId != null ? lotById.get(al.fpLotId) : null
+                        const fels = directFel ? [directFel] : (lotsByName.get(al.lotNo) || [])
+                        for (const fel of fels) {
+                          pushToCell(fel.party || 'Unknown', f, fel)
+                          placedFelIds.add(fel.id)
                         }
                       }
                     }
                   }
-                  // Orphan FP lots — no dyeing slip claimed them (e.g. came in
-                  // via OB or startStage='finish'). Place them under their
-                  // FP-recorded (party, foldNo) so they remain visible.
-                  const allocLotNos = new Set<string>()
-                  for (const fm of partyMap.values()) for (const arr of fm.values()) for (const l of arr) allocLotNos.add(l.lotNo)
+                  // Orphan FP lots — no dyeing slip claimed them (OB, etc).
                   for (const lot of entry.lots) {
-                    if (allocLotNos.has(lot.lotNo)) continue
-                    const p = lot.party || 'Unknown'
-                    const f = lot.foldNo || 'No Fold'
-                    if (!partyMap.has(p)) partyMap.set(p, new Map())
-                    const fMap = partyMap.get(p)!
-                    if (!fMap.has(f)) fMap.set(f, [])
-                    fMap.get(f)!.push(lot)
+                    if (placedFelIds.has(lot.id)) continue
+                    pushToCell(lot.party || 'Unknown', lot.foldNo || 'No Fold', lot)
                   }
 
                   return (
