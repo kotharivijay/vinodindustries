@@ -43,7 +43,9 @@ interface Entry {
   foldBatch?: {
     batchNo: number
     foldProgram?: { foldNo: string }
-    shade?: { name: string }
+    shade?: { name: string; description?: string | null }
+    // Per-batch descriptor — wins over shade.description (Hitset / APC).
+    shadeDescription?: string | null
   } | null
   status?: string
   totalRounds?: number
@@ -68,10 +70,15 @@ export default function DyeingDetailView({ id }: { id: string }) {
     setSharing(true)
     try {
       const slipLots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo, than: entry.than }]
+      // Combine shade name + per-batch descriptor (Hitset / APC use-case)
+      // into a single label for the shared PDF.
+      const baseName = entry.shadeName ?? entry.foldBatch?.shade?.name ?? null
+      const desc = entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+      const combinedShade = baseName ? (desc ? `${baseName} — ${desc}` : baseName) : null
       const slip: SlipData = {
         slipNo: entry.slipNo,
         date: entry.date,
-        shadeName: entry.shadeName ?? entry.foldBatch?.shade?.name ?? null,
+        shadeName: combinedShade,
         lots: slipLots.map(l => ({ lotNo: l.lotNo, than: l.than })),
         chemicals: (entry.chemicals || []).map(c => ({
           name: c.name,
@@ -140,12 +147,20 @@ export default function DyeingDetailView({ id }: { id: string }) {
             <p className="text-xs text-gray-400">Slip No</p>
             <p className="font-medium text-gray-800 dark:text-gray-100">{entry.slipNo}</p>
           </div>
-          {entry.shadeName && (
-            <div>
-              <p className="text-xs text-gray-400">Shade</p>
-              <p className="font-medium text-gray-800 dark:text-gray-100">{entry.shadeName}</p>
-            </div>
-          )}
+          {(entry.shadeName || entry.foldBatch?.shade?.name) && (() => {
+            const name = entry.shadeName || entry.foldBatch?.shade?.name || ''
+            // Per-batch shadeDescription overrides the master so Hitset / APC
+            // can carry a per-batch descriptor (Red, Rani, …).
+            const desc = entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+            return (
+              <div>
+                <p className="text-xs text-gray-400">Shade</p>
+                <p className="font-medium text-gray-800 dark:text-gray-100">
+                  {name}{desc ? <span className="text-gray-500 dark:text-gray-400"> — {desc}</span> : null}
+                </p>
+              </div>
+            )
+          })()}
           {entry.foldBatch && (
             <div>
               <p className="text-xs text-gray-400">Fold / Batch</p>

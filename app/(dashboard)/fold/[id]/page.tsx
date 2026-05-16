@@ -116,7 +116,10 @@ interface FoldBatch {
   id: number
   batchNo: number
   shadeName?: string
-  shade?: { id: number; name: string }
+  // Per-batch descriptor (the user-typed string for generic recipes like
+  // Hitset / APC — "Red", "Rani"). Free text; saved on the batch row itself.
+  shadeDescription?: string | null
+  shade?: { id: number; name: string; description?: string | null }
   lots: FoldBatchLot[]
   dyeingEntries?: DyeingRef[]
   cancelled?: boolean
@@ -132,6 +135,73 @@ interface FoldProgram {
   notes?: string
   isPali?: boolean
   batches: FoldBatch[]
+}
+
+// ── Inline shade-description editor ───────────────────────────────────────
+// Per-batch descriptor (Hitset → "Red", APC → "Rani"). Click the chip to
+// edit inline; auto-saves on blur or Enter. Tooltip hints when the parent
+// shade has its own description (which the per-batch value overrides).
+function ShadeDescInput({ batch, onSave }: {
+  batch: FoldBatch
+  onSave: (batchId: number, value: string | null) => Promise<void>
+}) {
+  const stored = batch.shadeDescription ?? ''
+  const masterDesc = batch.shade?.description ?? ''
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(stored)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { setDraft(stored) }, [stored])
+
+  async function commit() {
+    setEditing(false)
+    if (draft.trim() === stored.trim()) return
+    setSaving(true)
+    try {
+      await onSave(batch.id, draft.trim() || null)
+    } finally { setSaving(false) }
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="text"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          else if (e.key === 'Escape') { setDraft(stored); setEditing(false) }
+        }}
+        placeholder={masterDesc || 'Red, Rani, Navy…'}
+        disabled={saving}
+        className="text-xs px-2 py-0.5 rounded border border-indigo-400 dark:border-indigo-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 max-w-[160px]"
+      />
+    )
+  }
+  // Show stored value, fall back to master description, else "+ desc" prompt.
+  const display = stored || (masterDesc ? masterDesc : null)
+  return (
+    <button
+      type="button"
+      onClick={() => { setDraft(stored); setEditing(true) }}
+      title={stored
+        ? (masterDesc ? `Per-batch override — master is "${masterDesc}"` : 'Per-batch description')
+        : (masterDesc ? `Click to override master ("${masterDesc}") for this batch` : 'Add a per-batch shade description (e.g. Red, Rani)')}
+      className={`text-[11px] px-2 py-0.5 rounded-full border transition flex items-center gap-1 ${
+        saving ? 'opacity-50' : 'hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300'
+      } ${stored
+        ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 font-semibold'
+        : display
+          ? 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 italic'
+          : 'bg-indigo-50 dark:bg-indigo-900/20 border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-500 dark:text-indigo-400'
+      }`}
+      disabled={saving}
+    >
+      {saving ? '...' : (display ?? '+ desc')}
+      <span className="text-gray-400 dark:text-gray-500 text-[9px]">✏️</span>
+    </button>
+  )
 }
 
 // ── Inline shade picker ────────────────────────────────────────────────────
@@ -312,6 +382,17 @@ export default function FoldDetailPage() {
     })
     mutate()
     mutateStock()
+  }
+
+  async function updateBatchShadeDescription(batchId: number, shadeDescription: string | null) {
+    // PATCH only `shadeDescription` — the API preserves shadeId / shadeName
+    // because they aren't in the body. No revalidate of stock needed.
+    await fetch('/api/fold/batch', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ batchId, shadeDescription }),
+    })
+    mutate()
   }
 
   async function updateBatchShade(batchId: number, shadeId: number | null, shadeName: string | null, shadeDescription: string | null) {
@@ -554,8 +635,14 @@ export default function FoldDetailPage() {
                     </span>
                   )}
                   {!isCancelled && <ShadePicker batch={batch} shades={shades} onSave={updateBatchShade} />}
+                  {!isCancelled && (batch.shade?.id || batch.shadeName) && (
+                    <ShadeDescInput batch={batch} onSave={updateBatchShadeDescription} />
+                  )}
                   {isCancelled && (batch.shade?.name || batch.shadeName) && (
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500 line-through">{batch.shade?.name || batch.shadeName}</span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 line-through">
+                      {batch.shade?.name || batch.shadeName}
+                      {batch.shadeDescription ? ` — ${batch.shadeDescription}` : ''}
+                    </span>
                   )}
                   {dyed && dyeEntry && (
                     <a href={`/dyeing/${dyeEntry.id}`} className="text-[9px] px-1.5 py-0.5 rounded font-medium bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 hover:underline">

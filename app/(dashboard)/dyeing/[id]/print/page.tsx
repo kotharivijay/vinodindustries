@@ -18,6 +18,9 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
       lots: true,
       machine: true,
       operator: true,
+      // Need foldBatch.shadeDescription so generic recipes (Hitset / APC)
+      // print with the per-batch descriptor instead of the master text.
+      foldBatch: { select: { shadeDescription: true, shade: { select: { name: true, description: true } } } },
       additions: {
         include: {
           chemicals: { include: { chemical: true } },
@@ -48,9 +51,11 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
   }
   const entryMarka = entry.marka || lotInfos.find(li => li.marka)?.marka || null
 
-  // Get shade description
-  let shadeDescription: string | null = null
-  if (entry.shadeName) {
+  // Shade description — per-batch (FoldBatch.shadeDescription) wins over
+  // the linked master, which in turn beats a stale fetch by shade name.
+  // This lets Hitset / APC carry per-batch "Red" / "Rani" through to print.
+  let shadeDescription: string | null = entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+  if (!shadeDescription && entry.shadeName) {
     const shade = await db.shade.findFirst({ where: { name: entry.shadeName }, select: { description: true } })
     shadeDescription = shade?.description || null
   }

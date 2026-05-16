@@ -54,7 +54,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(lot)
   }
 
-  // Update shade on a batch (existing)
+  // Update shade on a batch (existing). Only touch fields the client
+  // explicitly sent — sending just shadeDescription should NOT clear the
+  // selected shadeId / shadeName (was the bug — bare PATCH wiped them).
   const { batchId, shadeId, shadeName, shadeDescription } = body as {
     batchId: number
     shadeId?: number | null
@@ -63,13 +65,15 @@ export async function PATCH(req: NextRequest) {
   }
   if (!batchId) return NextResponse.json({ error: 'batchId required' }, { status: 400 })
 
+  const data: any = {}
+  if (Object.prototype.hasOwnProperty.call(body, 'shadeId')) data.shadeId = shadeId ?? null
+  if (Object.prototype.hasOwnProperty.call(body, 'shadeName')) data.shadeName = shadeName ?? null
+  if (Object.prototype.hasOwnProperty.call(body, 'shadeDescription')) data.shadeDescription = shadeDescription ?? null
+  if (Object.keys(data).length === 0) return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+
   const batch = await (prisma as any).foldBatch.update({
     where: { id: batchId },
-    data: {
-      shadeId: shadeId ?? null,
-      shadeName: shadeName ?? null,
-      shadeDescription: shadeDescription !== undefined ? (shadeDescription ?? null) : undefined,
-    },
+    data,
   })
 
   return NextResponse.json(batch)
