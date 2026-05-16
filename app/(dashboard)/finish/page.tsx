@@ -2313,13 +2313,20 @@ export default function FinishStockPage() {
                                         lotId: number; status: string; doneThan: number;
                                       }
                                       const rows: Row[] = []
+                                      // Two lookup paths: by FEL id (precise; needed when one FP
+                                      // has multiple FELs of the same lotNo — each row must read
+                                      // its own status, not whichever FEL was last in `lots`) and
+                                      // by lotNo (fallback for heuristic allocator rows / legacy).
                                       const lotById = new Map(lots.map(l => [l.lotNo, l]))
-                                      const allocatedHere = new Set<string>()
+                                      const lotByFelId = new Map(lots.map(l => [l.id, l]))
+                                      const allocatedFelIds = new Set<number>()
+                                      const allocatedLotsWithoutFel = new Set<string>()
                                       const foldAlloc = (entry as any).allocations?.find((a: any) => a.foldNo === foldNo)
                                       if (foldAlloc) {
                                         for (const slip of foldAlloc.slips) {
                                           for (const al of slip.lots) {
-                                            const fpLot = lotById.get(al.lotNo)
+                                            const fpLot = (al.fpLotId != null ? lotByFelId.get(al.fpLotId) : null)
+                                              ?? lotById.get(al.lotNo)
                                             if (!fpLot) continue   // belongs to a different (party,fold) cell
                                             rows.push({
                                               slipNo: slip.slipNo,
@@ -2330,15 +2337,19 @@ export default function FinishStockPage() {
                                               status: fpLot.status,
                                               doneThan: fpLot.doneThan,
                                             })
-                                            allocatedHere.add(al.lotNo)
+                                            if (al.fpLotId != null) allocatedFelIds.add(al.fpLotId)
+                                            else allocatedLotsWithoutFel.add(al.lotNo)
                                           }
                                         }
                                       }
                                       // Lots in this (party,fold) that no dyeing slip claimed
                                       // (e.g. came in via OB or startStage='finish') still need
-                                      // to render — under Slip 0 / no header.
+                                      // to render — under Slip 0 / no header. Skip FELs the
+                                      // allocator already placed (by id, or by lotNo for
+                                      // heuristic rows).
                                       for (const lot of lots) {
-                                        if (allocatedHere.has(lot.lotNo)) continue
+                                        if (allocatedFelIds.has(lot.id)) continue
+                                        if (allocatedLotsWithoutFel.has(lot.lotNo)) continue
                                         rows.push({
                                           slipNo: 0, shade: '',
                                           lotNo: lot.lotNo, allocatedThan: lot.than,

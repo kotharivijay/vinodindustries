@@ -144,7 +144,7 @@ export async function GET() {
       }
     }
     const allocations = allocateFpToDyeingSlips(
-      lots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
+      lots.map((l: any) => ({ id: l.id, lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
       relevantDyeings.map((de: any) => ({
         id: de.id,
         slipNo: de.slipNo,

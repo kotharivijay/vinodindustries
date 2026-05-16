@@ -26,7 +26,11 @@ interface DyeingEntryLike {
   } | null
 }
 
-export interface AllocatedLot { lotNo: string; than: number }
+// `fpLotId` — id of the FinishEntryLot this row was allocated from. Set only
+// when the FEL had an explicit dyeingEntryId (Pass 0 direct path). For
+// heuristic allocations the source FEL is ambiguous, so this stays undefined
+// and the renderer must fall back to lookup-by-lotNo.
+export interface AllocatedLot { lotNo: string; than: number; fpLotId?: number }
 export interface AllocatedSlip {
   slipNo: number
   shadeName: string | null
@@ -40,7 +44,7 @@ export interface AllocatedFoldGroup {
 }
 
 export function allocateFpToDyeingSlips(
-  fpLots: { lotNo: string; than: number; dyeingEntryId?: number | null }[],
+  fpLots: { id?: number; lotNo: string; than: number; dyeingEntryId?: number | null }[],
   dyeingEntries: DyeingEntryLike[],
 ): AllocatedFoldGroup[] {
   // Lowercase keying so case mismatches don't break the join
@@ -50,7 +54,7 @@ export function allocateFpToDyeingSlips(
   // anything else is summed into `remaining` for the heuristic pass below.
   // Without summing, multiple FELs sharing a lotNo would overwrite each
   // other on Map.set — losing than (the FP-177 / PS-57 bug).
-  const directByEntry = new Map<number, Array<{ lotKey: string; than: number; original: string }>>()
+  const directByEntry = new Map<number, Array<{ lotKey: string; than: number; original: string; fpLotId?: number }>>()
   for (const fl of fpLots) {
     const k = fl.lotNo.toLowerCase()
     const n = Number(fl.than) || 0
@@ -58,7 +62,7 @@ export function allocateFpToDyeingSlips(
     if (fl.dyeingEntryId != null) {
       let bucket = directByEntry.get(fl.dyeingEntryId)
       if (!bucket) { bucket = []; directByEntry.set(fl.dyeingEntryId, bucket) }
-      bucket.push({ lotKey: k, than: n, original: fl.lotNo })
+      bucket.push({ lotKey: k, than: n, original: fl.lotNo, fpLotId: fl.id })
     } else {
       remaining.set(k, (remaining.get(k) ?? 0) + n)
     }
@@ -70,12 +74,15 @@ export function allocateFpToDyeingSlips(
   const entryById = new Map<number, DyeingEntryLike>()
   for (const de of entries) if (de.id != null) entryById.set(de.id, de)
 
-  // slipNo → { meta, lots: Map<lotLc → than allocated> }
+  // slipNo → { meta, lots: Map<lotLc → { than, fpLotId? }> }. fpLotId carried
+  // through from Pass 0 so the renderer can look up the exact FEL (and its
+  // status / doneThan) per row instead of falling back to lotNo lookup —
+  // critical when one FP has multiple FELs sharing a lotNo.
   const allocs = new Map<number, {
     foldNo: string
     shadeName: string | null
     shadeDesc: string | null
-    lots: Map<string, number>
+    lots: Map<string, { than: number; fpLotId?: number }>
   }>()
 
   function metaOf(de: DyeingEntryLike) {
@@ -103,7 +110,13 @@ export function allocateFpToDyeingSlips(
       allocs.set(de.slipNo, bucket)
     }
     for (const r of rows) {
-      bucket.lots.set(r.lotKey, (bucket.lots.get(r.lotKey) ?? 0) + r.than)
+      const cur = bucket.lots.get(r.lotKey)
+      bucket.lots.set(r.lotKey, {
+        than: (cur?.than ?? 0) + r.than,
+        // Keep the first FEL id we saw for this (slip, lot) pair — the
+        // common case is one FEL per pair, so this resolves precisely.
+        fpLotId: cur?.fpLotId ?? r.fpLotId,
+      })
     }
   }
 
@@ -120,7 +133,8 @@ export function allocateFpToDyeingSlips(
         bucket = { ...metaOf(de), lots: new Map() }
         allocs.set(de.slipNo, bucket)
       }
-      bucket.lots.set(k, (bucket.lots.get(k) ?? 0) + slipThan)
+      const cur = bucket.lots.get(k)
+      bucket.lots.set(k, { than: (cur?.than ?? 0) + slipThan, fpLotId: cur?.fpLotId })
       remaining.set(k, rem - slipThan)
       // Track original casing in case the FP's casing was different
       if (!originalCasing.has(k)) originalCasing.set(k, dl.lotNo)
@@ -138,7 +152,7 @@ export function allocateFpToDyeingSlips(
       if (!dl) continue
       const dyeingTotal = Number(dl.than) || 0
       if (dyeingTotal <= 0) continue
-      const alreadyHere = allocs.get(de.slipNo)?.lots.get(k) ?? 0
+      const alreadyHere = allocs.get(de.slipNo)?.lots.get(k)?.than ?? 0
       const leftover = dyeingTotal - alreadyHere
       if (leftover <= 0) continue
       const take = Math.min(leftover, stillNeeded)
@@ -147,7 +161,8 @@ export function allocateFpToDyeingSlips(
         bucket = { ...metaOf(de), lots: new Map() }
         allocs.set(de.slipNo, bucket)
       }
-      bucket.lots.set(k, alreadyHere + take)
+      const cur = bucket.lots.get(k)
+      bucket.lots.set(k, { than: alreadyHere + take, fpLotId: cur?.fpLotId })
       stillNeeded -= take
     }
     remaining.set(k, stillNeeded)
@@ -156,9 +171,10 @@ export function allocateFpToDyeingSlips(
   // Materialise into fold-grouped output, ordering slips desc within a fold
   const foldMap = new Map<string, AllocatedSlip[]>()
   for (const [slipNo, b] of allocs) {
-    const lotsOut: AllocatedLot[] = Array.from(b.lots.entries()).map(([k, than]) => ({
+    const lotsOut: AllocatedLot[] = Array.from(b.lots.entries()).map(([k, v]) => ({
       lotNo: originalCasing.get(k) || k,
-      than,
+      than: v.than,
+      ...(v.fpLotId != null ? { fpLotId: v.fpLotId } : {}),
     }))
     if (lotsOut.length === 0) continue
     if (!foldMap.has(b.foldNo)) foldMap.set(b.foldNo, [])
