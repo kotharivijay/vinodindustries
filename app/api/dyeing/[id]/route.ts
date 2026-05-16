@@ -72,6 +72,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       lotNo: lots[0].lotNo,
       than: lots[0].than,
       shadeName: data.shadeName?.trim() || null,
+      // Only touch shadeDescription when the client supplied it — preserves
+      // an existing value when the edit form predates this field.
+      ...(Object.prototype.hasOwnProperty.call(data, 'shadeDescription')
+        ? { shadeDescription: data.shadeDescription?.trim() || null }
+        : {}),
       notes: data.notes || null,
       machineId: data.machineId !== undefined ? (data.machineId ? parseInt(data.machineId) : null) : undefined,
       operatorId: data.operatorId !== undefined ? (data.operatorId ? parseInt(data.operatorId) : null) : undefined,

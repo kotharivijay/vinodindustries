@@ -53,6 +53,7 @@ export async function GET() {
         id: true,
         slipNo: true,
         shadeName: true,
+        shadeDescription: true,
         lots: { select: { lotNo: true, than: true } },
         foldBatch: {
           select: {
@@ -72,9 +73,10 @@ export async function GET() {
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
-    // Per-batch shadeDescription wins over the master so generic recipes
-    // (Hitset / APC) can carry a per-batch descriptor.
-    const shadeDesc = de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
+    // Display priority: slip-level (DyeingEntry.shadeDescription) wins,
+    // then fold-batch override, then the master. Lets generic recipes
+    // (Hitset / APC) carry the real colour per slip.
+    const shadeDesc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
     dyeingById.set(de.id, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
   }
 
@@ -84,9 +86,10 @@ export async function GET() {
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
-    // Per-batch shadeDescription wins over the master so generic recipes
-    // (Hitset / APC) can carry a per-batch descriptor.
-    const shadeDesc = de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
+    // Display priority: slip-level (DyeingEntry.shadeDescription) wins,
+    // then fold-batch override, then the master. Lets generic recipes
+    // (Hitset / APC) carry the real colour per slip.
+    const shadeDesc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
     const dLots = de.lots?.length ? de.lots : []
     for (const lot of dLots) {
       // Normalized key: DyeingEntryLot.lotNo casing can differ from

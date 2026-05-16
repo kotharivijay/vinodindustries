@@ -36,6 +36,8 @@ interface Entry {
   than: number
   notes: string | null
   shadeName?: string | null
+  // Slip-level descriptor (typed in dyeing form Step 2).
+  shadeDescription?: string | null
   lots: Lot[]
   chemicals: Chemical[]
   machine?: { id: number; name: string } | null
@@ -73,7 +75,7 @@ export default function DyeingDetailView({ id }: { id: string }) {
       // Combine shade name + per-batch descriptor (Hitset / APC use-case)
       // into a single label for the shared PDF.
       const baseName = entry.shadeName ?? entry.foldBatch?.shade?.name ?? null
-      const desc = entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+      const desc = entry.shadeDescription || entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
       const combinedShade = baseName ? (desc ? `${baseName} — ${desc}` : baseName) : null
       const slip: SlipData = {
         slipNo: entry.slipNo,
@@ -149,9 +151,8 @@ export default function DyeingDetailView({ id }: { id: string }) {
           </div>
           {(entry.shadeName || entry.foldBatch?.shade?.name) && (() => {
             const name = entry.shadeName || entry.foldBatch?.shade?.name || ''
-            // Per-batch shadeDescription overrides the master so Hitset / APC
-            // can carry a per-batch descriptor (Red, Rani, …).
-            const desc = entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+            // Slip-level descriptor wins, then fold-batch, then master.
+            const desc = entry.shadeDescription || entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
             return (
               <div>
                 <p className="text-xs text-gray-400">Shade</p>

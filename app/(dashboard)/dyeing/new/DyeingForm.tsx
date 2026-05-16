@@ -151,6 +151,10 @@ export default function DyeingForm() {
 
   // Shade reference saved on the slip
   const [shadeName, setShadeName] = useState('')
+  // Per-slip descriptor — wins over fold-batch and master at display time.
+  // Lets generic recipes (Hitset / APC) carry the real colour ("Red",
+  // "Rani") for THIS slip.
+  const [shadeDescription, setShadeDescription] = useState('')
   const [shadesWithRecipe, setShadesWithRecipe] = useState<ShadeWithRecipe[]>([])
   const [selectedShadeId, setSelectedShadeId] = useState<number | null>(null)
   const [shadeDropOpen, setShadeDropOpen] = useState(false)
@@ -1201,6 +1205,7 @@ export default function DyeingForm() {
           processTag: c.processTag || null,
         })),
       shadeName: shadeName.trim() || null,
+      shadeDescription: shadeDescription.trim() || null,
       machineId: selectedMachineId,
       operatorId: selectedOperatorId,
       ocrNames, // pass original OCR names for alias learning
@@ -1854,6 +1859,20 @@ export default function DyeingForm() {
                   </div>
                 )}
               </div>
+            </Field>
+
+            <Field
+              label={`Shade Description${shadeName ? ` (for ${shadeName})` : ''}`}
+              span={2}
+            >
+              <input type="text" className={inp} value={shadeDescription}
+                onChange={e => setShadeDescription(e.target.value)}
+                placeholder={shadeName
+                  ? `e.g. Red, Rani, Navy — the actual colour for THIS slip${shadeName ? `'s ${shadeName} run` : ''}`
+                  : 'Pick a shade first, then describe THIS slip’s colour (e.g. Red, Rani)'} />
+              <p className="text-[10px] text-gray-500 mt-0.5">
+                Saves with the slip. Wins over the master/fold description in every view & print.
+              </p>
             </Field>
 
             <Field label="Notes" span={2}>

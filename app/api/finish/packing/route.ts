@@ -99,6 +99,7 @@ export async function GET() {
         slipNo: true,
         lotNo: true,
         shadeName: true,
+        shadeDescription: true,
         lots: { select: { lotNo: true } },
         foldBatch: { select: { shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
       },
@@ -112,8 +113,8 @@ export async function GET() {
     dyeingById.set(de.id, {
       dyeSlipNo: de.slipNo,
       shadeName: de.shadeName || de.foldBatch?.shade?.name || null,
-      // Per-batch description wins over the master (Hitset / APC use-case).
-      shadeDescription: de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null,
+      // Slip > fold batch > master so dyeing form Step 2 wins.
+      shadeDescription: (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null,
       foldNo: de.foldBatch?.foldProgram?.foldNo || null,
     })
   }
@@ -121,8 +122,8 @@ export async function GET() {
   const lotDyeMap = new Map<string, { shadeName: string | null; shadeDescription: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
     const shade = de.shadeName || de.foldBatch?.shade?.name || null
-    // Per-batch description wins over the master (Hitset / APC use-case).
-    const desc = de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
+    // Slip > fold batch > master.
+    const desc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const lotsInEntry = de.lots?.length ? de.lots.map((l: any) => l.lotNo) : [de.lotNo]
     for (const ln of lotsInEntry) {

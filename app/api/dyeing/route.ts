@@ -103,6 +103,7 @@ export async function POST(req: NextRequest) {
       lotNo: lots[0].lotNo,
       than: lots[0].than,
       shadeName: data.shadeName?.trim() || null,
+      shadeDescription: data.shadeDescription?.trim() || null,
       notes: data.notes || null,
       machineId: data.machineId ? parseInt(data.machineId) : null,
       operatorId: data.operatorId ? parseInt(data.operatorId) : null,

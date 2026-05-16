@@ -19,6 +19,9 @@ interface DyeingEntryLike {
   id?: number
   slipNo: number
   shadeName: string | null
+  // Slip-level shade descriptor (typed in dyeing form Step 2). Wins over
+  // any fold-batch / master description.
+  shadeDescription?: string | null
   lots: { lotNo: string; than: number }[]
   foldBatch: {
     // Per-batch description overrides the master so generic recipes (Hitset
@@ -92,8 +95,8 @@ export function allocateFpToDyeingSlips(
     return {
       foldNo: de.foldBatch?.foldProgram?.foldNo || 'No Fold',
       shadeName: de.shadeName || de.foldBatch?.shade?.name || null,
-      // Per-batch wins so Hitset / APC can carry "Red", "Rani", etc.
-      shadeDesc: de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null,
+      // Slip > fold batch > master.
+      shadeDesc: de.shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null,
     }
   }
 

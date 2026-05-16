@@ -51,10 +51,9 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
   }
   const entryMarka = entry.marka || lotInfos.find(li => li.marka)?.marka || null
 
-  // Shade description — per-batch (FoldBatch.shadeDescription) wins over
-  // the linked master, which in turn beats a stale fetch by shade name.
-  // This lets Hitset / APC carry per-batch "Red" / "Rani" through to print.
-  let shadeDescription: string | null = entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+  // Shade description priority: slip > fold batch > master. Lets Hitset /
+  // APC carry per-slip "Red" / "Rani" all the way through to print.
+  let shadeDescription: string | null = entry.shadeDescription || entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
   if (!shadeDescription && entry.shadeName) {
     const shade = await db.shade.findFirst({ where: { name: entry.shadeName }, select: { description: true } })
     shadeDescription = shade?.description || null

@@ -158,6 +158,11 @@ model DyeingEntry {
   lotNo             String
   than              Int
   shadeName         String?
+  // Per-slip shade descriptor. For generic recipes (Hitset / APC) the user
+  // types the actual colour ("Red", "Rani") here. Read priority across the
+  // app: DyeingEntry.shadeDescription → FoldBatch.shadeDescription →
+  // Shade.description.
+  shadeDescription  String?
   notes             String?
   foldBatchId       Int?
   foldBatch         FoldBatch?           @relation(fields: [foldBatchId], references: [id])

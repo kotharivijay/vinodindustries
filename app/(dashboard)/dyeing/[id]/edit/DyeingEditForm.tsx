@@ -65,6 +65,9 @@ export default function DyeingEditForm({ id }: { id: string }) {
   const [selectedMachineId, setSelectedMachineId] = useState<number | null>(null)
   const [selectedOperatorId, setSelectedOperatorId] = useState<number | null>(null)
   const [shadeName, setShadeName] = useState('')
+  // Per-slip descriptor (Hitset → "Red", APC → "Rani"). See DyeingForm
+  // for the matching field in the create flow.
+  const [shadeDescription, setShadeDescription] = useState('')
   const [allShades, setAllShades] = useState<any[]>([])
   const [shadeSearch, setShadeSearch] = useState('')
   const [showShadePicker, setShowShadePicker] = useState(false)
@@ -187,6 +190,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
       if (e.machineId) setSelectedMachineId(e.machineId)
       if (e.operatorId) setSelectedOperatorId(e.operatorId)
       if (e.shadeName) setShadeName(e.shadeName)
+      if (e.shadeDescription) setShadeDescription(e.shadeDescription)
 
       // Load chemicals
       if (e.chemicals?.length) {
@@ -371,6 +375,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
           processTag: c.processTag || null,
         })),
       shadeName: shadeName.trim() || null,
+      shadeDescription: shadeDescription.trim() || null,
       machineId: selectedMachineId,
       operatorId: selectedOperatorId,
     }
@@ -545,6 +550,11 @@ export default function DyeingEditForm({ id }: { id: string }) {
                   Change Shade
                 </button>
               </div>
+            </Field>
+            <Field label={`Shade Description${shadeName ? ` (for ${shadeName})` : ''}`}>
+              <input type="text" className={inp} value={shadeDescription}
+                onChange={e => setShadeDescription(e.target.value)}
+                placeholder="e.g. Red, Rani — the actual colour for THIS slip" />
             </Field>
             <Field label="Notes">
               <input type="text" className={inp} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Any remarks" />

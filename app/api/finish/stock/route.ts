@@ -25,6 +25,7 @@ export async function GET() {
         lotNo: true,
         than: true,
         marka: true,
+        shadeDescription: true,
         isPcJob: true,
         machine: { select: { name: true } },
         operator: { select: { name: true } },
@@ -104,9 +105,9 @@ export async function GET() {
     const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
     const lotInfo = lotInfoMap.get((lots[0]?.lotNo || d.lotNo).toLowerCase().trim())
     const shadeName = d.shadeName || d.foldBatch?.shade?.name || null
-    // Per-batch description wins so generic recipes (Hitset / APC) can carry
-    // a per-batch descriptor ("Red", "Rani") without overwriting the master.
-    const shadeDesc = d.foldBatch?.shadeDescription || d.foldBatch?.shade?.description || null
+    // Priority: slip > fold batch > master. Slip-level descriptor (typed in
+    // dyeing form Step 2) wins so each slip can carry its own colour.
+    const shadeDesc = d.shadeDescription || d.foldBatch?.shadeDescription || d.foldBatch?.shade?.description || null
 
     // Piece-color jobs use the customer/owner name as the lotNo and don't
     // have grey/OB records — without explicit handling they fall through to
