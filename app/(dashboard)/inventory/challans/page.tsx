@@ -577,6 +577,44 @@ function ChallanCard(props: {
     if (res.ok) onChange(await res.json())
   }
 
+  // Add-item state (inline picker shown under the lines list).
+  const [addingItem, setAddingItem] = useState(false)
+  const [itemQuery, setItemQuery] = useState('')
+  const [addingSaving, setAddingSaving] = useState(false)
+  const [itemResults, setItemResults] = useState<Array<{ id: number; displayName: string; unit: string; alias?: { gstRate?: string | number } }>>([])
+  const [itemSearching, setItemSearching] = useState(false)
+
+  useEffect(() => {
+    if (!addingItem || !itemQuery.trim()) { setItemResults([]); return }
+    const q = itemQuery.trim()
+    setItemSearching(true)
+    const handle = setTimeout(() => {
+      fetch(`/api/inv/items?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(d => { if (Array.isArray(d)) setItemResults(d) })
+        .catch(() => {})
+        .finally(() => setItemSearching(false))
+    }, 200)
+    return () => clearTimeout(handle)
+  }, [itemQuery, addingItem])
+
+  async function addLine(item: { id: number; unit?: string }) {
+    if (addingSaving) return
+    setAddingSaving(true)
+    try {
+      const res = await fetch(`/api/inv/challans/${c.id}/lines`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines: [{ itemId: item.id, qty: 0, unit: item.unit ?? null }] }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert(d?.error || 'Failed to add line'); return }
+      onChange(d)
+      setItemQuery('')
+      setItemResults([])
+      // Keep the picker open so the user can keep adding more items in one go.
+    } finally { setAddingSaving(false) }
+  }
+
   async function patchLine(lineId: number, patch: Record<string, any>) {
     const res = await fetch(`/api/inv/challans/${c.id}/lines/${lineId}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -713,6 +751,48 @@ function ChallanCard(props: {
               <LineCard key={l.id} line={l} disabled={lineDisabled} onSave={patch => patchLine(l.id, patch)} />
             ))}
           </div>
+
+          {/* Add Item — append a fresh line (qty/rate filled in via the
+              normal line editor afterwards). Hidden on terminal challans
+              since the server PUT/POST refuses to edit invoiced/etc. */}
+          {!isTerminal && (
+            <div className="border border-dashed border-indigo-300 dark:border-indigo-700 rounded-lg p-2.5 bg-indigo-50/40 dark:bg-indigo-900/10">
+              {!addingItem ? (
+                <button onClick={() => setAddingItem(true)}
+                  className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:text-indigo-700">
+                  + Add Item
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input autoFocus type="text" value={itemQuery} onChange={e => setItemQuery(e.target.value)}
+                      placeholder="Search items by name…"
+                      className="flex-1 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-xs" />
+                    <button onClick={() => { setAddingItem(false); setItemQuery(''); setItemResults([]) }}
+                      className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Close</button>
+                  </div>
+                  {itemSearching && <p className="text-[10px] text-gray-400">Searching…</p>}
+                  {!itemSearching && itemQuery.trim() && itemResults.length === 0 && (
+                    <p className="text-[10px] text-gray-400">No matches. Add the item from <Link href="/inventory/items" className="text-indigo-500 underline">Items Master</Link> first.</p>
+                  )}
+                  {itemResults.length > 0 && (
+                    <div className="max-h-44 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                      {itemResults.map(it => (
+                        <button key={it.id} onClick={() => addLine(it)} disabled={addingSaving}
+                          className="w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 flex items-center justify-between">
+                          <span className="font-medium text-gray-800 dark:text-gray-100 truncate">{it.displayName}</span>
+                          <span className="text-[10px] text-gray-400 shrink-0 ml-2">{it.unit}{it.alias?.gstRate ? ` · GST ${Number(it.alias.gstRate)}%` : ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                    The new line lands with qty 0 — fill in qty / rate / discount inline above.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="border-t border-gray-200 dark:border-gray-600 pt-2 mt-2 text-[11px] grid grid-cols-2 gap-y-0.5">
             <span className="text-gray-500 dark:text-gray-400">Subtotal (taxable)</span>
