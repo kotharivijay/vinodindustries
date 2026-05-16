@@ -61,7 +61,7 @@ export async function POST(
     // GST: caller-supplied first, else the item's alias rate so the new line
     // doesn't silently start at 0 (matches the auto-fill on existing lines).
     const aliasGst = item.aliasId
-      ? (await db.invAliasItem.findUnique({ where: { id: item.aliasId }, select: { gstRate: true } }))?.gstRate
+      ? (await db.invTallyAlias.findUnique({ where: { id: item.aliasId }, select: { gstRate: true } }))?.gstRate
       : null
     const gstRate = l.gstRate != null && l.gstRate !== ''
       ? Number(l.gstRate)
