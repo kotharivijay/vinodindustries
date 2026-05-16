@@ -207,6 +207,7 @@ interface SelectedLot {
 /* ── Packing stock types ──────────────────────────────────────────── */
 
 interface PackingLot {
+  id?: number
   lotNo: string
   than: number
   meter: number | null
@@ -215,6 +216,9 @@ interface PackingLot {
   weight: string | null
   shadeName: string | null
   shadeDescription: string | null
+  // dyeSlipNo — exact source dye slip when the FEL was linked. null for
+  // legacy unlinked rows; renderer falls back to foldNo display.
+  dyeSlipNo?: number | null
   foldingReceipts?: { id: number; slipNo: string; date: string; than: number; notes: string | null }[]
   receivedThan?: number
   foldingComplete?: boolean
@@ -1430,6 +1434,18 @@ export default function FinishStockPage() {
     const arr = readViewState(FINISH_VIEW_KEY).packExpandedQualities
     return new Set(Array.isArray(arr) ? arr : [])
   })
+  // Per-lot expansion inside the Desp Slip-wise view — when an FP has
+  // multiple FELs of the same lotNo (each tied to a different dye slip),
+  // they collapse to one parent row by default; clicking expands to the
+  // slip-level breakdown. Key: `${peId}|${lotNo}`.
+  const [expandedPackLot, setExpandedPackLot] = useState<Set<string>>(new Set())
+  const togglePackLot = (key: string) => {
+    setExpandedPackLot(prev => {
+      const n = new Set(prev)
+      if (n.has(key)) n.delete(key); else n.add(key)
+      return n
+    })
+  }
   const [packView, setPackView] = useState<'party' | 'desp'>(
     () => (readViewState(FINISH_VIEW_KEY).packView === 'desp' ? 'desp' : 'party')
   )
@@ -3729,63 +3745,124 @@ export default function FinishStockPage() {
                                       <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{pe.totalThan}</span>
                                     </div>
                                     <div className="space-y-2 mt-1">
-                                      {pe.lots.map((l: any, li: number) => {
-                                        const recs = l.foldingReceipts || []
-                                        const received = recs.reduce((s: number, r: any) => s + r.than, 0)
-                                        const complete = received >= l.than
-                                        return (
-                                          <div key={li} data-lot-card={l.lotNo} className={`rounded-lg p-2.5 border transition-shadow ${complete ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'}`}>
-                                            <div className="flex items-center justify-between mb-1">
-                                              <div className="flex items-center gap-2">
-                                                <LotLink
-                                                  lotNo={l.lotNo}
-                                                  storageKey={FINISH_VIEW_KEY}
-                                                  extra={{ lastClickedDesp: despNo }}
-                                                  className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline"
-                                                >{l.lotNo}</LotLink>
-                                                {l.foldNo && <span className="text-[9px] text-indigo-500">F{l.foldNo}</span>}
+                                      {(() => {
+                                        // Group FELs by lotNo so the same lot fed by multiple
+                                        // dye slips shows as one parent row with the total than.
+                                        // Single-FEL lots render the slip detail inline (no
+                                        // expansion needed); multi-FEL lots expand to per-slip
+                                        // rows that keep folding-receipt actions per FEL.
+                                        const byLot = new Map<string, any[]>()
+                                        for (const fel of pe.lots) {
+                                          if (!byLot.has(fel.lotNo)) byLot.set(fel.lotNo, [])
+                                          byLot.get(fel.lotNo)!.push(fel)
+                                        }
+                                        const renderSlipDetail = (fel: any, keyPrefix: string) => {
+                                          const recs = fel.foldingReceipts || []
+                                          const received = recs.reduce((s: number, r: any) => s + r.than, 0)
+                                          const complete = received >= fel.than
+                                          return (
+                                            <div key={`${keyPrefix}-${fel.id}`} className={`rounded-md p-2 ${complete ? 'bg-green-50/60 dark:bg-green-900/10' : 'bg-white dark:bg-gray-900/30'}`}>
+                                              <div className="flex items-center justify-between mb-0.5">
+                                                <div className="flex items-center gap-2 text-[11px]">
+                                                  {fel.dyeSlipNo != null
+                                                    ? <span className="font-bold text-purple-600 dark:text-purple-300">Slip {fel.dyeSlipNo}</span>
+                                                    : <span className="text-gray-400 italic">unlinked</span>}
+                                                  {fel.foldNo && <span className="text-[9px] text-indigo-500">F{fel.foldNo}</span>}
+                                                  {fel.shadeName && <span className="text-[10px] text-gray-500 dark:text-gray-400">{fel.shadeName}</span>}
+                                                </div>
+                                                <span className="text-[11px] font-medium">{received}/{fel.than} {complete ? '✅' : '⏳'}</span>
                                               </div>
-                                              <span className="text-xs font-medium">{received}/{l.than} {complete ? '✅' : '⏳'}</span>
-                                            </div>
-                                            {recs.length > 0 && (
-                                              <div className="space-y-0.5 mb-1">
-                                                {recs.map((r: any) => (
-                                                  <div key={r.id} className="flex items-center justify-between text-[10px]">
-                                                    <span className="text-gray-500">Folding_recpt {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
-                                                    <div className="flex items-center gap-1">
-                                                      {frEditId === r.id ? (
-                                                        <>
-                                                          <input type="number" value={frEditThan} onChange={e => setFrEditThan(e.target.value)}
-                                                            className="w-12 text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 text-center bg-white dark:bg-gray-700 dark:text-gray-100" />
-                                                          <button onClick={editFoldingReceipt} className="text-[9px] text-teal-600 font-bold">Save</button>
-                                                          <button onClick={() => setFrEditId(null)} className="text-[9px] text-gray-400">✕</button>
-                                                        </>
-                                                      ) : (
-                                                        <>
-                                                          <span className="font-medium text-gray-700 dark:text-gray-200">{r.than}</span>
-                                                          <button onClick={() => { setFrEditId(r.id); setFrEditThan(String(r.than)) }} className="text-[9px] text-indigo-500 hover:underline">Edit</button>
-                                                        </>
-                                                      )}
+                                              {recs.length > 0 && (
+                                                <div className="space-y-0.5 mb-1">
+                                                  {recs.map((r: any) => (
+                                                    <div key={r.id} className="flex items-center justify-between text-[10px]">
+                                                      <span className="text-gray-500">Folding_recpt {r.slipNo} · {new Date(r.date).toLocaleDateString('en-IN')}</span>
+                                                      <div className="flex items-center gap-1">
+                                                        {frEditId === r.id ? (
+                                                          <>
+                                                            <input type="number" value={frEditThan} onChange={e => setFrEditThan(e.target.value)}
+                                                              className="w-12 text-[10px] border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 text-center bg-white dark:bg-gray-700 dark:text-gray-100" />
+                                                            <button onClick={editFoldingReceipt} className="text-[9px] text-teal-600 font-bold">Save</button>
+                                                            <button onClick={() => setFrEditId(null)} className="text-[9px] text-gray-400">✕</button>
+                                                          </>
+                                                        ) : (
+                                                          <>
+                                                            <span className="font-medium text-gray-700 dark:text-gray-200">{r.than}</span>
+                                                            <button onClick={() => { setFrEditId(r.id); setFrEditThan(String(r.than)) }} className="text-[9px] text-indigo-500 hover:underline">Edit</button>
+                                                          </>
+                                                        )}
+                                                      </div>
                                                     </div>
+                                                  ))}
+                                                </div>
+                                              )}
+                                              {!complete && (
+                                                <button onClick={() => {
+                                                  setFrFormLotId(fel.id)
+                                                  setFrFormLotNo(fel.lotNo)
+                                                  setFrFormFpNo(pe.slipNo)
+                                                  setFrFormMaxThan(fel.than - received)
+                                                  setFrSlipNo('')
+                                                  setFrThan(String(fel.than - received))
+                                                  setFrDate(new Date().toISOString().split('T')[0])
+                                                }}
+                                                  className="text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium mt-1">+ Folding Receipt</button>
+                                              )}
+                                            </div>
+                                          )
+                                        }
+                                        return Array.from(byLot.entries()).map(([lotNo, fels]) => {
+                                          const lotTotal = fels.reduce((s: number, f: any) => s + (f.than || 0), 0)
+                                          const lotReceived = fels.reduce((s: number, f: any) => s + (f.foldingReceipts || []).reduce((s2: number, r: any) => s2 + r.than, 0), 0)
+                                          const lotComplete = lotReceived >= lotTotal
+                                          const folds = [...new Set(fels.map((f: any) => f.foldNo).filter(Boolean))]
+                                          // Single-FEL lots render inline (slip detail merged into the parent line).
+                                          if (fels.length === 1) {
+                                            const fel = fels[0]
+                                            return (
+                                              <div key={lotNo} data-lot-card={lotNo} className={`rounded-lg p-2.5 border ${lotComplete ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'}`}>
+                                                <div className="flex items-center justify-between mb-1">
+                                                  <div className="flex items-center gap-2">
+                                                    <LotLink lotNo={lotNo} storageKey={FINISH_VIEW_KEY} extra={{ lastClickedDesp: despNo }}
+                                                      className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{lotNo}</LotLink>
+                                                    {fel.foldNo && <span className="text-[9px] text-indigo-500">F{fel.foldNo}</span>}
+                                                    {fel.dyeSlipNo != null && <span className="text-[10px] text-purple-600 dark:text-purple-300">Slip {fel.dyeSlipNo}</span>}
                                                   </div>
-                                                ))}
+                                                  <span className="text-xs font-medium">{lotReceived}/{lotTotal} {lotComplete ? '✅' : '⏳'}</span>
+                                                </div>
+                                                {renderSlipDetail(fel, `single-${lotNo}`)}
                                               </div>
-                                            )}
-                                            {!complete && (
-                                              <button onClick={() => {
-                                                setFrFormLotId(l.id)
-                                                setFrFormLotNo(l.lotNo)
-                                                setFrFormFpNo(pe.slipNo)
-                                                setFrFormMaxThan(l.than - received)
-                                                setFrSlipNo('')
-                                                setFrThan(String(l.than - received))
-                                                setFrDate(new Date().toISOString().split('T')[0])
-                                              }}
-                                                className="text-[10px] text-teal-600 dark:text-teal-400 hover:text-teal-700 font-medium mt-1">+ Folding Receipt</button>
-                                            )}
-                                          </div>
-                                        )
-                                      })}
+                                            )
+                                          }
+                                          // Multi-FEL lot — parent + expandable detail.
+                                          const expandKey = `${pe.id}|${lotNo}`
+                                          const isOpen = expandedPackLot.has(expandKey)
+                                          return (
+                                            <div key={lotNo} data-lot-card={lotNo} className={`rounded-lg border ${lotComplete ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' : 'bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700'}`}>
+                                              <button onClick={() => togglePackLot(expandKey)}
+                                                className="w-full flex items-center justify-between px-2.5 py-2 hover:bg-gray-100 dark:hover:bg-gray-700/40 rounded-lg">
+                                                <div className="flex items-center gap-2">
+                                                  <span onClick={e => e.stopPropagation()}>
+                                                    <LotLink lotNo={lotNo} storageKey={FINISH_VIEW_KEY} extra={{ lastClickedDesp: despNo }}
+                                                      className="text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline">{lotNo}</LotLink>
+                                                  </span>
+                                                  {folds.length > 0 && <span className="text-[9px] text-indigo-500">F{folds.join(', F')}</span>}
+                                                  <span className="text-[9px] text-gray-400">{fels.length} slips</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-xs font-medium">{lotReceived}/{lotTotal} {lotComplete ? '✅' : '⏳'}</span>
+                                                  <span className={`text-gray-400 text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                                                </div>
+                                              </button>
+                                              {isOpen && (
+                                                <div className="px-2.5 pb-2 pt-1 space-y-1.5">
+                                                  {fels.map((fel: any) => renderSlipDetail(fel, `multi-${lotNo}`))}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )
+                                        })
+                                      })()}
                                     </div>
                                   </div>
                                 ))}

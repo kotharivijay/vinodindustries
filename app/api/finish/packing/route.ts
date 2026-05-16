@@ -95,6 +95,8 @@ export async function GET() {
         ],
       },
       select: {
+        id: true,
+        slipNo: true,
         lotNo: true,
         shadeName: true,
         lots: { select: { lotNo: true } },
@@ -103,6 +105,18 @@ export async function GET() {
     }),
   ])
 
+  // Per-id map — when a FEL has dyeingEntryId set, resolve its EXACT source
+  // slip's shade/fold/slipNo instead of the lot-level first-match heuristic.
+  const dyeingById = new Map<number, { dyeSlipNo: number; shadeName: string | null; shadeDescription: string | null; foldNo: string | null }>()
+  for (const de of dyeingEntries) {
+    dyeingById.set(de.id, {
+      dyeSlipNo: de.slipNo,
+      shadeName: de.shadeName || de.foldBatch?.shade?.name || null,
+      shadeDescription: de.foldBatch?.shade?.description || null,
+      foldNo: de.foldBatch?.foldProgram?.foldNo || null,
+    })
+  }
+  // Fallback for unlinked FELs — first dye entry that touched this lot.
   const lotDyeMap = new Map<string, { shadeName: string | null; shadeDescription: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
     const shade = de.shadeName || de.foldBatch?.shade?.name || null
@@ -121,7 +135,10 @@ export async function GET() {
     ...pe,
     lots: pe.lots.map((l: any) => {
       const li = lotInfoMap.get(l.lotNo.toLowerCase().trim())
-      const dye = lotDyeMap.get(l.lotNo.toLowerCase().trim())
+      // Prefer exact per-FEL slip when dyeingEntryId is linked; else fall
+      // back to the lot-level heuristic. dyeSlipNo is null for unlinked rows.
+      const direct = l.dyeingEntryId != null ? dyeingById.get(l.dyeingEntryId) : null
+      const dye = direct || lotDyeMap.get(l.lotNo.toLowerCase().trim())
       return {
         id: l.id,
         lotNo: l.lotNo,
@@ -133,6 +150,7 @@ export async function GET() {
         foldNo: dye?.foldNo || null,
         shadeName: dye?.shadeName || null,
         shadeDescription: dye?.shadeDescription || null,
+        dyeSlipNo: direct?.dyeSlipNo ?? null,
         foldingReceipts: l.foldingReceipts || [],
         receivedThan: l.receivedThan || 0,
         foldingComplete: l.foldingComplete || false,
