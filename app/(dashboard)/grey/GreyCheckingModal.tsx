@@ -11,6 +11,7 @@ interface GreyEntry {
   bale: number | null
   baleNo: string | null
   transportLrNo: string | null
+  marka: string | null
   party: { name: string; tag?: string | null }
   quality: { name: string }
   stock: number
@@ -200,10 +201,25 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
       const W = 720
       const headerH = 90
       const tableHeaderH = 28
-      const rowH = 32
+      const baseRowH = 32
+      const lineH = 14 // height of each extra wrapped LR line
       const footerH = 70
       const padY = 8
-      const H = headerH + tableHeaderH + rows.length * rowH + footerH + padY * 2
+
+      // Pre-compute the wrapped LR lines per row. LR values like
+      // "2606696,2606907,2611255,2611256" arrive comma-joined for multi-LR
+      // shipments — split each onto its own line so the operator can read
+      // every number without truncation.
+      const lrLinesByRow: string[][] = rows.map(r => {
+        const raw = (r.transportLrNo || '—').trim()
+        if (raw === '—') return ['—']
+        return raw.split(',').map(s => s.trim()).filter(Boolean)
+      })
+      const rowHeights: number[] = lrLinesByRow.map(lines =>
+        Math.max(baseRowH, baseRowH + (lines.length - 1) * lineH)
+      )
+      const tableBodyH = rowHeights.reduce((s, h) => s + h, 0)
+      const H = headerH + tableHeaderH + tableBodyH + footerH + padY * 2
 
       const canvas = document.createElement('canvas')
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -232,8 +248,9 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
       ctx.fillText('Date: ' + dateLabel, 16, 58)
       ctx.fillText(`${rows.length} bale${rows.length === 1 ? '' : 's'} · ${new Set(rows.map(r => r.lotNo)).size} lots`, 16, 78)
 
-      // Table header
-      const cols = { sn: 16, lot: 56, party: 160, qual: 360, lr: 490, bale: 560, than: 660 }
+      // Table header. Marka is added between Bale and Than — narrow on
+      // non-PC-Job rows (often blank), important on PC Job rows.
+      const cols = { sn: 16, lot: 50, party: 150, qual: 310, lr: 430, bale: 490, marka: 575, than: 704 }
       const tHeaderY = headerH + padY
       ctx.fillStyle = '#f1f5f9'
       ctx.fillRect(0, tHeaderY, W, tableHeaderH)
@@ -245,41 +262,56 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
       ctx.fillText('Quality', cols.qual, tHeaderY + 18)
       ctx.fillText('LR', cols.lr, tHeaderY + 18)
       ctx.fillText('Bale', cols.bale, tHeaderY + 18)
+      ctx.fillText('Marka', cols.marka, tHeaderY + 18)
       ctx.textAlign = 'right'
-      ctx.fillText('Than', W - 16, tHeaderY + 18)
+      ctx.fillText('Than', cols.than, tHeaderY + 18)
       ctx.textAlign = 'left'
 
-      // Rows
+      // Rows — variable height: each extra LR line adds lineH px.
       ctx.font = '13px Arial'
+      let rowY = tHeaderY + tableHeaderH
       rows.forEach((r, i) => {
-        const y = tHeaderY + tableHeaderH + i * rowH
+        const h = rowHeights[i]
         if (i % 2 === 0) {
           ctx.fillStyle = '#fafafa'
-          ctx.fillRect(0, y, W, rowH)
+          ctx.fillRect(0, rowY, W, h)
         }
         ctx.fillStyle = '#0f172a'
-        const baseY = y + 20
+        const baseY = rowY + 20 // baseline of first text line
         ctx.fillText(String(i + 1), cols.sn, baseY)
         ctx.fillStyle = '#4338ca'
         ctx.font = 'bold 13px Arial'
-        ctx.fillText(truncate(r.lotNo, 14), cols.lot, baseY)
+        ctx.fillText(truncate(r.lotNo, 12), cols.lot, baseY)
         ctx.fillStyle = '#0f172a'
         ctx.font = '13px Arial'
-        ctx.fillText(truncate(r.party.name, 22), cols.party, baseY)
-        ctx.fillText(truncate(r.quality.name, 18), cols.qual, baseY)
+        ctx.fillText(truncate(r.party.name, 20), cols.party, baseY)
+        ctx.fillText(truncate(r.quality.name, 14), cols.qual, baseY)
+        // LR — wrap each comma-separated value onto its own line, no truncate
         ctx.fillStyle = '#64748b'
-        ctx.fillText(truncate(r.transportLrNo || '—', 10), cols.lr, baseY)
-        ctx.fillText(truncate(r.baleNo || '—', 12), cols.bale, baseY)
+        const lrLines = lrLinesByRow[i]
+        lrLines.forEach((line, li) => {
+          ctx.fillText(line, cols.lr, baseY + li * lineH)
+        })
+        ctx.fillText(truncate(r.baleNo || '—', 11), cols.bale, baseY)
+        // Marka — highlight when present so PC Job markings stand out
+        if (r.marka) {
+          ctx.fillStyle = '#b45309'
+          ctx.font = 'bold 13px Arial'
+        } else {
+          ctx.fillStyle = '#cbd5e1'
+        }
+        ctx.fillText(truncate(r.marka || '—', 13), cols.marka, baseY)
         ctx.fillStyle = '#0f172a'
         ctx.font = 'bold 13px Arial'
         ctx.textAlign = 'right'
-        ctx.fillText(String(r.checkThan), W - 16, baseY)
+        ctx.fillText(String(r.checkThan), cols.than, baseY)
         ctx.textAlign = 'left'
         ctx.font = '13px Arial'
+        rowY += h
       })
 
       // Footer
-      const fy = tHeaderY + tableHeaderH + rows.length * rowH + padY
+      const fy = tHeaderY + tableHeaderH + tableBodyH + padY
       ctx.fillStyle = '#1e293b'
       ctx.fillRect(0, fy, W, footerH)
       ctx.fillStyle = '#e94560'
@@ -464,6 +496,9 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       LR {e.transportLrNo || '—'} · Bale {e.bale ?? '—'} · Bale No {e.baleNo || '—'}
+                      {e.marka && (
+                        <span className="ml-1">· Marka <span className="font-semibold text-amber-700 dark:text-amber-400">{e.marka}</span></span>
+                      )}
                     </div>
                     {pcJob && (
                       <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
