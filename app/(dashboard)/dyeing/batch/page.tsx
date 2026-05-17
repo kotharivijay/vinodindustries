@@ -143,6 +143,29 @@ export default function BatchDyeingPage() {
     } catch {}
   }
 
+  // Shade master for the inline picker in Step 2
+  const [shadeMaster, setShadeMaster] = useState<{ id: number; name: string; description?: string | null }[]>([])
+  const [shadePickerOpen, setShadePickerOpen] = useState(false)
+  const [shadeSearch, setShadeSearch] = useState('')
+  const [shadeSaving, setShadeSaving] = useState(false)
+  const [descEditing, setDescEditing] = useState(false)
+  const [descDraft, setDescDraft] = useState('')
+
+  // Send only the changed shade fields to the API (hasOwnProperty on the
+  // server preserves anything we don't include).
+  const patchSelectedBatchShade = async (patch: { shadeId?: number | null; shadeName?: string | null; shadeDescription?: string | null }) => {
+    if (!selectedBatch) return
+    setShadeSaving(true)
+    try {
+      await fetch('/api/fold/batch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchId: selectedBatch.batchId, ...patch }),
+      })
+      await refetchBatches()
+    } finally { setShadeSaving(false) }
+  }
+
   const fetchWeightForLot = async (lotNo: string) => {
     setFetchingLot(lotNo)
     setFetchLotMsg(prev => ({ ...prev, [lotNo]: '' }))
@@ -198,6 +221,8 @@ export default function BatchDyeingPage() {
       fetch('/api/dyeing/machines').then(r => r.json()).catch(() => []),
       fetch('/api/dyeing/operators?active=true').then(r => r.json()).catch(() => []),
     ]).then(([batchData, entryData, chemData, processData, machineData, operatorData]) => {
+      // Shade master — for the Step 2 inline shade editor.
+      fetch('/api/shades').then(r => r.json()).then(d => { if (Array.isArray(d)) setShadeMaster(d) }).catch(() => {})
       const batchList = Array.isArray(batchData) ? batchData : []
       setBatches(batchList)
       setSavedEntries(Array.isArray(entryData) ? entryData : [])
@@ -680,10 +705,89 @@ export default function BatchDyeingPage() {
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
               <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
                 Step 2 — Batch Details
-                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 dark:bg-purple-900/20 text-white border border-white">
-                  {selectedBatch.shadeName}{selectedBatch.shadeDescription && ` — ${selectedBatch.shadeDescription}`}
-                </span>
               </h2>
+
+              {/* Shade picker + description — inline edit. Saves PATCH to
+                  /api/fold/batch (server preserves the other field via
+                  hasOwnProperty). Lets the operator fix or supply a per-batch
+                  descriptor here without bouncing to /fold/[id]/edit. */}
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Shade</span>
+                <div className="relative">
+                  <button type="button"
+                    onClick={() => { setShadePickerOpen(o => !o); setShadeSearch('') }}
+                    disabled={shadeSaving}
+                    className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1 ${
+                      shadeSaving ? 'opacity-50' : 'hover:border-purple-400'
+                    } ${selectedBatch.shadeName
+                      ? 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium'
+                      : 'bg-indigo-50 dark:bg-indigo-900/30 border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400'}`}>
+                    {shadeSaving ? '...' : (selectedBatch.shadeName || '+ shade')}
+                    <span className="text-[9px] text-gray-400">✏️</span>
+                  </button>
+                  {shadePickerOpen && (
+                    <div className="absolute left-0 top-full mt-1 z-30 w-60 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-xl shadow-2xl flex flex-col">
+                      <input autoFocus type="text" placeholder="Search shade..."
+                        value={shadeSearch} onChange={e => setShadeSearch(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border-b border-gray-100 dark:border-gray-700 bg-transparent focus:outline-none rounded-t-xl" />
+                      <div className="overflow-y-auto max-h-52">
+                        {selectedBatch.shadeName && (
+                          <button type="button"
+                            onClick={async () => { await patchSelectedBatchShade({ shadeId: null, shadeName: null }); setShadePickerOpen(false) }}
+                            className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border-b border-gray-100 dark:border-gray-700">
+                            ✕ Remove shade
+                          </button>
+                        )}
+                        {shadeMaster.filter(s => !shadeSearch || s.name.toLowerCase().includes(shadeSearch.toLowerCase())).map(s => (
+                          <button key={s.id} type="button"
+                            onClick={async () => { await patchSelectedBatchShade({ shadeId: s.id, shadeName: null }); setShadePickerOpen(false) }}
+                            className="w-full text-left px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/30">
+                            <span className="block text-sm font-medium text-gray-800 dark:text-gray-200">{s.name}</span>
+                            {s.description && <span className="block text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{s.description}</span>}
+                          </button>
+                        ))}
+                        {shadeSearch.trim() && !shadeMaster.some(s => s.name.toLowerCase() === shadeSearch.toLowerCase().trim()) && (
+                          <button type="button"
+                            onClick={async () => { await patchSelectedBatchShade({ shadeId: null, shadeName: shadeSearch.trim() }); setShadePickerOpen(false); setShadeSearch('') }}
+                            className="w-full text-left px-3 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 border-t border-gray-100 dark:border-gray-700">
+                            + Use &quot;{shadeSearch.trim()}&quot; as custom
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <span className="text-[10px] uppercase tracking-wide text-gray-400 dark:text-gray-500 ml-2">Description</span>
+                {descEditing ? (
+                  <input autoFocus type="text"
+                    value={descDraft}
+                    onChange={e => setDescDraft(e.target.value)}
+                    onBlur={async () => {
+                      setDescEditing(false)
+                      if ((descDraft.trim() || '') !== (selectedBatch.shadeDescription || '')) {
+                        await patchSelectedBatchShade({ shadeDescription: descDraft.trim() || null })
+                      }
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+                      else if (e.key === 'Escape') { setDescDraft(selectedBatch.shadeDescription ?? ''); setDescEditing(false) }
+                    }}
+                    placeholder="e.g. Red, Rani, Navy"
+                    className="text-xs px-2 py-1 rounded border border-purple-400 dark:border-purple-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 max-w-[200px]" />
+                ) : (
+                  <button type="button"
+                    onClick={() => { setDescDraft(selectedBatch.shadeDescription ?? ''); setDescEditing(true) }}
+                    disabled={shadeSaving}
+                    className={`text-xs px-2.5 py-1 rounded-full border flex items-center gap-1 ${
+                      shadeSaving ? 'opacity-50' : 'hover:border-amber-400'
+                    } ${selectedBatch.shadeDescription
+                      ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 font-semibold'
+                      : 'bg-indigo-50 dark:bg-indigo-900/20 border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-500 dark:text-indigo-400'}`}>
+                    {selectedBatch.shadeDescription || '+ desc'}
+                    <span className="text-[9px] text-gray-400">✏️</span>
+                  </button>
+                )}
+              </div>
 
               {/* Lot Cards */}
               <div className="space-y-2 mb-4">
