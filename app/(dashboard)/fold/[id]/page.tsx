@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useParams } from 'next/navigation'
 import useSWR from 'swr'
 
@@ -17,21 +18,38 @@ function LotPicker({ currentLotNo, currentThan, lotId, stockLots, onSave }: {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [saving, setSaving] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  // Desktop dropdown is rendered via portal with fixed coords so it escapes the
+  // batch card's `overflow-hidden`; mobile keeps the bottom-sheet layout.
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  const reposition = useCallback(() => {
+    const el = triggerRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setCoords({ top: r.bottom + 4, left: r.left })
+  }, [])
 
   useEffect(() => {
+    if (!open) return
+    reposition()
     const handler = (e: MouseEvent | TouchEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      const t = e.target as Node
+      if (panelRef.current?.contains(t) || triggerRef.current?.contains(t)) return
+      setOpen(false)
     }
-    if (open) {
-      document.addEventListener('mousedown', handler)
-      document.addEventListener('touchstart', handler as EventListener)
-    }
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    document.addEventListener('mousedown', handler)
+    document.addEventListener('touchstart', handler as EventListener)
     return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
       document.removeEventListener('mousedown', handler)
       document.removeEventListener('touchstart', handler as EventListener)
     }
-  }, [open])
+  }, [open, reposition])
 
   const filtered = useMemo(() => {
     if (!search) return stockLots.filter(l => l.foldAvailable > 0).slice(0, 50)
@@ -51,51 +69,116 @@ function LotPicker({ currentLotNo, currentThan, lotId, stockLots, onSave }: {
     setSearch('')
   }
 
+  const panel = (
+    <>
+      <div className="sm:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setOpen(false)} />
+      <div
+        ref={panelRef}
+        style={coords ? { top: coords.top, left: coords.left } : undefined}
+        className="fixed bottom-0 left-0 right-0 z-50 sm:bottom-auto sm:right-auto sm:w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-t-2xl sm:rounded-lg shadow-xl flex flex-col max-h-[50vh] sm:max-h-60"
+      >
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+          <input
+            type="text" autoFocus
+            className="flex-1 text-sm bg-transparent focus:outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400"
+            placeholder="Search lot, party, quality..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <button onClick={() => setOpen(false)} className="text-xs text-gray-400 sm:hidden">Close</button>
+        </div>
+        <div className="overflow-y-auto flex-1">
+          {filtered.map(l => (
+            <button
+              key={l.lotNo}
+              onClick={() => selectLot(l)}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between"
+            >
+              <div>
+                <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
+                <span className="text-[10px] text-gray-400 ml-2">{l.party} · {l.quality}</span>
+              </div>
+              <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{l.foldAvailable}</span>
+            </button>
+          ))}
+          {filtered.length === 0 && (
+            <p className="px-3 py-4 text-xs text-gray-400 text-center">No lots found</p>
+          )}
+        </div>
+      </div>
+    </>
+  )
+
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
+        ref={triggerRef}
         onClick={() => { setOpen(!open); setSearch('') }}
         disabled={saving}
         className="font-medium text-indigo-700 dark:text-indigo-400 hover:underline cursor-pointer disabled:opacity-50"
       >
         {saving ? '...' : currentLotNo} <span className="text-[10px] text-gray-400">✏️</span>
       </button>
-      {open && (
-        <>
-          <div className="sm:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setOpen(false)} />
-          <div className="fixed bottom-0 left-0 right-0 z-50 sm:absolute sm:bottom-auto sm:top-full sm:mt-1 sm:left-0 sm:right-auto sm:w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-t-2xl sm:rounded-lg shadow-xl flex flex-col max-h-[50vh] sm:max-h-60">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-              <input
-                type="text" autoFocus
-                className="flex-1 text-sm bg-transparent focus:outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400"
-                placeholder="Search lot, party, quality..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-              <button onClick={() => setOpen(false)} className="text-xs text-gray-400 sm:hidden">Close</button>
-            </div>
-            <div className="overflow-y-auto flex-1">
-              {filtered.map(l => (
-                <button
-                  key={l.lotNo}
-                  onClick={() => selectLot(l)}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between"
-                >
-                  <div>
-                    <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
-                    <span className="text-[10px] text-gray-400 ml-2">{l.party} · {l.quality}</span>
-                  </div>
-                  <span className="text-xs text-green-600 dark:text-green-400 font-semibold">{l.foldAvailable}</span>
-                </button>
-              ))}
-              {filtered.length === 0 && (
-                <p className="px-3 py-4 text-xs text-gray-400 text-center">No lots found</p>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+      {open && typeof window !== 'undefined' && createPortal(panel, document.body)}
+    </>
+  )
+}
+
+// ── Inline than editor ────────────────────────────────────────────────────
+// Click the number to turn it into an input. Save on Enter/blur; Escape
+// cancels. Empty / zero / non-numeric input is ignored (keeps existing value).
+function ThanEditor({ lotId, lotNo, than, onSave, className }: {
+  lotId: number
+  lotNo: string
+  than: number
+  onSave: (lotId: number, lotNo: string, than: number) => Promise<void>
+  className?: string
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(String(than))
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { setDraft(String(than)) }, [than])
+
+  async function commit() {
+    setEditing(false)
+    const n = parseInt(draft, 10)
+    if (!Number.isFinite(n) || n <= 0 || n === than) {
+      setDraft(String(than))
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave(lotId, lotNo, n)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus type="number" min={1}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+          else if (e.key === 'Escape') { setDraft(String(than)); setEditing(false) }
+        }}
+        className={`w-16 text-right border border-indigo-400 dark:border-indigo-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 ${className ?? ''}`}
+      />
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => { setDraft(String(than)); setEditing(true) }}
+      disabled={saving}
+      title="Click to edit than"
+      className={`hover:underline cursor-pointer disabled:opacity-50 ${className ?? ''}`}
+    >
+      {saving ? '...' : than}
+    </button>
   )
 }
 
@@ -679,7 +762,7 @@ export default function FoldDetailPage() {
                           <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">🏷️ {lot.marka}</span>
                         )}
                       </div>
-                      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{lot.than}</span>
+                      <ThanEditor lotId={lot.id} lotNo={lot.lotNo} than={lot.than} onSave={updateLot} className="text-sm font-bold text-gray-800 dark:text-gray-100" />
                     </div>
                     <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
                       <span>{lot.party?.name ?? '-'}</span>
@@ -718,7 +801,9 @@ export default function FoldDetailPage() {
                       )}
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{lot.party?.name ?? '-'}</td>
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{lot.quality?.name ?? '-'}</td>
-                      <td className="px-4 py-2 text-right font-bold text-gray-800 dark:text-gray-100">{lot.than}</td>
+                      <td className="px-4 py-2 text-right font-bold text-gray-800 dark:text-gray-100">
+                        <ThanEditor lotId={lot.id} lotNo={lot.lotNo} than={lot.than} onSave={updateLot} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
