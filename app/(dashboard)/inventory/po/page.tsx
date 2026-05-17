@@ -138,19 +138,12 @@ export default function POListPage() {
                       <button key={l.id} type="button" onClick={() => pickLedger(l)}
                         title={l.name}
                         className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 block">
-                        {/* Wrap the full party name (no truncate) so long Tally
-                            ledger names like "Sundry Creditor (Dyes &
-                            Chemicals) - Supplier X" stay fully readable. */}
+                        {/* Just the party name — parent group + tag pills move
+                            to the selected-row chip below the input. Keeps the
+                            dropdown scannable when there are many ledgers. */}
                         <div className="font-medium text-gray-800 dark:text-gray-100 break-words whitespace-normal leading-tight">
                           {l.name}
                         </div>
-                        {l.tags?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {l.tags.map(t => (
-                              <span key={t} className="text-[10px] bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium px-1 py-0.5 rounded">{t}</span>
-                            ))}
-                          </div>
-                        )}
                       </button>
                     ))}
                   </div>
