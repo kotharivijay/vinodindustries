@@ -144,11 +144,6 @@ export default function POListPage() {
                         <div className="font-medium text-gray-800 dark:text-gray-100 break-words whitespace-normal leading-tight">
                           {l.name}
                         </div>
-                        {l.parent && (
-                          <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 break-words whitespace-normal">
-                            {l.parent}
-                          </div>
-                        )}
                         {l.tags?.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {l.tags.map(t => (
