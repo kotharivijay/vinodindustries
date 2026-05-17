@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useRole } from '../RoleContext'
 
 interface PrintSettings {
   headerFontSize: number
@@ -327,8 +328,25 @@ function ServiceTab() {
     } finally { setDeleting(false) }
   }
 
+  const role = useRole()
+
   return (
     <div className="space-y-4">
+      {role === 'admin' && (
+        <Link href="/settings/locked-batch-fix"
+          className="block bg-white dark:bg-gray-800 rounded-xl border border-purple-200 dark:border-purple-800 p-5 hover:border-purple-400 dark:hover:border-purple-600 transition">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-purple-700 dark:text-purple-300">🔧 Locked Batch Lot Correction</h2>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Fix lot mistakes on already-dyed/finished batches. Cascades rename + than across
+                FoldBatchLot, DyeingEntryLot &amp; FinishEntryLot in one transaction. Admin only.
+              </p>
+            </div>
+            <span className="text-purple-500 text-lg">→</span>
+          </div>
+        </Link>
+      )}
       <OrphanDyeingCard />
       <NegativeLotsCard />
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">

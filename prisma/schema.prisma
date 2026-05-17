@@ -1724,3 +1724,25 @@ model InvAuditLog {
 
   @@index([entityType, entityId])
 }
+
+// ─── Locked Batch Lot Correction Audit ───────────────────────────────────────
+// One row per admin-issued fix from /settings/locked-batch-fix. Records the
+// 3-table cascade (FoldBatchLot + DyeingEntryLot + FinishEntryLot) plus any
+// opt-in downstream renames the admin ticked.
+model BatchLotCorrection {
+  id                Int      @id @default(autoincrement())
+  foldBatchLotId    Int
+  oldLotNo          String
+  oldThan           Int
+  newLotNo          String
+  newThan           Int
+  dyeingEntryLotId  Int?
+  finishEntryLotIds Json? // [929, 1043, ...]
+  downstreamRenamed Json? // { foldingSlipLot: [...], packingLot: [...], despatchEntryLot: [...] }
+  reason            String?
+  userEmail         String
+  createdAt         DateTime @default(now())
+
+  @@index([foldBatchLotId])
+  @@index([userEmail, createdAt])
+}
