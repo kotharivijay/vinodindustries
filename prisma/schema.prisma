@@ -85,6 +85,12 @@ model GreyEntry {
   // upstream stages (Grey/Fold/Dye/Finish). Used by lot tracking + stock chip
   // math to count the lot at this stage upfront.
   startStage    String?
+  // Manual "this bale has been physically opened" flag. Set per grey row but
+  // toggled lot-wide in the UI (one click marks every bale of the lot). Lets
+  // the floor team flag opens that haven't been formally checked yet, without
+  // creating a CheckingSlip.
+  openedAt      DateTime?
+  openedByEmail String?
   // stock & tDesp are calculated live — not stored
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

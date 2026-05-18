@@ -22,11 +22,13 @@ interface GreyEntry {
   party: { name: string }; quality: { name: string }
   transport: { name: string }; weaver: { name: string }
   stock: number; tDesp: number; openingBalance?: number
+  openedAt?: string | null
 }
 
 interface StockSummaryRow {
   lotNo: string; party: string; quality: string; weaver: string
   entries: number; greyThan: number; tDesp: number; stock: number; lastDate: string; openingBalance: number
+  openedAt: string | null
 }
 
 type SortField = 'sn' | 'date' | 'party' | 'quality' | 'than' | 'lotNo' | 'lrNo' | 'tDesp' | 'stock'
@@ -44,7 +46,7 @@ interface CheckingSlipRow {
   lots: { id: number; lotNo: string; than: number; baleNo: string | null }[]
   _count?: { lots: number }
 }
-type StockFilter = 'all' | 'instock' | 'cleared'
+type StockFilter = 'all' | 'instock' | 'cleared' | 'opened'
 
 function getValue(e: GreyEntry, field: SortField): string | number {
   switch (field) {
@@ -158,6 +160,24 @@ export default function GreyListPage() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [cfImporting, setCfImporting] = useState(false)
   const [cfResult, setCfResult] = useState<{ imported: number; totalThan: number } | null>(null)
+  const [togglingLot, setTogglingLot] = useState<string | null>(null)
+
+  async function toggleLotOpened(lotNo: string, currentlyOpened: boolean) {
+    setTogglingLot(lotNo)
+    try {
+      const res = await fetch(`/api/grey/lots/${encodeURIComponent(lotNo)}/opened`, {
+        method: currentlyOpened ? 'DELETE' : 'POST',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data?.error ?? `Toggle failed (HTTP ${res.status})`)
+        return
+      }
+      mutate()
+    } finally {
+      setTogglingLot(null)
+    }
+  }
   const toggleExpand = (id: number) => setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
 
   // Persist filter/search state on every change so back-nav from /lot/[id]
@@ -226,6 +246,7 @@ export default function GreyListPage() {
           lotNo: e.lotNo, party: e.party.name, quality: e.quality.name,
           weaver: e.weaver?.name ?? '', entries: 1, greyThan: e.than,
           tDesp: e.tDesp, stock: e.stock, lastDate: e.date, openingBalance: ob,
+          openedAt: e.openedAt ?? null,
         })
       } else {
         existing.entries++
@@ -234,6 +255,13 @@ export default function GreyListPage() {
         existing.openingBalance = Math.max(existing.openingBalance, ob)
         existing.stock = existing.openingBalance + existing.greyThan - existing.tDesp
         if (new Date(e.date) > new Date(existing.lastDate)) existing.lastDate = e.date
+        // Lot is "opened" only when every grey row of the lot carries a
+        // timestamp. Mixed state (a few bales opened, others not) renders
+        // as not-yet-opened so the chip means what it says.
+        if (existing.openedAt && !e.openedAt) existing.openedAt = null
+        else if (existing.openedAt && e.openedAt && new Date(e.openedAt) > new Date(existing.openedAt)) {
+          existing.openedAt = e.openedAt
+        }
       }
     }
     return Array.from(map.values())
@@ -253,6 +281,7 @@ export default function GreyListPage() {
         const matchFilter =
           stockFilter === 'all' ? true :
           stockFilter === 'instock' ? r.stock > 0 :
+          stockFilter === 'opened' ? !!r.openedAt :
           r.stock === 0
         return matchParty && matchLotQ && matchFilter
       })
@@ -447,13 +476,13 @@ export default function GreyListPage() {
               >Clear</button>
             )}
             <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-              {(['all', 'instock', 'cleared'] as StockFilter[]).map(f => (
+              {(['all', 'instock', 'cleared', 'opened'] as StockFilter[]).map(f => (
                 <button
                   key={f}
                   onClick={() => setStockFilter(f)}
                   className={`px-3 py-1 text-xs rounded-md font-medium transition ${stockFilter === f ? 'bg-white dark:bg-gray-600 shadow text-gray-800 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}
                 >
-                  {f === 'all' ? 'All' : f === 'instock' ? 'In Stock' : 'Cleared'}
+                  {f === 'all' ? 'All' : f === 'instock' ? 'In Stock' : f === 'cleared' ? 'Cleared' : '📦 Opened'}
                 </button>
               ))}
             </div>
@@ -513,6 +542,7 @@ export default function GreyListPage() {
                             {r.lotNo}
                           </LotLink>
                           {r.openingBalance > 0 && <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
+                          {r.openedAt && <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full font-medium">📦 Opened</span>}
                         </div>
                         <p className="text-sm font-medium text-gray-800 dark:text-gray-100 break-words">{r.party}</p>
                         <p className="text-xs text-gray-600 dark:text-gray-300 break-words">{r.quality}</p>
@@ -525,6 +555,18 @@ export default function GreyListPage() {
                     <StageChips lotNo={r.lotNo} greyThan={r.greyThan} tDesp={r.tDesp} stages={stagesByLot} />
                     <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">
                       <span>{new Date(r.lastDate).toLocaleDateString('en-IN')} · {r.entries} entr{r.entries === 1 ? 'y' : 'ies'}</span>
+                      <button
+                        onClick={() => toggleLotOpened(r.lotNo, !!r.openedAt)}
+                        disabled={togglingLot === r.lotNo}
+                        className={`text-[11px] font-medium px-2 py-0.5 rounded border transition disabled:opacity-50 ${
+                          r.openedAt
+                            ? 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                            : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/40'
+                        }`}
+                        title={r.openedAt ? `Opened ${new Date(r.openedAt).toLocaleDateString('en-IN')}` : 'Mark this lot as physically opened'}
+                      >
+                        {togglingLot === r.lotNo ? '…' : r.openedAt ? '📦 Opened — Undo' : '📦 Mark Opened'}
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -556,6 +598,7 @@ export default function GreyListPage() {
                         <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Grey Than</th>
                         <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">T_DESP</th>
                         <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Balance</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide">Opened</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
@@ -564,6 +607,7 @@ export default function GreyListPage() {
                           <td className="px-4 py-3 font-semibold text-indigo-700 dark:text-indigo-400">
                             <LotLink lotNo={r.lotNo} storageKey={GREY_VIEW_KEY} className="hover:underline">{r.lotNo}</LotLink>
                             {r.openingBalance > 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-medium">OB</span>}
+                            {r.openedAt && <span className="ml-1.5 text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded-full font-medium">📦</span>}
                             <StageChips lotNo={r.lotNo} greyThan={r.greyThan} tDesp={r.tDesp} stages={stagesByLot} />
                           </td>
                           <td className="px-4 py-3 text-gray-800 dark:text-gray-200">{r.party}</td>
@@ -578,6 +622,20 @@ export default function GreyListPage() {
                               {r.stock}
                             </span>
                           </td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <button
+                              onClick={() => toggleLotOpened(r.lotNo, !!r.openedAt)}
+                              disabled={togglingLot === r.lotNo}
+                              className={`text-[11px] font-medium px-2 py-1 rounded border transition disabled:opacity-50 ${
+                                r.openedAt
+                                  ? 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/40'
+                              }`}
+                              title={r.openedAt ? `Opened ${new Date(r.openedAt).toLocaleDateString('en-IN')} — click to undo` : 'Mark this lot as physically opened'}
+                            >
+                              {togglingLot === r.lotNo ? '…' : r.openedAt ? `📦 ${new Date(r.openedAt).toLocaleDateString('en-IN')}` : '📦 Mark'}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -587,6 +645,7 @@ export default function GreyListPage() {
                         <td className="px-4 py-3 text-right font-bold text-gray-800 dark:text-gray-100">{filteredStock.reduce((s, r) => s + r.greyThan, 0)}</td>
                         <td className="px-4 py-3 text-right font-bold text-orange-600 dark:text-orange-400">{filteredStock.reduce((s, r) => s + r.tDesp, 0)}</td>
                         <td className="px-4 py-3 text-right font-bold text-indigo-700 dark:text-indigo-400">{filteredStock.reduce((s, r) => s + r.stock, 0)}</td>
+                        <td className="px-4 py-3"></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -600,7 +659,7 @@ export default function GreyListPage() {
 
       {/* ── CHECKING SLIPS TAB ── */}
       {tab === 'checking' && (
-        <CheckingSlipsPanel slips={checkingSlips} onMutate={mutateChecking} />
+        <CheckingSlipsPanel slips={checkingSlips} entries={entries} onMutate={mutateChecking} />
       )}
 
       {/* ── ALL ENTRIES TAB ── */}
@@ -839,13 +898,34 @@ function StageChips({ lotNo, greyThan, tDesp, stages }: {
   )
 }
 
-function CheckingSlipsPanel({ slips, onMutate }: {
+function CheckingSlipsPanel({ slips, entries, onMutate }: {
   slips: CheckingSlipRow[]
+  entries: GreyEntry[]
   onMutate: () => void
 }) {
   const [search, setSearch] = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [expandedId, setExpandedId] = useState<number | null>(null)
+
+  // lotNo → set of LR numbers, derived from the grey entries already loaded on
+  // the parent. A single lot may span multiple grey rows with different LRs
+  // (multi-truck shipments), so we collect them all.
+  const lrsByLotNo = useMemo(() => {
+    const m = new Map<string, Set<string>>()
+    for (const e of entries) {
+      if (!e.transportLrNo) continue
+      const key = e.lotNo.toLowerCase()
+      if (!m.has(key)) m.set(key, new Set())
+      for (const lr of String(e.transportLrNo).split(',').map(s => s.trim()).filter(Boolean)) {
+        m.get(key)!.add(lr)
+      }
+    }
+    return m
+  }, [entries])
+
+  function lrsForLot(lotNo: string): string[] {
+    return Array.from(lrsByLotNo.get(lotNo.toLowerCase()) ?? [])
+  }
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
@@ -854,9 +934,12 @@ function CheckingSlipsPanel({ slips, onMutate }: {
       s.slipNo.toLowerCase().includes(q) ||
       s.checkerName.toLowerCase().includes(q) ||
       (s.notes ?? '').toLowerCase().includes(q) ||
-      s.lots.some(l => l.lotNo.toLowerCase().includes(q))
+      s.lots.some(l =>
+        l.lotNo.toLowerCase().includes(q) ||
+        lrsForLot(l.lotNo).some(lr => lr.toLowerCase().includes(q))
+      )
     )
-  }, [slips, search])
+  }, [slips, search, lrsByLotNo])
 
   async function handleDelete(id: number) {
     if (!confirm('Delete this checking slip?')) return
@@ -879,7 +962,7 @@ function CheckingSlipsPanel({ slips, onMutate }: {
       <div className="mb-4 flex items-center gap-3">
         <input
           type="text"
-          placeholder="Search by slip no, checker, lot, notes..."
+          placeholder="Search by slip no, checker, lot, LR no, notes..."
           className="w-full max-w-md border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 text-sm bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -937,17 +1020,25 @@ function CheckingSlipsPanel({ slips, onMutate }: {
                 </div>
                 {isOpen && (
                   <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {s.lots.map(l => (
-                      <div key={l.id} className="bg-gray-50 dark:bg-gray-700/40 rounded-lg p-2 text-sm flex items-center justify-between">
-                        <div className="min-w-0">
-                          <LotLink lotNo={l.lotNo} storageKey={GREY_VIEW_KEY} className="font-semibold text-indigo-700 dark:text-indigo-400 hover:underline">
-                            🔖 {l.lotNo}
-                          </LotLink>
-                          {l.baleNo && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">Bale {l.baleNo}</span>}
+                    {s.lots.map(l => {
+                      const lrs = lrsForLot(l.lotNo)
+                      return (
+                        <div key={l.id} className="bg-gray-50 dark:bg-gray-700/40 rounded-lg p-2 text-sm flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <LotLink lotNo={l.lotNo} storageKey={GREY_VIEW_KEY} className="font-semibold text-indigo-700 dark:text-indigo-400 hover:underline">
+                              🔖 {l.lotNo}
+                            </LotLink>
+                            {l.baleNo && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">Bale {l.baleNo}</span>}
+                            {lrs.length > 0 && (
+                              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 break-words">
+                                LR {lrs.join(', ')}
+                              </div>
+                            )}
+                          </div>
+                          <span className="font-bold text-gray-800 dark:text-gray-100 shrink-0">{l.than}</span>
                         </div>
-                        <span className="font-bold text-gray-800 dark:text-gray-100">{l.than}</span>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
