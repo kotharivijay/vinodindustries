@@ -337,8 +337,8 @@ export default function OutstandingPage() {
                       <div className="text-gray-500 dark:text-gray-400 text-[10px]">
                         {p.table === 'inv' ? '📄 Invoice' : '💰 Receipt'} · {p.vchType} · {p.vchNumber} · {p.date}
                       </div>
-                      <div className="text-rose-700 dark:text-rose-400 break-all"><span className="text-gray-500 dark:text-gray-400">was: </span>"{p.was}"</div>
-                      <div className="text-emerald-700 dark:text-emerald-400 break-all"><span className="text-gray-500 dark:text-gray-400">now: </span>"{p.now}"</div>
+                      <div className="text-rose-700 dark:text-rose-400 break-all"><span className="text-gray-500 dark:text-gray-400">was: </span>&ldquo;{p.was}&rdquo;</div>
+                      <div className="text-emerald-700 dark:text-emerald-400 break-all"><span className="text-gray-500 dark:text-gray-400">now: </span>&ldquo;{p.now}&rdquo;</div>
                     </div>
                   ))}
                 </div>
