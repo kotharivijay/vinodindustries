@@ -65,21 +65,42 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     data.usageTags = cleaned
   }
 
-  // Alias re-mapping: blocked if item already used in a pushed invoice.
+  // Alias re-mapping: blocked if item is used in any non-voided invoice that
+  // has already been pushed to Tally (would desync the on-disk voucher).
+  // Returns a structured payload so the UI can list the offending invoices.
+  let aliasRemap: { from: any; to: any } | null = null
   if (body.aliasId && Number(body.aliasId) !== item.aliasId) {
-    const used = await db.invPurchaseInvoiceLine.findFirst({
+    const blockingLines = await db.invPurchaseInvoiceLine.findMany({
       where: {
         itemId: id,
         invoice: { status: 'PushedToTally' },
       },
-      select: { id: true },
+      select: {
+        invoice: {
+          select: { id: true, supplierInvoiceNo: true, supplierInvoiceDate: true, tallyVoucherNo: true },
+        },
+      },
     })
-    if (used) return NextResponse.json({ error: 'Cannot re-map alias: item used in a pushed invoice' }, { status: 409 })
+    if (blockingLines.length) {
+      const seen = new Set<number>()
+      const usedInInvoices: any[] = []
+      for (const l of blockingLines) {
+        if (!l.invoice || seen.has(l.invoice.id)) continue
+        seen.add(l.invoice.id)
+        usedInInvoices.push(l.invoice)
+      }
+      return NextResponse.json({
+        error: `Cannot re-map alias — item is on ${usedInInvoices.length} pushed invoice(s). Void or unlink those first.`,
+        code: 'ALIAS_IN_USE',
+        details: { usedInInvoices, usedInInvoiceCount: usedInInvoices.length },
+      }, { status: 409 })
+    }
     const newAlias = await db.invTallyAlias.findUnique({ where: { id: Number(body.aliasId) } })
-    if (!newAlias) return NextResponse.json({ error: 'Alias not found' }, { status: 404 })
+    if (!newAlias) return NextResponse.json({ error: 'Alias not found', code: 'ALIAS_NOT_FOUND' }, { status: 404 })
     data.aliasId = newAlias.id
     data.unit = newAlias.unit
     data.gstOverride = null
+    aliasRemap = { from: item.alias, to: newAlias }
   }
 
   const updated = await db.invItem.update({
@@ -102,7 +123,25 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     descLinesUpdated = r.count ?? 0
   }
 
-  return NextResponse.json({ ...updated, _meta: { descLinesUpdated } })
+  // Audit alias remap (rename audit lives outside this block since it can be
+  // chained with the remap in a single PATCH).
+  if (aliasRemap) {
+    await db.invAuditLog.create({
+      data: {
+        action: 'ITEM_ALIAS_REMAP',
+        entityType: 'InvItem',
+        entityId: id,
+        payload: {
+          itemDisplayName: updated.displayName,
+          from: { aliasId: aliasRemap.from.id, tallyStockItem: aliasRemap.from.tallyStockItem, unit: aliasRemap.from.unit, gstRate: aliasRemap.from.gstRate },
+          to: { aliasId: aliasRemap.to.id, tallyStockItem: aliasRemap.to.tallyStockItem, unit: aliasRemap.to.unit, gstRate: aliasRemap.to.gstRate },
+          reason: body.remapReason || null,
+        },
+      },
+    })
+  }
+
+  return NextResponse.json({ ...updated, _meta: { descLinesUpdated, aliasRemapped: !!aliasRemap } })
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
