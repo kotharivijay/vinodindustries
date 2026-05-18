@@ -50,6 +50,7 @@ const ksiNavGroups = [
   {
     label: 'Reports',
     links: [
+      { href: '/reports/party-stock', label: 'Party Stock Report', icon: '📦' },
       { href: '/dyeing/cost-report', label: 'Dyeing Cost Report', icon: '📊' },
       { href: '/dyeing/production-report', label: 'Production Report', icon: '🏭' },
       { href: '/dyeing/consumption-report', label: 'Consumption Report', icon: '🧪' },
