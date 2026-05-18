@@ -315,104 +315,53 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
 // ── Variant A — on-screen view ───────────────────────────────────
 function SummaryView({ data }: { data: ReportPayload }) {
   return (
-    <>
-      {/* Mobile card layout — one card per lot, stacked vertically. */}
-      <div className="sm:hidden space-y-2">
-        {data.perLot.map(r => {
-          const status = r.balance === 0 ? 'Cleared' : r.outward === 0 ? 'Not despatched' : 'Partial'
-          const statusCls = status === 'Cleared' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-            : status === 'Partial' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
-            : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-          return (
-            <div key={r.lotNo} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-3">
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <div className="min-w-0 flex-1">
-                  <div className="font-bold text-indigo-700 dark:text-indigo-400 text-sm break-words">{r.lotNo}</div>
-                  <div className="text-[11px] text-gray-600 dark:text-gray-300 break-words">{r.quality}</div>
-                </div>
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusCls}`}>{status}</span>
-              </div>
-              <div className="grid grid-cols-3 gap-1 text-center text-[11px]">
-                <div>
-                  <div className="text-gray-400">In</div>
-                  <div className="font-bold text-blue-700 dark:text-blue-400">{r.inward}</div>
-                </div>
-                <div>
-                  <div className="text-gray-400">Out</div>
-                  <div className="font-bold text-orange-700 dark:text-orange-400">{r.outward}</div>
-                </div>
-                <div>
-                  <div className="text-gray-400">Balance</div>
-                  <div className={`font-bold ${r.balance > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-500'}`}>{r.balance}</div>
-                </div>
-              </div>
-              <div className="mt-1.5 flex justify-between text-[10px] text-gray-400 dark:text-gray-500">
-                <span>First in: {fmt(r.firstInward)}</span>
-                <span>Last out: {fmt(r.lastOutward)}</span>
-              </div>
-            </div>
-          )
-        })}
-        {/* Totals card — pinned at the bottom of the list */}
-        <div className="bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Total · {data.perLot.length} lots</div>
-          <div className="grid grid-cols-3 gap-1 text-center text-xs">
-            <div><div className="text-gray-400 text-[10px]">In</div><div className="font-bold text-blue-700 dark:text-blue-400">{data.summary.inwardThan}</div></div>
-            <div><div className="text-gray-400 text-[10px]">Out</div><div className="font-bold text-orange-700 dark:text-orange-400">{data.summary.outwardThan}</div></div>
-            <div><div className="text-gray-400 text-[10px]">Balance</div><div className="font-bold text-indigo-700 dark:text-indigo-400">{data.summary.balance}</div></div>
-          </div>
-        </div>
+    <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 dark:bg-gray-700/60 border-b border-gray-100 dark:border-gray-700">
+            <tr>
+              <Th>Lot No</Th>
+              <Th>Quality</Th>
+              <Th align="center">First In</Th>
+              <Th align="center">Last Out</Th>
+              <Th align="right">Inward</Th>
+              <Th align="right">Outward</Th>
+              <Th align="right">Balance</Th>
+              <Th align="center">Status</Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+            {data.perLot.map(r => {
+              const status = r.balance === 0 ? 'Cleared' : r.outward === 0 ? 'Not despatched' : 'Partial'
+              const statusCls = status === 'Cleared' ? 'text-emerald-700 dark:text-emerald-400'
+                : status === 'Partial' ? 'text-amber-700 dark:text-amber-400'
+                : 'text-blue-700 dark:text-blue-400'
+              return (
+                <tr key={r.lotNo} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                  <Td><span className="font-bold text-indigo-700 dark:text-indigo-400">{r.lotNo}</span></Td>
+                  <Td>{r.quality}</Td>
+                  <Td align="center">{fmt(r.firstInward)}</Td>
+                  <Td align="center">{fmt(r.lastOutward)}</Td>
+                  <Td align="right">{r.inward}</Td>
+                  <Td align="right">{r.outward}</Td>
+                  <Td align="right"><span className="font-bold">{r.balance}</span></Td>
+                  <Td align="center"><span className={`font-semibold ${statusCls}`}>{status}</span></Td>
+                </tr>
+              )
+            })}
+          </tbody>
+          <tfoot className="bg-gray-50 dark:bg-gray-700/60 border-t-2 border-gray-200 dark:border-gray-600">
+            <tr>
+              <Td colSpan={4}><span className="font-bold uppercase tracking-wide text-[10px] text-gray-500">Total ({data.perLot.length} lots)</span></Td>
+              <Td align="right"><span className="font-bold">{data.summary.inwardThan}</span></Td>
+              <Td align="right"><span className="font-bold">{data.summary.outwardThan}</span></Td>
+              <Td align="right"><span className="font-bold text-indigo-700 dark:text-indigo-400">{data.summary.balance}</span></Td>
+              <Td />
+            </tr>
+          </tfoot>
+        </table>
       </div>
-
-      {/* Desktop table view — unchanged */}
-      <div className="hidden sm:block bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-700/60 border-b border-gray-100 dark:border-gray-700">
-              <tr>
-                <Th>Lot No</Th>
-                <Th>Quality</Th>
-                <Th align="center">First In</Th>
-                <Th align="center">Last Out</Th>
-                <Th align="right">Inward</Th>
-                <Th align="right">Outward</Th>
-                <Th align="right">Balance</Th>
-                <Th align="center">Status</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {data.perLot.map(r => {
-                const status = r.balance === 0 ? 'Cleared' : r.outward === 0 ? 'Not despatched' : 'Partial'
-                const statusCls = status === 'Cleared' ? 'text-emerald-700 dark:text-emerald-400'
-                  : status === 'Partial' ? 'text-amber-700 dark:text-amber-400'
-                  : 'text-blue-700 dark:text-blue-400'
-                return (
-                  <tr key={r.lotNo} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                    <Td><span className="font-bold text-indigo-700 dark:text-indigo-400">{r.lotNo}</span></Td>
-                    <Td>{r.quality}</Td>
-                    <Td align="center">{fmt(r.firstInward)}</Td>
-                    <Td align="center">{fmt(r.lastOutward)}</Td>
-                    <Td align="right">{r.inward}</Td>
-                    <Td align="right">{r.outward}</Td>
-                    <Td align="right"><span className="font-bold">{r.balance}</span></Td>
-                    <Td align="center"><span className={`font-semibold ${statusCls}`}>{status}</span></Td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            <tfoot className="bg-gray-50 dark:bg-gray-700/60 border-t-2 border-gray-200 dark:border-gray-600">
-              <tr>
-                <Td colSpan={4}><span className="font-bold uppercase tracking-wide text-[10px] text-gray-500">Total ({data.perLot.length} lots)</span></Td>
-                <Td align="right"><span className="font-bold">{data.summary.inwardThan}</span></Td>
-                <Td align="right"><span className="font-bold">{data.summary.outwardThan}</span></Td>
-                <Td align="right"><span className="font-bold text-indigo-700 dark:text-indigo-400">{data.summary.balance}</span></Td>
-                <Td />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-    </>
+    </div>
   )
 }
 
@@ -433,87 +382,48 @@ function LedgerView({ data }: { data: ReportPayload }) {
     return merged.map(t => { bal += t.signed; return { ...t, bal } })
   }, [data])
   return (
-    <>
-      {/* Mobile list — one card per transaction. */}
-      <div className="sm:hidden space-y-1.5">
-        {txns.map((t, i) => {
-          const isIn = t.kind === 'IN'
-          return (
-            <div key={i} className={`bg-white dark:bg-gray-800 border-l-4 ${isIn ? 'border-blue-500' : 'border-orange-500'} border-y border-r border-gray-100 dark:border-gray-700 rounded-r-xl p-2.5`}>
-              <div className="flex items-start justify-between gap-2 mb-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isIn ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'}`}>{t.kind}</span>
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400">{fmt(t.date)}</span>
-                  <span className="text-[11px] text-gray-500 dark:text-gray-400">· {t.ref}</span>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className={`text-base font-bold tabular-nums ${isIn ? 'text-blue-700 dark:text-blue-400' : 'text-orange-700 dark:text-orange-400'}`}>
-                    {isIn ? '+' : '−'}{Math.abs(t.signed)}
-                  </div>
-                  <div className="text-[10px] text-gray-400">Bal {t.bal}</div>
-                </div>
-              </div>
-              <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 break-words">{t.lot}</div>
-              <div className="text-[11px] text-gray-500 dark:text-gray-400 break-words">{t.quality}</div>
-              <div className="text-[11px] text-gray-500 dark:text-gray-400 break-words mt-0.5">{t.detail}</div>
-            </div>
-          )
-        })}
-        {/* Totals */}
-        <div className="bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-xl p-3 mt-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Total</div>
-          <div className="grid grid-cols-3 gap-1 text-center text-xs">
-            <div><div className="text-gray-400 text-[10px]">In</div><div className="font-bold text-blue-700 dark:text-blue-400">{data.summary.inwardThan}</div></div>
-            <div><div className="text-gray-400 text-[10px]">Out</div><div className="font-bold text-orange-700 dark:text-orange-400">{data.summary.outwardThan}</div></div>
-            <div><div className="text-gray-400 text-[10px]">Balance</div><div className="font-bold text-indigo-700 dark:text-indigo-400">{data.summary.balance}</div></div>
-          </div>
-        </div>
-      </div>
-
-      {/* Desktop table view — unchanged */}
-      <div className="hidden sm:block bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-700/60 border-b border-gray-100 dark:border-gray-700">
-              <tr>
-                <Th>Date</Th>
-                <Th align="center">Type</Th>
-                <Th>Ref</Th>
-                <Th>Lot</Th>
-                <Th>Quality</Th>
-                <Th>Detail</Th>
-                <Th align="right">In</Th>
-                <Th align="right">Out</Th>
-                <Th align="right">Bal</Th>
+    <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="bg-gray-50 dark:bg-gray-700/60 border-b border-gray-100 dark:border-gray-700">
+            <tr>
+              <Th>Date</Th>
+              <Th align="center">Type</Th>
+              <Th>Ref</Th>
+              <Th>Lot</Th>
+              <Th>Quality</Th>
+              <Th>Detail</Th>
+              <Th align="right">In</Th>
+              <Th align="right">Out</Th>
+              <Th align="right">Bal</Th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+            {txns.map((t, i) => (
+              <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                <Td>{fmt(t.date)}</Td>
+                <Td align="center"><span className={`font-bold ${t.kind === 'IN' ? 'text-blue-700 dark:text-blue-400' : 'text-orange-700 dark:text-orange-400'}`}>{t.kind}</span></Td>
+                <Td>{t.ref}</Td>
+                <Td><span className="font-bold text-indigo-700 dark:text-indigo-400">{t.lot}</span></Td>
+                <Td>{t.quality}</Td>
+                <Td>{t.detail}</Td>
+                <Td align="right">{t.kind === 'IN' ? <span className="text-blue-700 dark:text-blue-400">{t.signed}</span> : ''}</Td>
+                <Td align="right">{t.kind === 'OUT' ? <span className="text-orange-700 dark:text-orange-400">{Math.abs(t.signed)}</span> : ''}</Td>
+                <Td align="right"><span className="font-bold">{t.bal}</span></Td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {txns.map((t, i) => (
-                <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                  <Td>{fmt(t.date)}</Td>
-                  <Td align="center"><span className={`font-bold ${t.kind === 'IN' ? 'text-blue-700 dark:text-blue-400' : 'text-orange-700 dark:text-orange-400'}`}>{t.kind}</span></Td>
-                  <Td>{t.ref}</Td>
-                  <Td><span className="font-bold text-indigo-700 dark:text-indigo-400">{t.lot}</span></Td>
-                  <Td>{t.quality}</Td>
-                  <Td>{t.detail}</Td>
-                  <Td align="right">{t.kind === 'IN' ? <span className="text-blue-700 dark:text-blue-400">{t.signed}</span> : ''}</Td>
-                  <Td align="right">{t.kind === 'OUT' ? <span className="text-orange-700 dark:text-orange-400">{Math.abs(t.signed)}</span> : ''}</Td>
-                  <Td align="right"><span className="font-bold">{t.bal}</span></Td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="bg-gray-50 dark:bg-gray-700/60 border-t-2 border-gray-200 dark:border-gray-600">
-              <tr>
-                <Td colSpan={6}><span className="font-bold uppercase tracking-wide text-[10px] text-gray-500">Total</span></Td>
-                <Td align="right"><span className="font-bold text-blue-700 dark:text-blue-400">{data.summary.inwardThan}</span></Td>
-                <Td align="right"><span className="font-bold text-orange-700 dark:text-orange-400">{data.summary.outwardThan}</span></Td>
-                <Td align="right"><span className="font-bold text-indigo-700 dark:text-indigo-400">{data.summary.balance}</span></Td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50 dark:bg-gray-700/60 border-t-2 border-gray-200 dark:border-gray-600">
+            <tr>
+              <Td colSpan={6}><span className="font-bold uppercase tracking-wide text-[10px] text-gray-500">Total</span></Td>
+              <Td align="right"><span className="font-bold text-blue-700 dark:text-blue-400">{data.summary.inwardThan}</span></Td>
+              <Td align="right"><span className="font-bold text-orange-700 dark:text-orange-400">{data.summary.outwardThan}</span></Td>
+              <Td align="right"><span className="font-bold text-indigo-700 dark:text-indigo-400">{data.summary.balance}</span></Td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
-    </>
+    </div>
   )
 }
 
