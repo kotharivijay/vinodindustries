@@ -48,6 +48,18 @@ export default function OutstandingPage() {
   const [tallyLastSynced, setTallyLastSynced] = useState<string | null>(null)
   const [matching, setMatching] = useState(false)
 
+  // partyName drift refresh — two-step (preview, then apply).
+  type DriftPlanRow = { table: 'inv' | 'rcpt'; id: number; vchNumber: string; vchType: string; date: string; was: string; now: string }
+  type DriftPreview = {
+    plan: DriftPlanRow[]
+    counts: { candidates: number; willUpdate: number; alreadyAligned: number; skipped: number }
+    message?: string
+  }
+  const [driftPreview, setDriftPreview] = useState<DriftPreview | null>(null)
+  const [driftLoading, setDriftLoading] = useState(false)
+  const [driftApplying, setDriftApplying] = useState(false)
+  const [driftResult, setDriftResult] = useState<string | null>(null)
+
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem('outstanding.tallyMatch')
@@ -59,6 +71,40 @@ export default function OutstandingPage() {
       }
     } catch {}
   }, [])
+
+  async function openDriftPreview() {
+    setDriftLoading(true)
+    setDriftResult(null)
+    try {
+      const res = await fetch('/api/accounts/outstanding/refresh-partyname', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: false }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert(d.error || 'Failed'); return }
+      setDriftPreview(d)
+    } catch (e: any) { alert(e?.message || 'Network error') }
+    finally { setDriftLoading(false) }
+  }
+  async function applyDriftFix() {
+    setDriftApplying(true)
+    try {
+      const res = await fetch('/api/accounts/outstanding/refresh-partyname', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert(d.error || 'Failed'); return }
+      setDriftResult(`Updated ${d.result.invUpdated} invoice(s) + ${d.result.rcptUpdated} receipt(s).${d.result.skipped ? ` Skipped ${d.result.skipped}.` : ''}`)
+      setDriftPreview(null)
+      // SWR refetch so the page shows the merged party rows.
+      const { mutate } = await import('swr')
+      mutate('/api/accounts/outstanding')
+    } catch (e: any) { alert(e?.message || 'Network error') }
+    finally { setDriftApplying(false) }
+  }
 
   async function runTallyMatch() {
     setMatching(true)
@@ -166,7 +212,18 @@ export default function OutstandingPage() {
           className="text-[11px] px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold">
           {matching ? 'Matching…' : '🔎 Match with Tally'}
         </button>
+        <button onClick={openDriftPreview} disabled={driftLoading}
+          title="Find duplicate party rows caused by old cached partyName spellings, and refresh from Tally."
+          className="text-[11px] px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-semibold">
+          {driftLoading ? 'Scanning…' : '🧹 Fix Names'}
+        </button>
       </div>
+      {driftResult && (
+        <div className="mb-2 text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-1.5 flex items-center justify-between gap-2">
+          <span>{driftResult}</span>
+          <button onClick={() => setDriftResult(null)} className="text-emerald-500 hover:text-emerald-700">✕</button>
+        </div>
+      )}
       {tallyByParty && (
         <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
           <span className="inline-block w-2.5 h-2.5 rounded-full ring-2 ring-emerald-500 bg-emerald-500/30" />
@@ -234,6 +291,72 @@ export default function OutstandingPage() {
             className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 disabled:opacity-40">
             Next →
           </button>
+        </div>
+      )}
+
+      {/* PartyName drift preview modal */}
+      {driftPreview && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-3 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-2xl my-6">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+              <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100">🧹 Fix Party Names — Preview</h2>
+              <button onClick={() => setDriftPreview(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-2xl leading-none">×</button>
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-4 gap-2 mb-3 text-center text-[11px]">
+                <div>
+                  <div className="text-gray-500 dark:text-gray-400">Candidates</div>
+                  <div className="text-gray-800 dark:text-gray-100 font-bold tabular-nums">{driftPreview.counts.candidates}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 dark:text-gray-400">Will update</div>
+                  <div className="text-amber-700 dark:text-amber-400 font-bold tabular-nums">{driftPreview.counts.willUpdate}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 dark:text-gray-400">Already aligned</div>
+                  <div className="text-emerald-700 dark:text-emerald-400 font-bold tabular-nums">{driftPreview.counts.alreadyAligned}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 dark:text-gray-400">Skipped</div>
+                  <div className={`font-bold tabular-nums ${driftPreview.counts.skipped > 0 ? 'text-rose-700 dark:text-rose-400' : 'text-gray-400'}`}>{driftPreview.counts.skipped}</div>
+                </div>
+              </div>
+              {driftPreview.message && (
+                <div className="text-[11px] text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 rounded p-2 mb-3">
+                  {driftPreview.message}
+                </div>
+              )}
+              {driftPreview.plan.length === 0 ? (
+                <div className="text-center py-6 text-sm text-gray-500 dark:text-gray-400 border border-dashed rounded-lg">
+                  Nothing to update — all cached names already match Tally.
+                </div>
+              ) : (
+                <div className="max-h-[50vh] overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700 text-[11px]">
+                  {driftPreview.plan.map(p => (
+                    <div key={`${p.table}-${p.id}`} className="p-2">
+                      <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+                        {p.table === 'inv' ? '📄 Invoice' : '💰 Receipt'} · {p.vchType} · {p.vchNumber} · {p.date}
+                      </div>
+                      <div className="text-rose-700 dark:text-rose-400 break-all"><span className="text-gray-500 dark:text-gray-400">was: </span>"{p.was}"</div>
+                      <div className="text-emerald-700 dark:text-emerald-400 break-all"><span className="text-gray-500 dark:text-gray-400">now: </span>"{p.now}"</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-end gap-2 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
+              <button onClick={() => setDriftPreview(null)} disabled={driftApplying}
+                className="text-[11px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">
+                Cancel
+              </button>
+              {driftPreview.plan.length > 0 && (
+                <button onClick={applyDriftFix} disabled={driftApplying}
+                  className="text-[11px] px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-semibold">
+                  {driftApplying ? 'Applying…' : `Apply ${driftPreview.plan.length} update(s)`}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
