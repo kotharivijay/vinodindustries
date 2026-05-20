@@ -1006,6 +1006,18 @@ export default function ReceiptsPage() {
                                       <span className="text-green-300 tabular-nums">bal ₹{fmtMoney(Math.max(0, balAfterMe))}</span>
                                       <span className="text-gray-500">=</span>
                                       <span className="text-orange-300 font-bold tabular-nums">used ₹{fmtMoney(myCash)}</span>
+                                      {myTds > 0 && (
+                                        <>
+                                          <span className="text-gray-500">+</span>
+                                          <span className="text-amber-300 tabular-nums">TDS ₹{fmtMoney(myTds)}</span>
+                                        </>
+                                      )}
+                                      {myDisc > 0 && (
+                                        <>
+                                          <span className="text-gray-500">+</span>
+                                          <span className="text-rose-300 tabular-nums">disc ₹{fmtMoney(myDisc)}</span>
+                                        </>
+                                      )}
                                     </div>
                                   </>
                                 ) : (

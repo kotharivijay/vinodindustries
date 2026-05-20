@@ -515,6 +515,20 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
     .filter(a => a.receipt?.id !== receiptId)
     .reduce((s, a) => s + (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0), 0)
 
+  // Has any allocation on this invoice tied to a receipt earlier than
+  // THIS receipt? If yes, TDS deduction is locked — the earlier receipt
+  // already absorbed the TDS for this bill; subsequent receipts can only
+  // bring cash (and optionally discount).
+  const hasEarlierAllocation = (() => {
+    if (!receipt?.date) return false
+    const myMs = new Date(receipt.date).getTime()
+    return (inv.allocations || []).some(a => {
+      if (!a.receipt || a.receipt.id === receiptId) return false
+      const aMs = a.receipt.date ? new Date(a.receipt.date).getTime() : 0
+      return aMs < myMs || (aMs === myMs && a.receipt.id < receiptId)
+    })
+  })()
+
   // Voucher-level ledgers grouped by category. The Discount pill in the
   // form is a separate at-payment concession — voucher-level discounts
   // (e.g. "Finish Gadi Less") are already part of the invoice and reduce
@@ -621,14 +635,19 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
     if (cappedFinal <= 0) { alert('Final allocation is zero — adjust TDS/Discount.'); return }
     setBusy(true)
     try {
+      // TDS locked on subsequent allocations — earlier receipt already
+      // absorbed it. Save zero regardless of what's in the form (defensive
+      // against stale state if the user typed before the lock applied).
+      const tdsToSave = hasEarlierAllocation ? 0 : numTds
+      const tdsRateToSave = hasEarlierAllocation ? null : (parseFloat(tdsRate) || null)
       const res = await fetch(`/api/accounts/receipts/${receiptId}/allocate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           invoiceId: inv.id,
           allocatedAmount: cappedFinal,
-          tdsAmount: numTds,
+          tdsAmount: tdsToSave,
           discountAmount: numDisc,
-          tdsRatePct: parseFloat(tdsRate) || null,
+          tdsRatePct: tdsRateToSave,
           note: note || null,
         }),
       })
@@ -920,6 +939,18 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
                   <span className="text-green-300 tabular-nums">bal ₹{fmtMoney(Math.max(0, balAfterMe))}</span>
                   <span className="text-gray-500">=</span>
                   <span className="text-orange-300 font-bold tabular-nums">used ₹{fmtMoney(myCash)}</span>
+                  {myTds > 0 && (
+                    <>
+                      <span className="text-gray-500">+</span>
+                      <span className="text-amber-300 tabular-nums">TDS ₹{fmtMoney(myTds)}</span>
+                    </>
+                  )}
+                  {myDisc > 0 && (
+                    <>
+                      <span className="text-gray-500">+</span>
+                      <span className="text-rose-300 tabular-nums">disc ₹{fmtMoney(myDisc)}</span>
+                    </>
+                  )}
                 </div>
               </>
             ) : (
@@ -990,13 +1021,15 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
             </>
           ) : (
             <>
+              {!isCN && !hasEarlierAllocation && (
+                <button onClick={() => { autoTds(); setOpen(true) }}
+                  disabled={receiptRemaining <= 0}
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold disabled:opacity-40">
+                  💰 TDS @{DEFAULT_TDS_RATE}%
+                </button>
+              )}
               {!isCN && (
                 <>
-                  <button onClick={() => { autoTds(); setOpen(true) }}
-                    disabled={receiptRemaining <= 0}
-                    className="text-[11px] px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold disabled:opacity-40">
-                    💰 TDS @{DEFAULT_TDS_RATE}%
-                  </button>
                   <button onClick={() => setOpen(true)}
                     disabled={receiptRemaining <= 0}
                     className="text-[11px] px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold disabled:opacity-40">
@@ -1029,7 +1062,12 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
               ↙ Credit Note — knock-off only. No TDS / Discount applies. The CN amount reduces the receipt&apos;s settled cash.
             </div>
           )}
-          {!isCN && (
+          {!isCN && hasEarlierAllocation && (
+            <div className="text-[11px] px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/40 text-amber-800 dark:text-amber-200">
+              🔒 TDS locked — an earlier receipt already deducted TDS for this bill. Only cash + discount allowed on this allocation.
+            </div>
+          )}
+          {!isCN && !hasEarlierAllocation && (
             <>
               {/* Pills row */}
               <div className="flex items-center gap-2 flex-wrap text-[11px]">
@@ -1050,7 +1088,10 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
                   className="flex-1 min-w-[60px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 tabular-nums" />
                 <span className="text-gray-400">₹</span>
               </div>
-
+            </>
+          )}
+          {!isCN && (
+            <>
               <div className="flex items-center gap-2 flex-wrap text-[11px]">
                 <button type="button"
                   className="px-2 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 border border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200 font-semibold">
