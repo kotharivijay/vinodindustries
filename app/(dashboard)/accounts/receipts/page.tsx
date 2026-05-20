@@ -925,16 +925,11 @@ export default function ReceiptsPage() {
                   {r.linkedCount > 0 && (
                     <div className="mt-1 text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5">
                       {r.linkedInvoices.map((inv, i) => {
-                        // Three cases for the inline render:
-                        //   (1) Bill is fully cleared overall (pending ≤ 0)
-                        //       → compact one-liner "vch  amt used ₹X" + days
-                        //         (replaces the regular description, no box).
-                        //   (2) Bill is still partial AND this allocation
-                        //       didn't cover bill − TDS − disc → regular
-                        //       description + dark formula box.
-                        //   (3) Bill is still partial but this allocation
-                        //       fully covers its share → regular description
-                        //       only (no box).
+                        // Regular inline description for every linked invoice
+                        // (vch · bill_amt · −TDS · −disc · NET · days), plus
+                        // an optional dark formula box when this allocation
+                        // didn't cover bill − TDS − disc on a still-pending
+                        // bill. CN allocations skip the box.
                         const myCash = Math.abs(inv.allocatedAmount)
                         const myTds = inv.tdsAmount || 0
                         const myDisc = inv.discountAmount || 0
@@ -942,40 +937,8 @@ export default function ReceiptsPage() {
                         const balAfterDed = billTotal - myTds - myDisc
                         const amtLeft = +(balAfterDed - myCash).toFixed(2)
                         const isCN = inv.allocatedAmount < 0
-                        const billCleared = !isCN && billTotal > 0 && (inv.pending || 0) <= 0.5
-                        const showPartialBox = !billCleared && !isCN && billTotal > 0 && amtLeft > 0.5
+                        const showPartialBox = !isCN && billTotal > 0 && amtLeft > 0.5
 
-                        // Days-since chip (re-used in both render branches).
-                        const daysBadge = inv.date ? (() => {
-                          const days = Math.round((new Date(r.date).getTime() - new Date(inv.date).getTime()) / 86400000)
-                          const isAdvance = days < 0
-                          const absDays = Math.abs(days)
-                          const label = isAdvance ? `• ${absDays} days advance` : `• ${days} days`
-                          const color = isAdvance
-                            ? 'text-gray-500 dark:text-gray-400'
-                            : days <= 30 ? 'text-emerald-600 dark:text-emerald-400'
-                            : days <= 60 ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-rose-600 dark:text-rose-400'
-                          return (
-                            <span className={`${color} font-semibold`}
-                              title="Days the invoice was open when this receipt arrived (receipt date − invoice date)">
-                              {label}
-                            </span>
-                          )
-                        })() : null
-
-                        if (billCleared) {
-                          return (
-                            <div key={i} className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-mono text-indigo-600 dark:text-indigo-300">{inv.vchNumber}</span>
-                              <span className="text-orange-600 dark:text-orange-400 font-semibold tabular-nums"
-                                title={`This receipt used ₹${fmtMoney(myCash)} of cash against bill ₹${fmtMoney(billTotal)} (now fully cleared across all receipts)`}>
-                                amt used ₹{fmtMoney(myCash)}
-                              </span>
-                              {daysBadge}
-                            </div>
-                          )
-                        }
                         return (
                           <div key={i}>
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -995,7 +958,23 @@ export default function ReceiptsPage() {
                                   NET ₹{fmtMoney(inv.invoiceNetAmount)}
                                 </span>
                               )}
-                              {daysBadge}
+                              {inv.date && (() => {
+                                const days = Math.round((new Date(r.date).getTime() - new Date(inv.date).getTime()) / 86400000)
+                                const isAdvance = days < 0
+                                const absDays = Math.abs(days)
+                                const label = isAdvance ? `• ${absDays} days advance` : `• ${days} days`
+                                const color = isAdvance
+                                  ? 'text-gray-500 dark:text-gray-400'
+                                  : days <= 30 ? 'text-emerald-600 dark:text-emerald-400'
+                                  : days <= 60 ? 'text-amber-600 dark:text-amber-400'
+                                  : 'text-rose-600 dark:text-rose-400'
+                                return (
+                                  <span className={`${color} font-semibold`}
+                                    title="Days the invoice was open when this receipt arrived (receipt date − invoice date)">
+                                    {label}
+                                  </span>
+                                )
+                              })()}
                             </div>
                             {showPartialBox && (() => {
                               const days = inv.date ? Math.round((new Date(r.date).getTime() - new Date(inv.date).getTime()) / 86400000) : null
