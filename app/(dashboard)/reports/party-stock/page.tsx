@@ -103,12 +103,18 @@ export default function PartyStockReportPage() {
       const XLSX = await import('xlsx')
       const wb = XLSX.utils.book_new()
 
-      const header = [
+      const hasOb = report.summary.obThan > 0
+      const header: any[][] = [
         ['KSI — Party Stock Report'],
         ['Party', report.party.name],
         ['Tag', report.party.tag || ''],
         ['Generated', fmt(new Date().toISOString())],
         [],
+        ...(hasOb ? [
+          ['Opening Balance (than)', report.summary.obThan],
+          ['OB Lots',                report.summary.obLotCount],
+          ['FY Inward (than)',       report.summary.currentInwardThan],
+        ] : []),
         ['Total Inward (than)',  report.summary.inwardThan],
         ['Total Outward (than)', report.summary.outwardThan],
         ['Balance with KSI',     report.summary.balance],
@@ -121,28 +127,50 @@ export default function PartyStockReportPage() {
       XLSX.utils.book_append_sheet(wb, headerWs, 'Summary')
 
       if (variant === 'A') {
-        const rows = report.perLot.map(r => ({
+        const rows = report.perLot.map(r => hasOb ? ({
+          'Lot No': r.lotNo, Quality: r.quality,
+          'First Inward': fmt(r.firstInward), 'Last Outward': fmt(r.lastOutward),
+          OB: r.obThan || '', 'FY Inward': r.currentInward || '',
+          Outward: r.outward, Balance: r.balance,
+          Status: r.balance === 0 ? 'Cleared' : r.outward === 0 ? 'Not despatched' : 'Partial',
+        }) : ({
           'Lot No': r.lotNo, Quality: r.quality,
           'First Inward': fmt(r.firstInward), 'Last Outward': fmt(r.lastOutward),
           Inward: r.inward, Outward: r.outward, Balance: r.balance,
           Status: r.balance === 0 ? 'Cleared' : r.outward === 0 ? 'Not despatched' : 'Partial',
         }))
         const ws = XLSX.utils.json_to_sheet(rows)
-        ws['!cols'] = [{ wch: 16 }, { wch: 24 }, { wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 16 }]
+        ws['!cols'] = hasOb
+          ? [{ wch: 16 }, { wch: 24 }, { wch: 12 }, { wch: 12 }, { wch: 7 }, { wch: 11 }, { wch: 9 }, { wch: 9 }, { wch: 16 }]
+          : [{ wch: 16 }, { wch: 24 }, { wch: 12 }, { wch: 12 }, { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 16 }]
         XLSX.utils.book_append_sheet(wb, ws, 'Lot Summary')
       } else if (variant === 'B') {
         const txns: any[] = []
         let bal = 0
-        const merged = [
-          ...report.inwardRows.map(r => ({ ...r, kind: 'IN' as const, signed: r.than, ref: `Ch ${r.challanNo}`, detail: `Bale ${r.baleNo || '—'} · LR ${r.transportLrNo || '—'}` })),
-          ...report.outwardRows.map(r => ({ ...r, kind: 'OUT' as const, signed: -r.than, ref: `Ch ${r.challanNo}`, detail: `Bill ${(r as any).billNo || '—'}`, baleNo: '', transportLrNo: '' })),
-        ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || (a.kind === 'IN' ? -1 : 1))
+        type Merged = { date: string; kind: 'OB' | 'IN' | 'OUT'; signed: number; ref: string; lotNo: string; quality: string; detail: string; than: number }
+        const merged: Merged[] = [
+          ...report.inwardRows.map(r => ({
+            date: r.date,
+            kind: (r.isOpeningBalance ? 'OB' : 'IN') as 'OB' | 'IN',
+            signed: r.than,
+            ref: r.isOpeningBalance ? `OB ${r.financialYear || ''}`.trim() : `Ch ${r.challanNo}`,
+            lotNo: r.lotNo, quality: r.quality, than: r.than,
+            detail: r.isOpeningBalance
+              ? `Carry forward${r.financialYear ? ` FY ${r.financialYear}` : ''}`
+              : `Bale ${r.baleNo || '—'} · LR ${r.transportLrNo || '—'}`,
+          })),
+          ...report.outwardRows.map(r => ({
+            date: r.date, kind: 'OUT' as const, signed: -r.than,
+            ref: `Ch ${r.challanNo}`, lotNo: r.lotNo, quality: r.quality, than: r.than,
+            detail: `Bill ${r.billNo || '—'}`,
+          })),
+        ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || (a.kind === 'OUT' ? 1 : -1))
         for (const t of merged) {
           bal += t.signed
           txns.push({
             Date: fmt(t.date), Type: t.kind, Ref: t.ref, Lot: t.lotNo, Quality: t.quality,
             Detail: t.detail,
-            In: t.kind === 'IN' ? t.than : '',
+            In: t.kind !== 'OUT' ? t.than : '',
             Out: t.kind === 'OUT' ? t.than : '',
             Balance: bal,
           })
@@ -152,9 +180,12 @@ export default function PartyStockReportPage() {
         XLSX.utils.book_append_sheet(wb, ws, 'Ledger')
       } else {
         // C — separate rows for inward + outward, keyed by lot. Two sheets so
-        // each one is easy to filter on its own.
+        // each one is easy to filter on its own. Inward sheet adds a Source
+        // column so OB rows are distinguishable at a glance.
         const inwardRows = report.perLot.flatMap(r => r.inwardRows.map(g => ({
-          Lot: r.lotNo, Quality: r.quality, Date: fmt(g.date), Challan: g.challanNo,
+          Lot: r.lotNo, Quality: r.quality,
+          Source: g.isOpeningBalance ? `OB ${g.financialYear || ''}`.trim() : 'Inward',
+          Date: fmt(g.date), Challan: g.isOpeningBalance ? '' : g.challanNo,
           Bale: g.baleNo || '', LR: g.transportLrNo || '', Than: g.than,
         })))
         const outwardRows = report.perLot.flatMap(r => r.outwardRows.map(o => ({
@@ -162,16 +193,22 @@ export default function PartyStockReportPage() {
           Bill: o.billNo || '', Than: o.than,
         })))
         const ws1 = XLSX.utils.json_to_sheet(inwardRows)
-        ws1['!cols'] = [{ wch: 16 }, { wch: 24 }, { wch: 11 }, { wch: 8 }, { wch: 18 }, { wch: 18 }, { wch: 7 }]
+        ws1['!cols'] = [{ wch: 16 }, { wch: 24 }, { wch: 12 }, { wch: 11 }, { wch: 8 }, { wch: 18 }, { wch: 18 }, { wch: 7 }]
         XLSX.utils.book_append_sheet(wb, ws1, 'Inward (per lot)')
         const ws2 = XLSX.utils.json_to_sheet(outwardRows)
         ws2['!cols'] = [{ wch: 16 }, { wch: 24 }, { wch: 11 }, { wch: 8 }, { wch: 10 }, { wch: 7 }]
         XLSX.utils.book_append_sheet(wb, ws2, 'Outward (per lot)')
-        const summary = report.perLot.map(r => ({
+        const summary = report.perLot.map(r => hasOb ? ({
+          Lot: r.lotNo, Quality: r.quality,
+          OB: r.obThan || '', 'FY Inward': r.currentInward || '',
+          Outward: r.outward, Balance: r.balance,
+        }) : ({
           Lot: r.lotNo, Quality: r.quality, Inward: r.inward, Outward: r.outward, Balance: r.balance,
         }))
         const ws3 = XLSX.utils.json_to_sheet(summary)
-        ws3['!cols'] = [{ wch: 16 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }]
+        ws3['!cols'] = hasOb
+          ? [{ wch: 16 }, { wch: 24 }, { wch: 7 }, { wch: 11 }, { wch: 9 }, { wch: 9 }]
+          : [{ wch: 16 }, { wch: 24 }, { wch: 9 }, { wch: 9 }, { wch: 9 }]
         XLSX.utils.book_append_sheet(wb, ws3, 'Lot Summary')
       }
 
@@ -224,10 +261,18 @@ export default function PartyStockReportPage() {
         )}
       </div>
 
-      {/* Summary cards */}
+      {/* Summary cards — switch to a 4-up layout when this party has any
+          opening balance, so OB and current-FY inward read separately. */}
       {report && (
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <SummaryCard label="Inward (than)" value={report.summary.inwardThan} color="text-blue-700 dark:text-blue-400" />
+        <div className={`grid ${report.summary.obThan > 0 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'} gap-2 mb-3`}>
+          {report.summary.obThan > 0 && (
+            <SummaryCard label={`OB (${report.summary.obLotCount} lots)`} value={report.summary.obThan} color="text-purple-700 dark:text-purple-400" />
+          )}
+          <SummaryCard
+            label={report.summary.obThan > 0 ? 'FY Inward' : 'Inward (than)'}
+            value={report.summary.obThan > 0 ? report.summary.currentInwardThan : report.summary.inwardThan}
+            color="text-blue-700 dark:text-blue-400"
+          />
           <SummaryCard label="Outward (than)" value={report.summary.outwardThan} color="text-orange-700 dark:text-orange-400" />
           <SummaryCard label="Balance" value={report.summary.balance} color={summaryColor(report.summary.balance)} />
         </div>
@@ -314,6 +359,7 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
 
 // ── Variant A — on-screen view ───────────────────────────────────
 function SummaryView({ data }: { data: ReportPayload }) {
+  const hasOb = data.summary.obThan > 0
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
@@ -324,7 +370,8 @@ function SummaryView({ data }: { data: ReportPayload }) {
               <Th>Quality</Th>
               <Th align="center">First In</Th>
               <Th align="center">Last Out</Th>
-              <Th align="right">Inward</Th>
+              {hasOb && <Th align="right">OB</Th>}
+              <Th align="right">{hasOb ? 'FY Inward' : 'Inward'}</Th>
               <Th align="right">Outward</Th>
               <Th align="right">Balance</Th>
               <Th align="center">Status</Th>
@@ -338,11 +385,15 @@ function SummaryView({ data }: { data: ReportPayload }) {
                 : 'text-blue-700 dark:text-blue-400'
               return (
                 <tr key={r.lotNo} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                  <Td><span className="font-bold text-indigo-700 dark:text-indigo-400">{r.lotNo}</span></Td>
+                  <Td>
+                    <span className="font-bold text-indigo-700 dark:text-indigo-400">{r.lotNo}</span>
+                    {r.obThan > 0 && <span className="ml-1.5 text-[9px] bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1 py-0.5 rounded font-semibold">OB</span>}
+                  </Td>
                   <Td>{r.quality}</Td>
                   <Td align="center">{fmt(r.firstInward)}</Td>
                   <Td align="center">{fmt(r.lastOutward)}</Td>
-                  <Td align="right">{r.inward}</Td>
+                  {hasOb && <Td align="right">{r.obThan > 0 ? <span className="font-bold text-purple-700 dark:text-purple-400">{r.obThan}</span> : '—'}</Td>}
+                  <Td align="right">{hasOb ? (r.currentInward > 0 ? r.currentInward : '—') : r.inward}</Td>
                   <Td align="right">{r.outward}</Td>
                   <Td align="right"><span className="font-bold">{r.balance}</span></Td>
                   <Td align="center"><span className={`font-semibold ${statusCls}`}>{status}</span></Td>
@@ -353,7 +404,8 @@ function SummaryView({ data }: { data: ReportPayload }) {
           <tfoot className="bg-gray-50 dark:bg-gray-700/60 border-t-2 border-gray-200 dark:border-gray-600">
             <tr>
               <Td colSpan={4}><span className="font-bold uppercase tracking-wide text-[10px] text-gray-500">Total ({data.perLot.length} lots)</span></Td>
-              <Td align="right"><span className="font-bold">{data.summary.inwardThan}</span></Td>
+              {hasOb && <Td align="right"><span className="font-bold text-purple-700 dark:text-purple-400">{data.summary.obThan}</span></Td>}
+              <Td align="right"><span className="font-bold">{hasOb ? data.summary.currentInwardThan : data.summary.inwardThan}</span></Td>
               <Td align="right"><span className="font-bold">{data.summary.outwardThan}</span></Td>
               <Td align="right"><span className="font-bold text-indigo-700 dark:text-indigo-400">{data.summary.balance}</span></Td>
               <Td />
@@ -368,16 +420,23 @@ function SummaryView({ data }: { data: ReportPayload }) {
 // ── Variant B — on-screen view ───────────────────────────────────
 function LedgerView({ data }: { data: ReportPayload }) {
   const txns = useMemo(() => {
-    const merged = [
+    type Txn = { date: string; kind: 'OB' | 'IN' | 'OUT'; ref: string; lot: string; quality: string; detail: string; signed: number }
+    const merged: Txn[] = [
       ...data.inwardRows.map(r => ({
-        date: r.date, kind: 'IN' as const, ref: `Ch ${r.challanNo}`, lot: r.lotNo, quality: r.quality,
-        detail: `Bale ${r.baleNo || '—'} · LR ${r.transportLrNo || '—'}`, signed: r.than,
+        date: r.date,
+        kind: (r.isOpeningBalance ? 'OB' : 'IN') as 'OB' | 'IN',
+        ref: r.isOpeningBalance ? `OB ${r.financialYear || ''}`.trim() : `Ch ${r.challanNo}`,
+        lot: r.lotNo, quality: r.quality,
+        detail: r.isOpeningBalance
+          ? `Carry forward${r.financialYear ? ` FY ${r.financialYear}` : ''}`
+          : `Bale ${r.baleNo || '—'} · LR ${r.transportLrNo || '—'}`,
+        signed: r.than,
       })),
       ...data.outwardRows.map(r => ({
         date: r.date, kind: 'OUT' as const, ref: `Ch ${r.challanNo}`, lot: r.lotNo, quality: r.quality,
         detail: `Bill ${r.billNo || '—'}`, signed: -r.than,
       })),
-    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || (a.kind === 'IN' ? -1 : 1))
+    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || (a.kind === 'OUT' ? 1 : -1))
     let bal = 0
     return merged.map(t => { bal += t.signed; return { ...t, bal } })
   }, [data])
@@ -399,19 +458,25 @@ function LedgerView({ data }: { data: ReportPayload }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-            {txns.map((t, i) => (
-              <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                <Td>{fmt(t.date)}</Td>
-                <Td align="center"><span className={`font-bold ${t.kind === 'IN' ? 'text-blue-700 dark:text-blue-400' : 'text-orange-700 dark:text-orange-400'}`}>{t.kind}</span></Td>
-                <Td>{t.ref}</Td>
-                <Td><span className="font-bold text-indigo-700 dark:text-indigo-400">{t.lot}</span></Td>
-                <Td>{t.quality}</Td>
-                <Td>{t.detail}</Td>
-                <Td align="right">{t.kind === 'IN' ? <span className="text-blue-700 dark:text-blue-400">{t.signed}</span> : ''}</Td>
-                <Td align="right">{t.kind === 'OUT' ? <span className="text-orange-700 dark:text-orange-400">{Math.abs(t.signed)}</span> : ''}</Td>
-                <Td align="right"><span className="font-bold">{t.bal}</span></Td>
-              </tr>
-            ))}
+            {txns.map((t, i) => {
+              const kindCls = t.kind === 'IN' ? 'text-blue-700 dark:text-blue-400'
+                : t.kind === 'OB' ? 'text-purple-700 dark:text-purple-400'
+                : 'text-orange-700 dark:text-orange-400'
+              const isOut = t.kind === 'OUT'
+              return (
+                <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                  <Td>{fmt(t.date)}</Td>
+                  <Td align="center"><span className={`font-bold ${kindCls}`}>{t.kind}</span></Td>
+                  <Td>{t.ref}</Td>
+                  <Td><span className="font-bold text-indigo-700 dark:text-indigo-400">{t.lot}</span></Td>
+                  <Td>{t.quality}</Td>
+                  <Td>{t.detail}</Td>
+                  <Td align="right">{!isOut ? <span className={kindCls}>{t.signed}</span> : ''}</Td>
+                  <Td align="right">{isOut ? <span className="text-orange-700 dark:text-orange-400">{Math.abs(t.signed)}</span> : ''}</Td>
+                  <Td align="right"><span className="font-bold">{t.bal}</span></Td>
+                </tr>
+              )
+            })}
           </tbody>
           <tfoot className="bg-gray-50 dark:bg-gray-700/60 border-t-2 border-gray-200 dark:border-gray-600">
             <tr>
@@ -441,6 +506,9 @@ function LotwiseView({ data }: { data: ReportPayload }) {
                 <div className="text-[11px] text-gray-500 dark:text-gray-400 break-words">{r.quality}</div>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap shrink-0 text-[10px] font-semibold">
+                {r.obThan > 0 && (
+                  <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded">OB {r.obThan}</span>
+                )}
                 <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">In {r.inward}</span>
                 <span className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 rounded">Out {r.outward}</span>
                 <span className={`px-1.5 py-0.5 rounded ${r.balance > 0 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'}`}>
@@ -452,20 +520,27 @@ function LotwiseView({ data }: { data: ReportPayload }) {
 
           {/* Mobile rows — wrap-friendly. Desktop keeps a tighter table layout. */}
           <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-700">
-            {r.inwardRows.map((g, i) => (
-              <div key={`in-${i}`} className="px-3 py-2 flex items-start gap-2">
-                <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded shrink-0 mt-0.5">IN</span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                    {fmt(g.date)} · Ch {g.challanNo}
+            {r.inwardRows.map((g, i) => {
+              const isOb = !!g.isOpeningBalance
+              return (
+                <div key={`in-${i}`} className="px-3 py-2 flex items-start gap-2">
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${isOb
+                    ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'}`}>
+                    {isOb ? 'OB' : 'IN'}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                      {fmt(g.date)} · {isOb ? `OB ${g.financialYear || ''}`.trim() : `Ch ${g.challanNo}`}
+                    </div>
+                    <div className="text-[11px] text-gray-700 dark:text-gray-200 break-words">
+                      {isOb ? `Carry forward${g.financialYear ? ` FY ${g.financialYear}` : ''}` : `Bale ${g.baleNo || '—'} · LR ${g.transportLrNo || '—'}`}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-gray-700 dark:text-gray-200 break-words">
-                    Bale {g.baleNo || '—'} · LR {g.transportLrNo || '—'}
-                  </div>
+                  <div className="text-sm font-bold tabular-nums shrink-0">{g.than}</div>
                 </div>
-                <div className="text-sm font-bold tabular-nums shrink-0">{g.than}</div>
-              </div>
-            ))}
+              )
+            })}
             {r.outwardRows.map((o, i) => (
               <div key={`out-${i}`} className="px-3 py-2 flex items-start gap-2">
                 <span className="text-[10px] font-bold bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 rounded shrink-0 mt-0.5">OUT</span>
@@ -479,15 +554,15 @@ function LotwiseView({ data }: { data: ReportPayload }) {
             ))}
           </div>
 
-          {/* Desktop table view — unchanged */}
+          {/* Desktop table view — OB rows distinguished by purple badge. */}
           <table className="hidden sm:table w-full text-xs">
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {r.inwardRows.map((g, i) => (
                 <tr key={`in-${i}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                  <Td align="center"><span className="font-bold text-blue-700 dark:text-blue-400">IN</span></Td>
+                  <Td align="center"><span className={`font-bold ${g.isOpeningBalance ? 'text-purple-700 dark:text-purple-400' : 'text-blue-700 dark:text-blue-400'}`}>{g.isOpeningBalance ? 'OB' : 'IN'}</span></Td>
                   <Td>{fmt(g.date)}</Td>
-                  <Td>Ch {g.challanNo}</Td>
-                  <Td>Bale {g.baleNo || '—'} · LR {g.transportLrNo || '—'}</Td>
+                  <Td>{g.isOpeningBalance ? `OB ${g.financialYear || ''}`.trim() : `Ch ${g.challanNo}`}</Td>
+                  <Td>{g.isOpeningBalance ? `Carry forward${g.financialYear ? ` FY ${g.financialYear}` : ''}` : `Bale ${g.baleNo || '—'} · LR ${g.transportLrNo || '—'}`}</Td>
                   <Td align="right"><span className="font-bold">{g.than}</span></Td>
                 </tr>
               ))}

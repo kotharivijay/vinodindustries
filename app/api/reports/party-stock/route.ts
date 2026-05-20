@@ -53,7 +53,11 @@ export async function GET(req: NextRequest) {
   if (!party) return NextResponse.json({ error: 'Party not found' }, { status: 404 })
   const cleanName = party.name.replace(/\s+/g, ' ').trim()
 
-  const [grey, dParent, dChildren] = await Promise.all([
+  // LotOpeningBalance has no FK to Party — it stores the party as a plain
+  // string. Match case-insensitively + whitespace-tolerant so legacy data
+  // (multi-space, casing variants) still resolves to this party.
+  const partyKey = cleanName.toLowerCase()
+  const [grey, dParent, dChildren, allOb] = await Promise.all([
     db.greyEntry.findMany({
       where: { partyId },
       select: {
@@ -77,7 +81,16 @@ export async function GET(req: NextRequest) {
         quality: { select: { name: true } },
       },
     }),
+    db.lotOpeningBalance.findMany({
+      select: {
+        id: true, lotNo: true, openingThan: true, greyThan: true, totalDespatched: true,
+        party: true, quality: true, financialYear: true, greyDate: true, lrNo: true, marka: true,
+      },
+    }),
   ])
+  const obRows = allOb.filter((o: any) =>
+    (o.party || '').replace(/\s+/g, ' ').trim().toLowerCase() === partyKey,
+  )
 
   // Flatten outward into one list (parent and lot-child rows have the same shape).
   const outwardRows = [
@@ -91,21 +104,42 @@ export async function GET(req: NextRequest) {
     })),
   ].sort((a: any, b: any) => a.date.getTime() - b.date.getTime())
 
-  const inwardRows = grey.map((g: any) => ({
+  // OB rows arrive as a separate stream so the client can flag them
+  // distinctly (variant B shows "OB" badge, variant C shows "Carry forward FY …").
+  // Date falls back to FY start when greyDate is null so they still sort
+  // before current-year inward.
+  const fyStart = (fy: string | null | undefined): Date => {
+    const m = (fy || '').match(/(\d{4})/)
+    return m ? new Date(`${m[1]}-04-01T00:00:00`) : new Date('2000-04-01')
+  }
+  const obAsInward = obRows.map((o: any) => ({
+    date: o.greyDate || fyStart(o.financialYear),
+    challanNo: 0, lotNo: o.lotNo, quality: o.quality || '',
+    than: o.openingThan, baleNo: '', bale: null, transportLrNo: o.lrNo || '',
+    marka: o.marka || '', openedAt: null,
+    isOpeningBalance: true, financialYear: o.financialYear,
+  }))
+  const currentInward = grey.map((g: any) => ({
     date: g.date, challanNo: g.challanNo, lotNo: g.lotNo, quality: g.quality?.name || '',
     than: g.than, baleNo: g.baleNo || '', bale: g.bale, transportLrNo: g.transportLrNo || '',
     marka: g.marka || '', openedAt: g.openedAt,
+    isOpeningBalance: false, financialYear: null,
   }))
+  const inwardRows = [...obAsInward, ...currentInward]
+    .sort((a: any, b: any) => a.date.getTime() - b.date.getTime())
 
-  const inwardThan = inwardRows.reduce((s: number, r: any) => s + r.than, 0)
+  const obThan = obAsInward.reduce((s: number, r: any) => s + r.than, 0)
+  const currentInwardThan = currentInward.reduce((s: number, r: any) => s + r.than, 0)
+  const inwardThan = obThan + currentInwardThan
   const outwardThan = outwardRows.reduce((s: number, r: any) => s + r.than, 0)
   const balance = inwardThan - outwardThan
 
-  // Per-lot rollup
+  // Per-lot rollup. obThan is tracked separately so the UI can show it as
+  // a sub-figure without losing it in the combined inward total.
   const lotMap = new Map<string, any>()
   const ensure = (key: string) => {
     if (!lotMap.has(key)) lotMap.set(key, {
-      lotNo: key, quality: '', inward: 0, outward: 0,
+      lotNo: key, quality: '', inward: 0, obThan: 0, currentInward: 0, outward: 0,
       firstInward: null, lastOutward: null,
       inwardRows: [] as any[], outwardRows: [] as any[],
     })
@@ -115,6 +149,8 @@ export async function GET(req: NextRequest) {
     const e = ensure(r.lotNo.toUpperCase())
     e.quality = e.quality || r.quality
     e.inward += r.than
+    if (r.isOpeningBalance) e.obThan += r.than
+    else e.currentInward += r.than
     e.inwardRows.push(r)
     if (!e.firstInward || r.date < e.firstInward) e.firstInward = r.date
   }
@@ -131,7 +167,13 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     party: { id: party.id, name: cleanName, tag: party.tag, lotPrefixes: party.lotPrefixes },
-    summary: { inwardThan, outwardThan, balance, lotCount: perLot.length, openLotCount: perLot.filter(l => l.balance > 0).length },
+    summary: {
+      inwardThan, outwardThan, balance,
+      obThan, currentInwardThan,
+      lotCount: perLot.length,
+      openLotCount: perLot.filter(l => l.balance > 0).length,
+      obLotCount: obRows.length,
+    },
     perLot,
     inwardRows,
     outwardRows,

@@ -7,14 +7,20 @@ import autoTable from 'jspdf-autotable'
 
 export type ReportPayload = {
   party: { id: number; name: string; tag: string | null; lotPrefixes: string[] }
-  summary: { inwardThan: number; outwardThan: number; balance: number; lotCount: number; openLotCount: number }
+  summary: {
+    inwardThan: number; outwardThan: number; balance: number
+    obThan: number; currentInwardThan: number
+    lotCount: number; openLotCount: number; obLotCount: number
+  }
   perLot: Array<{
-    lotNo: string; quality: string; inward: number; outward: number; balance: number
+    lotNo: string; quality: string
+    inward: number; obThan: number; currentInward: number
+    outward: number; balance: number
     firstInward: string | null; lastOutward: string | null
-    inwardRows: Array<{ date: string; challanNo: number; baleNo: string; transportLrNo: string; than: number }>
+    inwardRows: Array<{ date: string; challanNo: number; baleNo: string; transportLrNo: string; than: number; isOpeningBalance?: boolean; financialYear?: string | null }>
     outwardRows: Array<{ date: string; challanNo: number; billNo: string | null; than: number }>
   }>
-  inwardRows: Array<{ date: string; challanNo: number; lotNo: string; quality: string; than: number; baleNo: string; transportLrNo: string }>
+  inwardRows: Array<{ date: string; challanNo: number; lotNo: string; quality: string; than: number; baleNo: string; transportLrNo: string; isOpeningBalance?: boolean; financialYear?: string | null }>
   outwardRows: Array<{ date: string; challanNo: number; lotNo: string; quality: string; than: number; billNo: string | null }>
 }
 
@@ -44,23 +50,33 @@ function drawHeader(doc: jsPDF, partyName: string, subtitle: string) {
 
 function drawSummaryBlock(doc: jsPDF, y: number, summary: ReportPayload['summary']) {
   const w = doc.internal.pageSize.getWidth() - 20
-  const colW = w / 3
+  const hasOb = summary.obThan > 0
+  const colCount = hasOb ? 4 : 3
+  const colW = w / colCount
+  const h = 16
   doc.setDrawColor(220, 220, 220).setLineWidth(0.3)
-  doc.roundedRect(10, y, w, 16, 2, 2)
-  const cards: Array<{ k: string; v: number; col: [number, number, number] }> = [
-    { k: 'Total Inward (than)',  v: summary.inwardThan,  col: [30, 100, 220] },
-    { k: 'Total Outward (than)', v: summary.outwardThan, col: [220, 90, 40] },
-    { k: 'Balance with KSI',     v: summary.balance,     col: summary.balance > 0 ? [22, 163, 74] : [120, 120, 120] },
-  ]
+  doc.roundedRect(10, y, w, h, 2, 2)
+  const cards: Array<{ k: string; v: number; col: [number, number, number] }> = hasOb
+    ? [
+        { k: `Opening Balance (${summary.obLotCount} lots)`, v: summary.obThan,  col: [124, 58, 237] },
+        { k: 'This FY Inward',                              v: summary.currentInwardThan, col: [30, 100, 220] },
+        { k: 'Total Outward',                               v: summary.outwardThan, col: [220, 90, 40] },
+        { k: 'Balance with KSI',                            v: summary.balance, col: summary.balance > 0 ? [22, 163, 74] : [120, 120, 120] },
+      ]
+    : [
+        { k: 'Total Inward (than)',  v: summary.inwardThan,  col: [30, 100, 220] },
+        { k: 'Total Outward (than)', v: summary.outwardThan, col: [220, 90, 40] },
+        { k: 'Balance with KSI',     v: summary.balance,     col: summary.balance > 0 ? [22, 163, 74] : [120, 120, 120] },
+      ]
   cards.forEach((l, i) => {
     const x = 10 + colW * i
     doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(110, 110, 110)
     doc.text(l.k, x + colW / 2, y + 5, { align: 'center' })
-    doc.setFont('helvetica', 'bold').setFontSize(15).setTextColor(...l.col)
+    doc.setFont('helvetica', 'bold').setFontSize(hasOb ? 13 : 15).setTextColor(...l.col)
     doc.text(String(l.v), x + colW / 2, y + 13, { align: 'center' })
   })
   doc.setTextColor(0, 0, 0)
-  return y + 20
+  return y + h + 4
 }
 
 // VARIANT A — Summary (totals + per-lot table). Compact 1-pager.
@@ -69,25 +85,44 @@ function renderSummary(doc: jsPDF, d: ReportPayload) {
   let y = drawSummaryBlock(doc, 28, d.summary)
   doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(30, 41, 59)
   doc.text(`Lot-wise summary (${d.perLot.length} lots)`, 10, y)
+  const hasOb = d.summary.obThan > 0
+  const head = hasOb
+    ? [['Lot No', 'Quality', 'First In', 'Last Out', 'OB', 'FY Inward', 'Outward', 'Balance', 'Status']]
+    : [['Lot No', 'Quality', 'First In', 'Last Out', 'Inward', 'Outward', 'Balance', 'Status']]
+  const body = d.perLot.map(r => {
+    const status = r.balance === 0 ? 'Cleared' : r.outward === 0 ? 'Not despatched' : 'Partial'
+    return hasOb
+      ? [r.lotNo, r.quality, fmt(r.firstInward), fmt(r.lastOutward),
+          r.obThan > 0 ? String(r.obThan) : '—',
+          r.currentInward > 0 ? String(r.currentInward) : '—',
+          String(r.outward), String(r.balance), status]
+      : [r.lotNo, r.quality, fmt(r.firstInward), fmt(r.lastOutward),
+          String(r.inward), String(r.outward), String(r.balance), status]
+  })
+  const foot = hasOb
+    ? [['', '', '', 'TOTAL', String(d.summary.obThan), String(d.summary.currentInwardThan), String(d.summary.outwardThan), String(d.summary.balance), '']]
+    : [['', '', '', 'TOTAL', String(d.summary.inwardThan), String(d.summary.outwardThan), String(d.summary.balance), '']]
+  // Status column index shifts when OB is present.
+  const statusIdx = hasOb ? 8 : 7
   autoTable(doc, {
-    startY: y + 2,
-    head: [['Lot No', 'Quality', 'First In', 'Last Out', 'Inward', 'Outward', 'Balance', 'Status']],
-    body: d.perLot.map(r => [
-      r.lotNo, r.quality, fmt(r.firstInward), fmt(r.lastOutward),
-      String(r.inward), String(r.outward), String(r.balance),
-      r.balance === 0 ? 'Cleared' : r.outward === 0 ? 'Not despatched' : 'Partial',
-    ]),
-    foot: [['', '', '', 'TOTAL', String(d.summary.inwardThan), String(d.summary.outwardThan), String(d.summary.balance), '']],
+    startY: y + 2, head, body, foot,
     headStyles: { fillColor: [30, 41, 59], textColor: 255, fontSize: 8, halign: 'center' },
     footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold', fontSize: 8 },
     bodyStyles:  { fontSize: 8 },
-    columnStyles: {
+    columnStyles: hasOb ? {
       0: { fontStyle: 'bold', textColor: [67, 56, 202] },
-      4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right', fontStyle: 'bold' },
+      4: { halign: 'right', textColor: [124, 58, 237], fontStyle: 'bold' },
+      5: { halign: 'right' }, 6: { halign: 'right' },
+      7: { halign: 'right', fontStyle: 'bold' },
+      8: { halign: 'center', fontSize: 7 },
+    } : {
+      0: { fontStyle: 'bold', textColor: [67, 56, 202] },
+      4: { halign: 'right' }, 5: { halign: 'right' },
+      6: { halign: 'right', fontStyle: 'bold' },
       7: { halign: 'center', fontSize: 7 },
     },
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 7) {
+      if (data.section === 'body' && data.column.index === statusIdx) {
         if (data.cell.raw === 'Cleared')         data.cell.styles.textColor = [22, 163, 74]
         else if (data.cell.raw === 'Partial')     data.cell.styles.textColor = [202, 138, 4]
         else if (data.cell.raw === 'Not despatched') data.cell.styles.textColor = [37, 99, 235]
@@ -103,16 +138,22 @@ function renderLedger(doc: jsPDF, d: ReportPayload) {
   let y = drawSummaryBlock(doc, 28, d.summary)
   doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(30, 41, 59)
   doc.text('Transactions (date order)', 10, y)
-  const txns: Array<{ date: string; kind: 'IN' | 'OUT'; ref: string; lot: string; quality: string; detail: string; signed: number }> = [
+  const txns: Array<{ date: string; kind: 'OB' | 'IN' | 'OUT'; ref: string; lot: string; quality: string; detail: string; signed: number }> = [
     ...d.inwardRows.map(r => ({
-      date: r.date, kind: 'IN' as const, ref: `Ch ${r.challanNo}`, lot: r.lotNo, quality: r.quality,
-      detail: `Bale ${r.baleNo || '—'} · LR ${r.transportLrNo || '—'}`, signed: r.than,
+      date: r.date,
+      kind: (r.isOpeningBalance ? 'OB' : 'IN') as 'OB' | 'IN',
+      ref: r.isOpeningBalance ? `OB ${r.financialYear || ''}`.trim() : `Ch ${r.challanNo}`,
+      lot: r.lotNo, quality: r.quality,
+      detail: r.isOpeningBalance
+        ? `Carry forward${r.financialYear ? ` FY ${r.financialYear}` : ''}`
+        : `Bale ${r.baleNo || '—'} · LR ${r.transportLrNo || '—'}`,
+      signed: r.than,
     })),
     ...d.outwardRows.map(r => ({
       date: r.date, kind: 'OUT' as const, ref: `Ch ${r.challanNo}`, lot: r.lotNo, quality: r.quality,
       detail: `Bill ${r.billNo || '—'}`, signed: -r.than,
     })),
-  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || (a.kind === 'IN' ? -1 : 1))
+  ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || (a.kind === 'OUT' ? 1 : -1))
   let bal = 0
   const body = txns.map(t => {
     bal += t.signed
@@ -141,6 +182,7 @@ function renderLedger(doc: jsPDF, d: ReportPayload) {
     didParseCell: (data) => {
       if (data.section === 'body' && data.column.index === 1) {
         if (data.cell.raw === 'IN')  data.cell.styles.textColor = [22, 100, 200]
+        if (data.cell.raw === 'OB')  data.cell.styles.textColor = [124, 58, 237]
         if (data.cell.raw === 'OUT') data.cell.styles.textColor = [220, 90, 40]
       }
     },
@@ -165,13 +207,16 @@ function renderLotwise(doc: jsPDF, d: ReportPayload) {
     doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(80, 80, 80)
     doc.text(r.quality || '—', 60, y + 5.5)
     doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(30, 41, 59)
-    doc.text(`In ${r.inward} · Out ${r.outward} · Bal ${r.balance}`, doc.internal.pageSize.getWidth() - 12, y + 5.5, { align: 'right' })
+    const obTag = r.obThan > 0 ? `OB ${r.obThan} · ` : ''
+    doc.text(`${obTag}In ${r.inward} · Out ${r.outward} · Bal ${r.balance}`, doc.internal.pageSize.getWidth() - 12, y + 5.5, { align: 'right' })
     y += 9
     autoTable(doc, {
       startY: y,
-      head: [['', 'Date', 'Ch / Bill', 'Detail', 'Than']],
+      head: [['', 'Date', 'Ref', 'Detail', 'Than']],
       body: [
-        ...r.inwardRows.map(g => ['IN',  fmt(g.date), `Ch ${g.challanNo}`, `Bale ${g.baleNo || '—'} · LR ${g.transportLrNo || '—'}`, String(g.than)]),
+        ...r.inwardRows.map(g => g.isOpeningBalance
+          ? ['OB', fmt(g.date), `OB ${g.financialYear || ''}`.trim(), `Carry forward${g.financialYear ? ` FY ${g.financialYear}` : ''}`, String(g.than)]
+          : ['IN', fmt(g.date), `Ch ${g.challanNo}`, `Bale ${g.baleNo || '—'} · LR ${g.transportLrNo || '—'}`, String(g.than)]),
         ...r.outwardRows.map(o => ['OUT', fmt(o.date), `Ch ${o.challanNo}${o.billNo ? ' / Bill ' + o.billNo : ''}`, '', String(o.than)]),
       ],
       headStyles: { fillColor: [243, 244, 246], textColor: 30, fontSize: 7.5, halign: 'left' },
@@ -183,6 +228,7 @@ function renderLotwise(doc: jsPDF, d: ReportPayload) {
       didParseCell: (data) => {
         if (data.section === 'body' && data.column.index === 0) {
           if (data.cell.raw === 'IN')  data.cell.styles.textColor = [22, 100, 200]
+          if (data.cell.raw === 'OB')  data.cell.styles.textColor = [124, 58, 237]
           if (data.cell.raw === 'OUT') data.cell.styles.textColor = [220, 90, 40]
         }
       },

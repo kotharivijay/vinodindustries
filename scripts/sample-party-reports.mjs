@@ -18,14 +18,27 @@ const db = new PrismaClient()
 const OUT_DIR = path.resolve('temp')
 fs.mkdirSync(OUT_DIR, { recursive: true })
 
-const partyIdArg = process.argv[2]
+// USAGE
+//   node scripts/sample-party-reports.mjs                 # Shantinath default
+//   node scripts/sample-party-reports.mjs <partyId>       # any party by id
+//   node scripts/sample-party-reports.mjs --party <name>  # fuzzy lookup by name
+let partyIdArg = null
+let partyNameArg = null
+for (let i = 2; i < process.argv.length; i++) {
+  if (process.argv[i] === '--party') partyNameArg = process.argv[++i]
+  else if (!partyIdArg) partyIdArg = process.argv[i]
+}
 const party = partyIdArg
   ? await db.party.findUnique({ where: { id: Number(partyIdArg) } })
-  : await db.party.findFirst({ where: { name: { contains: 'shantinath', mode: 'insensitive' } } })
+  : await db.party.findFirst({
+      where: { name: { contains: (partyNameArg || 'shantinath'), mode: 'insensitive' } },
+    })
 if (!party) { console.error('No matching party'); process.exit(1) }
+const partyKey = (party.name || '').replace(/\s+/g, ' ').trim().toLowerCase()
 
 const fmt = (d) => d ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}` : '—'
 const cleanName = party.name.replace(/\s+/g, ' ').trim()
+const outSlug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
 console.log(`Generating reports for: ${cleanName} (id=${party.id})`)
 
 // ── Pull inward + outward ──────────────────────────────────────────
@@ -49,12 +62,29 @@ const dChildren = await db.despatchEntryLot.findMany({
     entry: { select: { date: true, challanNo: true, billNo: true } },
     quality: { select: { name: true } } },
 })
+// Opening balance lives outside the party FK — match by name (canonical).
+const allOb = await db.lotOpeningBalance.findMany()
+const obRows = allOb.filter(o => (o.party || '').replace(/\s+/g, ' ').trim().toLowerCase() === partyKey)
+const fyStart = (s) => {
+  const m = (s || '').match(/(\d{4})/)
+  return m ? new Date(`${m[1]}-04-01T00:00:00`) : new Date('2000-04-01')
+}
+const obAsInward = obRows.map(o => ({
+  date: o.greyDate || fyStart(o.financialYear),
+  challanNo: 0, lotNo: o.lotNo, quality: o.quality || '', than: o.openingThan,
+  baleNo: '', transportLrNo: o.lrNo || '', marka: o.marka || '', openedAt: null,
+  isOpeningBalance: true, financialYear: o.financialYear,
+}))
+const currentInward = grey.map(g => ({ ...g, isOpeningBalance: false, financialYear: null }))
+const allInward = [...obAsInward, ...currentInward].sort((a, b) => a.date.getTime() - b.date.getTime())
 
 const outwardRows = [
   ...dParent.map(d => ({ date: d.date, ch: d.challanNo, lot: d.lotNo, quality: d.quality?.name || '', than: d.than, bill: d.billNo })),
   ...dChildren.map(d => ({ date: d.entry.date, ch: d.entry.challanNo, lot: d.lotNo, quality: d.quality?.name || '', than: d.than, bill: d.entry.billNo })),
 ].sort((a, b) => a.date.getTime() - b.date.getTime())
-const inwardThan = grey.reduce((s, g) => s + g.than, 0)
+const obThan = obAsInward.reduce((s, r) => s + r.than, 0)
+const currentInwardThan = currentInward.reduce((s, g) => s + g.than, 0)
+const inwardThan = obThan + currentInwardThan
 const outwardThan = outwardRows.reduce((s, d) => s + d.than, 0)
 const balanceThan = inwardThan - outwardThan
 
@@ -62,15 +92,17 @@ const balanceThan = inwardThan - outwardThan
 const lotMap = new Map()
 const ensure = (key) => {
   if (!lotMap.has(key)) lotMap.set(key, {
-    lotNo: key, quality: '', inward: 0, outward: 0,
+    lotNo: key, quality: '', inward: 0, obThan: 0, currentInward: 0, outward: 0,
     inwardRows: [], outwardRows: [], firstInward: null, lastOut: null,
   })
   return lotMap.get(key)
 }
-for (const g of grey) {
+for (const g of allInward) {
   const r = ensure(g.lotNo.toUpperCase())
-  r.quality = r.quality || g.quality?.name || ''
+  r.quality = r.quality || g.quality?.name || g.quality || ''
   r.inward += g.than
+  if (g.isOpeningBalance) r.obThan += g.than
+  else r.currentInward += g.than
   r.inwardRows.push(g)
   if (!r.firstInward || g.date < r.firstInward) r.firstInward = g.date
 }
@@ -104,10 +136,17 @@ function drawHeader(doc, subtitle) {
 
 function drawSummaryBlock(doc, y) {
   const w = doc.internal.pageSize.getWidth() - 20
-  const colW = w / 3
+  const hasOb = obThan > 0
+  const colCount = hasOb ? 4 : 3
+  const colW = w / colCount
   doc.setDrawColor(220, 220, 220).setLineWidth(0.3)
   doc.roundedRect(10, y, w, 16, 2, 2)
-  const labels = [
+  const labels = hasOb ? [
+    { k: `Opening Balance (${obRows.length} lots)`, v: obThan,  col: [124, 58, 237] },
+    { k: 'This FY Inward',                          v: currentInwardThan, col: [30, 100, 220] },
+    { k: 'Total Outward',                           v: outwardThan, col: [220, 90, 40] },
+    { k: 'Balance with KSI',                        v: balanceThan, col: balanceThan > 0 ? [22, 163, 74] : [120, 120, 120] },
+  ] : [
     { k: 'Total Inward (than)',  v: inwardThan,  col: [30, 100, 220] },
     { k: 'Total Outward (than)', v: outwardThan, col: [220, 90, 40] },
     { k: 'Balance with KSI',     v: balanceThan, col: balanceThan > 0 ? [22, 163, 74] : [120, 120, 120] },
@@ -116,7 +155,7 @@ function drawSummaryBlock(doc, y) {
     const x = 10 + colW * i
     doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(110, 110, 110)
     doc.text(l.k, x + colW / 2, y + 5, { align: 'center' })
-    doc.setFont('helvetica', 'bold').setFontSize(15).setTextColor(...l.col)
+    doc.setFont('helvetica', 'bold').setFontSize(hasOb ? 13 : 15).setTextColor(...l.col)
     doc.text(String(l.v), x + colW / 2, y + 13, { align: 'center' })
   })
   doc.setTextColor(0, 0, 0)
@@ -133,25 +172,42 @@ function drawSummaryBlock(doc, y) {
   doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(30, 41, 59)
   doc.text(`Lot-wise summary (${perLot.length} lots)`, 10, y)
   y += 2
+  const hasOb = obThan > 0
+  const head = hasOb
+    ? [['Lot No', 'Quality', 'First In', 'Last Out', 'OB', 'FY Inward', 'Outward', 'Balance', 'Status']]
+    : [['Lot No', 'Quality', 'First In', 'Last Out', 'Inward', 'Outward', 'Balance', 'Status']]
+  const body = perLot.map(r => {
+    const status = r.balance === 0 ? 'Cleared' : r.outward === 0 ? 'Not despatched' : 'Partial'
+    return hasOb
+      ? [r.lotNo, r.quality, fmt(r.firstInward), fmt(r.lastOut),
+          r.obThan > 0 ? String(r.obThan) : '—',
+          r.currentInward > 0 ? String(r.currentInward) : '—',
+          String(r.outward), String(r.balance), status]
+      : [r.lotNo, r.quality, fmt(r.firstInward), fmt(r.lastOut),
+          String(r.inward), String(r.outward), String(r.balance), status]
+  })
+  const foot = hasOb
+    ? [['', '', '', 'TOTAL', String(obThan), String(currentInwardThan), String(outwardThan), String(balanceThan), '']]
+    : [['', '', '', 'TOTAL', String(inwardThan), String(outwardThan), String(balanceThan), '']]
+  const statusIdx = hasOb ? 8 : 7
   autoTable(doc, {
-    startY: y + 2,
-    head: [['Lot No', 'Quality', 'First In', 'Last Out', 'Inward', 'Outward', 'Balance', 'Status']],
-    body: perLot.map(r => [
-      r.lotNo, r.quality, fmt(r.firstInward), fmt(r.lastOut),
-      String(r.inward), String(r.outward), String(r.balance),
-      r.balance === 0 ? 'Cleared' : r.outward === 0 ? 'Not despatched' : 'Partial',
-    ]),
-    foot: [['', '', '', 'TOTAL', String(inwardThan), String(outwardThan), String(balanceThan), '']],
+    startY: y + 2, head, body, foot,
     headStyles: { fillColor: [30, 41, 59], textColor: 255, fontSize: 8, halign: 'center' },
     footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold', fontSize: 8 },
     bodyStyles:  { fontSize: 8 },
-    columnStyles: {
+    columnStyles: hasOb ? {
+      0: { fontStyle: 'bold', textColor: [67, 56, 202] },
+      4: { halign: 'right', textColor: [124, 58, 237], fontStyle: 'bold' },
+      5: { halign: 'right' }, 6: { halign: 'right' },
+      7: { halign: 'right', fontStyle: 'bold' },
+      8: { halign: 'center', fontSize: 7 },
+    } : {
       0: { fontStyle: 'bold', textColor: [67, 56, 202] },
       4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right', fontStyle: 'bold' },
       7: { halign: 'center', fontSize: 7 },
     },
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 7) {
+      if (data.section === 'body' && data.column.index === statusIdx) {
         if (data.cell.raw === 'Cleared')         data.cell.styles.textColor = [22, 163, 74]
         else if (data.cell.raw === 'Partial')     data.cell.styles.textColor = [202, 138, 4]
         else if (data.cell.raw === 'Not despatched') data.cell.styles.textColor = [37, 99, 235]
@@ -159,7 +215,7 @@ function drawSummaryBlock(doc, y) {
     },
     margin: { left: 10, right: 10 },
   })
-  fs.writeFileSync(path.join(OUT_DIR, 'shantinath-A-summary.pdf'), Buffer.from(doc.output('arraybuffer')))
+  fs.writeFileSync(path.join(OUT_DIR, `${outSlug}-A-summary.pdf`), Buffer.from(doc.output('arraybuffer')))
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -173,23 +229,29 @@ function drawSummaryBlock(doc, y) {
   doc.text('Transactions (date order)', 10, y)
   y += 2
 
-  // Merge + sort. Inward = positive, outward = negative. Running balance.
+  // Merge + sort. OB + IN add, OUT subtracts. Running balance.
   const txns = [
-    ...grey.map(g => ({
-      date: g.date, kind: 'IN', ref: `Ch ${g.challanNo}`, lot: g.lotNo, quality: g.quality?.name || '',
-      detail: `Bale ${g.baleNo || '—'} · LR ${g.transportLrNo || '—'}`, than: g.than,
+    ...allInward.map(g => ({
+      date: g.date,
+      kind: g.isOpeningBalance ? 'OB' : 'IN',
+      ref: g.isOpeningBalance ? `OB ${g.financialYear || ''}`.trim() : `Ch ${g.challanNo}`,
+      lot: g.lotNo, quality: g.quality?.name || g.quality || '',
+      detail: g.isOpeningBalance
+        ? `Carry forward${g.financialYear ? ` FY ${g.financialYear}` : ''}`
+        : `Bale ${g.baleNo || '—'} · LR ${g.transportLrNo || '—'}`,
+      than: g.than,
     })),
     ...outwardRows.map(o => ({
       date: o.date, kind: 'OUT', ref: `Ch ${o.ch}`, lot: o.lot, quality: o.quality || '',
       detail: `Bill ${o.bill || '—'}`, than: -o.than,
     })),
-  ].sort((a, b) => a.date.getTime() - b.date.getTime() || (a.kind === 'IN' ? -1 : 1))
+  ].sort((a, b) => a.date.getTime() - b.date.getTime() || (a.kind === 'OUT' ? 1 : -1))
   let bal = 0
   const body = txns.map(t => {
     bal += t.than
     return [
       fmt(t.date), t.kind, t.ref, t.lot, t.quality, t.detail,
-      t.kind === 'IN' ? String(t.than) : '',
+      t.kind !== 'OUT' ? String(t.than) : '',
       t.kind === 'OUT' ? String(Math.abs(t.than)) : '',
       String(bal),
     ]
@@ -212,12 +274,13 @@ function drawSummaryBlock(doc, y) {
     didParseCell: (data) => {
       if (data.section === 'body' && data.column.index === 1) {
         if (data.cell.raw === 'IN')  data.cell.styles.textColor = [22, 100, 200]
+        if (data.cell.raw === 'OB')  data.cell.styles.textColor = [124, 58, 237]
         if (data.cell.raw === 'OUT') data.cell.styles.textColor = [220, 90, 40]
       }
     },
     margin: { left: 10, right: 10 },
   })
-  fs.writeFileSync(path.join(OUT_DIR, 'shantinath-B-ledger.pdf'), Buffer.from(doc.output('arraybuffer')))
+  fs.writeFileSync(path.join(OUT_DIR, `${outSlug}-B-ledger.pdf`), Buffer.from(doc.output('arraybuffer')))
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -242,14 +305,17 @@ function drawSummaryBlock(doc, y) {
     doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(80, 80, 80)
     doc.text(r.quality || '—', 60, y + 5.5)
     doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(30, 41, 59)
-    doc.text(`In ${r.inward} · Out ${r.outward} · Bal ${r.balance}`, doc.internal.pageSize.getWidth() - 12, y + 5.5, { align: 'right' })
+    const obTag = r.obThan > 0 ? `OB ${r.obThan} · ` : ''
+    doc.text(`${obTag}In ${r.inward} · Out ${r.outward} · Bal ${r.balance}`, doc.internal.pageSize.getWidth() - 12, y + 5.5, { align: 'right' })
     y += 9
 
     autoTable(doc, {
       startY: y,
-      head: [['', 'Date', 'Ch / Bill', 'Detail', 'Than']],
+      head: [['', 'Date', 'Ref', 'Detail', 'Than']],
       body: [
-        ...r.inwardRows.map(g => ['IN',  fmt(g.date), `Ch ${g.challanNo}`, `Bale ${g.baleNo || '—'} · LR ${g.transportLrNo || '—'}`, String(g.than)]),
+        ...r.inwardRows.map(g => g.isOpeningBalance
+          ? ['OB', fmt(g.date), `OB ${g.financialYear || ''}`.trim(), `Carry forward${g.financialYear ? ` FY ${g.financialYear}` : ''}`, String(g.than)]
+          : ['IN', fmt(g.date), `Ch ${g.challanNo}`, `Bale ${g.baleNo || '—'} · LR ${g.transportLrNo || '—'}`, String(g.than)]),
         ...r.outwardRows.map(o => ['OUT', fmt(o.date), `Ch ${o.ch}${o.bill ? ' / Bill ' + o.bill : ''}`, '', String(o.than)]),
       ],
       headStyles: { fillColor: [243, 244, 246], textColor: 30, fontSize: 7.5, halign: 'left' },
@@ -261,6 +327,7 @@ function drawSummaryBlock(doc, y) {
       didParseCell: (data) => {
         if (data.section === 'body' && data.column.index === 0) {
           if (data.cell.raw === 'IN')  data.cell.styles.textColor = [22, 100, 200]
+          if (data.cell.raw === 'OB')  data.cell.styles.textColor = [124, 58, 237]
           if (data.cell.raw === 'OUT') data.cell.styles.textColor = [220, 90, 40]
         }
       },
@@ -269,12 +336,12 @@ function drawSummaryBlock(doc, y) {
     })
     y = doc.lastAutoTable.finalY + 4
   }
-  fs.writeFileSync(path.join(OUT_DIR, 'shantinath-C-lotwise.pdf'), Buffer.from(doc.output('arraybuffer')))
+  fs.writeFileSync(path.join(OUT_DIR, `${outSlug}-C-lotwise.pdf`), Buffer.from(doc.output('arraybuffer')))
 }
 
 console.log(`\nWrote:`)
-console.log(`  ${path.join(OUT_DIR, 'shantinath-A-summary.pdf')}`)
-console.log(`  ${path.join(OUT_DIR, 'shantinath-B-ledger.pdf')}`)
-console.log(`  ${path.join(OUT_DIR, 'shantinath-C-lotwise.pdf')}`)
+console.log(`  ${path.join(OUT_DIR, `${outSlug}-A-summary.pdf`)}`)
+console.log(`  ${path.join(OUT_DIR, `${outSlug}-B-ledger.pdf`)}`)
+console.log(`  ${path.join(OUT_DIR, `${outSlug}-C-lotwise.pdf`)}`)
 
 await db.$disconnect()
