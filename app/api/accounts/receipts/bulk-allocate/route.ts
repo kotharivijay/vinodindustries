@@ -122,7 +122,15 @@ export async function POST(req: NextRequest) {
   const partyInvoicesRaw = await db.ksiSalesInvoice.findMany({
     where: { partyName: { contains: partyKey, mode: 'insensitive' } },
     include: {
-      allocations: true,
+      // Receipt date included so we can detect "first touch" — bulk-link
+      // can deduct TDS only when no earlier receipt has allocated to
+      // this invoice. Mirrors the per-invoice card's lock.
+      allocations: {
+        select: {
+          allocatedAmount: true, tdsAmount: true, discountAmount: true,
+          receipt: { select: { id: true, date: true } },
+        },
+      },
       // Pulled so the dry-run can publish per-invoice voucher-level
       // discount / extra-charge totals — without them the bulk-link
       // TDS base differs from the single-invoice card (which already
@@ -188,6 +196,18 @@ export async function POST(req: NextRequest) {
     if (lname === partyNameLower) return 'party'
     return 'unmapped'
   }
+  // "First touch" detection: any existing allocation on this invoice
+  // ties to a receipt earlier than the *oldest* receipt in this batch?
+  // If yes, TDS is locked — the earlier receipt already absorbed it.
+  // Same date with a smaller id counts as earlier (stable tiebreak).
+  const oldestBatchMs = receipts.reduce(
+    (m: number, r: any) => Math.min(m, r.date.getTime()),
+    Number.POSITIVE_INFINITY,
+  )
+  const oldestBatchId = receipts.reduce(
+    (m: number, r: any) => (r.date.getTime() === oldestBatchMs ? Math.min(m, r.id) : m),
+    Number.POSITIVE_INFINITY,
+  )
   const pendingInvoices = invoices
     .filter((inv: any) => pendingPerInvoice[inv.id] > 0)
     .map((inv: any) => {
@@ -202,6 +222,13 @@ export async function POST(req: NextRequest) {
         if (cat === 'discount') voucherDiscount += Math.abs(led.amount || 0)
         else if (cat === 'extra-charge') voucherExtraCharge += Math.abs(led.amount || 0)
       }
+      const hasEarlierAllocation = (inv.allocations || []).some((a: any) => {
+        if (!a.receipt) return false
+        const ms = a.receipt.date.getTime()
+        if (ms < oldestBatchMs) return true
+        if (ms === oldestBatchMs && a.receipt.id < oldestBatchId) return true
+        return false
+      })
       return {
         id: inv.id, date: inv.date, vchNumber: inv.vchNumber, vchType: inv.vchType,
         totalAmount: inv.totalAmount,
@@ -211,6 +238,7 @@ export async function POST(req: NextRequest) {
         partyGstin: inv.partyGstin,
         pending: pendingPerInvoice[inv.id],
         isCN: inv.vchType === 'Credit Note',
+        hasEarlierAllocation,
         // Persistent skip flag — bulk-link FIFO passes over these.
         skipAutoLink: !!inv.skipAutoLink,
         skipAutoLinkReason: inv.skipAutoLinkReason ?? null,
@@ -363,7 +391,26 @@ export async function POST(req: NextRequest) {
       cashForInvoice += split.allocatedAmount
     }
     // CN rows never carry TDS / settlement discount.
-    const tds = isCN ? 0 : (Number.isFinite(row.tdsAmount) && row.tdsAmount! > 0 ? Number(row.tdsAmount) : 0)
+    // TDS-on-subsequent guard: if any prior receipt has already
+    // allocated to this invoice, this batch is a "later touch" — the
+    // earlier receipt is the one that books TDS. Reject so stale
+    // client state can't sneak through.
+    const invHasEarlierAlloc = !!invRow && (invRow.allocations || []).some((a: any) => {
+      if (!a.receipt) return false
+      const ms = a.receipt.date.getTime()
+      if (ms < oldestBatchMs) return true
+      if (ms === oldestBatchMs && a.receipt.id < oldestBatchId) return true
+      return false
+    })
+    const tdsRaw = isCN ? 0 : (Number.isFinite(row.tdsAmount) && row.tdsAmount! > 0 ? Number(row.tdsAmount) : 0)
+    if (tdsRaw > 0 && invHasEarlierAlloc) {
+      return NextResponse.json({
+        error: `Invoice ${invRow?.vchNumber} already has an earlier allocation — TDS must be 0 on this allocation.`,
+        invoiceId: row.invoiceId,
+        code: 'TDS_LOCKED_SUBSEQUENT',
+      }, { status: 400 })
+    }
+    const tds = invHasEarlierAlloc ? 0 : tdsRaw
     const disc = isCN ? 0 : (Number.isFinite(row.discountAmount) && row.discountAmount! > 0 ? Number(row.discountAmount) : 0)
     const consumed = cashForInvoice + tds + disc
     // Allow 1-rupee tolerance for rounding noise.

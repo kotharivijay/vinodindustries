@@ -74,6 +74,10 @@ interface DryRunInvoice {
   voucherExtraCharge?: number
   partyGstin: string | null; pending: number
   isCN?: boolean; skipAutoLink?: boolean; skipAutoLinkReason?: string | null
+  // True when this invoice already has an allocation from a receipt
+  // earlier than the oldest receipt in this batch. TDS is locked on
+  // such rows (only first touch can book TDS).
+  hasEarlierAllocation?: boolean
 }
 interface DryRunSplit { receiptId: number; allocatedAmount: number }
 interface DryRunPlanRow { invoiceId: number; allocations: DryRunSplit[] }
@@ -1246,6 +1250,10 @@ function BulkLinkSheet({
           //   net = items − voucher discounts + voucher extras.
           const taxableGross = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
           const taxable = Math.max(0, taxableGross - (inv.voucherDiscount || 0) + (inv.voucherExtraCharge || 0))
+          // TDS-on-subsequent guard: first-touch only. Earlier receipt
+          // already absorbed TDS for this bill, so seed TDS at 0 and
+          // the row UI will keep it locked.
+          const tdsLocked = !!inv.hasEarlierAllocation
           return {
             invoiceId: inv.id,
             // Default CN rows to UNticked so the user opts in
@@ -1254,8 +1262,8 @@ function BulkLinkSheet({
             allowPartial: false,
             // CN rows never carry TDS or settlement discount — Tally
             // adjusts the party ledger directly via bill-wise knock-off.
-            tdsRatePct: isCN ? null : DEFAULT_TDS_RATE,
-            tdsAmount: isCN ? 0 : Math.round((taxable * DEFAULT_TDS_RATE) / 100),
+            tdsRatePct: isCN || tdsLocked ? null : DEFAULT_TDS_RATE,
+            tdsAmount: isCN || tdsLocked ? 0 : Math.round((taxable * DEFAULT_TDS_RATE) / 100),
             discountPct: null,
             discountAmount: 0,
             cnKnockoffAmount: isCN ? inv.pending : 0,
@@ -1311,6 +1319,7 @@ function BulkLinkSheet({
     const inv = data?.invoices.find(i => i.id === row.invoiceId)
     if (!inv) return
     if (inv.isCN || inv.vchType === 'Credit Note') return  // no TDS on CN
+    if (inv.hasEarlierAllocation) return  // TDS locked — earlier receipt absorbed it
     const base = taxableNet(inv)
     if (base <= 0) return
     const rate = row.tdsRatePct ?? DEFAULT_TDS_RATE
@@ -1835,8 +1844,14 @@ function BulkLinkSheet({
                   </div>
                 )}
 
-                {/* TDS row — not applicable on CN rows. */}
-                {!inv.isCN && (
+                {/* TDS row — not applicable on CN rows. Locked when an
+                    earlier receipt has already allocated to this bill. */}
+                {!inv.isCN && inv.hasEarlierAllocation && (
+                <div className="mt-1.5 text-[10px] px-2 py-1 rounded bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700/40 text-amber-800 dark:text-amber-200">
+                  🔒 TDS locked — an earlier receipt already deducted TDS for this bill. Only cash + discount allowed.
+                </div>
+                )}
+                {!inv.isCN && !inv.hasEarlierAllocation && (
                 <div className="flex items-center gap-1.5 text-[11px] mt-1.5">
                   <button type="button" onClick={() => applyTdsRate(idx)}
                     className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 font-semibold">
