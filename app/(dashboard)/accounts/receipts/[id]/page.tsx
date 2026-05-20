@@ -872,6 +872,16 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
         const balAfterDed = inv.totalAmount - myTds - myDisc
         const amtLeft = +(balAfterDed - myCash).toFixed(2)
         if (amtLeft <= 0.5) return null // ≈0 → not partial (rounding noise tolerated)
+        const days = inv.date && receipt?.date
+          ? Math.round((new Date(receipt.date).getTime() - new Date(inv.date).getTime()) / 86400000)
+          : null
+        const daysLabel = days == null ? null
+          : days < 0 ? `${Math.abs(days)} days advance`
+          : `${days} days`
+        const daysColor = days == null ? '' : days < 0 ? 'text-gray-400'
+          : days <= 30 ? 'text-emerald-300'
+          : days <= 60 ? 'text-amber-300'
+          : 'text-rose-300'
         return (
           <div className="text-[10px] mt-1.5 px-2 py-1.5 rounded bg-gray-900 text-white font-mono leading-snug">
             <div className="flex items-baseline gap-1.5 flex-wrap">
@@ -879,6 +889,7 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
               <span className="text-white tabular-nums">₹{fmtMoney(inv.totalAmount)}</span>
               {myTds > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myTds)} TDS</span>}
               {myDisc > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myDisc)} disc</span>}
+              {daysLabel && <span className={`${daysColor} font-semibold`} title="Receipt date − invoice date">• {daysLabel}</span>}
             </div>
             <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
               <span className="text-emerald-300 tabular-nums">₹{fmtMoney(balAfterDed)}</span>
