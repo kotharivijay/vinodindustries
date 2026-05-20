@@ -858,6 +858,39 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
         </div>
       )}
 
+      {/* Partial-allocation breakdown — only when THIS receipt's allocation
+          doesn't fully cover (bill − TDS − discount). Shows the formula the
+          accountant uses to read partial payments at a glance:
+            bill_no   bill_amt   −tds_amt
+            bal_amt − amt_left = net_cash
+          Colours follow the spec: bill white, tds amber, bal green, left
+          rose, net cash orange. Dark inline panel so colours read clearly. */}
+      {myAlloc && (() => {
+        const myCash = myAlloc.allocatedAmount || 0
+        const myTds = myAlloc.tdsAmount || 0
+        const myDisc = myAlloc.discountAmount || 0
+        const balAfterDed = inv.totalAmount - myTds - myDisc
+        const amtLeft = +(balAfterDed - myCash).toFixed(2)
+        if (amtLeft <= 0.5) return null // ≈0 → not partial (rounding noise tolerated)
+        return (
+          <div className="text-[10px] mt-1.5 px-2 py-1.5 rounded bg-gray-900 text-white font-mono leading-snug">
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
+              <span className="text-white tabular-nums">₹{fmtMoney(inv.totalAmount)}</span>
+              {myTds > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myTds)} TDS</span>}
+              {myDisc > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myDisc)} disc</span>}
+            </div>
+            <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
+              <span className="text-emerald-300 tabular-nums">₹{fmtMoney(balAfterDed)}</span>
+              <span className="text-gray-500">−</span>
+              <span className="text-rose-300 tabular-nums">₹{fmtMoney(amtLeft)}</span>
+              <span className="text-gray-500">=</span>
+              <span className="text-orange-300 font-bold tabular-nums">₹{fmtMoney(myCash)}</span>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Saved note for this allocation — visible when collapsed too */}
       {myAlloc?.note && !open && (
         <div className="text-[10px] mt-1 text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/40 rounded p-1.5">
