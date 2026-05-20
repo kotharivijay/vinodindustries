@@ -987,7 +987,7 @@ export default function ReceiptsPage() {
                                   <span className="text-gray-500">−</span>
                                   <span className="text-rose-300 tabular-nums">pending ₹{fmtMoney(amtLeft)}</span>
                                   <span className="text-gray-500">=</span>
-                                  <span className="text-orange-300 font-bold tabular-nums">₹{fmtMoney(myCash)}</span>
+                                  <span className="text-orange-300 font-bold tabular-nums">used ₹{fmtMoney(myCash)}</span>
                                 </div>
                               </div>
                             )}
