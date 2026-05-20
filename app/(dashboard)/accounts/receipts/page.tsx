@@ -985,7 +985,7 @@ export default function ReceiptsPage() {
                                 <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
                                   <span className="text-emerald-300 tabular-nums">₹{fmtMoney(balAfterDed)}</span>
                                   <span className="text-gray-500">−</span>
-                                  <span className="text-rose-300 tabular-nums">₹{fmtMoney(amtLeft)}</span>
+                                  <span className="text-rose-300 tabular-nums">pending ₹{fmtMoney(amtLeft)}</span>
                                   <span className="text-gray-500">=</span>
                                   <span className="text-orange-300 font-bold tabular-nums">₹{fmtMoney(myCash)}</span>
                                 </div>
