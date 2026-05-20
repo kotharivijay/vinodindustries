@@ -924,45 +924,76 @@ export default function ReceiptsPage() {
                   )}
                   {r.linkedCount > 0 && (
                     <div className="mt-1 text-[10px] text-gray-600 dark:text-gray-300 space-y-0.5">
-                      {r.linkedInvoices.map((inv, i) => (
-                        <div key={i}>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-mono text-indigo-600 dark:text-indigo-300">
-                              {inv.vchType === 'Credit Note' && <span className="text-violet-600 dark:text-violet-400 mr-1">CN</span>}
-                              {inv.vchNumber}
-                            </span>
-                            <span className="tabular-nums"
-                              title={`Original invoice amount (before TDS/discount). Cash allocated on this receipt: ₹${fmtMoney(Math.abs(inv.allocatedAmount))}`}>
-                              {inv.allocatedAmount < 0 ? '−' : ''}₹{fmtMoney(inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount))}
-                            </span>
-                            {inv.tdsAmount > 0 && <span className="text-amber-600 dark:text-amber-400">−TDS ₹{fmtMoney(inv.tdsAmount)}</span>}
-                            {inv.discountAmount > 0 && <span className="text-rose-600 dark:text-rose-400">−disc ₹{fmtMoney(inv.discountAmount)}</span>}
-                            {typeof inv.invoiceNetAmount === 'number' && inv.invoiceNetAmount !== 0 && (
-                              <span className="text-emerald-600 dark:text-emerald-400 tabular-nums font-semibold"
-                                title={`Invoice net = total ₹${fmtMoney(inv.invoiceTotalAmount || 0)} − Σ TDS − Σ settlement disc (across all allocations on this invoice)`}>
-                                NET ₹{fmtMoney(inv.invoiceNetAmount)}
+                      {r.linkedInvoices.map((inv, i) => {
+                        // Partial-allocation breakdown: same formula as the
+                        // dark block on the receipt detail page. Show when
+                        // this receipt's cash didn't cover (bill − TDS − disc)
+                        // for this invoice. Skipped for CN allocations.
+                        const myCash = Math.abs(inv.allocatedAmount)
+                        const myTds = inv.tdsAmount || 0
+                        const myDisc = inv.discountAmount || 0
+                        const billTotal = inv.invoiceTotalAmount || 0
+                        const balAfterDed = billTotal - myTds - myDisc
+                        const amtLeft = +(balAfterDed - myCash).toFixed(2)
+                        const isCN = inv.allocatedAmount < 0
+                        const showPartial = !isCN && billTotal > 0 && amtLeft > 0.5
+                        return (
+                          <div key={i}>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono text-indigo-600 dark:text-indigo-300">
+                                {inv.vchType === 'Credit Note' && <span className="text-violet-600 dark:text-violet-400 mr-1">CN</span>}
+                                {inv.vchNumber}
                               </span>
-                            )}
-                            {inv.date && (() => {
-                              const days = Math.round((new Date(r.date).getTime() - new Date(inv.date).getTime()) / 86400000)
-                              const isAdvance = days < 0
-                              const absDays = Math.abs(days)
-                              const label = isAdvance ? `• ${absDays} days advance` : `• ${days} days`
-                              const color = isAdvance
-                                ? 'text-gray-500 dark:text-gray-400'
-                                : days <= 30 ? 'text-emerald-600 dark:text-emerald-400'
-                                : days <= 60 ? 'text-amber-600 dark:text-amber-400'
-                                : 'text-rose-600 dark:text-rose-400'
-                              return (
-                                <span className={`${color} font-semibold`}
-                                  title="Days the invoice was open when this receipt arrived (receipt date − invoice date)">
-                                  {label}
+                              <span className="tabular-nums"
+                                title={`Original invoice amount (before TDS/discount). Cash allocated on this receipt: ₹${fmtMoney(Math.abs(inv.allocatedAmount))}`}>
+                                {inv.allocatedAmount < 0 ? '−' : ''}₹{fmtMoney(inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount))}
+                              </span>
+                              {inv.tdsAmount > 0 && <span className="text-amber-600 dark:text-amber-400">−TDS ₹{fmtMoney(inv.tdsAmount)}</span>}
+                              {inv.discountAmount > 0 && <span className="text-rose-600 dark:text-rose-400">−disc ₹{fmtMoney(inv.discountAmount)}</span>}
+                              {typeof inv.invoiceNetAmount === 'number' && inv.invoiceNetAmount !== 0 && (
+                                <span className="text-emerald-600 dark:text-emerald-400 tabular-nums font-semibold"
+                                  title={`Invoice net = total ₹${fmtMoney(inv.invoiceTotalAmount || 0)} − Σ TDS − Σ settlement disc (across all allocations on this invoice)`}>
+                                  NET ₹{fmtMoney(inv.invoiceNetAmount)}
                                 </span>
-                              )
-                            })()}
+                              )}
+                              {inv.date && (() => {
+                                const days = Math.round((new Date(r.date).getTime() - new Date(inv.date).getTime()) / 86400000)
+                                const isAdvance = days < 0
+                                const absDays = Math.abs(days)
+                                const label = isAdvance ? `• ${absDays} days advance` : `• ${days} days`
+                                const color = isAdvance
+                                  ? 'text-gray-500 dark:text-gray-400'
+                                  : days <= 30 ? 'text-emerald-600 dark:text-emerald-400'
+                                  : days <= 60 ? 'text-amber-600 dark:text-amber-400'
+                                  : 'text-rose-600 dark:text-rose-400'
+                                return (
+                                  <span className={`${color} font-semibold`}
+                                    title="Days the invoice was open when this receipt arrived (receipt date − invoice date)">
+                                    {label}
+                                  </span>
+                                )
+                              })()}
+                            </div>
+                            {showPartial && (
+                              <div className="text-[10px] mt-1 mb-1 px-2 py-1 rounded bg-gray-900 text-white font-mono leading-snug inline-block">
+                                <div className="flex items-baseline gap-1.5 flex-wrap">
+                                  <span className="text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
+                                  <span className="text-white tabular-nums">₹{fmtMoney(billTotal)}</span>
+                                  {myTds > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myTds)} TDS</span>}
+                                  {myDisc > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myDisc)} disc</span>}
+                                </div>
+                                <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
+                                  <span className="text-emerald-300 tabular-nums">₹{fmtMoney(balAfterDed)}</span>
+                                  <span className="text-gray-500">−</span>
+                                  <span className="text-rose-300 tabular-nums">₹{fmtMoney(amtLeft)}</span>
+                                  <span className="text-gray-500">=</span>
+                                  <span className="text-orange-300 font-bold tabular-nums">₹{fmtMoney(myCash)}</span>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>
