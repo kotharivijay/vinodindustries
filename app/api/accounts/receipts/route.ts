@@ -53,12 +53,22 @@ export async function GET(req: NextRequest) {
   // which simplifies to: invoice.totalAmount − Σ tds − Σ settlement disc
   // across every allocation on the invoice.
   const invoiceMeta: Record<number, { totalAmount: number; netAmount: number }> = {}
+  // For "subsequent receipt" detection — every allocation on the invoice
+  // keyed by invoice id, with the receipt date so the linked-invoice
+  // builder can compute priorPending = totalAmount − Σ(prior receipts on
+  // this invoice).
+  const allocsByInvoice: Record<number, { receiptId: number; receiptDate: Date; allocated: number; tds: number; disc: number }[]> = {}
   if (invoiceIds.length > 0) {
     const invs = await db.ksiSalesInvoice.findMany({
       where: { id: { in: invoiceIds } },
       select: {
         id: true, totalAmount: true,
-        allocations: { select: { allocatedAmount: true, tdsAmount: true, discountAmount: true } },
+        allocations: {
+          select: {
+            allocatedAmount: true, tdsAmount: true, discountAmount: true,
+            receiptId: true, receipt: { select: { date: true } },
+          },
+        },
       },
     })
     for (const inv of invs) {
@@ -73,6 +83,13 @@ export async function GET(req: NextRequest) {
         totalAmount: inv.totalAmount,
         netAmount: Math.round((inv.totalAmount - totalTds - totalDisc) * 100) / 100,
       }
+      allocsByInvoice[inv.id] = (inv.allocations || []).map((a: any) => ({
+        receiptId: a.receiptId,
+        receiptDate: a.receipt?.date ?? new Date(0),
+        allocated: a.allocatedAmount || 0,
+        tds: a.tdsAmount || 0,
+        disc: a.discountAmount || 0,
+      }))
     }
   }
 
@@ -82,8 +99,13 @@ export async function GET(req: NextRequest) {
   // Discount are always 0 on CN rows.
   const byReceipt: Record<number, {
     linkedCount: number; linkedCash: number; linkedTds: number; linkedDiscount: number;
-    linkedInvoices: { vchType: string; vchNumber: string; date: string | null; allocatedAmount: number; tdsAmount: number; discountAmount: number; pending: number; invoiceTotalAmount: number; invoiceNetAmount: number }[]
+    linkedInvoices: { vchType: string; vchNumber: string; date: string | null; allocatedAmount: number; tdsAmount: number; discountAmount: number; pending: number; invoiceTotalAmount: number; invoiceNetAmount: number; priorPending: number; isFirstAllocation: boolean }[]
   }> = {}
+  // Precompute a fast (receiptId → date) lookup so the prior-pending
+  // calc can decide ordering when two allocations on the same invoice
+  // share a date — fall back to receiptId for a stable tiebreak.
+  const receiptDateById: Record<number, Date> = {}
+  for (const r of rows) receiptDateById[r.id] = r.date
   for (const a of allocs) {
     const acc = byReceipt[a.receiptId] ??= { linkedCount: 0, linkedCash: 0, linkedTds: 0, linkedDiscount: 0, linkedInvoices: [] }
     const isCN = a.invoice.vchType === 'Credit Note'
@@ -91,14 +113,37 @@ export async function GET(req: NextRequest) {
     acc.linkedCash += isCN ? -a.allocatedAmount : a.allocatedAmount
     acc.linkedTds += a.tdsAmount
     acc.linkedDiscount += a.discountAmount
+
+    // priorPending: bill total minus consumption by every allocation that
+    // strictly precedes this one (earlier date, or same date with a lower
+    // receipt id as a stable tiebreak). For the first allocation on a
+    // bill this equals the bill total.
+    const myDate = receiptDateById[a.receiptId] ?? new Date(0)
+    const sameInv = allocsByInvoice[a.invoiceId] || []
+    let priorConsumed = 0
+    let isFirst = true
+    for (const x of sameInv) {
+      if (x.receiptId === a.receiptId) continue
+      const earlier = x.receiptDate.getTime() < myDate.getTime()
+        || (x.receiptDate.getTime() === myDate.getTime() && x.receiptId < a.receiptId)
+      if (earlier) {
+        priorConsumed += x.allocated + x.tds + x.disc
+        isFirst = false
+      }
+    }
+    const billTotal = invoiceMeta[a.invoiceId]?.totalAmount ?? 0
+    const priorPending = Math.max(0, billTotal - priorConsumed)
+
     acc.linkedInvoices.push({
       vchType: a.invoice.vchType, vchNumber: a.invoice.vchNumber,
       date: a.invoice.date ? a.invoice.date.toISOString() : null,
       allocatedAmount: isCN ? -a.allocatedAmount : a.allocatedAmount,
       tdsAmount: a.tdsAmount, discountAmount: a.discountAmount,
       pending: pendingByInvoice[a.invoiceId] ?? 0,
-      invoiceTotalAmount: invoiceMeta[a.invoiceId]?.totalAmount ?? 0,
+      invoiceTotalAmount: billTotal,
       invoiceNetAmount: invoiceMeta[a.invoiceId]?.netAmount ?? 0,
+      priorPending: Math.round(priorPending * 100) / 100,
+      isFirstAllocation: isFirst,
     })
   }
   const enriched = rows.map((r: any) => ({

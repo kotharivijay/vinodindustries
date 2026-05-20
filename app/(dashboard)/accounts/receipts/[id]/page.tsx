@@ -871,7 +871,32 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
         const myDisc = myAlloc.discountAmount || 0
         const balAfterDed = inv.totalAmount - myTds - myDisc
         const amtLeft = +(balAfterDed - myCash).toFixed(2)
-        if (amtLeft <= 0.5) return null // ≈0 → not partial (rounding noise tolerated)
+
+        // Detect "subsequent receipt" by scanning the invoice's other
+        // allocations for one that strictly precedes this receipt (by
+        // date, tiebreaking on receipt id). When such a prior receipt
+        // exists, switch to the simpler "prev pending − bal = used"
+        // formula so the operator reads "what's left over from the
+        // earlier partial".
+        const myReceiptDate = receipt?.date ? new Date(receipt.date).getTime() : 0
+        const myReceiptId = receipt?.id ?? 0
+        let priorConsumed = 0
+        let hasPrior = false
+        for (const a of inv.allocations || []) {
+          if (!a.receipt || a.receipt.id === myReceiptId) continue
+          const aDate = a.receipt.date ? new Date(a.receipt.date).getTime() : 0
+          const earlier = aDate < myReceiptDate || (aDate === myReceiptDate && a.receipt.id < myReceiptId)
+          if (earlier) {
+            priorConsumed += (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0)
+            hasPrior = true
+          }
+        }
+        const priorPending = Math.max(0, inv.totalAmount - priorConsumed)
+        const balAfterMe = +(priorPending - myCash - myTds - myDisc).toFixed(2)
+        const isSubsequent = hasPrior
+        const showPartialBox = inv.totalAmount > 0 && (isSubsequent ? balAfterMe >= -0.5 : amtLeft > 0.5)
+        if (!showPartialBox) return null
+
         const days = inv.date && receipt?.date
           ? Math.round((new Date(receipt.date).getTime() - new Date(inv.date).getTime()) / 86400000)
           : null
@@ -884,19 +909,36 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
           : 'text-rose-300'
         return (
           <div className="text-[10px] mt-1.5 px-2 py-1.5 rounded bg-gray-900 text-white font-mono leading-snug">
-            <div className="flex items-baseline gap-1.5 flex-wrap">
-              <span className="text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
-              <span className="text-white tabular-nums">₹{fmtMoney(inv.totalAmount)}</span>
-              {myTds > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myTds)} TDS</span>}
-              {myDisc > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myDisc)} disc</span>}
-            </div>
-            <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
-              <span className="text-emerald-300 tabular-nums">₹{fmtMoney(balAfterDed)}</span>
-              <span className="text-gray-500">−</span>
-              <span className="text-rose-300 tabular-nums">pending ₹{fmtMoney(amtLeft)}</span>
-              <span className="text-gray-500">=</span>
-              <span className="text-orange-300 font-bold tabular-nums">used ₹{fmtMoney(myCash)}</span>
-            </div>
+            {isSubsequent ? (
+              <>
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <span className="text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
+                </div>
+                <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
+                  <span className="text-rose-300 tabular-nums">prev pending ₹{fmtMoney(priorPending)}</span>
+                  <span className="text-gray-500">−</span>
+                  <span className="text-green-300 tabular-nums">bal ₹{fmtMoney(Math.max(0, balAfterMe))}</span>
+                  <span className="text-gray-500">=</span>
+                  <span className="text-orange-300 font-bold tabular-nums">used ₹{fmtMoney(myCash)}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <span className="text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
+                  <span className="text-white tabular-nums">₹{fmtMoney(inv.totalAmount)}</span>
+                  {myTds > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myTds)} TDS</span>}
+                  {myDisc > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myDisc)} disc</span>}
+                </div>
+                <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
+                  <span className="text-emerald-300 tabular-nums">₹{fmtMoney(balAfterDed)}</span>
+                  <span className="text-gray-500">−</span>
+                  <span className="text-rose-300 tabular-nums">pending ₹{fmtMoney(amtLeft)}</span>
+                  <span className="text-gray-500">=</span>
+                  <span className="text-orange-300 font-bold tabular-nums">used ₹{fmtMoney(myCash)}</span>
+                </div>
+              </>
+            )}
             {daysLabel && (
               <div className="mt-0.5">
                 <span className={`${daysColor} font-semibold`} title="Receipt date − invoice date">• {daysLabel}</span>
