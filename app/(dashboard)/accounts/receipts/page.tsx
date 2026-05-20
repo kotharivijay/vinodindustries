@@ -64,7 +64,17 @@ interface Receipt {
 type LinkFilter = 'all' | 'linked' | 'unlinked'
 
 interface DryRunReceipt { id: number; vchType: string; vchNumber: string; date: string; amount: number; partyName: string; carryOverPriorFy?: number; additionalCarryOver?: number }
-interface DryRunInvoice { id: number; vchType: string; vchNumber: string; date: string; totalAmount: number; taxableAmount: number | null; partyGstin: string | null; pending: number; isCN?: boolean; skipAutoLink?: boolean; skipAutoLinkReason?: string | null }
+interface DryRunInvoice {
+  id: number; vchType: string; vchNumber: string; date: string
+  totalAmount: number; taxableAmount: number | null
+  // Voucher-level ledgers categorised as discount / extra-charge —
+  // included so the bulk-link UI can match the single-card TDS base
+  // (e.g. "Finish Gadi Less" reduces taxable; "Freight" adds).
+  voucherDiscount?: number
+  voucherExtraCharge?: number
+  partyGstin: string | null; pending: number
+  isCN?: boolean; skipAutoLink?: boolean; skipAutoLinkReason?: string | null
+}
 interface DryRunSplit { receiptId: number; allocatedAmount: number }
 interface DryRunPlanRow { invoiceId: number; allocations: DryRunSplit[] }
 interface DryRunResponse {
@@ -1232,7 +1242,10 @@ function BulkLinkSheet({
         // client's TDS-aware re-FIFO will reach them.
         setRows(d.invoices.map((inv: DryRunInvoice): RowState => {
           const isCN = inv.vchType === 'Credit Note' || inv.isCN
-          const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
+          // Match the single-invoice card's TDS base:
+          //   net = items − voucher discounts + voucher extras.
+          const taxableGross = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
+          const taxable = Math.max(0, taxableGross - (inv.voucherDiscount || 0) + (inv.voucherExtraCharge || 0))
           return {
             invoiceId: inv.id,
             // Default CN rows to UNticked so the user opts in
@@ -1284,22 +1297,35 @@ function BulkLinkSheet({
   function selectAll(value: boolean) {
     setRows(prev => prev.map(r => ({ ...r, selected: value })))
   }
+  // TDS / settlement-discount base = items − voucher discounts + voucher
+  // extras (same as the per-invoice card). Keeps bulk-link maths
+  // consistent for invoices that carry "Finish Gadi Less" / "NDC" /
+  // "Freight" voucher ledgers.
+  function taxableNet(inv: DryRunInvoice | undefined): number {
+    if (!inv) return 0
+    const gross = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
+    return Math.max(0, gross - (inv.voucherDiscount || 0) + (inv.voucherExtraCharge || 0))
+  }
   function applyTdsRate(idx: number) {
     const row = rows[idx]
     const inv = data?.invoices.find(i => i.id === row.invoiceId)
-    if (!inv || !inv.taxableAmount || inv.taxableAmount <= 0) return
+    if (!inv) return
     if (inv.isCN || inv.vchType === 'Credit Note') return  // no TDS on CN
+    const base = taxableNet(inv)
+    if (base <= 0) return
     const rate = row.tdsRatePct ?? DEFAULT_TDS_RATE
-    updateRow(idx, { tdsAmount: Math.round((inv.taxableAmount * rate) / 100) })
+    updateRow(idx, { tdsAmount: Math.round((base * rate) / 100) })
   }
   function applyDiscPct(idx: number) {
     const row = rows[idx]
     const inv = data?.invoices.find(i => i.id === row.invoiceId)
-    if (!inv || !inv.taxableAmount || inv.taxableAmount <= 0) return
+    if (!inv) return
     if (inv.isCN || inv.vchType === 'Credit Note') return  // no settlement discount on CN
+    const base = taxableNet(inv)
+    if (base <= 0) return
     const pct = row.discountPct ?? 0
     if (pct <= 0) return
-    updateRow(idx, { discountAmount: Math.round((inv.taxableAmount * pct) / 100) })
+    updateRow(idx, { discountAmount: Math.round((base * pct) / 100) })
   }
 
   // Distribute the prior-FY carry-over input FIFO across receipts
@@ -1715,7 +1741,10 @@ function BulkLinkSheet({
             if (!inv) return null
             const splits = splitsByInvoice.get(row.invoiceId) || []
             const cash = splits.reduce((s, a) => s + a.allocatedAmount, 0)
-            const taxable = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
+            // Net taxable — matches the per-invoice card. Voucher
+            // discounts (Finish Gadi Less, NDC, …) reduce the TDS base;
+            // voucher extras (freight, packing) add to it.
+            const taxable = taxableNet(inv)
             const isOver = overAllocated.includes(idx)
             const isSkipped = !!inv.skipAutoLink
             const targetCash = Math.max(0, inv.pending - (row.tdsAmount || 0) - (row.discountAmount || 0))

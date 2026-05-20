@@ -121,9 +121,23 @@ export async function POST(req: NextRequest) {
   )
   const partyInvoicesRaw = await db.ksiSalesInvoice.findMany({
     where: { partyName: { contains: partyKey, mode: 'insensitive' } },
-    include: { allocations: true },
+    include: {
+      allocations: true,
+      // Pulled so the dry-run can publish per-invoice voucher-level
+      // discount / extra-charge totals — without them the bulk-link
+      // TDS base differs from the single-invoice card (which already
+      // applies these reductions).
+      ledgers: { select: { ledgerName: true, amount: true } },
+    },
     orderBy: [{ date: 'asc' }, { id: 'asc' }],
   })
+  // User-classified ledger categories — case-insensitive lookup keyed
+  // by lowercased ledgerName. Same pattern as the single-invoice card.
+  const categoryRows = await db.ksiSalesLedgerCategory.findMany({
+    select: { ledgerName: true, category: true },
+  })
+  const categoryMap: Record<string, string> = {}
+  for (const c of categoryRows) categoryMap[c.ledgerName.toLowerCase()] = c.category
   // Tighten with canonical match so a coarse "Kesh" search doesn't
   // pull in another party with the same prefix. Bidirectional: an
   // invoice party whose canonical name CONTAINS the receipts' true
@@ -161,19 +175,47 @@ export async function POST(req: NextRequest) {
     )
     pendingPerInvoice[inv.id] = round2(Math.max(0, inv.totalAmount - consumed))
   }
+  // Match the single-card categorisation: explicit category from the
+  // map wins; otherwise auto-defaults (CGST/SGST → tax, RoundOff →
+  // roundoff, party name → party, else unmapped). Only 'discount' and
+  // 'extra-charge' affect the TDS base.
+  function categorise(ledgerName: string, partyNameLower: string): string {
+    const lname = ledgerName.toLowerCase()
+    const explicit = categoryMap[lname]
+    if (explicit) return explicit
+    if (/cgst|sgst|utgst|igst/.test(lname)) return 'tax'
+    if (/round\s*off|roundoff|rounding/.test(lname)) return 'roundoff'
+    if (lname === partyNameLower) return 'party'
+    return 'unmapped'
+  }
   const pendingInvoices = invoices
     .filter((inv: any) => pendingPerInvoice[inv.id] > 0)
-    .map((inv: any) => ({
-      id: inv.id, date: inv.date, vchNumber: inv.vchNumber, vchType: inv.vchType,
-      totalAmount: inv.totalAmount,
-      taxableAmount: inv.taxableAmount,
-      partyGstin: inv.partyGstin,
-      pending: pendingPerInvoice[inv.id],
-      isCN: inv.vchType === 'Credit Note',
-      // Persistent skip flag — bulk-link FIFO passes over these.
-      skipAutoLink: !!inv.skipAutoLink,
-      skipAutoLinkReason: inv.skipAutoLinkReason ?? null,
-    }))
+    .map((inv: any) => {
+      // Sum voucher-level discount / extra-charge ledgers so the client
+      // can compute taxable_net = taxableAmount − voucherDiscount +
+      // voucherExtraCharge, matching the per-invoice card's TDS base.
+      const partyLower = (inv.partyName || '').toLowerCase()
+      let voucherDiscount = 0
+      let voucherExtraCharge = 0
+      for (const led of inv.ledgers || []) {
+        const cat = categorise(led.ledgerName, partyLower)
+        if (cat === 'discount') voucherDiscount += Math.abs(led.amount || 0)
+        else if (cat === 'extra-charge') voucherExtraCharge += Math.abs(led.amount || 0)
+      }
+      return {
+        id: inv.id, date: inv.date, vchNumber: inv.vchNumber, vchType: inv.vchType,
+        totalAmount: inv.totalAmount,
+        taxableAmount: inv.taxableAmount,
+        voucherDiscount: round2(voucherDiscount),
+        voucherExtraCharge: round2(voucherExtraCharge),
+        partyGstin: inv.partyGstin,
+        pending: pendingPerInvoice[inv.id],
+        isCN: inv.vchType === 'Credit Note',
+        // Persistent skip flag — bulk-link FIFO passes over these.
+        skipAutoLink: !!inv.skipAutoLink,
+        skipAutoLinkReason: inv.skipAutoLinkReason ?? null,
+      }
+    })
 
   // ── 3a. Dry-run: build FIFO plan and return ─────────────────────────
   const sortedReceipts = [...receipts].sort((a: any, b: any) =>
