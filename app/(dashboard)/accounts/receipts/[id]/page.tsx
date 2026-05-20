@@ -889,7 +889,6 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
               <span className="text-white tabular-nums">₹{fmtMoney(inv.totalAmount)}</span>
               {myTds > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myTds)} TDS</span>}
               {myDisc > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myDisc)} disc</span>}
-              {daysLabel && <span className={`${daysColor} font-semibold`} title="Receipt date − invoice date">• {daysLabel}</span>}
             </div>
             <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
               <span className="text-emerald-300 tabular-nums">₹{fmtMoney(balAfterDed)}</span>
@@ -898,6 +897,11 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
               <span className="text-gray-500">=</span>
               <span className="text-orange-300 font-bold tabular-nums">used ₹{fmtMoney(myCash)}</span>
             </div>
+            {daysLabel && (
+              <div className="mt-0.5">
+                <span className={`${daysColor} font-semibold`} title="Receipt date − invoice date">• {daysLabel}</span>
+              </div>
+            )}
           </div>
         )
       })()}
