@@ -72,6 +72,11 @@ interface DryRunInvoice {
   // (e.g. "Finish Gadi Less" reduces taxable; "Freight" adds).
   voucherDiscount?: number
   voucherExtraCharge?: number
+  // Named ledger lines that make up each total. Drives the
+  // "− Finish Gadi Less ₹995.68" detail rendered below the headline
+  // on each bulk-link card.
+  voucherDiscountLedgers?: { name: string; amount: number }[]
+  voucherExtraLedgers?: { name: string; amount: number }[]
   partyGstin: string | null; pending: number
   isCN?: boolean; skipAutoLink?: boolean; skipAutoLinkReason?: string | null
   // True when this invoice already has an allocation from a receipt
@@ -1807,6 +1812,46 @@ function BulkLinkSheet({
                     </div>
                   </div>
                 </div>
+
+                {/* Voucher-level discount / extra ledgers — total + per-
+                    ledger breakdown so the operator sees that this bill
+                    carries e.g. Finish Gadi Less / NDC / freight without
+                    drilling into the per-invoice card. Matches the
+                    receipt detail page presentation. */}
+                {!inv.isCN && (inv.voucherDiscount || 0) > 0 && (
+                  <div className="text-[11px] mt-1">
+                    <div className="text-rose-700 dark:text-rose-400 font-semibold">
+                      − Discount: ₹{fmtMoney(inv.voucherDiscount || 0)}
+                    </div>
+                    {(inv.voucherDiscountLedgers || []).length > 0 && (
+                      <div className="pl-2 mt-0.5 space-y-0.5">
+                        {(inv.voucherDiscountLedgers || []).map((l, ii) => (
+                          <div key={`d-${ii}`} className="flex justify-between text-[10px] text-gray-600 dark:text-gray-300">
+                            <span>{l.name}</span>
+                            <span className="tabular-nums text-rose-700 dark:text-rose-400 font-semibold">₹{fmtMoney(l.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!inv.isCN && (inv.voucherExtraCharge || 0) > 0 && (
+                  <div className="text-[11px] mt-1">
+                    <div className="text-amber-700 dark:text-amber-400 font-semibold">
+                      + Extras: ₹{fmtMoney(inv.voucherExtraCharge || 0)}
+                    </div>
+                    {(inv.voucherExtraLedgers || []).length > 0 && (
+                      <div className="pl-2 mt-0.5 space-y-0.5">
+                        {(inv.voucherExtraLedgers || []).map((l, ii) => (
+                          <div key={`x-${ii}`} className="flex justify-between text-[10px] text-gray-600 dark:text-gray-300">
+                            <span>{l.name}</span>
+                            <span className="tabular-nums text-amber-700 dark:text-amber-400 font-semibold">₹{fmtMoney(l.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Cash splits — auto-rebuilt by re-FIFO whenever TDS / Disc change.
                    CN rows show a manual knock-off input that gets attributed

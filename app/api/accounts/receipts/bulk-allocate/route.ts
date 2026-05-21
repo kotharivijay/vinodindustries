@@ -214,13 +214,25 @@ export async function POST(req: NextRequest) {
       // Sum voucher-level discount / extra-charge ledgers so the client
       // can compute taxable_net = taxableAmount − voucherDiscount +
       // voucherExtraCharge, matching the per-invoice card's TDS base.
+      // Per-ledger detail also published so the bulk card can show the
+      // ledger name + amount (e.g. "Finish Gadi Less ₹995.68") under
+      // the headline total.
       const partyLower = (inv.partyName || '').toLowerCase()
       let voucherDiscount = 0
       let voucherExtraCharge = 0
+      const voucherDiscountLedgers: { name: string; amount: number }[] = []
+      const voucherExtraLedgers: { name: string; amount: number }[] = []
       for (const led of inv.ledgers || []) {
         const cat = categorise(led.ledgerName, partyLower)
-        if (cat === 'discount') voucherDiscount += Math.abs(led.amount || 0)
-        else if (cat === 'extra-charge') voucherExtraCharge += Math.abs(led.amount || 0)
+        const abs = Math.abs(led.amount || 0)
+        if (abs <= 0.001) continue
+        if (cat === 'discount') {
+          voucherDiscount += abs
+          voucherDiscountLedgers.push({ name: led.ledgerName, amount: round2(abs) })
+        } else if (cat === 'extra-charge') {
+          voucherExtraCharge += abs
+          voucherExtraLedgers.push({ name: led.ledgerName, amount: round2(abs) })
+        }
       }
       const hasEarlierAllocation = (inv.allocations || []).some((a: any) => {
         if (!a.receipt) return false
@@ -235,6 +247,8 @@ export async function POST(req: NextRequest) {
         taxableAmount: inv.taxableAmount,
         voucherDiscount: round2(voucherDiscount),
         voucherExtraCharge: round2(voucherExtraCharge),
+        voucherDiscountLedgers,
+        voucherExtraLedgers,
         partyGstin: inv.partyGstin,
         pending: pendingPerInvoice[inv.id],
         isCN: inv.vchType === 'Credit Note',
