@@ -13,7 +13,10 @@ export default function GreyForm() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const [form, setForm] = useState({
+  // Empty-form template kept in a constant so "Clear All" can rebuild the
+  // form without re-typing every field. Today's date is the only initial
+  // value that isn't blank; SN is layered in via the effects below.
+  const emptyForm = {
     sn: '', date: new Date().toISOString().split('T')[0], challanNo: '',
     partyId: null as number | null, qualityId: null as number | null,
     weight: '', than: '', grayMtr: '',
@@ -21,7 +24,9 @@ export default function GreyForm() {
     bale: '', baleNo: '', echBaleThan: '',
     weaverId: null as number | null, viverNameBill: '',
     lrNo: '', lotNo: '', marka: '',
-  })
+  }
+  const [form, setForm] = useState(emptyForm)
+  const [prefillApplied, setPrefillApplied] = useState(false)
 
   useEffect(() => {
     const load = async (type: string) => {
@@ -42,6 +47,37 @@ export default function GreyForm() {
       if (d?.next) setForm(prev => prev.sn ? prev : { ...prev, sn: String(d.next) })
     }).catch(() => {})
   }, [])
+
+  // Pre-fill the rest of the form from the most recently saved grey row
+  // so the operator only edits what differs (typical batch entry: same
+  // date / party / transport / quality, changing only challan + than +
+  // lot). SN stays at its auto-incremented value; date keeps today's
+  // value (operator usually enters fresh same-day rows).
+  useEffect(() => {
+    if (prefillApplied) return
+    fetch('/api/grey/last-entry').then(r => r.ok ? r.json() : null).then(d => {
+      const last = d?.last
+      if (!last) return
+      setForm(prev => ({
+        ...prev,
+        challanNo: prev.challanNo || String(last.challanNo ?? ''),
+        partyId: prev.partyId ?? last.partyId ?? null,
+        qualityId: prev.qualityId ?? last.qualityId ?? null,
+        weight: prev.weight || (last.weight ?? ''),
+        // Skip than / grayMtr / bale / baleNo / echBaleThan — those vary
+        // per entry; prefilling them is more noise than help.
+        transportId: prev.transportId ?? last.transportId ?? null,
+        transportLrNo: prev.transportLrNo || (last.transportLrNo ?? ''),
+        weaverId: prev.weaverId ?? last.weaverId ?? null,
+        viverNameBill: prev.viverNameBill || (last.viverNameBill ?? ''),
+        lrNo: prev.lrNo || (last.lrNo ?? ''),
+        marka: prev.marka || (last.marka ?? ''),
+        // lotNo is auto-computed from prefix + SN; don't seed it from
+        // the previous row or the auto-fill effect will fight us.
+      }))
+      setPrefillApplied(true)
+    }).catch(() => {})
+  }, [prefillApplied])
 
   // Auto-fill A-Lot No from selected party's prefix + SN. The operator can
   // pick any of the party's saved prefixes (PS / PSRG / PSPC) via the chip
@@ -83,6 +119,17 @@ export default function GreyForm() {
     if (selectedPrefix && form.sn) {
       setForm(prev => ({ ...prev, lotNo: `${selectedPrefix}-${form.sn}` }))
     }
+  }
+
+  // Clear All — wipes every field except SN (the auto-incremented value
+  // we want to keep so the operator doesn't have to re-fetch it). Also
+  // marks prefill as already applied so the last-entry effect doesn't
+  // re-populate after the user explicitly clears.
+  function handleClearAll() {
+    setForm({ ...emptyForm, sn: form.sn })
+    setPrefillApplied(true)
+    setLotNoTouched(false)
+    setSelectedPrefix(null)
   }
 
   async function addMaster(type: string, name: string): Promise<Option> {
@@ -246,7 +293,12 @@ export default function GreyForm() {
 
         </div>
 
-        <div className="mt-6 flex gap-3 justify-end">
+        <div className="mt-6 flex gap-3 justify-end flex-wrap">
+          <button type="button" onClick={handleClearAll}
+            title="Clear every field except SN"
+            className="px-4 py-2 border border-rose-300 rounded-lg text-sm text-rose-600 hover:bg-rose-50">
+            🧹 Clear All
+          </button>
           <button type="button" onClick={() => router.back()} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
           <button type="submit" disabled={saving} className="px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60">
             {saving ? 'Saving...' : 'Save Entry'}
