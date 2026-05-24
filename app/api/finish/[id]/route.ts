@@ -36,11 +36,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const entryId = parseInt(id)
   const db = prisma as any
 
-  // Only carry dyeingEntryId through when the client explicitly supplies it
-  // (preserve existing link when the edit form omits the field).
+  // Carry `id` (FinishEntryLot pk) through when the client supplies it so
+  // the server can update the exact row — without it, reconciliation
+  // collapses on lotNo and duplicate-lot rows (a finish entry fed by
+  // multiple dyeing batches of the same lot) get overwritten by a single
+  // update instead of edited individually. dyeingEntryId is preserved
+  // the same way.
   const lots = data.lots?.length
     ? data.lots.map((m: any) => {
         const base: any = {
+          id: m.id != null ? (parseInt(m.id) || null) : null,
           lotNo: normalizeLotNo(m.lotNo) ?? '',
           than: parseInt(m.than) || 0,
           meter: m.meter != null ? parseFloat(m.meter) : null,
@@ -50,7 +55,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         }
         return base
       })
-    : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: null }]
+    : [{ id: null, lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: null }]
 
   try {
     await db.finishEntry.update({
@@ -72,23 +77,37 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     })
 
-    // Reconcile lots without cascading FoldingReceipts.
-    // Match existing FELs to incoming lots by lotNo (case-insensitive):
-    //   - existing + incoming → UPDATE in place (preserves id, keeps FRs)
-    //   - existing but not incoming → DELETE (cascade allowed, user removed lot)
-    //   - incoming but not existing → CREATE new FEL
+    // Reconcile FinishEntryLot rows without cascading FoldingReceipts.
+    // Two-pass matching keeps the operator-level edit precise even when
+    // multiple FELs share the same lotNo (e.g. a finish entry fed by
+    // many dyeing batches of the same lot):
+    //   1. If the incoming row carries an `id`, look that exact FEL up.
+    //   2. Else find the first existing FEL on the same lotNo that
+    //      hasn't already been claimed by an earlier row.
+    //   3. Anything left unclaimed at the end is deleted.
     const existingFels = await db.finishEntryLot.findMany({ where: { entryId } })
-    const existingByLot = new Map<string, any>()
-    for (const fel of existingFels) existingByLot.set(fel.lotNo.toLowerCase().trim(), fel)
+    const byId = new Map<number, any>()
+    const byLot = new Map<string, any[]>()
+    for (const fel of existingFels) {
+      byId.set(fel.id, fel)
+      const k = fel.lotNo.toLowerCase().trim()
+      if (!byLot.has(k)) byLot.set(k, [])
+      byLot.get(k)!.push(fel)
+    }
+    const claimedIds = new Set<number>()
 
-    const incomingKeys = new Set<string>()
     for (const l of lots) {
-      const key = l.lotNo.toLowerCase().trim()
-      incomingKeys.add(key)
-      const match = existingByLot.get(key)
+      let match: any = null
+      if (l.id != null) {
+        const exact = byId.get(l.id)
+        if (exact && !claimedIds.has(exact.id)) match = exact
+      }
+      if (!match) {
+        const candidates = byLot.get(l.lotNo.toLowerCase().trim()) || []
+        match = candidates.find((c: any) => !claimedIds.has(c.id)) || null
+      }
       if (match) {
-        // Only overwrite dyeingEntryId when the client explicitly supplies it
-        // (typed undefined → preserve whatever's stored).
+        claimedIds.add(match.id)
         const updateData: any = { lotNo: l.lotNo, than: l.than, meter: l.meter }
         if (l.dyeingEntryId !== undefined) updateData.dyeingEntryId = l.dyeingEntryId
         await db.finishEntryLot.update({ where: { id: match.id }, data: updateData })
@@ -98,9 +117,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         })
       }
     }
-    // Delete FELs whose lotNo is no longer in the payload.
+    // Delete any existing FEL that wasn't claimed by any incoming row.
     for (const fel of existingFels) {
-      if (!incomingKeys.has(fel.lotNo.toLowerCase().trim())) {
+      if (!claimedIds.has(fel.id)) {
         await db.finishEntryLot.delete({ where: { id: fel.id } })
       }
     }

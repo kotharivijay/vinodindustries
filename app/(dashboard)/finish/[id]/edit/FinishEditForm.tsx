@@ -25,7 +25,17 @@ export default function FinishEditForm({ id }: { id: string }) {
 
   const [form, setForm] = useState({ date: '', slipNo: '', notes: '' })
   const [mandi, setMandi] = useState('')
-  const [lots, setLots] = useState<{ lotNo: string; than: string; meter: string; stockStatus?: StockStatus; stockInfo?: { stock: number; greyThan: number; despatchThan: number } | null }[]>([{ lotNo: '', than: '', meter: '', stockStatus: 'idle', stockInfo: null }])
+  // `id` + `dyeingEntryId` are preserved across the edit cycle so the
+  // server can match each row to its exact FinishEntryLot — without
+  // them the reconciliation collapses on lotNo and duplicate-lot rows
+  // (multiple dyeing batches feeding the same lot) get overwritten by
+  // a single update instead of edited individually.
+  const [lots, setLots] = useState<{
+    id?: number; dyeingEntryId?: number | null
+    lotNo: string; than: string; meter: string
+    stockStatus?: StockStatus
+    stockInfo?: { stock: number; greyThan: number; despatchThan: number } | null
+  }[]>([{ lotNo: '', than: '', meter: '', stockStatus: 'idle', stockInfo: null }])
 
   // Available lots for searchable dropdown
   const [availableLots, setAvailableLots] = useState<{ lotNo: string; greyThan: number; despatchThan: number; stock: number }[]>([])
@@ -61,7 +71,13 @@ export default function FinishEditForm({ id }: { id: string }) {
       setMandi(e.mandi != null ? String(e.mandi) : '')
 
       if (e.lots?.length) {
-        setLots(e.lots.map((l: any) => ({ lotNo: l.lotNo, than: String(l.than), meter: l.meter != null ? String(l.meter) : '' })))
+        setLots(e.lots.map((l: any) => ({
+          id: l.id,
+          dyeingEntryId: l.dyeingEntryId ?? null,
+          lotNo: l.lotNo,
+          than: String(l.than),
+          meter: l.meter != null ? String(l.meter) : '',
+        })))
       } else {
         setLots([{ lotNo: e.lotNo, than: String(e.than), meter: e.meter != null ? String(e.meter) : '' }])
       }
@@ -205,7 +221,13 @@ export default function FinishEditForm({ id }: { id: string }) {
       lotNo: validLots[0].lotNo,
       than: validLots.reduce((s, l) => s + (parseInt(l.than) || 0), 0),
       totalMeter: totalMeter || null,
-      lots: validLots.map(l => ({ lotNo: l.lotNo.trim(), than: parseInt(l.than) || 0, meter: parseFloat(l.meter) || null })),
+      lots: validLots.map(l => ({
+        id: l.id,                           // server matches by this when present
+        dyeingEntryId: l.dyeingEntryId ?? undefined,
+        lotNo: l.lotNo.trim(),
+        than: parseInt(l.than) || 0,
+        meter: parseFloat(l.meter) || null,
+      })),
       chemicals: chemicals
         .filter(c => c.name.trim())
         .map(c => ({
