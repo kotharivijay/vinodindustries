@@ -949,6 +949,10 @@ model KsiSalesInvoice {
   skipAutoLink       Boolean   @default(false)
   skipAutoLinkReason String?
   skipAutoLinkAt     DateTime?
+  // Manual opening-balance entry for a prior FY (added by the operator,
+  // not synced from Tally). The ksi-sales-sync upsert skips rows where
+  // this is true so re-syncs don't wipe the operator's entries.
+  isOpeningBalance   Boolean   @default(false)
   lastSynced    DateTime  @default(now())
   createdAt     DateTime  @default(now())
 

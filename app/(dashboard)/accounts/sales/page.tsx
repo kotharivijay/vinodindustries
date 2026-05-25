@@ -28,6 +28,9 @@ interface Invoice {
   cgstAmount: number | null; sgstAmount: number | null; igstAmount: number | null; roundOff: number | null
   narration: string | null; reference: string | null; buyerPO: string | null
   transporter: string | null; agentName: string | null
+  // True when the row was added manually as a prior-FY opening balance
+  // (via the + Opening Balance modal). Marked with an OB badge in the UI.
+  isOpeningBalance?: boolean
   lines: Line[]; ledgers: Ledger[]
 }
 interface FyTotal { fy: string; count: number; total: number }
@@ -66,6 +69,7 @@ function computeNet(inv: Invoice, catMap: Record<string, string>): {
 export default function SalesPage() {
   const [activeFy, setActiveFy] = useState<string>('26-27')
   const [tab, setTab] = useState<'vouchers' | 'categorise'>('vouchers')
+  const [obModalOpen, setObModalOpen] = useState(false)
   // Voucher-type filter — adds tabs above the voucher list so users can
   // jump between Process Job / Sales / Credit Note (or see all).
   const [vchTypeFilter, setVchTypeFilter] = useState<string>('all')
@@ -227,8 +231,19 @@ export default function SalesPage() {
     <div className="max-w-3xl mx-auto p-3 pb-20">
       <div className="flex items-center gap-2 mb-3">
         <BackButton />
-        <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">Sales / Process Register</h1>
+        <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100 flex-1">Sales / Process Register</h1>
+        <button onClick={() => setObModalOpen(true)}
+          className="text-[11px] font-semibold bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-2.5 py-1.5 rounded-lg whitespace-nowrap">
+          + Opening Balance
+        </button>
       </div>
+
+      {obModalOpen && (
+        <OpeningBalanceModal
+          onClose={() => setObModalOpen(false)}
+          onSaved={() => { setObModalOpen(false); mutate() }}
+        />
+      )}
 
       {/* FY tabs */}
       <div className="flex gap-2 mb-3">
@@ -416,6 +431,11 @@ function VoucherCard({ inv, catMap }: { inv: Invoice; catMap: Record<string, str
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
               {inv.vchType} {inv.vchNumber}
             </span>
+            {inv.isOpeningBalance && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700" title="Manual opening-balance entry — Tally sync won't overwrite it">
+                OB
+              </span>
+            )}
             <span className="text-[10px] text-gray-500">{fmtDate(inv.date)}</span>
           </div>
           <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{inv.partyName}</div>
@@ -564,6 +584,261 @@ function CategoriseView({ onChanged }: { onChanged: () => void }) {
           </div>
         ))}
         {rows.length === 0 && <div className="text-center py-6 text-gray-400 text-xs">No ledger entries yet — sync first.</div>}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Opening Balance modal ────────────────────────────────────────── */
+/* Bulk-adds prior-FY invoices for one party. Paste a 3-column block
+ * (date | invoice no | amount) — header row optional. Sum-validates
+ * against the opening total; Save is only enabled when they match.
+ * Tolerates tab / 2+ space / comma separators and common date formats.
+ */
+
+interface ParsedRow {
+  raw: string
+  date: string | null          // ISO yyyy-mm-dd if parsed, else null
+  vchNumber: string | null
+  amount: number | null
+  warning?: string
+}
+
+function parseDate(s: string): string | null {
+  const t = s.trim()
+  if (!t) return null
+  // ISO yyyy-mm-dd
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
+  // dd-MMM-yy / dd-MMM-yyyy
+  m = t.match(/^(\d{1,2})[-/\s]([A-Za-z]{3,9})[-/\s](\d{2,4})$/)
+  if (m) {
+    const mon = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(m[2].slice(0,3).toLowerCase())
+    if (mon < 0) return null
+    const yyyy = m[3].length === 2 ? '20' + m[3] : m[3]
+    return `${yyyy}-${String(mon + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  }
+  // dd-mm-yy / dd/mm/yyyy / dd.mm.yyyy
+  m = t.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/)
+  if (m) {
+    const yyyy = m[3].length === 2 ? '20' + m[3] : m[3]
+    return `${yyyy}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`
+  }
+  return null
+}
+
+function parseAmount(s: string): number | null {
+  // Strip currency / spaces / commas; allow leading '-' and trailing 'Dr/Cr'.
+  const t = s.trim().replace(/[₹,\s]/g, '').replace(/(dr|cr)$/i, '')
+  if (!t) return null
+  const n = parseFloat(t)
+  return Number.isFinite(n) ? n : null
+}
+
+function parseBlock(text: string): ParsedRow[] {
+  const out: ParsedRow[] = []
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  for (const raw of lines) {
+    // Split on tabs, 2+ spaces, or commas.
+    const cells = raw.split(/\t+|\s{2,}|,(?=[^\d])/g).map(c => c.trim()).filter(Boolean)
+    if (cells.length < 3) {
+      // Maybe single-space-separated; fall back to splitting on whitespace
+      // but keep at most 3 chunks (date, invNo, amount).
+      const tokens = raw.split(/\s+/)
+      if (tokens.length < 3) { out.push({ raw, date: null, vchNumber: null, amount: null, warning: 'fewer than 3 columns' }); continue }
+      cells.length = 0
+      cells.push(tokens[0], tokens.slice(1, -1).join(' '), tokens[tokens.length - 1])
+    }
+    // Detect header row (all 3 cells non-numeric & include "date"/"invoice"/"amount" keywords).
+    const lc = cells.map(c => c.toLowerCase()).join(' ')
+    if (/\bdate\b/.test(lc) && /(invoice|inv|bill|vch|voucher)/.test(lc) && /(amount|amt|total)/.test(lc)) continue
+    const date = parseDate(cells[0])
+    const amount = parseAmount(cells[cells.length - 1])
+    const vchNumber = cells.slice(1, -1).join(' ').trim() || null
+    out.push({
+      raw,
+      date,
+      vchNumber,
+      amount,
+      warning: !date ? 'bad date' : !vchNumber ? 'no invoice no' : !Number.isFinite(amount as number) ? 'bad amount' : undefined,
+    })
+  }
+  return out
+}
+
+function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const { data: partyData } = useSWR<{ parties: string[] }>('/api/accounts/sales/parties', fetcher)
+  const parties = partyData?.parties ?? []
+  const [partyQ, setPartyQ] = useState('')
+  const [partyName, setPartyName] = useState('')
+  const [partyOpen, setPartyOpen] = useState(false)
+  const [fy, setFy] = useState<string>('24-25')
+  const [openingStr, setOpeningStr] = useState('')
+  const [pasted, setPasted] = useState('')
+  const [vchType, setVchType] = useState<'Process Job' | 'Sales' | 'Credit Note' | 'Journal'>('Process Job')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const parsed = useMemo(() => parseBlock(pasted), [pasted])
+  const validRows = parsed.filter(r => r.date && r.vchNumber && Number.isFinite(r.amount as number) && !r.warning)
+  const parsedSum = validRows.reduce((s, r) => s + (r.amount || 0), 0)
+  const opening = Number(openingStr.replace(/[,\s₹]/g, '')) || 0
+  const delta = Math.abs(parsedSum - opening)
+  const sumOk = opening > 0 && validRows.length > 0 && delta <= 0.01
+  const allRowsOk = parsed.length > 0 && parsed.every(r => !r.warning)
+  const canSave = !!partyName && !!fy && sumOk && allRowsOk && !saving
+
+  const filteredParties = useMemo(() => {
+    const q = partyQ.toLowerCase().trim()
+    if (!q) return parties.slice(0, 80)
+    return parties.filter(p => p.toLowerCase().includes(q)).slice(0, 80)
+  }, [parties, partyQ])
+
+  async function save() {
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/accounts/sales/opening-balance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          partyName, fy, vchType,
+          openingAmount: opening,
+          invoices: validRows.map(r => ({ date: r.date, vchNumber: r.vchNumber, amount: r.amount })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d?.error || `Save failed (${res.status})`); return }
+      onSaved()
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-3 overflow-y-auto" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl my-6">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">+ Opening Balance</h3>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">Add prior-FY invoices for a party. Tally sync won&apos;t overwrite these.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">FY</span>
+              <select value={fy} onChange={e => setFy(e.target.value)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
+                {['20-21','21-22','22-23','23-24','24-25'].map(f => <option key={f} value={f}>FY {f}</option>)}
+              </select>
+            </label>
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Voucher type</span>
+              <select value={vchType} onChange={e => setVchType(e.target.value as any)}
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
+                <option>Process Job</option>
+                <option>Sales</option>
+                <option>Credit Note</option>
+                <option>Journal</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="block text-xs relative">
+            <span className="text-gray-500 dark:text-gray-400">Party *</span>
+            <input value={partyQ || partyName} onFocus={() => setPartyOpen(true)}
+              onChange={e => { setPartyQ(e.target.value); setPartyName(''); setPartyOpen(true) }}
+              placeholder="Search party (existing ledgers)..."
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            {partyOpen && (
+              <div className="absolute z-10 top-full mt-1 left-0 right-0 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                {filteredParties.length === 0 ? (
+                  partyQ.trim() ? (
+                    <button onClick={() => { setPartyName(partyQ.trim()); setPartyQ(''); setPartyOpen(false) }}
+                      className="w-full text-left px-3 py-2 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20">
+                      + Use &quot;{partyQ.trim()}&quot; as new party
+                    </button>
+                  ) : <div className="px-3 py-2 text-xs text-gray-400">No parties yet</div>
+                ) : (
+                  filteredParties.map(p => (
+                    <button key={p} onClick={() => { setPartyName(p); setPartyQ(''); setPartyOpen(false) }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 break-words">
+                      {p}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+            {partyName && !partyOpen && (
+              <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-400">Selected: <span className="font-semibold">{partyName}</span></p>
+            )}
+          </div>
+
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Opening Amount *</span>
+            <input type="text" inputMode="decimal" value={openingStr}
+              onChange={e => setOpeningStr(e.target.value)}
+              placeholder="e.g. 1,75,000.00"
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm tabular-nums" />
+          </label>
+
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">
+              Paste invoice rows — <span className="text-gray-400">date · invoice · amount</span> (tab / 2-space / comma separated, header row optional)
+            </span>
+            <textarea value={pasted} onChange={e => setPasted(e.target.value)} rows={8}
+              placeholder={'02-Jun-24\tKSI/24-25/176\t80992\n11-Aug-24\tKSI/24-25/262\t798\n...'}
+              className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-xs font-mono" />
+          </label>
+
+          {parsed.length > 0 && (
+            <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
+              <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1.5">Parsed ({parsed.length} rows)</div>
+              <div className="max-h-44 overflow-y-auto">
+                <table className="w-full text-[11px]">
+                  <thead className="text-[9px] uppercase text-gray-400">
+                    <tr><th className="text-left">Date</th><th className="text-left">Invoice</th><th className="text-right">Amount</th><th className="text-left pl-2">Status</th></tr>
+                  </thead>
+                  <tbody className="font-mono">
+                    {parsed.map((r, i) => (
+                      <tr key={i} className={`border-t border-gray-100 dark:border-gray-700 ${r.warning ? 'text-rose-600 dark:text-rose-400' : 'text-gray-700 dark:text-gray-200'}`}>
+                        <td className="py-0.5">{r.date ?? <span className="text-rose-500">{r.raw.split(/\s+/)[0]}?</span>}</td>
+                        <td className="py-0.5 truncate max-w-[180px]">{r.vchNumber ?? '—'}</td>
+                        <td className="py-0.5 text-right tabular-nums">{r.amount != null ? r.amount.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '—'}</td>
+                        <td className="py-0.5 pl-2 text-[10px]">{r.warning ?? '✓'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {(opening > 0 || parsedSum > 0) && (
+            <div className={`text-xs px-3 py-2 rounded-lg border ${
+              sumOk ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-300'
+                    : 'border-amber-300 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300'
+            }`}>
+              Pasted sum <span className="font-bold tabular-nums">₹{parsedSum.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+              {' '}vs opening <span className="font-bold tabular-nums">₹{opening.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+              {' '}— {sumOk ? '✓ matches' : `Δ ₹${delta.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`}
+            </div>
+          )}
+
+          {error && <div className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 px-3 py-2 rounded-lg">{error}</div>}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose} disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+            Cancel
+          </button>
+          <button onClick={save} disabled={!canSave}
+            className="px-5 py-2 rounded-lg text-sm bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white font-semibold">
+            {saving ? 'Saving…' : `Save ${validRows.length} row${validRows.length === 1 ? '' : 's'}`}
+          </button>
+        </div>
       </div>
     </div>
   )

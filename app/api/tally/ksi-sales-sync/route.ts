@@ -310,8 +310,19 @@ export async function POST(req: NextRequest) {
 
   const db = prisma as any
   let saved = 0
+  let skippedOB = 0
   const now = new Date()
   for (const v of inRange) {
+    // Skip rows that the operator entered as a manual opening balance — a
+    // Tally upsert would clobber the typed totalAmount / partyName / etc.
+    const existing = await db.ksiSalesInvoice.findUnique({
+      where: { ksi_sales_natural_key: { vchNumber: v.vchNumber, date: v.date, vchType: v.vchType } },
+      select: { id: true, isOpeningBalance: true },
+    })
+    if (existing?.isOpeningBalance) {
+      skippedOB++
+      continue
+    }
     // Upsert invoice; replace its lines on each sync (lines are derived;
     // there's no manual data on them).
     const invoice = await db.ksiSalesInvoice.upsert({
@@ -355,6 +366,7 @@ export async function POST(req: NextRequest) {
     fetched: vouchers.length,
     inRange: inRange.length,
     saved,
+    skippedOpeningBalance: skippedOB,
     range: { from, to },
     types: SALES_TYPES,
   })
