@@ -85,18 +85,18 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         },
       },
     })
-    // Map to entries with this lot's specific than
-    dyeingEntries = lotEntries.map((le: any) => ({
-      ...le.entry,
-      _lotThan: le.than, // this specific lot's than
-    }))
-    // Deduplicate by entry id (in case of double match)
-    const seen = new Set()
-    dyeingEntries = dyeingEntries.filter((e: any) => {
-      if (seen.has(e.id)) return false
-      seen.add(e.id)
-      return true
-    })
+    // Collapse to one row per DyeingEntry but SUM than across every
+    // DyeingEntryLot for this lot within that slip — a single dye slip
+    // can hold the same lotNo on multiple rows (e.g. slip 609 has
+    // SSN-160-RAM split as 2 + 1). Without summing, only the first row's
+    // than would be shown and 1 than would silently vanish from the view.
+    const byEntry = new Map<number, any>()
+    for (const le of lotEntries) {
+      const existing = byEntry.get(le.entry.id)
+      if (existing) existing._lotThan += (le.than || 0)
+      else byEntry.set(le.entry.id, { ...le.entry, _lotThan: le.than || 0 })
+    }
+    dyeingEntries = Array.from(byEntry.values())
   } catch {
     // Fallback if DyeingEntryLot table doesn't exist
     dyeingEntries = (await prisma.dyeingEntry.findMany({
@@ -140,17 +140,27 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         },
       },
     })
-    finishEntries = finishLots.map((le: any) => ({
-      ...le.entry,
-      _lotThan: le.than,
-      _lotMeter: le.meter,
-    }))
-    const seenFinish = new Set()
-    finishEntries = finishEntries.filter((e: any) => {
-      if (seenFinish.has(e.id)) return false
-      seenFinish.add(e.id)
-      return true
-    })
+    // Collapse to one row per FinishEntry but SUM than across every FEL
+    // for this lot inside the FP — otherwise an FP with multiple FELs of
+    // the same lotNo (split per dye slip) only showed the first row's
+    // than (e.g. FP-203 / SSN-141-BEST: 15 FELs × 8 = 120, was rendering 8).
+    const byEntry = new Map<number, any>()
+    for (const le of finishLots) {
+      const existing = byEntry.get(le.entry.id)
+      if (existing) {
+        existing._lotThan += (le.than || 0)
+        existing._lotMeter = (existing._lotMeter || 0) + (le.meter || 0)
+        existing._lotDoneThan = (existing._lotDoneThan || 0) + (le.doneThan || 0)
+      } else {
+        byEntry.set(le.entry.id, {
+          ...le.entry,
+          _lotThan: le.than || 0,
+          _lotMeter: le.meter || 0,
+          _lotDoneThan: le.doneThan || 0,
+        })
+      }
+    }
+    finishEntries = Array.from(byEntry.values())
   } catch {
     // fallback if FinishEntryLot table doesn't exist yet
   }
