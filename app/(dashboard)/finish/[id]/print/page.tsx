@@ -49,10 +49,14 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
       id: true,
       slipNo: true,
       shadeName: true,
+      // Per-slip descriptor and per-batch override — needed so the print
+      // matches the FP card's shade label (slip > batch > master).
+      shadeDescription: true,
       lots: { select: { lotNo: true, than: true } },
       foldBatch: {
         select: {
           batchNo: true,
+          shadeDescription: true,
           foldProgram: { select: { foldNo: true } },
           shade: { select: { name: true, description: true } },
         },
@@ -65,11 +69,18 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
   type SlipInfo = { slipNo: number; shadeName: string | null; shadeDesc: string | null; lots: { lotNo: string; than: number }[] }
   type FoldGroup = { foldNo: string; slips: SlipInfo[] }
 
+  // Pass FEL id + dyeingEntryId so the allocator runs its Pass 0 direct
+  // link, and dye entry id so it can resolve those links. Without these
+  // the allocator falls back to fit-by-than heuristic and produces a
+  // completely different distribution than the FP card uses — was the
+  // root cause of "data shown on FP doesn't match what gets printed".
   const foldGroups: FoldGroup[] = allocateFpToDyeingSlips(
-    lots.map((l: any) => ({ lotNo: l.lotNo, than: Number(l.than) })),
+    lots.map((l: any) => ({ id: l.id, lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
     dyeingEntries.map((de: any) => ({
+      id: de.id,
       slipNo: de.slipNo,
       shadeName: de.shadeName ?? null,
+      shadeDescription: de.shadeDescription ?? null,
       lots: de.lots,
       foldBatch: de.foldBatch ?? null,
     })),
