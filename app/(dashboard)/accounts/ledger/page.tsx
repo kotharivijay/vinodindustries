@@ -6,11 +6,6 @@ import BackButton from '../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 const fmtMoney = (n: number) => Math.abs(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const fmtDate = (iso: string | null) => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  return `${String(d.getDate()).padStart(2, '0')}-${d.toLocaleString('en-IN', { month: 'short' })}-${String(d.getFullYear()).slice(2)}`
-}
 const fmtDateSlash = (iso: string | null) => {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -19,16 +14,15 @@ const fmtDateSlash = (iso: string | null) => {
 
 interface LedgerOption { id: number; name: string; parent: string | null; gstNo: string | null }
 interface Voucher {
+  source: 'sales' | 'hdfc'
+  id: number
   date: string | null
   vchNumber: string | null
-  partyName: string | null
-  itemName: string | null
-  quantity: number | null
-  unit: string | null
-  rate: number | null
-  amount: number
   vchType: string | null
+  amount: number
   narration: string | null
+  isOpeningBalance?: boolean
+  allocationCount?: number
 }
 interface LedgerInfo {
   name: string; parent: string | null; address: string | null
@@ -42,44 +36,45 @@ interface PartyData {
 
 type Preset = 'fy-current' | 'fy-prior' | 'this-month' | 'last-month' | 'custom'
 
-function currentFY(): { from: string; to: string; label: string } {
+// Dr-side: party owes us (raise the receivable).
+// Cr-side: party paid / discounted / TDS-deducted (drop the receivable).
+// Cash row treated as Cr like Receipt.
+const DR_TYPES = new Set(['Sales', 'Process Job', 'Debit Note', 'Purchase Return'])
+const CR_TYPES = new Set(['Receipt', 'Payment', 'Credit Note', 'Cash', 'Journal'])
+
+const ALL_TYPE_PILLS = [
+  'All',
+  'Process Job',
+  'Sales',
+  'Credit Note',
+  'Debit Note',
+  'Receipt',
+  'Payment',
+  'Cash',
+  'Journal',
+]
+
+function currentFY() {
   const now = new Date()
   const yr = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
-  return {
-    from: `${yr}-04-01`,
-    to: `${yr + 1}-03-31`,
-    label: `FY ${String(yr).slice(2)}-${String(yr + 1).slice(2)}`,
-  }
+  return { from: `${yr}-04-01`, to: `${yr + 1}-03-31`, label: `FY ${String(yr).slice(2)}-${String(yr + 1).slice(2)}` }
 }
-function priorFY(): { from: string; to: string; label: string } {
+function priorFY() {
   const now = new Date()
   const yr = now.getMonth() >= 3 ? now.getFullYear() - 1 : now.getFullYear() - 2
-  return {
-    from: `${yr}-04-01`,
-    to: `${yr + 1}-03-31`,
-    label: `FY ${String(yr).slice(2)}-${String(yr + 1).slice(2)}`,
-  }
+  return { from: `${yr}-04-01`, to: `${yr + 1}-03-31`, label: `FY ${String(yr).slice(2)}-${String(yr + 1).slice(2)}` }
 }
-function thisMonth(): { from: string; to: string; label: string } {
+function thisMonth() {
   const now = new Date()
   const y = now.getFullYear(), m = now.getMonth()
   const last = new Date(y, m + 1, 0).getDate()
-  return {
-    from: `${y}-${String(m + 1).padStart(2, '0')}-01`,
-    to: `${y}-${String(m + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`,
-    label: now.toLocaleString('en-IN', { month: 'short', year: '2-digit' }),
-  }
+  return { from: `${y}-${String(m + 1).padStart(2, '0')}-01`, to: `${y}-${String(m + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`, label: now.toLocaleString('en-IN', { month: 'short', year: '2-digit' }) }
 }
-function lastMonth(): { from: string; to: string; label: string } {
+function lastMonth() {
   const now = new Date()
-  const y = now.getFullYear(), m = now.getMonth() - 1
-  const d = new Date(y, m, 1)
+  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
-  return {
-    from: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`,
-    to: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`,
-    label: d.toLocaleString('en-IN', { month: 'short', year: '2-digit' }),
-  }
+  return { from: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`, to: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`, label: d.toLocaleString('en-IN', { month: 'short', year: '2-digit' }) }
 }
 
 const fy = currentFY()
@@ -91,7 +86,10 @@ export default function LedgerPage() {
   const [preset, setPreset] = useState<Preset>('fy-current')
   const [dateFrom, setDateFrom] = useState<string>(fy.from)
   const [dateTo, setDateTo] = useState<string>(fy.to)
+  const [typeFilter, setTypeFilter] = useState<string>('All')
   const [sharing, setSharing] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const shareRef = useRef<HTMLDivElement>(null)
 
   // Hydrate last selection
@@ -104,47 +102,50 @@ export default function LedgerPage() {
       if (typeof s.preset === 'string') setPreset(s.preset)
       if (typeof s.dateFrom === 'string') setDateFrom(s.dateFrom)
       if (typeof s.dateTo === 'string') setDateTo(s.dateTo)
+      if (typeof s.typeFilter === 'string') setTypeFilter(s.typeFilter)
     } catch {}
   }, [])
   useEffect(() => {
-    try { sessionStorage.setItem('ledger.state', JSON.stringify({ partyName, preset, dateFrom, dateTo })) } catch {}
-  }, [partyName, preset, dateFrom, dateTo])
+    try { sessionStorage.setItem('ledger.state', JSON.stringify({ partyName, preset, dateFrom, dateTo, typeFilter })) } catch {}
+  }, [partyName, preset, dateFrom, dateTo, typeFilter])
 
-  // Apply preset to dates
   function applyPreset(p: Preset) {
     setPreset(p)
     if (p === 'fy-current') { const r = currentFY(); setDateFrom(r.from); setDateTo(r.to) }
     else if (p === 'fy-prior') { const r = priorFY(); setDateFrom(r.from); setDateTo(r.to) }
     else if (p === 'this-month') { const r = thisMonth(); setDateFrom(r.from); setDateTo(r.to) }
     else if (p === 'last-month') { const r = lastMonth(); setDateFrom(r.from); setDateTo(r.to) }
-    // 'custom' leaves dates as the user set them
   }
 
-  // Party dropdown — searches the KSI ledger master
   const debouncedQuery = useDebounce(partyQuery, 250)
   const { data: partyData } = useSWR<{ ledgers: LedgerOption[] }>(
     partyDropdownOpen || debouncedQuery ? `/api/tally/ledgers?firm=KSI&search=${encodeURIComponent(debouncedQuery)}&limit=50` : null,
-    fetcher,
-    { revalidateOnFocus: false },
+    fetcher, { revalidateOnFocus: false },
   )
   const partyOptions = partyData?.ledgers ?? []
 
-  // Ledger data
   const swrKey = partyName ? `/api/tally/ksi-party?name=${encodeURIComponent(partyName)}&dateFrom=${dateFrom}&dateTo=${dateTo}` : null
-  const { data, isLoading } = useSWR<PartyData>(swrKey, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
+  const { data, isLoading, mutate } = useSWR<PartyData>(swrKey, fetcher, { revalidateOnFocus: false, keepPreviousData: true })
 
-  // Running balance — Dr = Sales/Debit Note, Cr = Receipt/Payment/Credit Note/Purchase
+  // Clear selection whenever the party, range or type filter shifts —
+  // stale selections would point to rows no longer on screen.
+  useEffect(() => { setSelectedIds(new Set()) }, [partyName, dateFrom, dateTo, typeFilter])
+
+  // Filter by selected voucher-type pill, then compute running balance.
   const statement = useMemo(() => {
+    const all = data?.vouchers ?? []
+    const filtered = typeFilter === 'All' ? all : all.filter(v => (v.vchType || '') === typeFilter)
     let balance = 0
-    return (data?.vouchers ?? []).map(v => {
-      const isDebit = ['Sales', 'Debit Note', 'Process Job'].includes(v.vchType || '')
-      const isCredit = ['Receipt', 'Payment', 'Credit Note', 'Purchase'].includes(v.vchType || '')
+    return filtered.map(v => {
+      const t = v.vchType || ''
+      const isDebit = DR_TYPES.has(t)
+      const isCredit = CR_TYPES.has(t)
       const debit = isDebit ? v.amount : 0
       const credit = isCredit ? v.amount : 0
       balance += debit - credit
       return { ...v, debit, credit, balance }
     })
-  }, [data?.vouchers])
+  }, [data?.vouchers, typeFilter])
 
   const totals = useMemo(() => {
     const dr = statement.reduce((s, r) => s + r.debit, 0)
@@ -152,13 +153,83 @@ export default function LedgerPage() {
     return { dr, cr, closing: statement.at(-1)?.balance ?? 0 }
   }, [statement])
 
+  // Per-type counts for the pill row.
+  const typeCounts = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const v of (data?.vouchers ?? [])) m.set(v.vchType || '—', (m.get(v.vchType || '—') ?? 0) + 1)
+    return m
+  }, [data?.vouchers])
+
+  async function deleteJournal(v: Voucher) {
+    if (v.source !== 'sales' || v.vchType !== 'Journal') return
+    const ok = confirm(`Delete Journal ${v.vchNumber} (₹${fmtMoney(v.amount)})?\n\nNote: if it was synced from Tally, the next sales-sync will recreate it. Delete in Tally too for it to stay gone.`)
+    if (!ok) return
+    const res = await fetch(`/api/accounts/sales/${v.id}`, { method: 'DELETE' })
+    const d = await res.json().catch(() => ({}))
+    if (!res.ok) { alert(d?.error || 'Delete failed'); return }
+    if (d.note) alert(d.note)
+    mutate()
+  }
+
+  // Only Journal+sales rows in the current filtered statement are
+  // selection-eligible — anything else just isn't deletable from here.
+  const selectableIds = useMemo(
+    () => statement.filter(r => r.source === 'sales' && r.vchType === 'Journal').map(r => r.id),
+    [statement],
+  )
+  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedIds.has(id))
+
+  function toggleSelect(id: number) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  function toggleSelectAll() {
+    setSelectedIds(prev => {
+      if (allSelected) {
+        const next = new Set(prev)
+        selectableIds.forEach(id => next.delete(id))
+        return next
+      }
+      const next = new Set(prev)
+      selectableIds.forEach(id => next.add(id))
+      return next
+    })
+  }
+
+  async function bulkDeleteJournals() {
+    const ids = Array.from(selectedIds)
+    if (!ids.length) return
+    const ok = confirm(`Delete ${ids.length} selected Journal voucher${ids.length === 1 ? '' : 's'}?\n\nNote: any rows that were synced from Tally will reappear on the next sales-sync. Delete in Tally too for them to stay gone.`)
+    if (!ok) return
+    setBulkDeleting(true)
+    try {
+      const res = await fetch('/api/accounts/sales/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(d?.error || 'Bulk delete failed'); return }
+      const skippedLine = d?.skipped?.length ? `\n\nSkipped ${d.skipped.length} (non-Journal or missing).` : ''
+      const noteLine = d?.note ? `\n\n${d.note}` : ''
+      alert(`Deleted ${d.deletedCount} of ${d.requested}.${skippedLine}${noteLine}`)
+      setSelectedIds(new Set())
+      mutate()
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   async function shareWhatsApp() {
     if (!shareRef.current || !data?.ledger) return
     setSharing(true)
     try {
       const html2canvas = (await import('html2canvas')).default
       const canvas = await html2canvas(shareRef.current, { backgroundColor: '#ffffff', scale: 2 })
-      canvas.toBlob(async (blob) => {
+      canvas.toBlob(async blob => {
         if (!blob) return
         const file = new File([blob], `Ledger-${data.ledger?.name}-${dateFrom}-to-${dateTo}.png`, { type: 'image/png' })
         if (typeof navigator !== 'undefined' && (navigator as any).canShare?.({ files: [file] })) {
@@ -179,13 +250,13 @@ export default function LedgerPage() {
         Date: fmtDateSlash(r.date),
         Type: r.vchType ?? '',
         'Voucher No': r.vchNumber ?? '',
-        Particulars: r.itemName ?? r.narration ?? '',
+        Particulars: r.narration ?? '',
         Debit: r.debit || '',
         Credit: r.credit || '',
         Balance: r.balance,
       }))
       const ws = XLSX.utils.json_to_sheet(rows)
-      ws['!cols'] = [{ wch: 11 }, { wch: 12 }, { wch: 16 }, { wch: 32 }, { wch: 12 }, { wch: 12 }, { wch: 14 }]
+      ws['!cols'] = [{ wch: 11 }, { wch: 12 }, { wch: 18 }, { wch: 36 }, { wch: 12 }, { wch: 12 }, { wch: 14 }]
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Statement')
       XLSX.writeFile(wb, `Ledger-${data.ledger?.name}-${dateFrom}-to-${dateTo}.xlsx`)
@@ -196,7 +267,7 @@ export default function LedgerPage() {
     <div className="max-w-3xl mx-auto p-3">
       <div className="flex items-center gap-2 mb-3">
         <BackButton fallback="/accounts" />
-        <h1 className="text-base font-bold text-gray-800 dark:text-gray-100">Ledger</h1>
+        <h1 className="text-base font-bold text-gray-800 dark:text-gray-100">Party Ledger</h1>
       </div>
 
       {/* Party + Date controls */}
@@ -209,7 +280,7 @@ export default function LedgerPage() {
             onFocus={() => { setPartyDropdownOpen(true); setPartyQuery('') }}
             onChange={e => { setPartyQuery(e.target.value); setPartyDropdownOpen(true) }}
             onBlur={() => setTimeout(() => setPartyDropdownOpen(false), 150)}
-            className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm"
+            className="w-full px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
           />
           {partyDropdownOpen && partyOptions.length > 0 && (
             <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg">
@@ -217,8 +288,8 @@ export default function LedgerPage() {
                 <button key={l.id}
                   onMouseDown={e => { e.preventDefault(); setPartyName(l.name); setPartyQuery(''); setPartyDropdownOpen(false) }}
                   className="block w-full text-left px-2.5 py-1.5 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/30 border-b border-gray-100 dark:border-gray-700 last:border-b-0">
-                  <div className="font-medium text-gray-800 dark:text-gray-100">{l.name}</div>
-                  <div className="text-[10px] text-gray-500 flex gap-2">
+                  <div className="font-medium text-gray-800 dark:text-gray-100 break-words">{l.name}</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 flex flex-wrap gap-2">
                     {l.parent && <span>{l.parent}</span>}
                     {l.gstNo && <span className="font-mono">GST: {l.gstNo}</span>}
                   </div>
@@ -249,93 +320,195 @@ export default function LedgerPage() {
             ))}
           </div>
           {preset === 'custom' && (
-            <div className="flex items-center gap-1.5 mt-2 text-[11px]">
-              <span className="text-gray-500">From</span>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2 text-[11px]">
+              <span className="text-gray-500 dark:text-gray-400">From</span>
               <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                className="px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" />
-              <span className="text-gray-500">to</span>
+                className="px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              <span className="text-gray-500 dark:text-gray-400">to</span>
               <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                className="px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700" />
+                className="px-1.5 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
             </div>
           )}
         </div>
       </div>
 
-      {/* Empty / loading */}
-      {!partyName && <div className="text-center text-sm text-gray-400 py-8">Pick a party to view the ledger.</div>}
-      {partyName && isLoading && <div className="text-center text-sm text-gray-400 py-8">Loading ledger…</div>}
+      {!partyName && <div className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">Pick a party to view the ledger.</div>}
+      {partyName && isLoading && <div className="text-center text-sm text-gray-400 dark:text-gray-500 py-8">Loading ledger…</div>}
 
-      {/* Statement table — also the share canvas */}
       {partyName && data && (
         <>
-          <div ref={shareRef} className="bg-white border border-gray-200 rounded-xl p-3 mb-3" style={{ color: '#000' }}>
-            <div className="flex items-start justify-between gap-2 mb-2">
-              <div className="min-w-0">
-                <div className="text-base font-bold">{data.ledger?.name ?? partyName}</div>
-                <div className="text-[10px] text-gray-600 space-y-0.5 mt-0.5">
-                  {data.ledger?.gstNo && <div>GSTIN: <span className="font-mono">{data.ledger.gstNo}</span></div>}
-                  {data.ledger?.address && <div className="truncate">{data.ledger.address}</div>}
-                  {data.ledger?.mobileNos && <div>📞 {data.ledger.mobileNos}</div>}
+          {/* Type filter pills */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {ALL_TYPE_PILLS.map(t => {
+              const count = t === 'All' ? (data.vouchers?.length ?? 0) : (typeCounts.get(t) ?? 0)
+              if (t !== 'All' && count === 0) return null
+              return (
+                <button key={t} onClick={() => setTypeFilter(t)}
+                  className={`text-[11px] px-2.5 py-1 rounded-full border transition ${
+                    typeFilter === t
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}>
+                  {t} <span className={typeFilter === t ? 'text-indigo-100' : 'text-gray-400 dark:text-gray-500'}>({count})</span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Statement — share canvas wrapper. Always white inside so the
+              shared PNG is a clean white sheet regardless of app theme.
+              The on-screen card around it follows the theme. */}
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl mb-3 overflow-hidden">
+            <div ref={shareRef} className="bg-white text-black p-3" data-theme="light">
+              {/* Header — party info + date range */}
+              <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
+                <div className="min-w-0 flex-1">
+                  <div className="text-base font-bold break-words">{data.ledger?.name ?? partyName}</div>
+                  <div className="text-[10px] text-gray-600 space-y-0.5 mt-0.5">
+                    {data.ledger?.gstNo && <div>GSTIN: <span className="font-mono">{data.ledger.gstNo}</span></div>}
+                    {data.ledger?.address && <div className="break-words">{data.ledger.address}</div>}
+                    {data.ledger?.mobileNos && <div>📞 {data.ledger.mobileNos}</div>}
+                  </div>
+                </div>
+                <div className="text-right text-[10px] text-gray-600 shrink-0">
+                  <div>Ledger Statement</div>
+                  <div>{fmtDateSlash(dateFrom)} — {fmtDateSlash(dateTo)}</div>
+                  {typeFilter !== 'All' && <div className="text-indigo-700">Filter: {typeFilter}</div>}
                 </div>
               </div>
-              <div className="text-right shrink-0 text-[10px] text-gray-600">
-                <div>Ledger Statement</div>
-                <div>{fmtDateSlash(dateFrom)} — {fmtDateSlash(dateTo)}</div>
-              </div>
-            </div>
 
-            <div className="grid grid-cols-3 gap-2 text-center text-[10px] my-2 border-y border-gray-200 py-1.5">
-              <div>
-                <div className="text-gray-500 uppercase">Σ Debit</div>
-                <div className="font-bold tabular-nums">₹{fmtMoney(totals.dr)}</div>
-              </div>
-              <div>
-                <div className="text-gray-500 uppercase">Σ Credit</div>
-                <div className="font-bold tabular-nums">₹{fmtMoney(totals.cr)}</div>
-              </div>
-              <div>
-                <div className="text-gray-500 uppercase">Closing</div>
-                <div className={`font-bold tabular-nums ${totals.closing >= 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                  ₹{fmtMoney(totals.closing)} {totals.closing >= 0 ? 'Dr' : 'Cr'}
+              {/* Totals row */}
+              <div className="grid grid-cols-3 gap-2 text-center text-[10px] my-2 border-y border-gray-200 py-1.5">
+                <div>
+                  <div className="text-gray-500 uppercase">Σ Debit</div>
+                  <div className="font-bold tabular-nums">₹{fmtMoney(totals.dr)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 uppercase">Σ Credit</div>
+                  <div className="font-bold tabular-nums">₹{fmtMoney(totals.cr)}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500 uppercase">Closing</div>
+                  <div className={`font-bold tabular-nums ${totals.closing >= 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                    ₹{fmtMoney(totals.closing)} {totals.closing >= 0 ? 'Dr' : 'Cr'}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #000' }}>
-                  <th className="px-1.5 py-1 text-left text-[10px] uppercase tracking-wide">Date</th>
-                  <th className="px-1.5 py-1 text-left text-[10px] uppercase tracking-wide">Type</th>
-                  <th className="px-1.5 py-1 text-left text-[10px] uppercase tracking-wide">Vch No</th>
-                  <th className="px-1.5 py-1 text-left text-[10px] uppercase tracking-wide">Particulars</th>
-                  <th className="px-1.5 py-1 text-right text-[10px] uppercase tracking-wide">Debit</th>
-                  <th className="px-1.5 py-1 text-right text-[10px] uppercase tracking-wide">Credit</th>
-                  <th className="px-1.5 py-1 text-right text-[10px] uppercase tracking-wide">Balance</th>
-                </tr>
-              </thead>
-              <tbody>
+              {/* Desktop table */}
+              <div className="hidden sm:block">
+                <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #000' }}>
+                      <th className="px-1 py-1 text-center text-[10px] uppercase no-share w-6">
+                        {selectableIds.length > 0 && (
+                          <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
+                            title={allSelected ? 'Clear selection' : `Select all ${selectableIds.length} Journal rows`}
+                            className="accent-rose-600 cursor-pointer" />
+                        )}
+                      </th>
+                      <th className="px-1.5 py-1 text-left text-[10px] uppercase">Date</th>
+                      <th className="px-1.5 py-1 text-left text-[10px] uppercase">Type</th>
+                      <th className="px-1.5 py-1 text-left text-[10px] uppercase">Vch No</th>
+                      <th className="px-1.5 py-1 text-left text-[10px] uppercase">Particulars</th>
+                      <th className="px-1.5 py-1 text-right text-[10px] uppercase">Debit</th>
+                      <th className="px-1.5 py-1 text-right text-[10px] uppercase">Credit</th>
+                      <th className="px-1.5 py-1 text-right text-[10px] uppercase">Balance</th>
+                      <th className="px-1.5 py-1 text-right text-[10px] uppercase no-share">·</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {statement.length === 0 ? (
+                      <tr><td colSpan={9} className="text-center text-gray-400 py-3">No vouchers in range.</td></tr>
+                    ) : statement.map(r => {
+                      const isJournal = r.source === 'sales' && r.vchType === 'Journal'
+                      const isSelected = isJournal && selectedIds.has(r.id)
+                      return (
+                      <tr key={`${r.source}-${r.id}`} style={{ borderBottom: '1px solid #f3f4f6', background: isSelected ? '#fff1f2' : undefined }}>
+                        <td className="px-1 py-1 text-center no-share">
+                          {isJournal && (
+                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
+                              className="accent-rose-600 cursor-pointer" />
+                          )}
+                        </td>
+                        <td className="px-1.5 py-1 whitespace-nowrap">{fmtDateSlash(r.date)}</td>
+                        <td className="px-1.5 py-1 whitespace-nowrap">
+                          {r.vchType ?? '—'}
+                          {r.isOpeningBalance && <span className="ml-1 text-[8px] font-bold text-amber-700 bg-amber-100 px-1 rounded">OB</span>}
+                        </td>
+                        <td className="px-1.5 py-1 font-mono whitespace-nowrap">{r.vchNumber ?? '—'}</td>
+                        <td className="px-1.5 py-1 break-words" style={{ maxWidth: 200 }} title={r.narration ?? ''}>
+                          {r.narration ?? '—'}
+                        </td>
+                        <td className="px-1.5 py-1 text-right tabular-nums">{r.debit ? `₹${fmtMoney(r.debit)}` : '—'}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums">{r.credit ? `₹${fmtMoney(r.credit)}` : '—'}</td>
+                        <td className="px-1.5 py-1 text-right tabular-nums font-semibold">
+                          ₹{fmtMoney(r.balance)} <span className="text-[9px] text-gray-500">{r.balance >= 0 ? 'Dr' : 'Cr'}</span>
+                        </td>
+                        <td className="px-1.5 py-1 text-right no-share">
+                          {isJournal && (
+                            <button onClick={() => deleteJournal(r)} title="Delete Journal voucher"
+                              className="text-[10px] text-rose-600 hover:text-rose-800 font-bold">✕</button>
+                          )}
+                        </td>
+                      </tr>
+                    )})}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="sm:hidden divide-y divide-gray-100">
+                {selectableIds.length > 0 && (
+                  <div className="py-2 flex items-center gap-2 text-[10px] no-share">
+                    <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
+                      className="accent-rose-600 cursor-pointer" />
+                    <span className="text-gray-500">Select all {selectableIds.length} Journal {selectableIds.length === 1 ? 'row' : 'rows'}</span>
+                  </div>
+                )}
                 {statement.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center text-gray-400 py-3">No vouchers in range.</td></tr>
-                ) : statement.map((r, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td className="px-1.5 py-1 whitespace-nowrap">{fmtDateSlash(r.date)}</td>
-                    <td className="px-1.5 py-1 whitespace-nowrap">{r.vchType ?? '—'}</td>
-                    <td className="px-1.5 py-1 font-mono whitespace-nowrap">{r.vchNumber ?? '—'}</td>
-                    <td className="px-1.5 py-1 truncate" style={{ maxWidth: 180 }} title={r.itemName ?? r.narration ?? ''}>
-                      {r.itemName ?? r.narration ?? '—'}
-                    </td>
-                    <td className="px-1.5 py-1 text-right tabular-nums">{r.debit ? `₹${fmtMoney(r.debit)}` : '—'}</td>
-                    <td className="px-1.5 py-1 text-right tabular-nums">{r.credit ? `₹${fmtMoney(r.credit)}` : '—'}</td>
-                    <td className="px-1.5 py-1 text-right tabular-nums font-semibold">
-                      ₹{fmtMoney(r.balance)} <span className="text-[9px] text-gray-500">{r.balance >= 0 ? 'Dr' : 'Cr'}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  <div className="text-center text-gray-400 py-3 text-xs">No vouchers in range.</div>
+                ) : statement.map(r => {
+                  const isJournal = r.source === 'sales' && r.vchType === 'Journal'
+                  const isSelected = isJournal && selectedIds.has(r.id)
+                  return (
+                  <div key={`${r.source}-${r.id}`} className="py-2 flex items-start gap-2"
+                    style={isSelected ? { background: '#fff1f2' } : undefined}>
+                    {isJournal && (
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
+                        className="mt-1 accent-rose-600 cursor-pointer shrink-0 no-share" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                        <span className="text-[10px] text-gray-500">{fmtDateSlash(r.date)}</span>
+                        <span className="text-[10px] font-mono bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded">
+                          {r.vchType ?? '—'}
+                        </span>
+                        {r.isOpeningBalance && <span className="text-[8px] font-bold text-amber-700 bg-amber-100 px-1 rounded">OB</span>}
+                        {r.vchNumber && <span className="text-[10px] font-mono text-gray-600 break-all">{r.vchNumber}</span>}
+                      </div>
+                      {r.narration && (
+                        <div className="text-[10px] text-gray-600 break-words leading-tight">{r.narration}</div>
+                      )}
+                      <div className="flex items-center gap-3 mt-1 text-[10px]">
+                        {r.debit > 0 && <span className="text-rose-700"><span className="text-gray-400">Dr</span> ₹{fmtMoney(r.debit)}</span>}
+                        {r.credit > 0 && <span className="text-emerald-700"><span className="text-gray-400">Cr</span> ₹{fmtMoney(r.credit)}</span>}
+                        <span className="ml-auto font-bold tabular-nums">
+                          ₹{fmtMoney(r.balance)} <span className="text-[9px] text-gray-500">{r.balance >= 0 ? 'Dr' : 'Cr'}</span>
+                        </span>
+                      </div>
+                    </div>
+                    {isJournal && (
+                      <button onClick={() => deleteJournal(r)} title="Delete Journal"
+                        className="text-rose-600 hover:text-rose-800 text-sm font-bold shrink-0 no-share">✕</button>
+                    )}
+                  </div>
+                )})}
+              </div>
 
-            <div className="text-[9px] text-gray-500 mt-2 text-center">
-              {statement.length} entries · Dr = party owes us · Cr = party paid / credit-noted
+              <div className="text-[9px] text-gray-500 mt-2 text-center">
+                {statement.length} entries · Dr = party owes us · Cr = party paid / credit-noted
+              </div>
             </div>
           </div>
 
@@ -346,9 +519,31 @@ export default function LedgerPage() {
             </button>
             <button onClick={shareWhatsApp} disabled={sharing}
               className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold">
-              {sharing ? 'Rendering…' : '📤 Share PNG on WhatsApp'}
+              {sharing ? 'Rendering…' : '📤 Share PNG'}
             </button>
           </div>
+
+          {/* Floating bulk-delete bar — only shows when at least one Journal is ticked. */}
+          {selectedIds.size > 0 && (
+            <div className="fixed bottom-3 left-3 right-3 z-40 max-w-3xl mx-auto bg-rose-600 text-white rounded-xl shadow-2xl px-3 py-2.5 flex items-center gap-2">
+              <div className="flex-1 text-xs font-semibold">
+                {selectedIds.size} Journal {selectedIds.size === 1 ? 'voucher' : 'vouchers'} selected
+              </div>
+              <button onClick={() => setSelectedIds(new Set())}
+                className="text-[11px] px-2 py-1 rounded-md bg-white/20 hover:bg-white/30 font-medium">
+                Clear
+              </button>
+              <button onClick={bulkDeleteJournals} disabled={bulkDeleting}
+                className="text-[11px] px-3 py-1.5 rounded-md bg-white text-rose-700 hover:bg-rose-50 disabled:opacity-60 font-bold">
+                {bulkDeleting ? 'Deleting…' : `Delete ${selectedIds.size}`}
+              </button>
+            </div>
+          )}
+
+          {/* Hide ✕ delete buttons inside the share canvas */}
+          <style jsx>{`
+            :global([data-theme='light']) .no-share { display: none !important; }
+          `}</style>
         </>
       )}
     </div>
