@@ -76,6 +76,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Date, Slip No, Lot No and Than are required.' }, { status: 400 })
   }
 
+  // Duplicate-slip guard. Schema has no @unique on slipNo (intentional —
+  // historical data may need flexibility later), so a double-click / browser
+  // retry could create two rows with the same slipNo. Refuse here and tell
+  // the client about the existing row so the UI can navigate to it.
+  const slipNoInt = parseInt(data.slipNo)
+  if (Number.isFinite(slipNoInt)) {
+    const existing = await (prisma as any).dyeingEntry.findFirst({
+      where: { slipNo: slipNoInt },
+      select: { id: true, date: true, lotNo: true, than: true },
+      orderBy: { id: 'asc' },
+    })
+    if (existing) {
+      return NextResponse.json({
+        error: `Dyeing slip ${slipNoInt} already exists (id=${existing.id}, lot ${existing.lotNo}/${existing.than}, ${existing.date.toISOString().slice(0,10)}).`,
+        duplicateOf: existing,
+      }, { status: 409 })
+    }
+  }
+
   // Build lots array from marka or single lot
   const lots = data.marka?.length
     ? data.marka.map((m: any) => ({ lotNo: normalizeLotNo(m.lotNo) ?? '', than: parseInt(m.than) || 0 }))
