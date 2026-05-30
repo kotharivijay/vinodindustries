@@ -32,6 +32,7 @@ interface PartyData {
   ledger: LedgerInfo | null
   outstandingBills: any[]
   vouchers: Voucher[]
+  openingBalance?: number
 }
 
 type Preset = 'fy-current' | 'fy-prior' | 'this-month' | 'last-month' | 'custom'
@@ -132,10 +133,13 @@ export default function LedgerPage() {
   useEffect(() => { setSelectedIds(new Set()) }, [partyName, dateFrom, dateTo, typeFilter])
 
   // Filter by selected voucher-type pill, then compute running balance.
+  // Running balance is seeded with the OB so it threads from the synthetic
+  // OB row (rendered separately) through the in-range transactions.
+  const opening = data?.openingBalance ?? 0
   const statement = useMemo(() => {
     const all = data?.vouchers ?? []
     const filtered = typeFilter === 'All' ? all : all.filter(v => (v.vchType || '') === typeFilter)
-    let balance = 0
+    let balance = opening
     return filtered.map(v => {
       const t = v.vchType || ''
       const isDebit = DR_TYPES.has(t)
@@ -145,13 +149,15 @@ export default function LedgerPage() {
       balance += debit - credit
       return { ...v, debit, credit, balance }
     })
-  }, [data?.vouchers, typeFilter])
+  }, [data?.vouchers, typeFilter, opening])
 
   const totals = useMemo(() => {
     const dr = statement.reduce((s, r) => s + r.debit, 0)
     const cr = statement.reduce((s, r) => s + r.credit, 0)
-    return { dr, cr, closing: statement.at(-1)?.balance ?? 0 }
-  }, [statement])
+    // Closing = OB + period changes — same as the last running-balance value
+    // when statement has rows; falls back to OB itself otherwise.
+    return { dr, cr, closing: statement.at(-1)?.balance ?? opening, opening }
+  }, [statement, opening])
 
   // Per-type counts for the pill row.
   const typeCounts = useMemo(() => {
@@ -259,7 +265,16 @@ export default function LedgerPage() {
   function exportExcel() {
     if (!data?.ledger) return
     import('xlsx').then(XLSX => {
-      const rows = statement.map(r => ({
+      const obRow = dateFrom ? [{
+        Date: fmtDateSlash(dateFrom),
+        Type: 'Opening Balance',
+        'Voucher No': '',
+        Particulars: `As of ${fmtDateSlash(dateFrom)}`,
+        Debit: opening > 0 ? opening : '',
+        Credit: opening < 0 ? -opening : '',
+        Balance: opening,
+      }] : []
+      const rows = [...obRow, ...statement.map(r => ({
         Date: fmtDateSlash(r.date),
         Type: r.vchType ?? '',
         'Voucher No': r.vchNumber ?? '',
@@ -267,7 +282,7 @@ export default function LedgerPage() {
         Debit: r.debit || '',
         Credit: r.credit || '',
         Balance: r.balance,
-      }))
+      }))]
       const ws = XLSX.utils.json_to_sheet(rows)
       ws['!cols'] = [{ wch: 11 }, { wch: 12 }, { wch: 18 }, { wch: 36 }, { wch: 12 }, { wch: 12 }, { wch: 14 }]
       const wb = XLSX.utils.book_new()
@@ -391,7 +406,13 @@ export default function LedgerPage() {
               </div>
 
               {/* Totals row */}
-              <div className="grid grid-cols-3 gap-2 text-center text-[10px] my-2 border-y border-gray-200 dark:border-gray-700 py-1.5">
+              <div className="grid grid-cols-4 gap-2 text-center text-[10px] my-2 border-y border-gray-200 dark:border-gray-700 py-1.5">
+                <div>
+                  <div className="text-gray-500 dark:text-gray-400 uppercase">Opening</div>
+                  <div className={`font-bold tabular-nums ${totals.opening >= 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                    ₹{fmtMoney(totals.opening)} <span className="text-[9px] text-gray-500 dark:text-gray-400">{totals.opening >= 0 ? 'Dr' : 'Cr'}</span>
+                  </div>
+                </div>
                 <div>
                   <div className="text-gray-500 dark:text-gray-400 uppercase">Σ Debit</div>
                   <div className="font-bold tabular-nums">₹{fmtMoney(totals.dr)}</div>
@@ -403,7 +424,7 @@ export default function LedgerPage() {
                 <div>
                   <div className="text-gray-500 dark:text-gray-400 uppercase">Closing</div>
                   <div className={`font-bold tabular-nums ${totals.closing >= 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
-                    ₹{fmtMoney(totals.closing)} {totals.closing >= 0 ? 'Dr' : 'Cr'}
+                    ₹{fmtMoney(totals.closing)} <span className="text-[9px] text-gray-500 dark:text-gray-400">{totals.closing >= 0 ? 'Dr' : 'Cr'}</span>
                   </div>
                 </div>
               </div>
@@ -431,6 +452,32 @@ export default function LedgerPage() {
                     </tr>
                   </thead>
                   <tbody>
+                    {/* Synthetic OB row — always rendered when an opening
+                        balance is known (even zero, for clarity). Not
+                        selectable, no delete action. Amber tint sets it
+                        apart from the data rows below. */}
+                    {dateFrom && (
+                      <tr className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700/40">
+                        <td className="px-1 py-1 no-share" />
+                        <td className="px-1.5 py-1 whitespace-nowrap text-amber-800 dark:text-amber-300 font-semibold">{fmtDateSlash(dateFrom)}</td>
+                        <td className="px-1.5 py-1 whitespace-nowrap font-semibold text-amber-800 dark:text-amber-300">Opening Balance</td>
+                        <td className="px-1.5 py-1">—</td>
+                        <td className="px-1.5 py-1 text-amber-700 dark:text-amber-400 text-[10px]">
+                          As of {fmtDateSlash(dateFrom)}
+                          {typeFilter !== 'All' && <span className="ml-1 italic">(all voucher types)</span>}
+                        </td>
+                        <td className="px-1.5 py-1 text-right tabular-nums font-semibold">
+                          {opening > 0 ? `₹${fmtMoney(opening)}` : '—'}
+                        </td>
+                        <td className="px-1.5 py-1 text-right tabular-nums font-semibold">
+                          {opening < 0 ? `₹${fmtMoney(opening)}` : '—'}
+                        </td>
+                        <td className="px-1.5 py-1 text-right tabular-nums font-bold">
+                          ₹{fmtMoney(opening)} <span className="text-[9px] text-gray-500 dark:text-gray-400">{opening >= 0 ? 'Dr' : 'Cr'}</span>
+                        </td>
+                        <td className="px-1.5 py-1 text-right no-share" />
+                      </tr>
+                    )}
                     {statement.length === 0 ? (
                       <tr><td colSpan={9} className="text-center text-gray-400 dark:text-gray-500 py-3">No vouchers in range.</td></tr>
                     ) : statement.map(r => {
@@ -473,6 +520,20 @@ export default function LedgerPage() {
 
               {/* Mobile cards */}
               <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-800">
+                {dateFrom && (
+                  <div className="py-2 px-2 -mx-2 bg-amber-50 dark:bg-amber-900/20 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-semibold text-amber-800 dark:text-amber-300">Opening Balance</div>
+                      <div className="text-[10px] text-amber-700 dark:text-amber-400">
+                        As of {fmtDateSlash(dateFrom)}
+                        {typeFilter !== 'All' && <span className="ml-1 italic">(all types)</span>}
+                      </div>
+                    </div>
+                    <div className="font-bold tabular-nums text-sm">
+                      ₹{fmtMoney(opening)} <span className="text-[9px] text-gray-500 dark:text-gray-400">{opening >= 0 ? 'Dr' : 'Cr'}</span>
+                    </div>
+                  </div>
+                )}
                 {selectableIds.length > 0 && (
                   <div className="py-2 flex items-center gap-2 text-[10px] no-share">
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
@@ -521,7 +582,7 @@ export default function LedgerPage() {
               </div>
 
               <div className="text-[9px] text-gray-500 dark:text-gray-400 mt-2 text-center">
-                {statement.length} entries · Dr = party owes us · Cr = party paid / credit-noted
+                {statement.length} entries in range + opening · Dr = party owes us · Cr = party paid / credit-noted
               </div>
             </div>
           </div>

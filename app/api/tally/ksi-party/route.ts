@@ -11,6 +11,18 @@ const FIRM = 'KSI'
 // account in Tally — so they'd be noise here.
 const EXCLUDE_TYPES = new Set(['Delivery Note', 'Delivery note', 'delivery note'])
 
+// Mirror of the frontend's DR_TYPES / CR_TYPES sets — duplicated here on
+// purpose so the API can compute the opening balance independently. Keep
+// in sync with app/(dashboard)/accounts/ledger/page.tsx.
+const DR_TYPES = new Set(['Sales', 'Process Job', 'Debit Note', 'Purchase Return'])
+const CR_TYPES = new Set(['Receipt', 'Payment', 'Credit Note', 'Cash', 'Journal'])
+function signedFor(vchType: string | null, amount: number) {
+  const t = vchType || ''
+  if (DR_TYPES.has(t)) return amount
+  if (CR_TYPES.has(t)) return -amount
+  return 0
+}
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -39,9 +51,10 @@ export async function GET(req: NextRequest) {
 
     // 3. Date window
     const where: any = { partyName: { equals: name, mode: 'insensitive' } }
+    const fromDate = dateFrom ? new Date(dateFrom) : null
     if (dateFrom || dateTo) {
       where.date = {}
-      if (dateFrom) where.date.gte = new Date(dateFrom)
+      if (dateFrom) where.date.gte = fromDate
       if (dateTo) where.date.lte = new Date(dateTo + 'T23:59:59.999Z')
     }
 
@@ -113,7 +126,33 @@ export async function GET(req: NextRequest) {
     }
     rows.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id)
 
-    return NextResponse.json({ ledger, outstandingBills, vouchers: rows })
+    // 6. Opening balance — Σ Dr − Σ Cr across every voucher dated
+    // STRICTLY BEFORE dateFrom. Same DR/CR classification the UI uses
+    // for in-range rows, so the running balance threads cleanly from
+    // the OB row through to the closing total.
+    let openingBalance = 0
+    if (fromDate) {
+      const [salesBefore, hdfcBefore] = await Promise.all([
+        db.ksiSalesInvoice.findMany({
+          where: { partyName: { equals: name, mode: 'insensitive' }, date: { lt: fromDate } },
+          select: { vchType: true, totalAmount: true },
+        }),
+        db.ksiHdfcReceipt.findMany({
+          where: { partyName: { equals: name, mode: 'insensitive' }, hidden: false, date: { lt: fromDate } },
+          select: { vchType: true, amount: true },
+        }),
+      ])
+      for (const s of salesBefore) {
+        if (EXCLUDE_TYPES.has(s.vchType)) continue
+        openingBalance += signedFor(s.vchType, Number(s.totalAmount || 0))
+      }
+      for (const r of hdfcBefore) {
+        if (EXCLUDE_TYPES.has(r.vchType)) continue
+        openingBalance += signedFor(r.vchType, Number(r.amount || 0))
+      }
+    }
+
+    return NextResponse.json({ ledger, outstandingBills, vouchers: rows, openingBalance })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
