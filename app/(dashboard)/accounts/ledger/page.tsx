@@ -228,7 +228,20 @@ export default function LedgerPage() {
     setSharing(true)
     try {
       const html2canvas = (await import('html2canvas')).default
-      const canvas = await html2canvas(shareRef.current, { backgroundColor: '#ffffff', scale: 2 })
+      // onclone runs against a deep clone of the document — strip the
+      // `dark` class on <html> there so all dark:* Tailwind classes
+      // resolve to their light fallbacks for the captured PNG without
+      // touching the user's live UI.
+      const canvas = await html2canvas(shareRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        onclone: (clonedDoc) => {
+          clonedDoc.documentElement.classList.remove('dark')
+          // Mark the clone so the global .no-share rule hides the
+          // checkboxes / ✕ buttons only in the rendered PNG.
+          clonedDoc.documentElement.classList.add('share-export')
+        },
+      })
       canvas.toBlob(async blob => {
         if (!blob) return
         const file = new File([blob], `Ledger-${data.ledger?.name}-${dateFrom}-to-${dateTo}.png`, { type: 'image/png' })
@@ -355,41 +368,41 @@ export default function LedgerPage() {
             })}
           </div>
 
-          {/* Statement — share canvas wrapper. Always white inside so the
-              shared PNG is a clean white sheet regardless of app theme.
-              The on-screen card around it follows the theme. */}
+          {/* Statement — share canvas. On-screen follows the theme; at
+              PNG-capture time we strip the `dark` class on the cloned
+              document so the exported sheet is always white. */}
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl mb-3 overflow-hidden">
-            <div ref={shareRef} className="bg-white text-black p-3" data-theme="light">
+            <div ref={shareRef} className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-3">
               {/* Header — party info + date range */}
               <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
                 <div className="min-w-0 flex-1">
                   <div className="text-base font-bold break-words">{data.ledger?.name ?? partyName}</div>
-                  <div className="text-[10px] text-gray-600 space-y-0.5 mt-0.5">
+                  <div className="text-[10px] text-gray-600 dark:text-gray-400 space-y-0.5 mt-0.5">
                     {data.ledger?.gstNo && <div>GSTIN: <span className="font-mono">{data.ledger.gstNo}</span></div>}
                     {data.ledger?.address && <div className="break-words">{data.ledger.address}</div>}
                     {data.ledger?.mobileNos && <div>📞 {data.ledger.mobileNos}</div>}
                   </div>
                 </div>
-                <div className="text-right text-[10px] text-gray-600 shrink-0">
+                <div className="text-right text-[10px] text-gray-600 dark:text-gray-400 shrink-0">
                   <div>Ledger Statement</div>
                   <div>{fmtDateSlash(dateFrom)} — {fmtDateSlash(dateTo)}</div>
-                  {typeFilter !== 'All' && <div className="text-indigo-700">Filter: {typeFilter}</div>}
+                  {typeFilter !== 'All' && <div className="text-indigo-700 dark:text-indigo-400">Filter: {typeFilter}</div>}
                 </div>
               </div>
 
               {/* Totals row */}
-              <div className="grid grid-cols-3 gap-2 text-center text-[10px] my-2 border-y border-gray-200 py-1.5">
+              <div className="grid grid-cols-3 gap-2 text-center text-[10px] my-2 border-y border-gray-200 dark:border-gray-700 py-1.5">
                 <div>
-                  <div className="text-gray-500 uppercase">Σ Debit</div>
+                  <div className="text-gray-500 dark:text-gray-400 uppercase">Σ Debit</div>
                   <div className="font-bold tabular-nums">₹{fmtMoney(totals.dr)}</div>
                 </div>
                 <div>
-                  <div className="text-gray-500 uppercase">Σ Credit</div>
+                  <div className="text-gray-500 dark:text-gray-400 uppercase">Σ Credit</div>
                   <div className="font-bold tabular-nums">₹{fmtMoney(totals.cr)}</div>
                 </div>
                 <div>
-                  <div className="text-gray-500 uppercase">Closing</div>
-                  <div className={`font-bold tabular-nums ${totals.closing >= 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                  <div className="text-gray-500 dark:text-gray-400 uppercase">Closing</div>
+                  <div className={`font-bold tabular-nums ${totals.closing >= 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
                     ₹{fmtMoney(totals.closing)} {totals.closing >= 0 ? 'Dr' : 'Cr'}
                   </div>
                 </div>
@@ -399,7 +412,7 @@ export default function LedgerPage() {
               <div className="hidden sm:block">
                 <table className="w-full text-[11px]" style={{ borderCollapse: 'collapse' }}>
                   <thead>
-                    <tr style={{ borderBottom: '2px solid #000' }}>
+                    <tr className="border-b-2 border-black dark:border-gray-500">
                       <th className="px-1 py-1 text-center text-[10px] uppercase no-share w-6">
                         {selectableIds.length > 0 && (
                           <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
@@ -419,12 +432,13 @@ export default function LedgerPage() {
                   </thead>
                   <tbody>
                     {statement.length === 0 ? (
-                      <tr><td colSpan={9} className="text-center text-gray-400 py-3">No vouchers in range.</td></tr>
+                      <tr><td colSpan={9} className="text-center text-gray-400 dark:text-gray-500 py-3">No vouchers in range.</td></tr>
                     ) : statement.map(r => {
                       const isJournal = r.source === 'sales' && r.vchType === 'Journal'
                       const isSelected = isJournal && selectedIds.has(r.id)
                       return (
-                      <tr key={`${r.source}-${r.id}`} style={{ borderBottom: '1px solid #f3f4f6', background: isSelected ? '#fff1f2' : undefined }}>
+                      <tr key={`${r.source}-${r.id}`}
+                        className={`border-b border-gray-100 dark:border-gray-800 ${isSelected ? 'bg-rose-50 dark:bg-rose-900/30' : ''}`}>
                         <td className="px-1 py-1 text-center no-share">
                           {isJournal && (
                             <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
@@ -434,21 +448,21 @@ export default function LedgerPage() {
                         <td className="px-1.5 py-1 whitespace-nowrap">{fmtDateSlash(r.date)}</td>
                         <td className="px-1.5 py-1 whitespace-nowrap">
                           {r.vchType ?? '—'}
-                          {r.isOpeningBalance && <span className="ml-1 text-[8px] font-bold text-amber-700 bg-amber-100 px-1 rounded">OB</span>}
+                          {r.isOpeningBalance && <span className="ml-1 text-[8px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-1 rounded">OB</span>}
                         </td>
                         <td className="px-1.5 py-1 font-mono whitespace-nowrap">{r.vchNumber ?? '—'}</td>
-                        <td className="px-1.5 py-1 break-words" style={{ maxWidth: 200 }} title={r.narration ?? ''}>
+                        <td className="px-1.5 py-1 break-words text-gray-700 dark:text-gray-300" style={{ maxWidth: 200 }} title={r.narration ?? ''}>
                           {r.narration ?? '—'}
                         </td>
                         <td className="px-1.5 py-1 text-right tabular-nums">{r.debit ? `₹${fmtMoney(r.debit)}` : '—'}</td>
                         <td className="px-1.5 py-1 text-right tabular-nums">{r.credit ? `₹${fmtMoney(r.credit)}` : '—'}</td>
                         <td className="px-1.5 py-1 text-right tabular-nums font-semibold">
-                          ₹{fmtMoney(r.balance)} <span className="text-[9px] text-gray-500">{r.balance >= 0 ? 'Dr' : 'Cr'}</span>
+                          ₹{fmtMoney(r.balance)} <span className="text-[9px] text-gray-500 dark:text-gray-400">{r.balance >= 0 ? 'Dr' : 'Cr'}</span>
                         </td>
                         <td className="px-1.5 py-1 text-right no-share">
                           {isJournal && (
                             <button onClick={() => deleteJournal(r)} title="Delete Journal voucher"
-                              className="text-[10px] text-rose-600 hover:text-rose-800 font-bold">✕</button>
+                              className="text-[10px] text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 font-bold">✕</button>
                           )}
                         </td>
                       </tr>
@@ -458,55 +472,55 @@ export default function LedgerPage() {
               </div>
 
               {/* Mobile cards */}
-              <div className="sm:hidden divide-y divide-gray-100">
+              <div className="sm:hidden divide-y divide-gray-100 dark:divide-gray-800">
                 {selectableIds.length > 0 && (
                   <div className="py-2 flex items-center gap-2 text-[10px] no-share">
                     <input type="checkbox" checked={allSelected} onChange={toggleSelectAll}
                       className="accent-rose-600 cursor-pointer" />
-                    <span className="text-gray-500">Select all {selectableIds.length} Journal {selectableIds.length === 1 ? 'row' : 'rows'}</span>
+                    <span className="text-gray-500 dark:text-gray-400">Select all {selectableIds.length} Journal {selectableIds.length === 1 ? 'row' : 'rows'}</span>
                   </div>
                 )}
                 {statement.length === 0 ? (
-                  <div className="text-center text-gray-400 py-3 text-xs">No vouchers in range.</div>
+                  <div className="text-center text-gray-400 dark:text-gray-500 py-3 text-xs">No vouchers in range.</div>
                 ) : statement.map(r => {
                   const isJournal = r.source === 'sales' && r.vchType === 'Journal'
                   const isSelected = isJournal && selectedIds.has(r.id)
                   return (
-                  <div key={`${r.source}-${r.id}`} className="py-2 flex items-start gap-2"
-                    style={isSelected ? { background: '#fff1f2' } : undefined}>
+                  <div key={`${r.source}-${r.id}`}
+                    className={`py-2 flex items-start gap-2 ${isSelected ? 'bg-rose-50 dark:bg-rose-900/30' : ''}`}>
                     {isJournal && (
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(r.id)}
                         className="mt-1 accent-rose-600 cursor-pointer shrink-0 no-share" />
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                        <span className="text-[10px] text-gray-500">{fmtDateSlash(r.date)}</span>
-                        <span className="text-[10px] font-mono bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded">
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400">{fmtDateSlash(r.date)}</span>
+                        <span className="text-[10px] font-mono bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 px-1.5 py-0.5 rounded">
                           {r.vchType ?? '—'}
                         </span>
-                        {r.isOpeningBalance && <span className="text-[8px] font-bold text-amber-700 bg-amber-100 px-1 rounded">OB</span>}
-                        {r.vchNumber && <span className="text-[10px] font-mono text-gray-600 break-all">{r.vchNumber}</span>}
+                        {r.isOpeningBalance && <span className="text-[8px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-1 rounded">OB</span>}
+                        {r.vchNumber && <span className="text-[10px] font-mono text-gray-600 dark:text-gray-400 break-all">{r.vchNumber}</span>}
                       </div>
                       {r.narration && (
-                        <div className="text-[10px] text-gray-600 break-words leading-tight">{r.narration}</div>
+                        <div className="text-[10px] text-gray-600 dark:text-gray-400 break-words leading-tight">{r.narration}</div>
                       )}
                       <div className="flex items-center gap-3 mt-1 text-[10px]">
-                        {r.debit > 0 && <span className="text-rose-700"><span className="text-gray-400">Dr</span> ₹{fmtMoney(r.debit)}</span>}
-                        {r.credit > 0 && <span className="text-emerald-700"><span className="text-gray-400">Cr</span> ₹{fmtMoney(r.credit)}</span>}
+                        {r.debit > 0 && <span className="text-rose-700 dark:text-rose-400"><span className="text-gray-400 dark:text-gray-500">Dr</span> ₹{fmtMoney(r.debit)}</span>}
+                        {r.credit > 0 && <span className="text-emerald-700 dark:text-emerald-400"><span className="text-gray-400 dark:text-gray-500">Cr</span> ₹{fmtMoney(r.credit)}</span>}
                         <span className="ml-auto font-bold tabular-nums">
-                          ₹{fmtMoney(r.balance)} <span className="text-[9px] text-gray-500">{r.balance >= 0 ? 'Dr' : 'Cr'}</span>
+                          ₹{fmtMoney(r.balance)} <span className="text-[9px] text-gray-500 dark:text-gray-400">{r.balance >= 0 ? 'Dr' : 'Cr'}</span>
                         </span>
                       </div>
                     </div>
                     {isJournal && (
                       <button onClick={() => deleteJournal(r)} title="Delete Journal"
-                        className="text-rose-600 hover:text-rose-800 text-sm font-bold shrink-0 no-share">✕</button>
+                        className="text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-rose-300 text-sm font-bold shrink-0 no-share">✕</button>
                     )}
                   </div>
                 )})}
               </div>
 
-              <div className="text-[9px] text-gray-500 mt-2 text-center">
+              <div className="text-[9px] text-gray-500 dark:text-gray-400 mt-2 text-center">
                 {statement.length} entries · Dr = party owes us · Cr = party paid / credit-noted
               </div>
             </div>
@@ -540,9 +554,11 @@ export default function LedgerPage() {
             </div>
           )}
 
-          {/* Hide ✕ delete buttons inside the share canvas */}
-          <style jsx>{`
-            :global([data-theme='light']) .no-share { display: none !important; }
+          {/* .no-share controls are part of the share canvas (so layout
+              doesn't jump), but they get hidden inside the cloned PNG
+              via the html-clone hook below. */}
+          <style jsx global>{`
+            html.share-export .no-share { display: none !important; }
           `}</style>
         </>
       )}
