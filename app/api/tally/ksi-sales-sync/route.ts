@@ -9,7 +9,12 @@ const KSI_TALLY = 'Kothari Synthetic Industries -( from 2023)'
 // call per type per month — Tally's Voucher Register filters
 // reliably by VOUCHERTYPENAME so we keep them as separate calls and
 // merge the results.
-const SALES_TYPES = ['Process Job', 'Sales', 'Credit Note']
+// Process Job / Sales / Credit Note carry PARTYLEDGERNAME in the header
+// so partyName is trivial. Journal + Debit Note typically don't — for
+// those we resolve partyName by scanning ledger legs against the set of
+// known Sundry Debtor parties (see resolveJournalParty below).
+const SALES_TYPES = ['Process Job', 'Sales', 'Credit Note', 'Journal', 'Debit Note']
+const PARTYLESS_TYPES = new Set(['Journal', 'Debit Note'])
 
 const pad = (n: number) => String(n).padStart(2, '0')
 function fyOf(date: Date): string {
@@ -309,10 +314,54 @@ export async function POST(req: NextRequest) {
   })
 
   const db = prisma as any
+
+  // Build the known-party set once — used to attribute Journal / Debit-Note
+  // vouchers (which carry no PARTYLEDGERNAME header) to the right party by
+  // scanning their ledger legs. We union TallyLedger Sundry-Debtor names
+  // with any partyName we've already seen on a real sales row so the set
+  // stays accurate even if a party hasn't been ledger-synced yet.
+  const knownParties = new Set<string>()
+  try {
+    const { viPrisma } = await import('@/lib/prisma')
+    const viDb = viPrisma as any
+    const ledgerRows = await viDb.tallyLedger.findMany({
+      where: { firmCode: 'KSI', parent: { contains: 'Sundry', mode: 'insensitive' } },
+      select: { name: true },
+    })
+    for (const r of ledgerRows) if (r.name) knownParties.add(r.name.toLowerCase())
+  } catch {}
+  const existingParties = await db.ksiSalesInvoice.findMany({
+    distinct: ['partyName'],
+    select: { partyName: true },
+  })
+  for (const p of existingParties) if (p.partyName) knownParties.add(p.partyName.toLowerCase())
+
   let saved = 0
   let skippedOB = 0
+  let skippedNoParty = 0
+  let skippedMultiParty = 0
+  const skippedExamples: { vchNumber: string; vchType: string; reason: string }[] = []
   const now = new Date()
   for (const v of inRange) {
+    // Journal / Debit Note: resolve partyName from ledger legs before
+    // touching the DB. partyName column is non-null, so a row we can't
+    // attribute has to be skipped (recorded in skippedExamples).
+    if (PARTYLESS_TYPES.has(v.vchType) && !v.partyName) {
+      const partyLegs = v.ledgers.filter(l => knownParties.has(l.ledgerName.toLowerCase()))
+      if (partyLegs.length === 0) {
+        skippedNoParty++
+        if (skippedExamples.length < 10) skippedExamples.push({ vchNumber: v.vchNumber, vchType: v.vchType, reason: 'no party leg' })
+        continue
+      }
+      if (partyLegs.length > 1) {
+        skippedMultiParty++
+        if (skippedExamples.length < 10) skippedExamples.push({ vchNumber: v.vchNumber, vchType: v.vchType, reason: `multi-party (${partyLegs.length})` })
+        continue
+      }
+      v.partyName = partyLegs[0].ledgerName
+      v.totalAmount = Math.abs(partyLegs[0].amount)
+    }
+
     // Skip rows that the operator entered as a manual opening balance — a
     // Tally upsert would clobber the typed totalAmount / partyName / etc.
     const existing = await db.ksiSalesInvoice.findUnique({
@@ -367,6 +416,9 @@ export async function POST(req: NextRequest) {
     inRange: inRange.length,
     saved,
     skippedOpeningBalance: skippedOB,
+    skippedNoParty,
+    skippedMultiParty,
+    skippedExamples,
     range: { from, to },
     types: SALES_TYPES,
   })
