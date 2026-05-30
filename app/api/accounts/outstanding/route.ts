@@ -1,8 +1,21 @@
 export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prisma, viPrisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+
+// Classify a TallyLedger.parent group into a coarse filter bucket the UI
+// uses (All / Debtors / Creditors / Other). Sub-groups of the standard
+// "Sundry Debtors" / "Sundry Creditors" parents collapse into the same
+// bucket so a custom group like "Sundry Debtors - Pali" still classifies
+// as a debtor.
+function classifyParty(parent: string | null | undefined): 'debtor' | 'creditor' | 'other' {
+  if (!parent) return 'other'
+  const p = parent.toLowerCase()
+  if (p.includes('sundry debtor') || p === 'debtors') return 'debtor'
+  if (p.includes('sundry creditor') || p === 'creditors') return 'creditor'
+  return 'other'
+}
 
 // GET /api/accounts/outstanding
 //
@@ -143,6 +156,28 @@ export async function GET(_req: NextRequest) {
     }
   }
 
+  // Classify each party as debtor / creditor / other by looking up its
+  // parent group in TallyLedger (KSI firm). One bulk query; case-insensitive
+  // join on the lowered name. Anything we can't find (e.g. a manual
+  // opening-balance row for a ledger that hasn't been ledger-synced)
+  // falls into 'other' so the UI's Debtors filter doesn't drop it
+  // silently — the user can still see it under 'Other'.
+  const partyTypeByName = new Map<string, 'debtor' | 'creditor' | 'other'>()
+  try {
+    const viDb = viPrisma as any
+    const ledgerRows = await viDb.tallyLedger.findMany({
+      where: { firmCode: 'KSI', name: { in: parties.map(p => p.name) } },
+      select: { name: true, parent: true },
+    })
+    for (const l of ledgerRows) partyTypeByName.set(l.name, classifyParty(l.parent))
+  } catch {
+    // VI DB unreachable — leave the map empty; everything will fall
+    // through to 'other' but the report still renders.
+  }
+  for (const p of parties as any[]) {
+    p.partyType = partyTypeByName.get(p.name) ?? 'other'
+  }
+
   const receipts = onAccountReceipts.map((r: any) => ({
     id: r.id, vchNumber: r.vchNumber, vchType: r.vchType, date: r.date,
     partyName: r.partyName, amount: r.amount,
@@ -151,6 +186,9 @@ export async function GET(_req: NextRequest) {
     linkedInvoices: r.linkedInvoices || [],
     carryOver: r.carryOver, unallocated: r.unallocated,
     daysSince: dueDays(r.date),
+    // Mirror the party's classification down so the on-account tab
+    // can filter independently.
+    partyType: partyTypeByName.get(r.partyName) ?? 'other',
   })).sort((a: any, b: any) => b.unallocated - a.unallocated)
 
   const totalOutstanding = parties.reduce((s, p) => s + p.totalPending, 0)

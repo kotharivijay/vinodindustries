@@ -20,9 +20,10 @@ const fmtDateSlash = (iso: string) => {
 }
 
 interface OutInvoice { id: number; vchNumber: string; vchType: string; date: string; totalAmount: number; pending: number; isCN?: boolean; dueDays: number; skipAutoLink?: boolean; skipAutoLinkReason?: string | null }
-interface OutParty { name: string; totalPending: number; oldestDueDays: number; invoiceCount: number; onAccount: number; invoices: OutInvoice[] }
+type PartyType = 'debtor' | 'creditor' | 'other'
+interface OutParty { name: string; totalPending: number; oldestDueDays: number; invoiceCount: number; onAccount: number; invoices: OutInvoice[]; partyType?: PartyType }
 interface OutReceiptLinkedInvoice { vchNumber: string; vchType: string; date: string | null; allocatedAmount: number; tdsAmount: number; discountAmount: number; isCN: boolean }
-interface OutReceipt { id: number; vchNumber: string; vchType: string; date: string; partyName: string; amount: number; linkedCash: number; linkedTds?: number; linkedDiscount?: number; linkedInvoices?: OutReceiptLinkedInvoice[]; carryOver: number; unallocated: number; daysSince: number; bankRef: string | null; instrumentNo: string | null; narration: string | null }
+interface OutReceipt { id: number; vchNumber: string; vchType: string; date: string; partyName: string; amount: number; linkedCash: number; linkedTds?: number; linkedDiscount?: number; linkedInvoices?: OutReceiptLinkedInvoice[]; carryOver: number; unallocated: number; daysSince: number; bankRef: string | null; instrumentNo: string | null; narration: string | null; partyType?: PartyType }
 interface OutResponse {
   totals: { outstanding: number; onAccount: number; netReceivable: number; parties: number; invoices: number; receipts: number }
   parties: OutParty[]
@@ -30,6 +31,7 @@ interface OutResponse {
 }
 
 type Tab = 'party' | 'invoice' | 'onacc'
+type GroupFilter = 'all' | 'debtor' | 'creditor' | 'other'
 const PAGE_SIZE = 6
 
 export default function OutstandingPage() {
@@ -38,6 +40,10 @@ export default function OutstandingPage() {
   const [tab, setTab] = useState<Tab>('party')
   const [page, setPage] = useState(0)
   const [bucketFilter, setBucketFilter] = useState<DueBucket | 'all'>('all')
+  // Most users only care about Sundry Debtors (customers who owe us).
+  // Default to Debtors so vendor / creditor noise doesn't crowd the
+  // headline list; user can switch to All / Creditors / Other if needed.
+  const [groupFilter, setGroupFilter] = useState<GroupFilter>('debtor')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [partyQuery, setPartyQuery] = useState('')
   // Tally match: maps party name → Tally closing balance (signed).
@@ -133,21 +139,51 @@ export default function OutstandingPage() {
   // Reset pagination when tab or filter changes
   function setTabAndReset(t: Tab) { setTab(t); setPage(0) }
   function setBucketAndReset(b: DueBucket | 'all') { setBucketFilter(b); setPage(0) }
+  function setGroupAndReset(g: GroupFilter) { setGroupFilter(g); setPage(0) }
 
   const allParties = data?.parties ?? []
   const allReceipts = data?.receipts ?? []
   const totals = data?.totals
   const q = partyQuery.trim().toLowerCase()
 
-  // Search filter is applied to all three tabs by partyName.
-  const parties = useMemo(
-    () => q ? allParties.filter(p => p.name.toLowerCase().includes(q)) : allParties,
-    [allParties, q],
-  )
-  const receipts = useMemo(
-    () => q ? allReceipts.filter(r => r.partyName.toLowerCase().includes(q)) : allReceipts,
-    [allReceipts, q],
-  )
+  // Group-bucket counts (always computed off the un-filtered list so
+  // every pill shows its real count regardless of the active filter).
+  const groupCounts = useMemo(() => {
+    const m: Record<GroupFilter, number> = { all: allParties.length, debtor: 0, creditor: 0, other: 0 }
+    for (const p of allParties) m[p.partyType ?? 'other']++
+    return m
+  }, [allParties])
+
+  // Search + group filter — applied to all three tabs by partyName.
+  const parties = useMemo(() => {
+    let list = allParties
+    if (groupFilter !== 'all') list = list.filter(p => (p.partyType ?? 'other') === groupFilter)
+    if (q) list = list.filter(p => p.name.toLowerCase().includes(q))
+    return list
+  }, [allParties, q, groupFilter])
+  const receipts = useMemo(() => {
+    let list = allReceipts
+    if (groupFilter !== 'all') list = list.filter(r => ((r as any).partyType ?? 'other') === groupFilter)
+    if (q) list = list.filter(r => r.partyName.toLowerCase().includes(q))
+    return list
+  }, [allReceipts, q, groupFilter])
+
+  // Recompute headline totals from the filtered set so the headline
+  // numbers always tie out to what's visible below.
+  const visibleTotals = useMemo(() => {
+    if (!totals) return null
+    const outstanding = parties.reduce((s, p) => s + p.totalPending, 0)
+    const onAccount = receipts.reduce((s, r) => s + r.unallocated, 0)
+    const invoiceCount = parties.reduce((s, p) => s + p.invoiceCount, 0)
+    return {
+      outstanding,
+      onAccount,
+      netReceivable: outstanding - onAccount,
+      parties: parties.length,
+      invoices: invoiceCount,
+      receipts: receipts.length,
+    }
+  }, [parties, receipts, totals])
 
   const flatInvoices = useMemo(() => {
     const list: (OutInvoice & { partyName: string })[] = []
@@ -176,24 +212,50 @@ export default function OutstandingPage() {
 
       {isLoading && <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>}
 
-      {totals && (
+      {visibleTotals && (
         <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl p-3 mb-3">
           <div className="grid grid-cols-2 gap-2 text-center text-[10px]">
             <div>
               <div className="text-gray-500 dark:text-gray-400">Outstanding (net of on-account)</div>
-              <div className="text-rose-700 dark:text-rose-400 font-bold tabular-nums">₹{fmtMoney(totals.netReceivable)}</div>
-              <div className="text-[9px] text-gray-400 mt-0.5">gross ₹{fmtMoney(totals.outstanding)}</div>
+              <div className="text-rose-700 dark:text-rose-400 font-bold tabular-nums">₹{fmtMoney(visibleTotals.netReceivable)}</div>
+              <div className="text-[9px] text-gray-400 mt-0.5">gross ₹{fmtMoney(visibleTotals.outstanding)}</div>
             </div>
             <div>
               <div className="text-gray-500 dark:text-gray-400">On-account</div>
-              <div className="text-indigo-700 dark:text-indigo-400 font-bold tabular-nums">₹{fmtMoney(totals.onAccount)}</div>
+              <div className="text-indigo-700 dark:text-indigo-400 font-bold tabular-nums">₹{fmtMoney(visibleTotals.onAccount)}</div>
             </div>
           </div>
           <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 text-center">
-            {totals.parties} parties · {totals.invoices} pending invoices · {totals.receipts} on-account receipts
+            {visibleTotals.parties} parties · {visibleTotals.invoices} pending invoices · {visibleTotals.receipts} on-account receipts
+            {groupFilter !== 'all' && <span className="ml-1 italic text-amber-700 dark:text-amber-300">(filter: {groupFilter}s)</span>}
           </div>
         </div>
       )}
+
+      {/* Party-type filter — defaults to Debtors so vendor noise is
+          hidden until the user explicitly asks for it. */}
+      <div className="flex gap-1.5 mb-2 text-[11px] flex-wrap">
+        <span className="text-gray-500 dark:text-gray-400 self-center mr-0.5">Group:</span>
+        {([
+          ['debtor', '👥 Debtors'],
+          ['creditor', '🏭 Creditors'],
+          ['other', '❓ Other'],
+          ['all', 'All'],
+        ] as [GroupFilter, string][]).map(([id, label]) => {
+          const count = groupCounts[id]
+          if (id !== 'all' && id !== 'debtor' && count === 0) return null
+          return (
+            <button key={id} onClick={() => setGroupAndReset(id)}
+              className={`px-2.5 py-1 rounded-full border transition ${
+                groupFilter === id
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+              }`}>
+              {label} <span className={groupFilter === id ? 'text-indigo-100' : 'text-gray-400 dark:text-gray-500'}>({count})</span>
+            </button>
+          )
+        })}
+      </div>
 
       {/* Party search + Tally-match action */}
       <div className="flex items-center gap-1.5 mb-2 flex-wrap">
@@ -234,7 +296,7 @@ export default function OutstandingPage() {
       {/* Tabs */}
       <div className="flex gap-1.5 mb-3 text-[11px] flex-wrap">
         <TabBtn active={tab === 'party'} onClick={() => setTabAndReset('party')}>👥 Party-wise ({parties.length})</TabBtn>
-        <TabBtn active={tab === 'invoice'} onClick={() => setTabAndReset('invoice')}>📄 Invoice-wise ({totals?.invoices ?? 0})</TabBtn>
+        <TabBtn active={tab === 'invoice'} onClick={() => setTabAndReset('invoice')}>📄 Invoice-wise ({visibleTotals?.invoices ?? 0})</TabBtn>
         <TabBtn active={tab === 'onacc'} onClick={() => setTabAndReset('onacc')}>💰 On-account ({receipts.length})</TabBtn>
       </div>
 
