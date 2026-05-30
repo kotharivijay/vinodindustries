@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma, viPrisma } from '@/lib/prisma'
+import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
@@ -15,6 +16,71 @@ function classifyParty(parent: string | null | undefined): 'debtor' | 'creditor'
   if (p.includes('sundry debtor') || p === 'debtors') return 'debtor'
   if (p.includes('sundry creditor') || p === 'creditors') return 'creditor'
   return 'other'
+}
+
+// Live-Tally fallback for party classification. Reused pattern from
+// /api/accounts/outstanding/tally-match — pull every ledger under
+// "Sundry Debtors" + "Sundry Creditors" via Group Summary and build a
+// name→type map. Used only when the cached TallyLedger table can't
+// resolve a party (which is currently always — the table is empty).
+const KSI_COMPANY = 'Kothari Synthetic Industries -( from 2023)'
+const escapeXml = (s: string) => s
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+function ymdToday(): string {
+  const d = new Date()
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+}
+function buildGroupSummaryXML(groupName: string, toDate: string): string {
+  return `<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST><TYPE>Data</TYPE><ID>Group Summary</ID></HEADER>
+<BODY><DESC><STATICVARIABLES>
+<SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+<SVCURRENTCOMPANY>${escapeXml(KSI_COMPANY)}</SVCURRENTCOMPANY>
+<SVFROMDATE>20250401</SVFROMDATE>
+<SVTODATE>${toDate}</SVTODATE>
+<GROUPNAME>${escapeXml(groupName)}</GROUPNAME>
+<EXPLODEFLAG>Yes</EXPLODEFLAG>
+</STATICVARIABLES></DESC></BODY></ENVELOPE>`
+}
+function parseLedgerNames(xml: string): string[] {
+  const names: string[] = []
+  const blocks = xml.split(/<DSPACCNAME>/).slice(1)
+  for (const blk of blocks) {
+    const m = blk.match(/<DSPDISPNAME>([^<]+)<\/DSPDISPNAME>/)
+    if (m) names.push(m[1].trim())
+  }
+  return names
+}
+async function classifyFromTallyLive(): Promise<Map<string, 'debtor' | 'creditor'>> {
+  const tunnelUrl = process.env.TALLY_TUNNEL_URL
+  if (!tunnelUrl) return new Map()
+  const headers: Record<string, string> = { 'Content-Type': 'text/xml' }
+  if (process.env.CF_ACCESS_CLIENT_ID) headers['CF-Access-Client-Id'] = process.env.CF_ACCESS_CLIENT_ID
+  if (process.env.CF_ACCESS_CLIENT_SECRET) headers['CF-Access-Client-Secret'] = process.env.CF_ACCESS_CLIENT_SECRET
+  const toDate = ymdToday()
+  const out = new Map<string, 'debtor' | 'creditor'>()
+  // Hit each group in parallel — independent queries.
+  await Promise.all([
+    (async () => {
+      try {
+        const res = await fetch(tunnelUrl, { method: 'POST', headers, body: buildGroupSummaryXML('Sundry Debtors', toDate) })
+        if (!res.ok) return
+        for (const n of parseLedgerNames(await res.text())) out.set(n.toLowerCase(), 'debtor')
+      } catch {}
+    })(),
+    (async () => {
+      try {
+        const res = await fetch(tunnelUrl, { method: 'POST', headers, body: buildGroupSummaryXML('Sundry Creditors', toDate) })
+        if (!res.ok) return
+        for (const n of parseLedgerNames(await res.text())) {
+          // If the same name appeared in both groups (rare misconfig),
+          // Debtors wins — that's the receivable side our UI cares about.
+          if (!out.has(n.toLowerCase())) out.set(n.toLowerCase(), 'creditor')
+        }
+      } catch {}
+    })(),
+  ])
+  return out
 }
 
 // GET /api/accounts/outstanding
@@ -156,26 +222,36 @@ export async function GET(_req: NextRequest) {
     }
   }
 
-  // Classify each party as debtor / creditor / other by looking up its
-  // parent group in TallyLedger (KSI firm). One bulk query; case-insensitive
-  // join on the lowered name. Anything we can't find (e.g. a manual
-  // opening-balance row for a ledger that hasn't been ledger-synced)
-  // falls into 'other' so the UI's Debtors filter doesn't drop it
-  // silently — the user can still see it under 'Other'.
-  const partyTypeByName = new Map<string, 'debtor' | 'creditor' | 'other'>()
+  // Classify each party as debtor / creditor / other.
+  //
+  // Step 1 — try the cached TallyLedger snapshot (free, fast). Looks up
+  // parent group; classifyParty handles sub-group variations like
+  // "Sundry Debtors - Pali".
+  // Step 2 — if anything is unresolved AND a tunnel is configured, ask
+  // Tally LIVE via Group Summary (Sundry Debtors / Sundry Creditors with
+  // EXPLODEFLAG=Yes). This is the same approach the "Match with Tally"
+  // button uses and works even when TallyLedger is empty.
+  const partyTypeByLower = new Map<string, 'debtor' | 'creditor' | 'other'>()
   try {
-    const viDb = viPrisma as any
-    const ledgerRows = await viDb.tallyLedger.findMany({
+    const db2 = prisma as any
+    const ledgerRows = await db2.tallyLedger.findMany({
       where: { firmCode: 'KSI', name: { in: parties.map(p => p.name) } },
       select: { name: true, parent: true },
     })
-    for (const l of ledgerRows) partyTypeByName.set(l.name, classifyParty(l.parent))
-  } catch {
-    // VI DB unreachable — leave the map empty; everything will fall
-    // through to 'other' but the report still renders.
+    for (const l of ledgerRows) partyTypeByLower.set(l.name.toLowerCase(), classifyParty(l.parent))
+  } catch { /* fall through */ }
+
+  const needLive = parties.some(p => !partyTypeByLower.has(p.name.toLowerCase()))
+  if (needLive) {
+    const liveMap = await classifyFromTallyLive()
+    for (const [k, v] of liveMap) {
+      // Don't downgrade a cached debtor/creditor classification.
+      if (!partyTypeByLower.has(k)) partyTypeByLower.set(k, v)
+    }
   }
+
   for (const p of parties as any[]) {
-    p.partyType = partyTypeByName.get(p.name) ?? 'other'
+    p.partyType = partyTypeByLower.get(p.name.toLowerCase()) ?? 'other'
   }
 
   const receipts = onAccountReceipts.map((r: any) => ({
@@ -188,7 +264,7 @@ export async function GET(_req: NextRequest) {
     daysSince: dueDays(r.date),
     // Mirror the party's classification down so the on-account tab
     // can filter independently.
-    partyType: partyTypeByName.get(r.partyName) ?? 'other',
+    partyType: partyTypeByLower.get(r.partyName.toLowerCase()) ?? 'other',
   })).sort((a: any, b: any) => b.unallocated - a.unallocated)
 
   const totalOutstanding = parties.reduce((s, p) => s + p.totalPending, 0)
