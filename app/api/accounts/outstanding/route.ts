@@ -6,15 +6,26 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
 // Classify a TallyLedger.parent group into a coarse filter bucket the UI
-// uses (All / Debtors / Creditors / Other). Sub-groups of the standard
-// "Sundry Debtors" / "Sundry Creditors" parents collapse into the same
-// bucket so a custom group like "Sundry Debtors - Pali" still classifies
-// as a debtor.
+// uses (All / Debtors / Creditors / Other). Permissive matchers — any
+// parent containing "debtor" anywhere is treated as a debtor sub-group;
+// same for "creditor". This catches both Tally typos in your data
+// ("Sundery Debtors", "Sundury Debtors", "Sundary Creditore") and
+// custom sub-groups ("Sundry Debtors - Pali", "Sundry Debtors (Direct)").
+// Employee / agent / loan groups stay in 'other' on purpose since they
+// don't fit either bucket cleanly.
 function classifyParty(parent: string | null | undefined): 'debtor' | 'creditor' | 'other' {
   if (!parent) return 'other'
   const p = parent.toLowerCase()
-  if (p.includes('sundry debtor') || p === 'debtors') return 'debtor'
-  if (p.includes('sundry creditor') || p === 'creditors') return 'creditor'
+  // "creditor" must be checked first — substring "debtor" doesn't appear
+  // in "creditor", but checking creditor first avoids any future
+  // sub-group naming surprise. Both match prefixes ("creditore" still
+  // contains "creditor").
+  if (p.includes('creditor')) return 'creditor'
+  if (p.includes('debtor')) return 'debtor'
+  // Plain "debtors"/"creditors" group names that Tally sometimes uses
+  // as a top-level synonym.
+  if (p === 'debtors') return 'debtor'
+  if (p === 'creditors') return 'creditor'
   return 'other'
 }
 
