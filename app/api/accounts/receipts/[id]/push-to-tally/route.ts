@@ -102,7 +102,9 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   const bills: Bill[] = receipt.allocations.map((a: any) => ({
     vch: a.invoice.vchNumber,
     amt: Math.round(a.allocatedAmount),
-    isCN: a.invoice.vchType === 'Credit Note',
+    // Treat Purchase manual entries identically to CN for the sign
+    // convention — a customer's Purchase booking is a party credit.
+    isCN: a.invoice.vchType === 'Credit Note' || a.invoice.vchType === 'Purchase',
     tds: Math.round(a.tdsAmount || 0),
     disc: Math.round(a.discountAmount || 0),
   })).filter((b: Bill) => b.amt > 0)

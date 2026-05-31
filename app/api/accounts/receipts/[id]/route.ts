@@ -84,7 +84,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // ledger-view purposes but aren't allocatable bills — exclude them
   // here. Already-linked invoices still surface via the second query
   // below, so any accidentally-linked Journal stays editable.
-  const ALLOCATABLE_VCH_TYPES = ['Process Job', 'Sales', 'Credit Note', 'Debit Note']
+  const ALLOCATABLE_VCH_TYPES = ['Process Job', 'Sales', 'Credit Note', 'Debit Note', 'Purchase']
   const [partyInvoices, alwaysIncludeLinked] = await Promise.all([
     db.ksiSalesInvoice.findMany({
       where: {
@@ -117,7 +117,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // Credit Notes are opposite-nature to invoices: their totalAmount represents
   // a party credit, not a debit. CN allocations carry no TDS/discount.
   const enriched = invoices.map((inv: any) => {
-    const isCN = inv.vchType === 'Credit Note'
+    const isCN = inv.vchType === 'Credit Note' || inv.vchType === 'Purchase'
     const allocated = (inv.allocations || []).reduce((s: number, a: any) => s + (a.allocatedAmount || 0), 0)
     const tds = (inv.allocations || []).reduce((s: number, a: any) => s + (a.tdsAmount || 0), 0)
     const discount = (inv.allocations || []).reduce((s: number, a: any) => s + (a.discountAmount || 0), 0)

@@ -32,9 +32,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   })
   if (!inv) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
 
-  // Credit Notes carry no TDS / Discount — force them to 0 server-side
-  // even if the client mis-sends a value.
-  const isCN = inv.vchType === 'Credit Note'
+  // Credit Notes (and manual Purchase entries for customers) carry no
+  // TDS / Discount — force them to 0 server-side even if the client
+  // mis-sends a value.
+  const isCN = inv.vchType === 'Credit Note' || inv.vchType === 'Purchase'
   const tds = isCN ? 0 : (Number.isFinite(tdsAmount) && tdsAmount > 0 ? Number(tdsAmount) : 0)
   const disc = isCN ? 0 : (Number.isFinite(discountAmount) && discountAmount > 0 ? Number(discountAmount) : 0)
 

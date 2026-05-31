@@ -108,7 +108,10 @@ export async function GET(req: NextRequest) {
   for (const r of rows) receiptDateById[r.id] = r.date
   for (const a of allocs) {
     const acc = byReceipt[a.receiptId] ??= { linkedCount: 0, linkedCash: 0, linkedTds: 0, linkedDiscount: 0, linkedInvoices: [] }
-    const isCN = a.invoice.vchType === 'Credit Note'
+    // Purchase booked against a Sundry Debtor behaves like a CN —
+    // party credit, no TDS/discount, allocated cash reduces the
+    // receipt's settled total instead of adding to it.
+    const isCN = a.invoice.vchType === 'Credit Note' || a.invoice.vchType === 'Purchase'
     acc.linkedCount += 1
     acc.linkedCash += isCN ? -a.allocatedAmount : a.allocatedAmount
     acc.linkedTds += a.tdsAmount

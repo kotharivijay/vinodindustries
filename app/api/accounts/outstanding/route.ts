@@ -116,13 +116,16 @@ export async function GET(_req: NextRequest) {
 
   // ── Invoices: pending = totalAmount − Σ(cash + tds + disc)
   //
-  // Bill-style vouchers only. Sales / Process Job / Debit Note add to
-  // what the party owes (Dr-side); Credit Note offsets (treated as
-  // negative pending in party totals via the isCN branch below).
-  // Journal is excluded — TDS / discount adjustments live in the
+  // Bill-style vouchers only. Dr-side (party owes us): Sales,
+  // Process Job, Debit Note. Cr-side (party credit, offsets):
+  // Credit Note and Purchase. The Purchase branch is for the rare
+  // case where a customer sent an invoice that was booked as a
+  // Purchase voucher in Tally — operator adds it manually via the
+  // Opening Balance modal and we treat it identically to a CN here.
+  // Journal stays excluded — TDS / discount adjustments live in the
   // ledger view but aren't pending bills.
   const invoiceRows = await db.ksiSalesInvoice.findMany({
-    where: { vchType: { in: ['Process Job', 'Sales', 'Credit Note', 'Debit Note'] } },
+    where: { vchType: { in: ['Process Job', 'Sales', 'Credit Note', 'Debit Note', 'Purchase'] } },
     select: {
       id: true, vchNumber: true, vchType: true, date: true,
       partyName: true, totalAmount: true,
@@ -136,7 +139,7 @@ export async function GET(_req: NextRequest) {
   // party-totals time below.
   const pendingInvoices = invoiceRows
     .map((inv: any) => {
-      const isCN = inv.vchType === 'Credit Note'
+      const isCN = inv.vchType === 'Credit Note' || inv.vchType === 'Purchase'
       const consumed = (inv.allocations || []).reduce(
         (s: number, a: any) => s + (a.allocatedAmount || 0) + (a.tdsAmount || 0) + (a.discountAmount || 0),
         0,
@@ -165,13 +168,13 @@ export async function GET(_req: NextRequest) {
   const onAccountReceipts = receiptRows
     .map((r: any) => {
       const linkedCash = (r.allocations || []).reduce((s: number, a: any) => {
-        const isCN = a.invoice?.vchType === 'Credit Note'
+        const isCN = a.invoice?.vchType === 'Credit Note' || a.invoice?.vchType === 'Purchase'
         return s + (isCN ? -a.allocatedAmount : a.allocatedAmount)
       }, 0)
       const linkedTds = (r.allocations || []).reduce((s: number, a: any) => s + (a.tdsAmount || 0), 0)
       const linkedDiscount = (r.allocations || []).reduce((s: number, a: any) => s + (a.discountAmount || 0), 0)
       const linkedInvoices = (r.allocations || []).map((a: any) => {
-        const isCN = a.invoice?.vchType === 'Credit Note'
+        const isCN = a.invoice?.vchType === 'Credit Note' || a.invoice?.vchType === 'Purchase'
         return {
           vchNumber: a.invoice?.vchNumber || '',
           vchType: a.invoice?.vchType || '',

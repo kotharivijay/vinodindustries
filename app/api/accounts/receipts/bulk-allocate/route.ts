@@ -120,13 +120,15 @@ export async function POST(req: NextRequest) {
     new Date(0),
   )
   // Bill-style vouchers only — Sales / Process Job / Debit Note all
-  // add to what the party owes; Credit Note offsets. Journal is
-  // excluded (TDS / discount adjustments live in the ledger view but
-  // aren't allocatable bills).
+  // add to what the party owes; Credit Note + Purchase offset.
+  // (Purchase is the manual-entry case for a customer invoice that
+  // got booked as a Purchase voucher in Tally — treated as a CN.)
+  // Journal stays excluded (TDS / discount adjustments live in the
+  // ledger view but aren't allocatable bills).
   const partyInvoicesRaw = await db.ksiSalesInvoice.findMany({
     where: {
       partyName: { contains: partyKey, mode: 'insensitive' },
-      vchType: { in: ['Process Job', 'Sales', 'Credit Note', 'Debit Note'] },
+      vchType: { in: ['Process Job', 'Sales', 'Credit Note', 'Debit Note', 'Purchase'] },
     },
     include: {
       // Receipt date included so we can detect "first touch" — bulk-link
@@ -258,7 +260,7 @@ export async function POST(req: NextRequest) {
         voucherExtraLedgers,
         partyGstin: inv.partyGstin,
         pending: pendingPerInvoice[inv.id],
-        isCN: inv.vchType === 'Credit Note',
+        isCN: inv.vchType === 'Credit Note' || inv.vchType === 'Purchase',
         hasEarlierAllocation,
         // Persistent skip flag — bulk-link FIFO passes over these.
         skipAutoLink: !!inv.skipAutoLink,
@@ -395,7 +397,7 @@ export async function POST(req: NextRequest) {
         skippedInvoiceId: row.invoiceId,
       }, { status: 400 })
     }
-    const isCN = invRow?.vchType === 'Credit Note'
+    const isCN = invRow?.vchType === 'Credit Note' || invRow?.vchType === 'Purchase'
     let cashForInvoice = 0
     for (const split of row.allocations) {
       if (!split || !Number.isFinite(split.receiptId) || !rcptById[split.receiptId]) {
@@ -463,7 +465,7 @@ export async function POST(req: NextRequest) {
   }> = {}
   for (const row of rows) {
     const invRow = invoices.find((i: any) => i.id === row.invoiceId)
-    const isCN = invRow?.vchType === 'Credit Note'
+    const isCN = invRow?.vchType === 'Credit Note' || invRow?.vchType === 'Purchase'
     const tdsTotal = isCN ? 0 : (Number.isFinite(row.tdsAmount) && row.tdsAmount! > 0 ? Number(row.tdsAmount) : 0)
     const discTotal = isCN ? 0 : (Number.isFinite(row.discountAmount) && row.discountAmount! > 0 ? Number(row.discountAmount) : 0)
     const ratePct = Number.isFinite(row.tdsRatePct) ? Number(row.tdsRatePct) : null

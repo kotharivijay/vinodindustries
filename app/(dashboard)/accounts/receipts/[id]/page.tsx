@@ -562,7 +562,10 @@ function InvoiceCard({ inv, receiptId, receipt, receiptRemaining, categoryMap, p
   )
   const taxable = Math.max(0, grossTaxable - voucherDiscount + voucherExtraCharge)
 
-  const isCN = inv.vchType === 'Credit Note'
+  // Purchase from a Sundry Debtor is the manual "customer sent us
+  // an invoice" case — treat identically to a CN (party credit,
+  // no TDS, knock-off via allocation).
+  const isCN = inv.vchType === 'Credit Note' || inv.vchType === 'Purchase'
 
   const [open, setOpen] = useState(false)
   const [tdsRate, setTdsRate] = useState<string>(myAlloc?.tdsAmount && myAlloc.tdsAmount > 0 ? '' : String(DEFAULT_TDS_RATE))
@@ -1176,7 +1179,7 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
   const [drafts, setDrafts] = useState<Map<number, { tdsAmount: number; discountAmount: number; cnKnockoff: number; discountPct: string }>>(() => {
     const m = new Map<number, { tdsAmount: number; discountAmount: number; cnKnockoff: number; discountPct: string }>()
     for (const inv of invoices) {
-      if (inv.vchType === 'Credit Note') {
+      if (inv.vchType === 'Credit Note' || inv.vchType === 'Purchase') {
         m.set(inv.id, { tdsAmount: 0, discountAmount: 0, cnKnockoff: inv.pending, discountPct: '' })
         continue
       }
@@ -1212,7 +1215,8 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
   const ranked = useMemo(() => {
     let pool = receiptRemaining
     const cnInvoices = invoices
-      .filter(inv => inv.vchType === 'Credit Note')
+      // CN + Purchase are both party-credit and feed the pool first.
+      .filter(inv => inv.vchType === 'Credit Note' || inv.vchType === 'Purchase')
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id)
     const cnRows = cnInvoices.map(inv => {
       if (excluded.has(inv.id)) {

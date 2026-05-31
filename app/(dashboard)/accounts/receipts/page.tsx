@@ -989,7 +989,7 @@ export default function ReceiptsPage() {
                             {!showPartialBox && (
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="font-mono text-indigo-600 dark:text-indigo-300">
-                                  {inv.vchType === 'Credit Note' && <span className="text-violet-600 dark:text-violet-400 mr-1">CN</span>}
+                                  {(inv.vchType === 'Credit Note' || inv.vchType === 'Purchase') && <span className="text-violet-600 dark:text-violet-400 mr-1">{inv.vchType === 'Purchase' ? 'PUR' : 'CN'}</span>}
                                   {inv.vchNumber}
                                 </span>
                                 <span className="tabular-nums"
@@ -1250,7 +1250,7 @@ function BulkLinkSheet({
         // those invoices belong in the editable list anyway, since the
         // client's TDS-aware re-FIFO will reach them.
         setRows(d.invoices.map((inv: DryRunInvoice): RowState => {
-          const isCN = inv.vchType === 'Credit Note' || inv.isCN
+          const isCN = inv.vchType === 'Credit Note' || inv.vchType === 'Purchase' || inv.isCN
           // Match the single-invoice card's TDS base:
           //   net = items − voucher discounts + voucher extras.
           const taxableGross = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
@@ -1325,7 +1325,7 @@ function BulkLinkSheet({
     const row = rows[idx]
     const inv = data?.invoices.find(i => i.id === row.invoiceId)
     if (!inv) return
-    if (inv.isCN || inv.vchType === 'Credit Note') return  // no TDS on CN
+    if (inv.isCN || inv.vchType === 'Credit Note' || inv.vchType === 'Purchase') return  // no TDS on CN / Purchase
     if (inv.hasEarlierAllocation) return  // TDS locked — earlier receipt absorbed it
     const base = taxableNet(inv)
     if (base <= 0) return
@@ -1336,7 +1336,7 @@ function BulkLinkSheet({
     const row = rows[idx]
     const inv = data?.invoices.find(i => i.id === row.invoiceId)
     if (!inv) return
-    if (inv.isCN || inv.vchType === 'Credit Note') return  // no settlement discount on CN
+    if (inv.isCN || inv.vchType === 'Credit Note' || inv.vchType === 'Purchase') return  // no settlement discount on CN / Purchase
     const base = taxableNet(inv)
     if (base <= 0) return
     const pct = row.discountPct ?? 0

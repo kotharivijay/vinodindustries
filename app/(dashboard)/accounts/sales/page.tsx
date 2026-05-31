@@ -675,7 +675,12 @@ function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSave
   const [fy, setFy] = useState<string>('24-25')
   const [openingStr, setOpeningStr] = useState('')
   const [pasted, setPasted] = useState('')
-  const [vchType, setVchType] = useState<'Process Job' | 'Sales' | 'Credit Note' | 'Journal'>('Process Job')
+  // Purchase + Debit Note are here so the operator can manually record
+  // rare same-FY adjustments (e.g. a customer sent an invoice the
+  // bookkeeper booked as a Purchase voucher in Tally). Tally sync
+  // never pulls Purchase vouchers, so without a manual path these
+  // would never reach the webapp's Outstanding / receipt picker.
+  const [vchType, setVchType] = useState<'Process Job' | 'Sales' | 'Credit Note' | 'Debit Note' | 'Purchase' | 'Journal'>('Process Job')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -730,7 +735,7 @@ function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSave
               <span className="text-gray-500 dark:text-gray-400">FY</span>
               <select value={fy} onChange={e => setFy(e.target.value)}
                 className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm">
-                {['20-21','21-22','22-23','23-24','24-25'].map(f => <option key={f} value={f}>FY {f}</option>)}
+                {['20-21','21-22','22-23','23-24','24-25','25-26','26-27'].map(f => <option key={f} value={f}>FY {f}</option>)}
               </select>
             </label>
             <label className="block text-xs">
@@ -740,6 +745,8 @@ function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSave
                 <option>Process Job</option>
                 <option>Sales</option>
                 <option>Credit Note</option>
+                <option>Debit Note</option>
+                <option>Purchase</option>
                 <option>Journal</option>
               </select>
             </label>
