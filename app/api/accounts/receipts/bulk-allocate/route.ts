@@ -119,13 +119,14 @@ export async function POST(req: NextRequest) {
     (d: Date, r: any) => (r.date.getTime() > d.getTime() ? r.date : d),
     new Date(0),
   )
-  // Only bill-style vouchers are allocatable — Journal + Debit Note
-  // exist in KsiSalesInvoice for ledger reconciliation but shouldn't
-  // be candidates for receipt allocation.
+  // Bill-style vouchers only — Sales / Process Job / Debit Note all
+  // add to what the party owes; Credit Note offsets. Journal is
+  // excluded (TDS / discount adjustments live in the ledger view but
+  // aren't allocatable bills).
   const partyInvoicesRaw = await db.ksiSalesInvoice.findMany({
     where: {
       partyName: { contains: partyKey, mode: 'insensitive' },
-      vchType: { in: ['Process Job', 'Sales', 'Credit Note'] },
+      vchType: { in: ['Process Job', 'Sales', 'Credit Note', 'Debit Note'] },
     },
     include: {
       // Receipt date included so we can detect "first touch" — bulk-link
