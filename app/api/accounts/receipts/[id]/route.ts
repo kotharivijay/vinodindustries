@@ -77,9 +77,19 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // the candidate list. KSI parties top out a few hundred invoices,
   // so loading them all is fine; the in-memory filter on `pending > 0`
   // does the heavy lifting at render time.
+  // Only true bill-style vouchers are candidates for receipt
+  // allocation. Journal + Debit Note exist in KsiSalesInvoice (synced
+  // from Tally for ledger reconciliation purposes) but aren't
+  // allocatable as invoices, so we exclude them from the candidate
+  // picker. Already-linked invoices still surface via the second
+  // query below, so an accidentally-linked Journal is still editable.
+  const ALLOCATABLE_VCH_TYPES = ['Process Job', 'Sales', 'Credit Note']
   const [partyInvoices, alwaysIncludeLinked] = await Promise.all([
     db.ksiSalesInvoice.findMany({
-      where: { partyName: { contains: receipt.partyName.split('(')[0].trim(), mode: 'insensitive' } },
+      where: {
+        partyName: { contains: receipt.partyName.split('(')[0].trim(), mode: 'insensitive' },
+        vchType: { in: ALLOCATABLE_VCH_TYPES },
+      },
       include: includeShape,
       orderBy: { date: 'desc' },
     }),

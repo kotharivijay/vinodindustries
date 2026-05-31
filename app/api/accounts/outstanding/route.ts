@@ -115,7 +115,15 @@ export async function GET(_req: NextRequest) {
   }
 
   // ── Invoices: pending = totalAmount − Σ(cash + tds + disc)
+  //
+  // Only bill-style vouchers are included. Journal + Debit Note also
+  // live in KsiSalesInvoice (ingested from Tally for ledger
+  // reconciliation) but they're not invoices, so they shouldn't
+  // show up as "pending bills" or contribute to the party's
+  // outstanding total. Their effect on the ledger balance is
+  // visible on /accounts/ledger.
   const invoiceRows = await db.ksiSalesInvoice.findMany({
+    where: { vchType: { in: ['Process Job', 'Sales', 'Credit Note'] } },
     select: {
       id: true, vchNumber: true, vchType: true, date: true,
       partyName: true, totalAmount: true,
