@@ -456,8 +456,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Merge by (receiptId, invoiceId) — schema's @@unique constraint requires
-  // one row per pair. If the user's plan has multiple splits for the same
-  // pair (uncommon), sum them and apportion TDS / discount by cash share.
+  // one row per pair. TDS / settlement-discount land 100% on the
+  // chronologically earliest split (by receipt date asc, then receipt id
+  // asc); later splits get 0. Why: TDS is booked once at first touch,
+  // in full — apportioning by cash share would make every subsequent
+  // receipt re-deduct a fraction of TDS, producing the wrong ledger.
   const merged: Record<string, {
     receiptId: number; invoiceId: number;
     allocatedAmount: number; tdsAmount: number; discountAmount: number;
@@ -473,20 +476,29 @@ export async function POST(req: NextRequest) {
     // row in the batch shares the same string (used for sibling
     // listing on the detail page and WhatsApp share).
     const note = (batchNote && batchNote.trim()) ? batchNote.trim() : ((row.note ?? null) || null)
-    const totalCash = row.allocations.reduce((s, a) => s + a.allocatedAmount, 0) || 1
-    for (const split of row.allocations) {
-      const ratio = split.allocatedAmount / totalCash
+    const sortedSplits = [...row.allocations].sort((a, b) => {
+      const ra = rcptById[a.receiptId]
+      const rb = rcptById[b.receiptId]
+      const dt = ra.date.getTime() - rb.date.getTime()
+      if (dt !== 0) return dt
+      return a.receiptId - b.receiptId
+    })
+    for (let s = 0; s < sortedSplits.length; s++) {
+      const split = sortedSplits[s]
+      const isFirst = s === 0
       const key = `${split.receiptId}:${row.invoiceId}`
       if (!merged[key]) {
         merged[key] = {
           receiptId: split.receiptId, invoiceId: row.invoiceId,
           allocatedAmount: 0, tdsAmount: 0, discountAmount: 0,
-          tdsRatePct: ratePct, note,
+          tdsRatePct: isFirst ? ratePct : null, note,
         }
       }
       merged[key].allocatedAmount = round2(merged[key].allocatedAmount + split.allocatedAmount)
-      merged[key].tdsAmount       = round2(merged[key].tdsAmount + tdsTotal * ratio)
-      merged[key].discountAmount  = round2(merged[key].discountAmount + discTotal * ratio)
+      if (isFirst) {
+        merged[key].tdsAmount      = round2(merged[key].tdsAmount + tdsTotal)
+        merged[key].discountAmount = round2(merged[key].discountAmount + discTotal)
+      }
     }
   }
 
