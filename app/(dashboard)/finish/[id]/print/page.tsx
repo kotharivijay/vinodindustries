@@ -268,7 +268,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
               <tr className="border-b border-gray-300">
                 <th className="text-left py-1 font-semibold w-8">#</th>
                 <th className="text-left py-1 font-semibold">Chemical</th>
-                <th className="text-right py-1 font-semibold w-20">Qty</th>
+                <th className="text-right py-1 font-semibold w-24">Qty</th>
                 <th className="text-left py-1 font-semibold w-12 pl-2">Unit</th>
               </tr>
             </thead>
@@ -277,7 +277,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
                 <tr key={i} className="border-b border-gray-200">
                   <td className="py-1 text-gray-500">{i + 1}</td>
                   <td className="py-1">{c.name}</td>
-                  <td className="py-1 text-right font-medium">{c.quantity != null ? Number(c.quantity).toFixed(1) : '\u2014'}</td>
+                  <td className="py-1 text-right font-medium tabular-nums">{c.quantity != null ? Number(c.quantity).toFixed(3) : '\u2014'}</td>
                   <td className="py-1 pl-2 text-gray-600">{c.unit}</td>
                 </tr>
               ))}

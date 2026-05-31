@@ -71,7 +71,10 @@ function buildWhatsAppText(data: PrintData): string {
     lines.push('')
     lines.push('🧪 *Chemicals (per 100 Litres)*')
     data.chemicals.forEach((c, i) => {
-      const qty = c.quantity != null ? Number(c.quantity).toFixed(1) : '—'
+      // 3 decimals everywhere (e.g. "1.000 kg") to match the on-screen
+      // print and the Bluetooth receipt — the operator does not want
+      // any rounding away from the typed recipe value.
+      const qty = c.quantity != null ? Number(c.quantity).toFixed(3) : '—'
       lines.push(`${i + 1}. ${c.name} — ${qty} ${c.unit}`)
     })
   }
@@ -143,7 +146,7 @@ function buildReceipt(data: PrintData, width = 32): string {
     lines.push('CHEMICALS (per 100L)')
     lines.push(div())
     for (const c of data.chemicals) {
-      const qty = c.quantity != null ? Number(c.quantity).toFixed(1) : '---'
+      const qty = c.quantity != null ? Number(c.quantity).toFixed(3) : '---'
       lines.push(kv(`  ${c.name}`, `${qty} ${c.unit}`))
     }
     lines.push(div())
@@ -247,7 +250,7 @@ export default function PrintActions({ data }: { data: PrintData }) {
         await printer.printLine('CHEMICALS (per 100L)', true, 'normal')
         await printer.printDivider('-', W)
         for (const c of data.chemicals) {
-          const qty = c.quantity != null ? Number(c.quantity).toFixed(1) : '---'
+          const qty = c.quantity != null ? Number(c.quantity).toFixed(3) : '---'
           const valStr = `${qty} ${c.unit}`
           const pad = Math.max(1, W - 2 - c.name.length - valStr.length)
           await printer.printLine(`  ${c.name}${' '.repeat(pad)}${valStr}`, false, 'normal')
