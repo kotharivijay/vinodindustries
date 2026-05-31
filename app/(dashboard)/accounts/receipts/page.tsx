@@ -1261,9 +1261,11 @@ function BulkLinkSheet({
           const tdsLocked = !!inv.hasEarlierAllocation
           return {
             invoiceId: inv.id,
-            // Default CN rows to UNticked so the user opts in
-            // explicitly — most bulk-link ops don't include CNs.
-            selected: !isCN,
+            // Default every row to selected — including Credit Notes —
+            // so the "select all" state is the starting position and
+            // the operator unchecks only the rows they want to skip.
+            // (Previously CN rows started unticked.)
+            selected: true,
             allowPartial: false,
             // CN rows never carry TDS or settlement discount — Tally
             // adjusts the party ledger directly via bill-wise knock-off.
