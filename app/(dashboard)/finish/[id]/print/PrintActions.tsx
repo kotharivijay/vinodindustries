@@ -123,8 +123,10 @@ function buildReceipt(data: PrintData, width = 32): string {
   for (const fg of data.foldGroups) {
     lines.push(`Fold: ${fg.foldNo}`)
     for (const slip of fg.slips) {
-      const shade = slip.shadeName || ''
-      lines.push(`  Slip ${slip.slipNo} ${shade}`)
+      // Same shade format as the on-screen print + WhatsApp text:
+      // "<name> — <description>" with either side omitted gracefully.
+      const shade = [slip.shadeName, slip.shadeDesc].filter(Boolean).join(' - ')
+      lines.push(`  Slip ${slip.slipNo}${shade ? ` ${shade}` : ''}`)
       for (const lot of slip.lots) {
         lines.push(kv(`    ${lot.lotNo}`, `${lot.than}T`))
       }
@@ -222,8 +224,11 @@ export default function PrintActions({ data }: { data: PrintData }) {
       for (const fg of data.foldGroups) {
         await printer.printLine(`Fold: ${fg.foldNo}`, true, 'normal')
         for (const slip of fg.slips) {
-          const shade = slip.shadeName || ''
-          await printer.printText(`  Slip ${slip.slipNo} ${shade}`)
+          // Include shade description so generic recipes like
+          // "Hitset — Navy 2" / "APC — Coka 4" print the colour name,
+          // matching what shows on the screen and in the WhatsApp text.
+          const shade = [slip.shadeName, slip.shadeDesc].filter(Boolean).join(' - ')
+          await printer.printText(`  Slip ${slip.slipNo}${shade ? ` ${shade}` : ''}`)
           for (const lot of slip.lots) {
             const lotPad = Math.max(1, W - 6 - lot.lotNo.length - String(lot.than).length - 1)
             await printer.printLine(`    ${lot.lotNo}${' '.repeat(lotPad)}${lot.than}T`, false, 'normal')
