@@ -168,7 +168,7 @@ export default function LedgerPage() {
 
   async function deleteJournal(v: Voucher) {
     if (v.source !== 'sales' || v.vchType !== 'Journal') return
-    const ok = confirm(`Delete Journal ${v.vchNumber} (₹${fmtMoney(v.amount)})?\n\nNote: if it was synced from Tally, the next sales-sync will recreate it. Delete in Tally too for it to stay gone.`)
+    const ok = confirm(`Delete Journal ${v.vchNumber} (₹${fmtMoney(v.amount)})?\n\nThis will delete from Tally first, then locally. If Tally fails, nothing is deleted.`)
     if (!ok) return
     const res = await fetch(`/api/accounts/sales/${v.id}`, { method: 'DELETE' })
     const d = await res.json().catch(() => ({}))
@@ -208,7 +208,7 @@ export default function LedgerPage() {
   async function bulkDeleteJournals() {
     const ids = Array.from(selectedIds)
     if (!ids.length) return
-    const ok = confirm(`Delete ${ids.length} selected Journal voucher${ids.length === 1 ? '' : 's'}?\n\nNote: any rows that were synced from Tally will reappear on the next sales-sync. Delete in Tally too for them to stay gone.`)
+    const ok = confirm(`Delete ${ids.length} selected Journal voucher${ids.length === 1 ? '' : 's'}?\n\nEach voucher is deleted from Tally first, then locally. Any that fail in Tally stay both places.`)
     if (!ok) return
     setBulkDeleting(true)
     try {
@@ -220,8 +220,10 @@ export default function LedgerPage() {
       const d = await res.json().catch(() => ({}))
       if (!res.ok) { alert(d?.error || 'Bulk delete failed'); return }
       const skippedLine = d?.skipped?.length ? `\n\nSkipped ${d.skipped.length} (non-Journal or missing).` : ''
-      const noteLine = d?.note ? `\n\n${d.note}` : ''
-      alert(`Deleted ${d.deletedCount} of ${d.requested}.${skippedLine}${noteLine}`)
+      const failedLine = d?.failed?.length
+        ? `\n\nTally delete failed for ${d.failed.length}:\n${d.failed.slice(0, 5).map((f: any) => `  #${f.vchNumber}: ${f.reason}`).join('\n')}${d.failed.length > 5 ? `\n  ...and ${d.failed.length - 5} more` : ''}`
+        : ''
+      alert(`Deleted ${d.deletedCount} of ${d.requested}.${skippedLine}${failedLine}`)
       setSelectedIds(new Set())
       mutate()
     } finally {
