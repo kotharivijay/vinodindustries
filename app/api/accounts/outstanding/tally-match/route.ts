@@ -51,6 +51,15 @@ function buildXML(groupName: string, toDate: string): string {
 </ENVELOPE>`
 }
 
+// XML entity decode — Tally returns "Vir Sain Jain &amp; Sons (Delhi)"
+// for names containing &, but DB partyName has the literal "&". Without
+// decoding here the byParty map key wouldn't match the lookup from the
+// outstanding page and parties with & in their name silently lost their
+// green ring.
+const decodeXml = (s: string) => s
+  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+
 // Each ledger row in the response is a <DSPACCNAME> followed by a
 // <DSPACCINFO>. Split on <DSPACCNAME> and parse out the display name,
 // Dr closing and Cr closing.
@@ -60,7 +69,7 @@ function parseGroupSummary(xml: string): Record<string, number> {
   for (const blk of blocks) {
     const nameMatch = blk.match(/<DSPDISPNAME>([^<]+)<\/DSPDISPNAME>/)
     if (!nameMatch) continue
-    const name = nameMatch[1].trim()
+    const name = decodeXml(nameMatch[1]).trim()
     const drMatch = blk.match(/<DSPCLDRAMTA>([^<]*)<\/DSPCLDRAMTA>/)
     const crMatch = blk.match(/<DSPCLCRAMTA>([^<]*)<\/DSPCLCRAMTA>/)
     const dr = drMatch ? parseFloat((drMatch[1] || '0').replace(/,/g, '')) || 0 : 0
