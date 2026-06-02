@@ -20,8 +20,10 @@ export async function GET() {
       select: { partyName: true },
       orderBy: { partyName: 'asc' },
     }),
+    // partyName is a non-nullable String in the schema; the old { not: null }
+    // clause throws under Prisma 5.x strict validation. Distinct + the empty
+    // guard on the consumer side is sufficient.
     db.ksiHdfcReceipt.findMany({
-      where: { partyName: { not: null } },
       distinct: ['partyName'],
       select: { partyName: true },
       orderBy: { partyName: 'asc' },
