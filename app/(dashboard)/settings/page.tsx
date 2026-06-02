@@ -349,6 +349,7 @@ function ServiceTab() {
       )}
       <OrphanDyeingCard />
       <NegativeLotsCard />
+      <PartyNameMergeCard />
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Party Master Cleanup</h2>
         <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">
@@ -773,6 +774,134 @@ function NegativeLotsCard() {
               </table>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Party Name Merge ─────────────────────────────────────────────────────
+// Surfaces partyName variants that collapse to the same canonical form
+// (case + whitespace-around-punctuation differences). Operator picks the
+// canonical for each group; merge rewrites every row in KsiSalesInvoice +
+// KsiHdfcReceipt to that name.
+interface NameVariant { name: string; invoiceCount: number; receiptCount: number }
+interface NameGroup { canonical: string; variants: NameVariant[] }
+
+function PartyNameMergeCard() {
+  const [groups, setGroups] = useState<NameGroup[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  // canonical-picker state per canonical key: the chosen variant.name.
+  const [picks, setPicks] = useState<Record<string, string>>({})
+  const [mergingKey, setMergingKey] = useState<string | null>(null)
+  const [done, setDone] = useState<Record<string, { invs: number; recs: number }>>({})
+
+  async function load() {
+    setLoading(true); setError(''); setDone({})
+    try {
+      const r = await fetch('/api/maintenance/party-name-merge', { cache: 'no-store' })
+      const d = await r.json()
+      if (!r.ok) { setError(d.error || 'Load failed'); return }
+      setGroups(d.groups)
+      // Default canonical for each group = the variant with the most rows.
+      const initial: Record<string, string> = {}
+      for (const g of d.groups as NameGroup[]) {
+        initial[g.canonical] = g.variants[0]?.name || ''
+      }
+      setPicks(initial)
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setLoading(false) }
+  }
+
+  async function merge(group: NameGroup) {
+    const canonical = picks[group.canonical]
+    if (!canonical) return
+    const variants = group.variants.map(v => v.name).filter(n => n !== canonical)
+    if (variants.length === 0) return
+    const total = group.variants
+      .filter(v => v.name !== canonical)
+      .reduce((s, v) => s + v.invoiceCount + v.receiptCount, 0)
+    if (!confirm(`Merge ${variants.length} variant${variants.length === 1 ? '' : 's'} (${total} row${total === 1 ? '' : 's'}) into "${canonical}"?`)) return
+    setMergingKey(group.canonical); setError('')
+    try {
+      const r = await fetch('/api/maintenance/party-name-merge', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ canonical, variants }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setError(d.error || 'Merge failed'); return }
+      setDone(prev => ({ ...prev, [group.canonical]: { invs: d.updatedInvoices, recs: d.updatedReceipts } }))
+      // Refresh so the merged group drops out (it's no longer a duplicate).
+      await load()
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setMergingKey(null) }
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
+      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Party Name Merge</h2>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+        Finds party name variants that differ only in case or spacing around punctuation
+        (e.g. <span className="font-mono">PRAKASH SHIRTING(PROCESS)</span> vs <span className="font-mono">Prakash ShIrting (Process)</span>).
+        Pick the canonical spelling and merge — all KsiSalesInvoice + KsiHdfcReceipt rows are
+        rewritten in one transaction.
+      </p>
+
+      {!groups && !loading && (
+        <button onClick={load}
+          className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold">
+          Scan Party Names
+        </button>
+      )}
+      {loading && <div className="text-sm text-gray-400">Scanning…</div>}
+
+      {groups && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+            <span>{groups.length} duplicate group{groups.length === 1 ? '' : 's'} found</span>
+            <button onClick={load} className="text-indigo-600 dark:text-indigo-400 underline">Refresh</button>
+          </div>
+
+          {groups.length === 0 ? (
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">All party names are unique. ✅</p>
+          ) : (
+            <div className="space-y-3">
+              {groups.map(g => (
+                <div key={g.canonical} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-900/40">
+                  <div className="text-[10px] text-gray-500 uppercase tracking-wide mb-2">
+                    canonical: <span className="font-mono">{g.canonical}</span>
+                  </div>
+                  <div className="space-y-1.5 mb-2">
+                    {g.variants.map(v => (
+                      <label key={v.name} className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input type="radio" name={`canon-${g.canonical}`}
+                          checked={picks[g.canonical] === v.name}
+                          onChange={() => setPicks(prev => ({ ...prev, [g.canonical]: v.name }))}
+                          className="h-3.5 w-3.5 accent-purple-600" />
+                        <span className="font-mono flex-1 break-all">{v.name}</span>
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
+                          inv: {v.invoiceCount} · rcpt: {v.receiptCount}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <button onClick={() => merge(g)} disabled={mergingKey === g.canonical || !picks[g.canonical]}
+                    className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-semibold disabled:opacity-50">
+                    {mergingKey === g.canonical ? 'Merging…' : `Merge → ${picks[g.canonical] || '(pick one)'}`}
+                  </button>
+                  {done[g.canonical] && (
+                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1.5">
+                      ✅ Merged: {done[g.canonical].invs} invoice{done[g.canonical].invs === 1 ? '' : 's'} + {done[g.canonical].recs} receipt{done[g.canonical].recs === 1 ? '' : 's'} updated.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
         </div>
       )}
     </div>
