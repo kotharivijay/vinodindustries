@@ -7,6 +7,38 @@ import { authOptions } from '@/lib/auth'
 const db = prisma as any
 
 /**
+ * GET /api/accounts/sales/opening-balance?party=...&fy=...&vchType=...
+ *
+ * List existing manual opening-balance rows for one (party, fy, vchType) so
+ * the OpeningBalanceModal can pre-fill itself for an in-place edit. Returns
+ * empty list when nothing has been entered yet.
+ */
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const u = new URL(req.url)
+  const partyName = (u.searchParams.get('party') || '').trim()
+  const fy = (u.searchParams.get('fy') || '').trim()
+  const vchType = (u.searchParams.get('vchType') || 'Process Job').trim()
+  if (!partyName || !fy) return NextResponse.json({ entries: [] })
+
+  const rows = await db.ksiSalesInvoice.findMany({
+    where: { partyName, fy, vchType, isOpeningBalance: true },
+    select: { id: true, date: true, vchNumber: true, totalAmount: true },
+    orderBy: [{ date: 'asc' }, { id: 'asc' }],
+  })
+  return NextResponse.json({
+    entries: rows.map((r: any) => ({
+      id: r.id,
+      date: r.date.toISOString().slice(0, 10),
+      vchNumber: r.vchNumber,
+      amount: r.totalAmount,
+    })),
+  })
+}
+
+/**
  * Bulk-create manual opening-balance invoices for a single party.
  * Body:
  *   {
@@ -14,7 +46,9 @@ const db = prisma as any
  *     fy:        string,           // e.g. "24-25"
  *     vchType?:  string,           // default "Process Job"
  *     openingAmount: number,       // sum users expects to match
- *     invoices: [{ date: 'YYYY-MM-DD', vchNumber: string, amount: number }]
+ *     invoices: [{ date: 'YYYY-MM-DD', vchNumber: string, amount: number }],
+ *     replace?: boolean,           // when true, wipes existing OB rows for
+ *                                  // (party, fy, vchType) before inserting
  *   }
  * Validates sum(invoices.amount) === openingAmount (±1 paisa).
  * Marks each row isOpeningBalance=true so ksi-sales-sync skips them later.
@@ -29,6 +63,7 @@ export async function POST(req: NextRequest) {
   const vchType = String(body.vchType || 'Process Job').trim()
   const openingAmount = Number(body.openingAmount)
   const invoices: Array<{ date: string; vchNumber: string; amount: number }> = Array.isArray(body.invoices) ? body.invoices : []
+  const replace = body.replace === true
 
   if (!partyName) return NextResponse.json({ error: 'partyName required' }, { status: 400 })
   if (!fy) return NextResponse.json({ error: 'fy required' }, { status: 400 })
@@ -61,9 +96,37 @@ export async function POST(req: NextRequest) {
     }, { status: 400 })
   }
 
+  // Replace mode: the caller's `invoices` is the FULL desired state for
+  // (partyName, fy, vchType). Delete existing OB rows for that triple in
+  // the same transaction as the insert so the modal can drive in-place
+  // edits without ever leaving the DB in a partial state.
+  //
+  // Add mode (default, legacy behavior): block duplicates on natural key
+  // so a re-submit doesn't silently double up the ledger.
+  if (replace) {
+    const result = await db.$transaction(async (tx: any) => {
+      const removed = await tx.ksiSalesInvoice.deleteMany({
+        where: { partyName, fy, vchType, isOpeningBalance: true },
+      })
+      const created = await Promise.all(cleaned.map(r => tx.ksiSalesInvoice.create({
+        data: {
+          fy,
+          date: r.date,
+          vchNumber: r.vchNumber,
+          vchType,
+          partyName,
+          totalAmount: r.amount,
+          isOpeningBalance: true,
+          narration: `Manual opening balance (FY ${fy})`,
+        },
+        select: { id: true },
+      })))
+      return { removed: removed.count, created: created.length, ids: created.map((c: any) => c.id) }
+    })
+    return NextResponse.json({ ok: true, ...result, mode: 'replace' }, { status: 200 })
+  }
+
   // Refuse duplicates on the same natural key (vchNumber + date + vchType).
-  // Pre-flight check so we don't half-insert and stop on a P2002.
-  const naturalKeys = cleaned.map(r => `${r.vchNumber}::${r.date.toISOString().slice(0, 10)}::${vchType}`)
   const existing = await db.ksiSalesInvoice.findMany({
     where: {
       vchType,
@@ -75,9 +138,7 @@ export async function POST(req: NextRequest) {
     const dup = existing.map((e: any) => `${e.vchNumber} (${e.date.toISOString().slice(0, 10)})`).join(', ')
     return NextResponse.json({ error: `Duplicate invoices already exist: ${dup}` }, { status: 409 })
   }
-  void naturalKeys
 
-  // All good — bulk insert in one transaction.
   const created = await db.$transaction(
     cleaned.map(r => db.ksiSalesInvoice.create({
       data: {
@@ -93,6 +154,5 @@ export async function POST(req: NextRequest) {
       select: { id: true, vchNumber: true, totalAmount: true },
     })),
   )
-
-  return NextResponse.json({ ok: true, created: created.length, ids: created.map((c: any) => c.id) }, { status: 201 })
+  return NextResponse.json({ ok: true, created: created.length, ids: created.map((c: any) => c.id), mode: 'add' }, { status: 201 })
 }

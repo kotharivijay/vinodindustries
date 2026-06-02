@@ -684,6 +684,30 @@ function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSave
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  // Pre-fill from any existing OB rows for the current (party, fy, vchType).
+  // Lets the operator edit-in-place instead of re-creating. `dirty` blocks
+  // auto-fill once the user has started typing so we don't clobber edits.
+  const obKey = partyName && fy && vchType
+    ? `/api/accounts/sales/opening-balance?party=${encodeURIComponent(partyName)}&fy=${encodeURIComponent(fy)}&vchType=${encodeURIComponent(vchType)}`
+    : null
+  const { data: existing } = useSWR<{ entries: Array<{ id: number; date: string; vchNumber: string; amount: number }> }>(obKey, fetcher)
+  const existingCount = existing?.entries?.length ?? 0
+  const [dirty, setDirty] = useState(false)
+  // Whenever the lookup key changes (party/fy/vchType swap) we treat the
+  // textarea as fresh again — server data wins until user edits.
+  useEffect(() => { setDirty(false) }, [partyName, fy, vchType])
+  useEffect(() => {
+    if (!existing || dirty) return
+    const entries = existing.entries
+    if (entries.length === 0) {
+      setPasted(''); setOpeningStr(''); return
+    }
+    const lines = entries.map(e => `${e.date}\t${e.vchNumber}\t${e.amount}`).join('\n')
+    setPasted(lines)
+    const sum = entries.reduce((s, e) => s + e.amount, 0)
+    setOpeningStr(sum.toFixed(2))
+  }, [existing, dirty])
+
   const parsed = useMemo(() => parseBlock(pasted), [pasted])
   const validRows = parsed.filter(r => r.date && r.vchNumber && Number.isFinite(r.amount as number) && !r.warning)
   const parsedSum = validRows.reduce((s, r) => s + (r.amount || 0), 0)
@@ -708,6 +732,10 @@ function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSave
           partyName, fy, vchType,
           openingAmount: opening,
           invoices: validRows.map(r => ({ date: r.date, vchNumber: r.vchNumber, amount: r.amount })),
+          // Replace whenever there were already-saved rows for this
+          // (party, fy, vchType). Lets the modal serve both fresh-add
+          // and in-place-edit flows from the same Save button.
+          replace: existingCount > 0,
         }),
       })
       const d = await res.json()
@@ -785,16 +813,22 @@ function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSave
           <label className="block text-xs">
             <span className="text-gray-500 dark:text-gray-400">Opening Amount *</span>
             <input type="text" inputMode="decimal" value={openingStr}
-              onChange={e => setOpeningStr(e.target.value)}
+              onChange={e => { setOpeningStr(e.target.value); setDirty(true) }}
               placeholder="e.g. 1,75,000.00"
               className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm tabular-nums" />
           </label>
+
+          {existingCount > 0 && (
+            <div className="text-xs px-3 py-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300">
+              <span className="font-semibold">{existingCount} existing row{existingCount === 1 ? '' : 's'}</span> loaded for {partyName} · FY {fy} · {vchType}. Edit below — Save will <span className="font-bold">replace all</span> existing entries for this party/FY/voucher-type.
+            </div>
+          )}
 
           <label className="block text-xs">
             <span className="text-gray-500 dark:text-gray-400">
               Paste invoice rows — <span className="text-gray-400">date · invoice · amount</span> (tab / 2-space / comma separated, header row optional)
             </span>
-            <textarea value={pasted} onChange={e => setPasted(e.target.value)} rows={8}
+            <textarea value={pasted} onChange={e => { setPasted(e.target.value); setDirty(true) }} rows={8}
               placeholder={'02-Jun-24\tKSI/24-25/176\t80992\n11-Aug-24\tKSI/24-25/262\t798\n...'}
               className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-xs font-mono" />
           </label>
