@@ -351,6 +351,7 @@ function ServiceTab() {
       <NegativeLotsCard />
       <PartyNameMergeCard />
       <ReconcileSalesDeletionsCard />
+      <BackfillJournalDirectionCard />
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Party Master Cleanup</h2>
         <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">
@@ -1192,6 +1193,149 @@ function ReconcileSalesDeletionsCard() {
       {done && (
         <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
           ✅ Deleted {done.deleted} orphan{done.deleted === 1 ? '' : 's'}.
+        </p>
+      )}
+      {error && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+    </div>
+  )
+}
+
+// ─── Backfill Journal Direction ─────────────────────────────────────────
+// For Journals synced before the journalDirection field existed (or rows
+// re-fetched after the schema change but with the old sync code in
+// flight), this re-reads the party leg sign from Tally and writes Dr/Cr
+// back to the DB. Without this the ledger page falls back to a blanket
+// Cr classification and Dr-side journals post on the wrong side.
+interface BackfillResult {
+  range: { from: string; to: string }
+  tallyJournals: number
+  dbRows: number
+  updated: number
+  drCount: number
+  crCount: number
+}
+interface BackfillLogEntry {
+  label: string
+  status: 'pending' | 'running' | 'ok' | 'error'
+  tallyJournals?: number
+  dbRows?: number
+  updated?: number
+  drCount?: number
+  crCount?: number
+  ms?: number
+  error?: string
+}
+
+function BackfillJournalDirectionCard() {
+  const [from, setFrom] = useState(defaultFrom())
+  const [to, setTo] = useState(defaultTo())
+  const [running, setRunning] = useState(false)
+  const [error, setError] = useState('')
+  const [log, setLog] = useState<BackfillLogEntry[]>([])
+  const [totals, setTotals] = useState<{ updated: number; dr: number; cr: number } | null>(null)
+
+  async function run() {
+    setRunning(true); setError(''); setTotals(null)
+    const windows = monthlyClientWindows(from, to)
+    setLog(windows.map(w => ({ label: w.label, status: 'pending' })))
+    let totalUpdated = 0, totalDr = 0, totalCr = 0
+    for (let i = 0; i < windows.length; i++) {
+      const w = windows[i]
+      setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'running' } : e))
+      const t0 = performance.now()
+      try {
+        const r = await fetch('/api/tally/backfill-journal-direction', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: w.from, to: w.to }),
+        })
+        const d: BackfillResult & { error?: string } = await r.json()
+        const ms = Math.round(performance.now() - t0)
+        if (!r.ok) {
+          setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'error', error: d.error || `HTTP ${r.status}`, ms } : e))
+          setError(`${w.label}: ${d.error || `HTTP ${r.status}`}`)
+          continue
+        }
+        totalUpdated += d.updated
+        totalDr += d.drCount
+        totalCr += d.crCount
+        setLog(prev => prev.map((e, idx) => idx === i ? {
+          ...e, status: 'ok',
+          tallyJournals: d.tallyJournals, dbRows: d.dbRows,
+          updated: d.updated, drCount: d.drCount, crCount: d.crCount, ms,
+        } : e))
+      } catch (err: any) {
+        const ms = Math.round(performance.now() - t0)
+        const msg = err?.message || 'Network error'
+        setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'error', error: msg, ms } : e))
+        setError(`${w.label}: ${msg}`)
+      }
+    }
+    setTotals({ updated: totalUpdated, dr: totalDr, cr: totalCr })
+    setRunning(false)
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
+      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Backfill Journal Direction</h2>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+        Re-reads the party leg sign from Tally for each Journal in the range and writes
+        <span className="font-mono"> journalDirection</span> (Dr / Cr) back to KsiSalesInvoice. Run this
+        after every Tally sync if you see a Journal posting on the wrong side in a party ledger.
+        Idempotent — rows with the correct direction are skipped.
+      </p>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <label className="block text-xs">
+          <span className="text-gray-500 dark:text-gray-400">From</span>
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+        </label>
+        <label className="block text-xs">
+          <span className="text-gray-500 dark:text-gray-400">To</span>
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+        </label>
+      </div>
+
+      <button onClick={run} disabled={running}
+        className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold disabled:opacity-50 mb-3">
+        {running ? 'Running…' : 'Backfill'}
+      </button>
+
+      {log.length > 0 && (
+        <div className="bg-gray-50 dark:bg-gray-900/40 rounded-lg border border-gray-200 dark:border-gray-700 p-2 mb-3">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1.5">Timeline</div>
+          <div className="max-h-48 overflow-y-auto font-mono text-[11px] space-y-0.5">
+            {log.map((e, i) => {
+              const icon = e.status === 'pending' ? '·' : e.status === 'running' ? '⏳' : e.status === 'ok' ? '✓' : '✗'
+              const color =
+                e.status === 'ok' ? 'text-emerald-600 dark:text-emerald-400'
+                : e.status === 'error' ? 'text-rose-600 dark:text-rose-400'
+                : e.status === 'running' ? 'text-amber-600 dark:text-amber-400'
+                : 'text-gray-400'
+              return (
+                <div key={i} className={`flex items-baseline gap-2 ${color}`}>
+                  <span className="w-4">{icon}</span>
+                  <span className="w-16">{e.label}</span>
+                  {e.status === 'ok' && (
+                    <span className="text-gray-600 dark:text-gray-300">
+                      tally {e.tallyJournals} / db {e.dbRows} / updated <span className={e.updated! > 0 ? 'font-bold text-emerald-600 dark:text-emerald-400' : ''}>{e.updated}</span>
+                      {(e.drCount! > 0 || e.crCount! > 0) && <span> (Dr {e.drCount}, Cr {e.crCount})</span>}
+                      {e.ms != null && <span className="text-gray-400"> · {e.ms}ms</span>}
+                    </span>
+                  )}
+                  {e.status === 'error' && <span>{e.error}</span>}
+                  {e.status === 'running' && <span>…</span>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {totals && (
+        <p className="text-xs text-emerald-600 dark:text-emerald-400">
+          ✅ Updated {totals.updated} journal{totals.updated === 1 ? '' : 's'} (Dr {totals.dr}, Cr {totals.cr}). Hard-refresh any open ledger page to see the corrected sides.
         </p>
       )}
       {error && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
