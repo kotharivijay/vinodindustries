@@ -350,6 +350,7 @@ function ServiceTab() {
       <OrphanDyeingCard />
       <NegativeLotsCard />
       <PartyNameMergeCard />
+      <ReconcileSalesDeletionsCard />
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Party Master Cleanup</h2>
         <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-4">
@@ -904,6 +905,178 @@ function PartyNameMergeCard() {
           {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Reconcile Sales Deletions ───────────────────────────────────────────
+// Closes the gap where ksi-sales-sync is upsert-only: vouchers deleted
+// in Tally stay forever in the webapp DB. Operator picks a date range,
+// dry-runs to see what's missing from Tally, then confirms a delete.
+// Safety: any (vchType, month) where Tally returned 0 vouchers is
+// treated as unverified — rows in that window are NOT considered for
+// deletion to protect against a transient empty response.
+interface PruneOrphan {
+  id: number
+  vchNumber: string
+  vchType: string
+  date: string
+  totalAmount: number
+  partyName: string
+}
+interface PrunePreview {
+  range: { from: string; to: string }
+  tallyVouchers: number
+  dbRowsInRange: number
+  orphanCount: number
+  orphans: PruneOrphan[]
+  verifiedWindows: Array<{ from: string; to: string; vchType: string; count: number }>
+  unverifiedWindows: Array<{ from: string; to: string; vchType: string; reason: string }>
+}
+
+function defaultFrom() {
+  const now = new Date()
+  const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
+  return `${fyStart}-04-01`
+}
+function defaultTo() { return new Date().toISOString().slice(0, 10) }
+
+function ReconcileSalesDeletionsCard() {
+  const [from, setFrom] = useState(defaultFrom())
+  const [to, setTo] = useState(defaultTo())
+  const [preview, setPreview] = useState<PrunePreview | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState<{ deleted: number } | null>(null)
+  const [showUnverified, setShowUnverified] = useState(false)
+
+  async function scan() {
+    setScanning(true); setError(''); setDone(null); setPreview(null)
+    try {
+      const r = await fetch('/api/tally/ksi-sales-prune', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to, dryRun: true }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setError(d.error || `Scan failed (${r.status})`); return }
+      setPreview(d)
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setScanning(false) }
+  }
+
+  async function apply() {
+    if (!preview || preview.orphanCount === 0) return
+    if (!confirm(`Delete ${preview.orphanCount} voucher${preview.orphanCount === 1 ? '' : 's'} from the webapp DB? They're already missing from Tally and won't come back on the next sync. Irreversible.`)) return
+    setDeleting(true); setError('')
+    try {
+      const r = await fetch('/api/tally/ksi-sales-prune', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to, dryRun: false }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setError(d.error || `Delete failed (${r.status})`); return }
+      setDone({ deleted: d.deletedCount })
+      setPreview(null)
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setDeleting(false) }
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
+      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Reconcile Sales Deletions</h2>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+        Closes the gap where the sales sync is upsert-only: vouchers deleted in Tally stay forever
+        in the webapp DB and the party ledger. Scan compares Tally vs DB for the date range;
+        Apply removes the orphans. Opening-balance rows are protected. Any month where
+        Tally returns 0 vouchers is treated as unverified and skipped.
+      </p>
+
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <label className="block text-xs">
+          <span className="text-gray-500 dark:text-gray-400">From</span>
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)}
+            className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+        </label>
+        <label className="block text-xs">
+          <span className="text-gray-500 dark:text-gray-400">To</span>
+          <input type="date" value={to} onChange={e => setTo(e.target.value)}
+            className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+        </label>
+      </div>
+
+      <div className="flex gap-2 mb-3">
+        <button onClick={scan} disabled={scanning}
+          className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold disabled:opacity-50">
+          {scanning ? 'Scanning…' : 'Scan'}
+        </button>
+        {preview && preview.orphanCount > 0 && (
+          <button onClick={apply} disabled={deleting}
+            className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold disabled:opacity-50">
+            {deleting ? 'Deleting…' : `Delete ${preview.orphanCount} orphan${preview.orphanCount === 1 ? '' : 's'}`}
+          </button>
+        )}
+      </div>
+
+      {preview && (
+        <div className="space-y-2">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <Stat label="Tally Vouchers" value={preview.tallyVouchers} />
+            <Stat label="DB Rows In Range" value={preview.dbRowsInRange} />
+            <Stat label="Orphans" value={preview.orphanCount} tone={preview.orphanCount ? 'rose' : 'green'} />
+          </div>
+
+          {preview.unverifiedWindows.length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-2.5">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                  {preview.unverifiedWindows.length} window/type combo{preview.unverifiedWindows.length === 1 ? '' : 's'} unverified — rows in these are NOT considered for deletion:
+                </p>
+                <button onClick={() => setShowUnverified(v => !v)}
+                  className="text-[11px] text-amber-700 dark:text-amber-300 underline">
+                  {showUnverified ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              {showUnverified && (
+                <ul className="text-[10px] font-mono text-amber-700 dark:text-amber-300 max-h-32 overflow-y-auto space-y-0.5">
+                  {preview.unverifiedWindows.map((u, i) => (
+                    <li key={i}>{u.from} → {u.to} · {u.vchType} · {u.reason}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {preview.orphans.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1.5">
+                Orphans (in DB but missing from Tally):
+              </p>
+              <div className="max-h-72 overflow-y-auto bg-gray-50 dark:bg-gray-900/40 rounded-lg p-2 space-y-0.5 text-[11px]">
+                {preview.orphans.map(o => (
+                  <div key={o.id} className="flex items-baseline gap-2">
+                    <span className="font-mono text-gray-400">[{o.id}]</span>
+                    <span className="font-mono text-gray-600 dark:text-gray-300">{o.date}</span>
+                    <span className="text-gray-500 dark:text-gray-400">{o.vchType}</span>
+                    <span className="font-mono text-purple-700 dark:text-purple-300">{o.vchNumber}</span>
+                    <span className="flex-1 truncate text-gray-700 dark:text-gray-200">{o.partyName}</span>
+                    <span className="font-mono tabular-nums text-rose-600 dark:text-rose-400">₹{o.totalAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {done && (
+        <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+          ✅ Deleted {done.deleted} orphan{done.deleted === 1 ? '' : 's'}.
+        </p>
+      )}
+      {error && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
     </div>
   )
 }
