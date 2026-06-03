@@ -1053,8 +1053,9 @@ function ReconcileSalesDeletionsCard() {
         }
         totalDeleted += d.deletedCount
         setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'deleted', deleted: d.deletedCount } : e))
-      } catch (e: any) {
-        setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'error', error: e?.message || 'Network error' } : e))
+      } catch (err: any) {
+        const msg = err?.message || 'Network error'
+        setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'error', error: msg } : e))
       }
     }
     setDone({ deleted: totalDeleted })
