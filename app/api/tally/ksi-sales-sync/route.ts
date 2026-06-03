@@ -99,6 +99,9 @@ interface ParsedVoucher {
   agentName: string | null
   lines: ParsedLine[]
   ledgers: ParsedLedger[]
+  // 'Dr' | 'Cr' for Journals — derived from the party leg sign in
+  // resolveJournalParty(). null for non-Journal vchTypes.
+  journalDirection?: 'Dr' | 'Cr' | null
 }
 
 function parseVouchers(xml: string): ParsedVoucher[] {
@@ -359,7 +362,18 @@ export async function POST(req: NextRequest) {
         continue
       }
       v.partyName = partyLegs[0].ledgerName
-      v.totalAmount = Math.abs(partyLegs[0].amount)
+      const partyAmt = partyLegs[0].amount
+      v.totalAmount = Math.abs(partyAmt)
+      // Capture the direction so the ledger page can post Journals on the
+      // correct side. Tally returns the party leg with a sign: <0 means
+      // party is on the debit leg (party owes us, balance goes up); >0
+      // means party is on the credit leg (party paid us / received credit,
+      // balance goes down). Without this, every Journal gets blanket-Cr
+      // treatment and TDS-reversal / expense-recharge / rate-diff journals
+      // miscompute the closing balance.
+      if (v.vchType === 'Journal') {
+        v.journalDirection = partyAmt < 0 ? 'Dr' : 'Cr'
+      }
     }
 
     // Skip rows that the operator entered as a manual opening balance — a
@@ -382,6 +396,7 @@ export async function POST(req: NextRequest) {
         totalAmount: v.totalAmount, taxableAmount: v.taxableAmount,
         cgstAmount: v.cgstAmount, sgstAmount: v.sgstAmount, igstAmount: v.igstAmount, roundOff: v.roundOff,
         narration: v.narration, reference: v.reference, buyerPO: v.buyerPO, transporter: v.transporter, agentName: v.agentName,
+        journalDirection: v.journalDirection ?? null,
         lastSynced: now,
       },
       update: {
@@ -390,6 +405,7 @@ export async function POST(req: NextRequest) {
         totalAmount: v.totalAmount, taxableAmount: v.taxableAmount,
         cgstAmount: v.cgstAmount, sgstAmount: v.sgstAmount, igstAmount: v.igstAmount, roundOff: v.roundOff,
         narration: v.narration, reference: v.reference, buyerPO: v.buyerPO, transporter: v.transporter, agentName: v.agentName,
+        journalDirection: v.journalDirection ?? null,
         lastSynced: now,
       },
     })

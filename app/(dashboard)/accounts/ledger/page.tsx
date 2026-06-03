@@ -23,6 +23,10 @@ interface Voucher {
   narration: string | null
   isOpeningBalance?: boolean
   allocationCount?: number
+  // 'Dr' | 'Cr' for Journals — sync derives it from the party leg sign in
+  // Tally. Used to override the CR_TYPES default classification, which is
+  // wrong for journals where the party is on the Dr leg.
+  journalDirection?: string | null
 }
 interface LedgerInfo {
   name: string; parent: string | null; address: string | null
@@ -142,8 +146,18 @@ export default function LedgerPage() {
     let balance = opening
     return filtered.map(v => {
       const t = v.vchType || ''
-      const isDebit = DR_TYPES.has(t)
-      const isCredit = CR_TYPES.has(t)
+      // Journals: honour the sync-stored direction (party can be on
+      // either leg). Falls back to CR_TYPES default for legacy rows
+      // without journalDirection set.
+      let isDebit: boolean
+      let isCredit: boolean
+      if (t === 'Journal' && v.journalDirection) {
+        isDebit = v.journalDirection === 'Dr'
+        isCredit = v.journalDirection === 'Cr'
+      } else {
+        isDebit = DR_TYPES.has(t)
+        isCredit = CR_TYPES.has(t)
+      }
       const debit = isDebit ? v.amount : 0
       const credit = isCredit ? v.amount : 0
       balance += debit - credit

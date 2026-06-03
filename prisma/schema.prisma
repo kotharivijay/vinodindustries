@@ -953,6 +953,13 @@ model KsiSalesInvoice {
   // not synced from Tally). The ksi-sales-sync upsert skips rows where
   // this is true so re-syncs don't wipe the operator's entries.
   isOpeningBalance   Boolean   @default(false)
+  // 'Dr' | 'Cr' for Journals — captures which side of the party leg
+  // this journal posts to. Tally journals can land on either side
+  // (TDS reversal, expense recharge, rate-diff). Without this, blanket
+  // CR_TYPES classification on the ledger page miscomputes the closing
+  // balance whenever the party is on the Dr leg. Only meaningful for
+  // vchType = 'Journal'; null for everything else.
+  journalDirection   String?
   lastSynced    DateTime  @default(now())
   createdAt     DateTime  @default(now())
 

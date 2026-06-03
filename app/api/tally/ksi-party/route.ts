@@ -16,8 +16,15 @@ const EXCLUDE_TYPES = new Set(['Delivery Note', 'Delivery note', 'delivery note'
 // in sync with app/(dashboard)/accounts/ledger/page.tsx.
 const DR_TYPES = new Set(['Sales', 'Process Job', 'Debit Note', 'Purchase Return'])
 const CR_TYPES = new Set(['Receipt', 'Payment', 'Credit Note', 'Cash', 'Journal'])
-function signedFor(vchType: string | null, amount: number) {
+// Journals can land on either side of the party (TDS reversal, expense
+// recharge, rate-diff). The sync stores the actual direction in
+// `journalDirection`. We honour that when present, falling back to the
+// CR_TYPES default for legacy rows that haven't been re-synced yet.
+function signedFor(vchType: string | null, amount: number, journalDirection?: string | null) {
   const t = vchType || ''
+  if (t === 'Journal' && journalDirection) {
+    return journalDirection === 'Dr' ? amount : -amount
+  }
   if (DR_TYPES.has(t)) return amount
   if (CR_TYPES.has(t)) return -amount
   return 0
@@ -67,7 +74,7 @@ export async function GET(req: NextRequest) {
         select: {
           id: true, date: true, vchNumber: true, vchType: true,
           partyName: true, totalAmount: true, narration: true,
-          isOpeningBalance: true,
+          isOpeningBalance: true, journalDirection: true,
           // Outstanding-side fields used downstream by the UI to detect
           // if a Journal is safely deletable (no linked receipt rows).
           allocations: { select: { id: true, allocatedAmount: true, receiptId: true } },
@@ -96,6 +103,7 @@ export async function GET(req: NextRequest) {
       narration: string | null
       isOpeningBalance?: boolean
       allocationCount?: number
+      journalDirection?: string | null
     }
     const rows: Row[] = []
     for (const s of salesVouchers) {
@@ -110,6 +118,7 @@ export async function GET(req: NextRequest) {
         narration: s.narration,
         isOpeningBalance: s.isOpeningBalance,
         allocationCount: (s.allocations || []).length,
+        journalDirection: s.journalDirection,
       })
     }
     for (const r of hdfcReceipts) {
@@ -135,7 +144,7 @@ export async function GET(req: NextRequest) {
       const [salesBefore, hdfcBefore] = await Promise.all([
         db.ksiSalesInvoice.findMany({
           where: { partyName: { equals: name, mode: 'insensitive' }, date: { lt: fromDate } },
-          select: { vchType: true, totalAmount: true },
+          select: { vchType: true, totalAmount: true, journalDirection: true },
         }),
         db.ksiHdfcReceipt.findMany({
           where: { partyName: { equals: name, mode: 'insensitive' }, hidden: false, date: { lt: fromDate } },
@@ -144,7 +153,7 @@ export async function GET(req: NextRequest) {
       ])
       for (const s of salesBefore) {
         if (EXCLUDE_TYPES.has(s.vchType)) continue
-        openingBalance += signedFor(s.vchType, Number(s.totalAmount || 0))
+        openingBalance += signedFor(s.vchType, Number(s.totalAmount || 0), s.journalDirection)
       }
       for (const r of hdfcBefore) {
         if (EXCLUDE_TYPES.has(r.vchType)) continue
