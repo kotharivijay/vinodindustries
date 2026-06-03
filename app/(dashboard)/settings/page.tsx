@@ -941,6 +941,38 @@ function defaultFrom() {
 }
 function defaultTo() { return new Date().toISOString().slice(0, 10) }
 
+// Break a date range into per-month ISO windows so each Tally call
+// stays under the Vercel function timeout (a 14-month range previously
+// took ~30s in one call — too close to the 60s limit).
+function monthlyClientWindows(fromISO: string, toISO: string): { from: string; to: string; label: string }[] {
+  const out: { from: string; to: string; label: string }[] = []
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const monthLabel = (d: Date) => d.toLocaleString('en-IN', { month: 'short', year: '2-digit' })
+  const start = new Date(fromISO + 'T00:00:00')
+  const end = new Date(toISO + 'T23:59:59')
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1)
+  while (cur <= end) {
+    const winStart = cur < start ? start : cur
+    const winEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0)
+    const realEnd = winEnd > end ? end : winEnd
+    out.push({ from: iso(winStart), to: iso(realEnd), label: monthLabel(cur) })
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+  }
+  return out
+}
+
+interface MonthLogEntry {
+  label: string
+  status: 'pending' | 'scanning' | 'ok' | 'error' | 'deleting' | 'deleted'
+  tallyVouchers?: number
+  dbRows?: number
+  orphans?: number
+  deleted?: number
+  ms?: number
+  error?: string
+}
+
 function ReconcileSalesDeletionsCard() {
   const [from, setFrom] = useState(defaultFrom())
   const [to, setTo] = useState(defaultTo())
@@ -950,38 +982,84 @@ function ReconcileSalesDeletionsCard() {
   const [error, setError] = useState('')
   const [done, setDone] = useState<{ deleted: number } | null>(null)
   const [showUnverified, setShowUnverified] = useState(false)
+  const [log, setLog] = useState<MonthLogEntry[]>([])
+
+  function emptyPreview(): PrunePreview {
+    return { range: { from, to }, tallyVouchers: 0, dbRowsInRange: 0, orphanCount: 0, orphans: [], verifiedWindows: [], unverifiedWindows: [] }
+  }
 
   async function scan() {
     setScanning(true); setError(''); setDone(null); setPreview(null)
-    try {
-      const r = await fetch('/api/tally/ksi-sales-prune', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to, dryRun: true }),
-      })
-      const d = await r.json()
-      if (!r.ok) { setError(d.error || `Scan failed (${r.status})`); return }
-      setPreview(d)
-    } catch (e: any) {
-      setError(e?.message || 'Network error')
-    } finally { setScanning(false) }
+    const windows = monthlyClientWindows(from, to)
+    setLog(windows.map(w => ({ label: w.label, status: 'pending' })))
+    const acc: PrunePreview = emptyPreview()
+    for (let i = 0; i < windows.length; i++) {
+      const w = windows[i]
+      setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'scanning' } : e))
+      const t0 = performance.now()
+      try {
+        const r = await fetch('/api/tally/ksi-sales-prune', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: w.from, to: w.to, dryRun: true }),
+        })
+        const d = await r.json()
+        const ms = Math.round(performance.now() - t0)
+        if (!r.ok) {
+          const msg = d.error || `HTTP ${r.status}`
+          setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'error', error: msg, ms } : e))
+          setError(`${w.label}: ${msg}`)
+          continue
+        }
+        acc.tallyVouchers += d.tallyVouchers
+        acc.dbRowsInRange += d.dbRowsInRange
+        acc.orphanCount += d.orphanCount
+        acc.orphans.push(...d.orphans)
+        acc.verifiedWindows.push(...d.verifiedWindows)
+        acc.unverifiedWindows.push(...d.unverifiedWindows)
+        setLog(prev => prev.map((e, idx) => idx === i ? {
+          ...e, status: 'ok', tallyVouchers: d.tallyVouchers, dbRows: d.dbRowsInRange, orphans: d.orphanCount, ms,
+        } : e))
+        // Stream partial preview so user sees orphans accumulate
+        setPreview({ ...acc, orphans: [...acc.orphans] })
+      } catch (e: any) {
+        const ms = Math.round(performance.now() - t0)
+        const msg = e?.message || 'Network error'
+        setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'error', error: msg, ms } : e))
+        setError(`${w.label}: ${msg}`)
+      }
+    }
+    setScanning(false)
   }
 
   async function apply() {
     if (!preview || preview.orphanCount === 0) return
     if (!confirm(`Delete ${preview.orphanCount} voucher${preview.orphanCount === 1 ? '' : 's'} from the webapp DB? They're already missing from Tally and won't come back on the next sync. Irreversible.`)) return
     setDeleting(true); setError('')
-    try {
-      const r = await fetch('/api/tally/ksi-sales-prune', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to, dryRun: false }),
-      })
-      const d = await r.json()
-      if (!r.ok) { setError(d.error || `Delete failed (${r.status})`); return }
-      setDone({ deleted: d.deletedCount })
-      setPreview(null)
-    } catch (e: any) {
-      setError(e?.message || 'Network error')
-    } finally { setDeleting(false) }
+    const windows = monthlyClientWindows(from, to)
+    let totalDeleted = 0
+    for (let i = 0; i < windows.length; i++) {
+      const w = windows[i]
+      setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'deleting' } : e))
+      try {
+        const r = await fetch('/api/tally/ksi-sales-prune', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ from: w.from, to: w.to, dryRun: false }),
+        })
+        const d = await r.json()
+        if (!r.ok) {
+          setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'error', error: d.error || `HTTP ${r.status}` } : e))
+          setError(`${w.label}: ${d.error || `HTTP ${r.status}`}`)
+          continue
+        }
+        totalDeleted += d.deletedCount
+        setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'deleted', deleted: d.deletedCount } : e))
+      } catch (e: any) {
+        setLog(prev => prev.map((e, idx) => idx === i ? { ...e, status: 'error', error: e?.message || 'Network error' } : e))
+      }
+    }
+    setDone({ deleted: totalDeleted })
+    setPreview(null)
+    setDeleting(false)
   }
 
   return (
@@ -1008,17 +1086,56 @@ function ReconcileSalesDeletionsCard() {
       </div>
 
       <div className="flex gap-2 mb-3">
-        <button onClick={scan} disabled={scanning}
+        <button onClick={scan} disabled={scanning || deleting}
           className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold disabled:opacity-50">
           {scanning ? 'Scanning…' : 'Scan'}
         </button>
-        {preview && preview.orphanCount > 0 && (
+        {preview && preview.orphanCount > 0 && !scanning && (
           <button onClick={apply} disabled={deleting}
             className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold disabled:opacity-50">
             {deleting ? 'Deleting…' : `Delete ${preview.orphanCount} orphan${preview.orphanCount === 1 ? '' : 's'}`}
           </button>
         )}
       </div>
+
+      {log.length > 0 && (
+        <div className="mb-3 bg-gray-50 dark:bg-gray-900/40 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1.5">Timeline</div>
+          <div className="max-h-48 overflow-y-auto font-mono text-[11px] space-y-0.5">
+            {log.map((e, i) => {
+              const icon =
+                e.status === 'pending' ? '·'
+                : e.status === 'scanning' ? '⏳'
+                : e.status === 'ok' ? '✓'
+                : e.status === 'deleting' ? '⏳'
+                : e.status === 'deleted' ? '🗑'
+                : '✗'
+              const color =
+                e.status === 'ok' || e.status === 'deleted' ? 'text-emerald-600 dark:text-emerald-400'
+                : e.status === 'error' ? 'text-rose-600 dark:text-rose-400'
+                : e.status === 'scanning' || e.status === 'deleting' ? 'text-amber-600 dark:text-amber-400'
+                : 'text-gray-400'
+              return (
+                <div key={i} className={`flex items-baseline gap-2 ${color}`}>
+                  <span className="w-4">{icon}</span>
+                  <span className="w-16">{e.label}</span>
+                  {e.status === 'ok' && (
+                    <span className="text-gray-600 dark:text-gray-300">
+                      tally {e.tallyVouchers} / db {e.dbRows} / orphans <span className={e.orphans! > 0 ? 'font-bold text-rose-600 dark:text-rose-400' : ''}>{e.orphans}</span>
+                      {e.ms != null && <span className="text-gray-400"> · {e.ms}ms</span>}
+                    </span>
+                  )}
+                  {e.status === 'deleted' && (
+                    <span className="text-gray-600 dark:text-gray-300">deleted {e.deleted}</span>
+                  )}
+                  {e.status === 'error' && <span>{e.error}</span>}
+                  {(e.status === 'scanning' || e.status === 'deleting') && <span>…</span>}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {preview && (
         <div className="space-y-2">
