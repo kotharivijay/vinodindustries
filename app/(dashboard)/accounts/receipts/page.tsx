@@ -1270,7 +1270,13 @@ function BulkLinkSheet({
             // the operator unchecks only the rows they want to skip.
             // (Previously CN rows started unticked.)
             selected: true,
-            allowPartial: false,
+            // Strict FIFO: oldest invoice gets cash first even if only
+            // partially. Previously this defaulted to false in Auto
+            // mode, which caused a ₹50K old invoice to be SKIPPED in
+            // favour of a smaller, newer invoice that could be fully
+            // closed — violating oldest-first. Operator can still
+            // un-tick a row to skip it from FIFO.
+            allowPartial: true,
             // CN rows never carry TDS or settlement discount — Tally
             // adjusts the party ledger directly via bill-wise knock-off.
             tdsRatePct: isCN || tdsLocked ? null : DEFAULT_TDS_RATE,
@@ -1322,7 +1328,13 @@ function BulkLinkSheet({
   // "Freight" voucher ledgers.
   function taxableNet(inv: DryRunInvoice | undefined): number {
     if (!inv) return 0
-    const gross = inv.taxableAmount && inv.taxableAmount > 0 ? inv.taxableAmount : 0
+    // Legacy FY24-25 imports have taxableAmount=null + no line items + no
+    // ledgers — only totalAmount is populated. For these, total IS the
+    // taxable (Process Job to small parties carries no GST). Falling back
+    // keeps TDS auto-fill alive instead of stamping ₹0.
+    const gross = inv.taxableAmount && inv.taxableAmount > 0
+      ? inv.taxableAmount
+      : (inv.totalAmount || 0)
     return Math.max(0, gross - (inv.voucherDiscount || 0) + (inv.voucherExtraCharge || 0))
   }
   function applyTdsRate(idx: number) {
@@ -1378,10 +1390,12 @@ function BulkLinkSheet({
   // Re-FIFO derived cash splits: walk receipts oldest-first, drain
   // each into the current invoice until its targetCash (= pending −
   // TDS − discount) is met, then move to the next invoice. Leftover
-  // from a receipt naturally rolls forward to the next invoice.
-  // In Auto mode, an invoice that the remaining receipts can't fully
-  // close is skipped entirely (no partial allocation) — its row gets
-  // a "Link partial" toggle the user can enable to override.
+  // from a receipt naturally rolls forward to the next invoice. Auto
+  // mode allows partial allocations on the row that runs out of cash
+  // (strict FIFO oldest-first); operator unchecks rows they want to
+  // skip. The `allowPartial=false` skip-if-cant-close path stays
+  // wired but defaults off, kept only so a manual workflow could
+  // re-enable it per-row later if needed.
   const splitsByInvoice = useMemo(() => {
     const map = new Map<number, DryRunSplit[]>()
     if (!data) return map
