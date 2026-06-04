@@ -15,6 +15,7 @@ const SORT_OPTIONS: [SortBy, string][] = [
   ['amount-asc', 'Amount ↑'],
 ]
 const SORT_KEY = 'ksi:accounts-receipts:sortBy'
+const SELECT_MODE_KEY = 'ksi:accounts-receipts:selectMode'
 // Tab-session-scoped store for the filter / selection state. Survives
 // back navigation and intra-tab reloads; lost when the tab closes,
 // which is the right scope for "show me what I was just looking at".
@@ -138,10 +139,10 @@ export default function ReceiptsPage() {
   const [activeFys, setActiveFys] = useState<Set<string>>(new Set(['26-27']))
   const [sortBy, setSortBy] = useState<SortBy>('date-desc')
   const [showHidden, setShowHidden] = useState(false)
-  // Default ON — operator wants the multi-select checkboxes always
-  // visible on first paint. Mid-session toggle still works; we don't
-  // restore the OFF state from sessionStorage anymore so a refresh
-  // always lands back in select mode.
+  // Persisted in localStorage so refreshing or reopening the tab keeps
+  // the operator's last choice (ON or OFF) instead of forcing ON. SSR
+  // gets the safe ON default; the value is rehydrated in an effect
+  // below.
   const [selectMode, setSelectMode] = useState(true)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [syncing, setSyncing] = useState(false)
@@ -169,11 +170,16 @@ export default function ReceiptsPage() {
     try {
       const saved = localStorage.getItem(SORT_KEY)
       if (saved && SORT_OPTIONS.some(([k]) => k === saved)) setSortBy(saved as SortBy)
+      const savedSelectMode = localStorage.getItem(SELECT_MODE_KEY)
+      if (savedSelectMode === '0' || savedSelectMode === '1') setSelectMode(savedSelectMode === '1')
     } catch {}
   }, [])
   useEffect(() => {
     try { localStorage.setItem(SORT_KEY, sortBy) } catch {}
   }, [sortBy])
+  useEffect(() => {
+    try { localStorage.setItem(SELECT_MODE_KEY, selectMode ? '1' : '0') } catch {}
+  }, [selectMode])
 
   // Hydrate filter / selection state from sessionStorage on mount so
   // back-navigation lands the user back exactly where they were
@@ -192,7 +198,8 @@ export default function ReceiptsPage() {
       if (typeof s.rangeFrom === 'string') setRangeFrom(s.rangeFrom)
       if (typeof s.rangeTo === 'string') setRangeTo(s.rangeTo)
       if (typeof s.showHidden === 'boolean') setShowHidden(s.showHidden)
-      // selectMode is intentionally NOT rehydrated — see useState above.
+      // selectMode is rehydrated from localStorage above (longer-lived
+      // than sessionStorage so it survives tab close + reopen).
       if (Array.isArray(s.selected)) setSelected(new Set(s.selected.filter((n: any) => Number.isFinite(n))))
     } catch {}
   }, [])
