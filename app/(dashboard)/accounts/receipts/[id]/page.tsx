@@ -1653,7 +1653,7 @@ function RefundModal({
               placeholder={maxAmount.toFixed(0)}
               className="mt-0.5 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm tabular-nums" />
             {amt > maxAmount + 0.5 && (
-              <p className="mt-0.5 text-[10px] text-rose-600 dark:text-rose-400">Exceeds source receipt's ₹{maxAmount.toFixed(0)} remaining.</p>
+              <p className="mt-0.5 text-[10px] text-rose-600 dark:text-rose-400">Exceeds source receipt&apos;s ₹{maxAmount.toFixed(0)} remaining.</p>
             )}
           </label>
 
