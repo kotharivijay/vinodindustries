@@ -27,6 +27,10 @@ interface Voucher {
   // Tally. Used to override the CR_TYPES default classification, which is
   // wrong for journals where the party is on the Dr leg.
   journalDirection?: string | null
+  // For hdfc rows: 'in' = receipt (Cr party), 'out' = payment / refund
+  // (Dr party). Overrides the vchType default so a Payment refund posts
+  // on the Dr side of the party ledger.
+  bankDirection?: string | null
 }
 interface LedgerInfo {
   name: string; parent: string | null; address: string | null
@@ -146,12 +150,16 @@ export default function LedgerPage() {
     let balance = opening
     return filtered.map(v => {
       const t = v.vchType || ''
-      // Journals: honour the sync-stored direction (party can be on
-      // either leg). Falls back to CR_TYPES default for legacy rows
-      // without journalDirection set.
+      // bankDirection wins for hdfc rows: 'out' = Dr to party (refund),
+      // 'in' = Cr to party (receipt). Then journal direction. Then the
+      // vchType fallback.
       let isDebit: boolean
       let isCredit: boolean
-      if (t === 'Journal' && v.journalDirection) {
+      if (v.bankDirection === 'out') {
+        isDebit = true; isCredit = false
+      } else if (v.bankDirection === 'in') {
+        isDebit = false; isCredit = true
+      } else if (t === 'Journal' && v.journalDirection) {
         isDebit = v.journalDirection === 'Dr'
         isCredit = v.journalDirection === 'Cr'
       } else {

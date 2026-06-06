@@ -149,8 +149,11 @@ export async function GET(_req: NextRequest) {
     })
     .filter((inv: any) => inv.pending > 0.5)
 
-  // ── Receipts: unallocated = amount − Σ(signed linkedCash) − carryOverPriorFy.
+  // ── Receipts: unallocated = amount − Σ(signed linkedCash) − carryOverPriorFy − refunded.
   // CN allocations subtract from linkedCash (they don't consume receipt cash).
+  // Refunds (Payment vouchers with refundForReceiptId = this row) reduce
+  // the leftover excess so a fully-refunded receipt drops out of the
+  // onAccount list.
   const receiptRows = await db.ksiHdfcReceipt.findMany({
     where: { direction: 'in', hidden: false },
     select: {
@@ -163,6 +166,7 @@ export async function GET(_req: NextRequest) {
           invoice: { select: { vchNumber: true, vchType: true, date: true } },
         },
       },
+      refunds: { select: { id: true, vchNumber: true, date: true, amount: true } },
     },
   })
   const onAccountReceipts = receiptRows
@@ -186,8 +190,18 @@ export async function GET(_req: NextRequest) {
         }
       })
       const carryOver = r.carryOverPriorFy || 0
-      const unallocated = round2(Math.max(0, r.amount - linkedCash - carryOver))
-      return { ...r, linkedCash: round2(linkedCash), linkedTds: round2(linkedTds), linkedDiscount: round2(linkedDiscount), linkedInvoices, carryOver, unallocated }
+      const refunded = (r.refunds || []).reduce((s: number, x: any) => s + (x.amount || 0), 0)
+      const unallocated = round2(Math.max(0, r.amount - linkedCash - carryOver - refunded))
+      return {
+        ...r,
+        linkedCash: round2(linkedCash),
+        linkedTds: round2(linkedTds),
+        linkedDiscount: round2(linkedDiscount),
+        linkedInvoices,
+        carryOver,
+        refunded: round2(refunded),
+        unallocated,
+      }
     })
     .filter((r: any) => r.unallocated > 0.5)
 

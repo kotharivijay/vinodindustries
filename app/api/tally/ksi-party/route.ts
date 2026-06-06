@@ -20,8 +20,21 @@ const CR_TYPES = new Set(['Receipt', 'Payment', 'Credit Note', 'Cash', 'Journal'
 // recharge, rate-diff). The sync stores the actual direction in
 // `journalDirection`. We honour that when present, falling back to the
 // CR_TYPES default for legacy rows that haven't been re-synced yet.
-function signedFor(vchType: string | null, amount: number, journalDirection?: string | null) {
+//
+// For KsiHdfcReceipt rows, `bankDirection` carries the row's `direction`
+// field: 'in' = cash IN from party (Cr to party), 'out' = cash OUT to
+// party (Dr to party — typical for a refund Payment voucher). When set,
+// it overrides the vchType-based default so a Payment row pointed at a
+// party (direction='out') posts on the Dr side instead of Cr.
+function signedFor(
+  vchType: string | null,
+  amount: number,
+  journalDirection?: string | null,
+  bankDirection?: string | null,
+) {
   const t = vchType || ''
+  if (bankDirection === 'out') return amount
+  if (bankDirection === 'in') return -amount
   if (t === 'Journal' && journalDirection) {
     return journalDirection === 'Dr' ? amount : -amount
   }
@@ -104,6 +117,9 @@ export async function GET(req: NextRequest) {
       isOpeningBalance?: boolean
       allocationCount?: number
       journalDirection?: string | null
+      // For hdfc rows: 'in' = receipt (Cr to party), 'out' = payment
+      // (Dr to party — refund of receipt's excess on-account).
+      bankDirection?: string | null
     }
     const rows: Row[] = []
     for (const s of salesVouchers) {
@@ -131,6 +147,7 @@ export async function GET(req: NextRequest) {
         vchType: r.vchType,
         amount: Number(r.amount || 0),
         narration: r.narration,
+        bankDirection: r.direction,
       })
     }
     rows.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id)
@@ -148,7 +165,7 @@ export async function GET(req: NextRequest) {
         }),
         db.ksiHdfcReceipt.findMany({
           where: { partyName: { equals: name, mode: 'insensitive' }, hidden: false, date: { lt: fromDate } },
-          select: { vchType: true, amount: true },
+          select: { vchType: true, amount: true, direction: true },
         }),
       ])
       for (const s of salesBefore) {
@@ -157,7 +174,7 @@ export async function GET(req: NextRequest) {
       }
       for (const r of hdfcBefore) {
         if (EXCLUDE_TYPES.has(r.vchType)) continue
-        openingBalance += signedFor(r.vchType, Number(r.amount || 0))
+        openingBalance += signedFor(r.vchType, Number(r.amount || 0), null, r.direction)
       }
     }
 

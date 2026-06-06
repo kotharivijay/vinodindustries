@@ -906,6 +906,14 @@ model KsiHdfcReceipt {
   // disables when this is non-null to prevent accidental duplicate
   // journal vouchers. Clearing it (via a force-repush path) re-enables.
   tallyPushedAt DateTime?
+  // Self-FK: when this row is a Payment (direction='out') created to
+  // refund a Receipt's excess on-account, this points at the source
+  // Receipt row. Lets the receipt detail page show "Refunded ₹X via
+  // Payment #N" inline, and lets the Outstanding endpoint subtract the
+  // refund from the source receipt's onAccount so the excess clears.
+  refundForReceiptId Int?
+  refundForReceipt   KsiHdfcReceipt?  @relation("ReceiptRefunds", fields: [refundForReceiptId], references: [id])
+  refunds            KsiHdfcReceipt[] @relation("ReceiptRefunds")
   lastSynced    DateTime  @default(now())
   createdAt     DateTime  @default(now())
 
@@ -913,6 +921,7 @@ model KsiHdfcReceipt {
   @@index([fy, direction])
   @@index([fy, hidden])
   @@index([fy, date])
+  @@index([refundForReceiptId])
 
   allocations KsiReceiptAllocation[]
 }
