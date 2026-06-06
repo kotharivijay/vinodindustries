@@ -30,12 +30,18 @@ interface Invoice {
   isCN?: boolean
   skipAutoLink?: boolean; skipAutoLinkReason?: string | null
 }
+interface RefundRow { id: number; vchNumber: string; date: string; amount: number; tallyPushedAt?: string | null }
 interface Receipt {
   id: number; date: string; vchNumber: string; partyName: string; amount: number; narration: string | null
   instrumentNo: string | null; bankRef: string | null
   carryOverPriorFy?: number
   tallyPushedAt?: string | null
   allocations: { invoiceId: number; allocatedAmount: number; tdsAmount?: number; discountAmount?: number }[]
+  // Payment vouchers (direction='out') that refunded this receipt's
+  // excess on-account back to the party. Sum of these reduces the
+  // displayed `unallocated` so a fully-refunded receipt shows ₹0
+  // remaining.
+  refunds?: RefundRow[]
 }
 
 export default function ReceiptDetailPage() {
@@ -57,6 +63,9 @@ export default function ReceiptDetailPage() {
   const [savingCarry, setSavingCarry] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [forceArmed, setForceArmed] = useState(false)
+  const [refundModalOpen, setRefundModalOpen] = useState(false)
+  const [refundBusy, setRefundBusy] = useState(false)
+  const [refundPushBusyId, setRefundPushBusyId] = useState<number | null>(null)
   const [pushResult, setPushResult] = useState<{ ok: boolean; results: { kind: string; ok: boolean; created: number; altered: number; errors: number; exceptions: number; lineError?: string; lastVchId?: string }[]; summary: { receiptAmt: number; signedCashUsed: number; onAccount: number; tdsTotal: number; discTotal: number; bills: number } } | null>(null)
   // Default invoice list filter on the "all" tab:
   //   pending > 0 AND date ≤ receipt.date
@@ -99,7 +108,8 @@ export default function ReceiptDetailPage() {
     const cash = a.allocatedAmount || 0
     return s + (isCN ? -cash : cash)
   }, 0)
-  const receiptRemaining = Math.max(0, r.amount - receiptUsed)
+  const refundedSoFar = (r.refunds || []).reduce((s, x) => s + (x.amount || 0), 0)
+  const receiptRemaining = Math.max(0, r.amount - receiptUsed - refundedSoFar)
 
   async function saveCarryOver() {
     const v = parseFloat(carryInput)
@@ -231,6 +241,74 @@ export default function ReceiptDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Refund Excess — visible when there's leftover cash after
+          allocations + carry-over, OR when prior refunds exist (so the
+          operator can see and push them). */}
+      {(receiptRemaining > 0.5 || (r.refunds && r.refunds.length > 0)) && (
+        <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-700/40 rounded-xl p-3 mb-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-rose-800 dark:text-rose-200">↩ Refund Excess</div>
+              <div className="text-[11px] text-rose-700 dark:text-rose-300 mt-0.5">
+                Send unallocated cash back to {r.partyName} as a Payment voucher. Clears the on-account from Outstanding.
+              </div>
+            </div>
+            {receiptRemaining > 0.5 && (
+              <button onClick={() => setRefundModalOpen(true)} disabled={refundBusy}
+                className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-semibold shrink-0">
+                + Refund ₹{fmtMoney(receiptRemaining)}
+              </button>
+            )}
+          </div>
+          {(r.refunds && r.refunds.length > 0) && (
+            <ul className="space-y-1.5">
+              {r.refunds.map(rf => (
+                <li key={rf.id} className="flex items-center justify-between gap-2 text-[11px] bg-white dark:bg-gray-800 border border-rose-100 dark:border-rose-700/30 rounded-lg px-2 py-1.5">
+                  <div className="min-w-0">
+                    <span className="font-mono text-rose-700 dark:text-rose-300">Payment #{rf.vchNumber}</span>
+                    <span className="text-gray-500 dark:text-gray-400 ml-2">{new Date(rf.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>
+                    <span className="text-rose-700 dark:text-rose-300 ml-2 tabular-nums font-semibold">₹{fmtMoney(rf.amount)}</span>
+                    {rf.tallyPushedAt && (
+                      <span className="ml-2 text-emerald-700 dark:text-emerald-300">✓ Tally · {new Date(rf.tallyPushedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>
+                    )}
+                  </div>
+                  {!rf.tallyPushedAt && (
+                    <button
+                      onClick={async () => {
+                        setRefundPushBusyId(rf.id)
+                        try {
+                          const res = await fetch(`/api/accounts/receipts/${rf.id}/push-payment-to-tally`, { method: 'POST' })
+                          const d = await res.json()
+                          if (!res.ok) { alert(d?.error || 'Push failed'); return }
+                          mutate()
+                        } catch (e: any) { alert(e?.message || 'Network error') }
+                        finally { setRefundPushBusyId(null) }
+                      }}
+                      disabled={refundPushBusyId === rf.id}
+                      className="px-2.5 py-1 rounded-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-[10px] font-semibold shrink-0">
+                      {refundPushBusyId === rf.id ? '…' : '📤 Push'}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {refundModalOpen && (
+        <RefundModal
+          receiptId={r.id}
+          partyName={r.partyName}
+          maxAmount={receiptRemaining}
+          sourceVchNumber={r.vchNumber}
+          busy={refundBusy}
+          setBusy={setRefundBusy}
+          onClose={() => setRefundModalOpen(false)}
+          onSaved={() => { setRefundModalOpen(false); mutate() }}
+        />
+      )}
 
       {/* Push to Tally — only when the receipt has linked invoices. */}
       {linkedCount > 0 && (
@@ -1507,6 +1585,116 @@ function DraftPreviewModal({ receiptId, receipt, receiptRemaining, invoices, onC
           <button onClick={saveAll} disabled={savingDraft || allocatable === 0 || overflow}
             className="px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white text-xs font-semibold">
             {savingDraft ? 'Saving…' : `✓ Save All ${allocatable} link${allocatable === 1 ? '' : 's'}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Refund Excess modal — creates a Payment voucher (direction='out')
+// linked to the source receipt via refundForReceiptId. The vchNumber
+// must match what the operator will type in Tally (or vice-versa) so
+// the subsequent push creates the matching voucher cleanly.
+function RefundModal({
+  receiptId, partyName, maxAmount, sourceVchNumber, busy, setBusy, onClose, onSaved,
+}: {
+  receiptId: number; partyName: string; maxAmount: number; sourceVchNumber: string;
+  busy: boolean; setBusy: (b: boolean) => void;
+  onClose: () => void; onSaved: () => void;
+}) {
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const [amount, setAmount] = useState<string>(maxAmount.toFixed(0))
+  const [date, setDate] = useState<string>(todayIso)
+  const [vchNumber, setVchNumber] = useState<string>('')
+  const [bankRef, setBankRef] = useState<string>('')
+  const [instrumentNo, setInstrumentNo] = useState<string>('')
+  const [error, setError] = useState<string>('')
+
+  const amt = parseFloat(amount) || 0
+  const canSave = amt > 0 && amt <= maxAmount + 0.5 && date && vchNumber.trim().length > 0 && !busy
+
+  async function save() {
+    setBusy(true); setError('')
+    try {
+      const res = await fetch(`/api/accounts/receipts/${receiptId}/refund`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amt, date, vchNumber: vchNumber.trim(),
+          bankRef: bankRef.trim() || undefined,
+          instrumentNo: instrumentNo.trim() || undefined,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d?.error || `Save failed (${res.status})`); return }
+      onSaved()
+    } catch (e: any) { setError(e?.message || 'Network error') }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-3 overflow-y-auto" onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md my-8">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Refund Excess</h3>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+              Source: Receipt #{sourceVchNumber} · {partyName} · max ₹{maxAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            </p>
+          </div>
+          <button onClick={onClose} disabled={busy} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg disabled:opacity-50">✕</button>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <label className="block text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Amount *</span>
+            <input type="text" inputMode="decimal" value={amount}
+              onChange={e => setAmount(e.target.value)}
+              placeholder={maxAmount.toFixed(0)}
+              className="mt-0.5 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm tabular-nums" />
+            {amt > maxAmount + 0.5 && (
+              <p className="mt-0.5 text-[10px] text-rose-600 dark:text-rose-400">Exceeds source receipt's ₹{maxAmount.toFixed(0)} remaining.</p>
+            )}
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Payment vch no * <span className="text-gray-400">(matches Tally)</span></span>
+              <input value={vchNumber} onChange={e => setVchNumber(e.target.value)}
+                placeholder="e.g. 12"
+                className="mt-0.5 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-mono" />
+            </label>
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Date *</span>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="mt-0.5 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Bank ref (UNIQ)</span>
+              <input value={bankRef} onChange={e => setBankRef(e.target.value)}
+                placeholder="UTR / unique ref"
+                className="mt-0.5 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-mono" />
+            </label>
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Instrument no</span>
+              <input value={instrumentNo} onChange={e => setInstrumentNo(e.target.value)}
+                placeholder="NEFT / cheque no"
+                className="mt-0.5 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm font-mono" />
+            </label>
+          </div>
+
+          {error && <div className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 px-3 py-2 rounded-lg">{error}</div>}
+        </div>
+
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose} disabled={busy}
+            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Cancel</button>
+          <button onClick={save} disabled={!canSave}
+            className="px-5 py-2 rounded-lg text-sm bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white font-semibold">
+            {busy ? 'Saving…' : 'Save Refund'}
           </button>
         </div>
       </div>

@@ -17,7 +17,16 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const db = prisma as any
   const receipt = await db.ksiHdfcReceipt.findUnique({
     where: { id },
-    include: { allocations: { include: { invoice: true } } },
+    include: {
+      allocations: { include: { invoice: true } },
+      // Refunds: Payment vouchers (direction='out') created to send the
+      // excess on-account back to the party. The detail page renders
+      // them inline so the operator sees "Refunded ₹X via Payment #N".
+      refunds: {
+        select: { id: true, vchNumber: true, date: true, amount: true, tallyPushedAt: true },
+        orderBy: { date: 'asc' },
+      },
+    },
   })
   if (!receipt) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
