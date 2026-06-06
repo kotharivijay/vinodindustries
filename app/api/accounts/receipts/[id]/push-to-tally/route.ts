@@ -95,6 +95,12 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   const dateStr = ymd(receipt.date)
   const partyName = receipt.partyName
+  // Stable Tally Reference Number for this Receipt. Persists through
+  // any future Tally renumbering (e.g. when an earlier-dated entry is
+  // inserted). Used as the BILLALLOCATIONS.NAME by future refund
+  // Payment pushes so their Agst Ref stays correct. Format: 'RC-{id}'.
+  // Cached on the row after first successful push.
+  const refNo = receipt.tallyRefNo || `RC-${receipt.id}`
 
   // Round per-bill to whole rupees, then derive totals from rounded values
   // so all sums balance exactly.
@@ -159,6 +165,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
           <EFFECTIVEDATE>${dateStr}</EFFECTIVEDATE>
           <VOUCHERTYPENAME>Receipt</VOUCHERTYPENAME>
           <VOUCHERNUMBER>${escapeXml(receipt.vchNumber)}</VOUCHERNUMBER>
+          <REFERENCE>${escapeXml(refNo)}</REFERENCE>
           <PARTYLEDGERNAME>${escapeXml(partyName)}</PARTYLEDGERNAME>
           <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
 
@@ -309,12 +316,16 @@ ${discBills.map(b => `            <BILLALLOCATIONS.LIST>
   let tallyPushedAt: Date | null = null
   if (ok) {
     tallyPushedAt = new Date()
-    await db.ksiHdfcReceipt.update({ where: { id }, data: { tallyPushedAt } })
+    await db.ksiHdfcReceipt.update({
+      where: { id },
+      data: { tallyPushedAt, tallyRefNo: refNo },
+    })
   }
   return NextResponse.json({
     ok,
     results,
     tallyPushedAt,
+    tallyRefNo: ok ? refNo : null,
     summary: { receiptAmt, signedCashUsed, onAccount, tdsTotal, discTotal, bills: bills.length },
   }, { status: ok ? 200 : 502 })
 }

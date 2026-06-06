@@ -30,12 +30,16 @@ interface Invoice {
   isCN?: boolean
   skipAutoLink?: boolean; skipAutoLinkReason?: string | null
 }
-interface RefundRow { id: number; vchNumber: string; date: string; amount: number; tallyPushedAt?: string | null }
+interface RefundRow { id: number; vchNumber: string; date: string; amount: number; tallyPushedAt?: string | null; tallyRefNo?: string | null }
 interface Receipt {
   id: number; date: string; vchNumber: string; partyName: string; amount: number; narration: string | null
   instrumentNo: string | null; bankRef: string | null
   carryOverPriorFy?: number
   tallyPushedAt?: string | null
+  // Tally Reference Number (stable, distinct from vchNumber which can
+  // drift). Surfaced as a small chip next to the vch number so the
+  // operator sees the stable id they can search by in Tally.
+  tallyRefNo?: string | null
   allocations: { invoiceId: number; allocatedAmount: number; tdsAmount?: number; discountAmount?: number }[]
   // Payment vouchers (direction='out') that refunded this receipt's
   // excess on-account back to the party. Sum of these reduces the
@@ -192,7 +196,14 @@ export default function ReceiptDetailPage() {
       <div className="bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700/40 rounded-xl p-3 mb-3">
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="min-w-0">
-            <div className="text-[10px] text-gray-500 dark:text-gray-400">{fmtDate(r.date)} · Receipt #{r.vchNumber}</div>
+            <div className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1.5 flex-wrap">
+              <span>{fmtDate(r.date)} · Receipt #{r.vchNumber}</span>
+              {r.tallyRefNo && (
+                <span className="font-mono text-[9px] bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-700/40" title="Tally Reference Number — stable, used for Agst Ref linking">
+                  ref {r.tallyRefNo}
+                </span>
+              )}
+            </div>
             <div className="text-base font-semibold text-gray-800 dark:text-gray-100 break-words">{r.partyName}</div>
             {(r.bankRef || r.instrumentNo) && (
               <div className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-0.5 font-mono break-all">
@@ -265,12 +276,17 @@ export default function ReceiptDetailPage() {
             <ul className="space-y-1.5">
               {r.refunds.map(rf => (
                 <li key={rf.id} className="flex items-center justify-between gap-2 text-[11px] bg-white dark:bg-gray-800 border border-rose-100 dark:border-rose-700/30 rounded-lg px-2 py-1.5">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-rose-700 dark:text-rose-300">Payment #{rf.vchNumber}</span>
-                    <span className="text-gray-500 dark:text-gray-400 ml-2">{new Date(rf.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>
-                    <span className="text-rose-700 dark:text-rose-300 ml-2 tabular-nums font-semibold">₹{fmtMoney(rf.amount)}</span>
+                    {rf.tallyRefNo && (
+                      <span className="font-mono text-[9px] bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded-full" title="Tally Ref No">
+                        {rf.tallyRefNo}
+                      </span>
+                    )}
+                    <span className="text-gray-500 dark:text-gray-400">{new Date(rf.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>
+                    <span className="text-rose-700 dark:text-rose-300 tabular-nums font-semibold">₹{fmtMoney(rf.amount)}</span>
                     {rf.tallyPushedAt && (
-                      <span className="ml-2 text-emerald-700 dark:text-emerald-300">✓ Tally · {new Date(rf.tallyPushedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>
+                      <span className="text-emerald-700 dark:text-emerald-300">✓ Tally · {new Date(rf.tallyPushedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>
                     )}
                   </div>
                   {!rf.tallyPushedAt && (

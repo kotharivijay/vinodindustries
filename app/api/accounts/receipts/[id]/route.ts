@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       // excess on-account back to the party. The detail page renders
       // them inline so the operator sees "Refunded ₹X via Payment #N".
       refunds: {
-        select: { id: true, vchNumber: true, date: true, amount: true, tallyPushedAt: true },
+        select: { id: true, vchNumber: true, date: true, amount: true, tallyPushedAt: true, tallyRefNo: true },
         orderBy: { date: 'asc' },
       },
     },

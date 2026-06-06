@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const payment = await db.ksiHdfcReceipt.findUnique({
     where: { id },
-    include: { refundForReceipt: { select: { id: true, vchNumber: true } } },
+    include: { refundForReceipt: { select: { id: true, vchNumber: true, tallyRefNo: true } } },
   })
   if (!payment) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
   if (payment.vchType !== 'Payment' || payment.direction !== 'out') {
@@ -75,7 +75,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const dateStr = ymd(payment.date)
   const partyName = payment.partyName
   const amt = Math.round(payment.amount)
-  const sourceVch = payment.refundForReceipt.vchNumber
+  // Webapp-generated Tally Reference Number for this Payment. Stays
+  // stable even if Tally renumbers the voucher (e.g. after inserting
+  // an earlier-dated entry). Format: 'PMT-{id}'. Cached on the row at
+  // first successful push so re-pushes don't regenerate.
+  const myRefNo = payment.tallyRefNo || `PMT-${payment.id}`
+  // Source-receipt identifier for the Agst Ref linking. Use the stable
+  // tallyRefNo when present (set on its first push). Fall back to
+  // vchNumber for receipts pushed before this change — works as long
+  // as Tally hasn't renumbered them yet.
+  const sourceRef = payment.refundForReceipt.tallyRefNo || payment.refundForReceipt.vchNumber
 
   // Build the Payment voucher XML — CREATE action.
   // Party leg is Dr (+amt, ISDEEMEDPOSITIVE=Yes), bank leg is Cr (-amt).
@@ -102,6 +111,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           <EFFECTIVEDATE>${dateStr}</EFFECTIVEDATE>
           <VOUCHERTYPENAME>Payment</VOUCHERTYPENAME>
           <VOUCHERNUMBER>${escapeXml(payment.vchNumber)}</VOUCHERNUMBER>
+          <REFERENCE>${escapeXml(myRefNo)}</REFERENCE>
           <PARTYLEDGERNAME>${escapeXml(partyName)}</PARTYLEDGERNAME>
           <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
 
@@ -111,7 +121,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             <ISPARTYLEDGER>Yes</ISPARTYLEDGER>
             <AMOUNT>-${amt}</AMOUNT>
             <BILLALLOCATIONS.LIST>
-              <NAME>${escapeXml(sourceVch)}</NAME>
+              <NAME>${escapeXml(sourceRef)}</NAME>
               <BILLTYPE>Agst Ref</BILLTYPE>
               <AMOUNT>-${amt}</AMOUNT>
             </BILLALLOCATIONS.LIST>
@@ -165,12 +175,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }, { status: 502 })
   }
 
-  await db.ksiHdfcReceipt.update({ where: { id }, data: { tallyPushedAt: new Date() } })
+  await db.ksiHdfcReceipt.update({
+    where: { id },
+    data: { tallyPushedAt: new Date(), tallyRefNo: myRefNo },
+  })
 
   return NextResponse.json({
     ok: true,
     created, errors, exceptions,
-    payment: { id, vchNumber: payment.vchNumber, amount: amt, partyName },
-    againstReceipt: sourceVch,
+    payment: { id, vchNumber: payment.vchNumber, tallyRefNo: myRefNo, amount: amt, partyName },
+    againstReceiptRef: sourceRef,
   })
 }

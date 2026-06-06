@@ -912,6 +912,13 @@ model KsiHdfcReceipt {
   // Payment #N" inline, and lets the Outstanding endpoint subtract the
   // refund from the source receipt's onAccount so the excess clears.
   refundForReceiptId Int?
+  // Tally Reference Number — a SEPARATE stable identifier from
+  // vchNumber. Tally's voucher numbers shift when earlier-dated entries
+  // are inserted, but a row's Reference (set via <REFERENCE> on push)
+  // stays put. Used as the BILLALLOCATIONS.NAME for Agst Ref so refund
+  // pushes don't break when Tally renumbers vouchers. Format: 'RC-{id}'
+  // for Receipts, 'PMT-{id}' for Payments. Set at first push.
+  tallyRefNo    String?
   refundForReceipt   KsiHdfcReceipt?  @relation("ReceiptRefunds", fields: [refundForReceiptId], references: [id])
   refunds            KsiHdfcReceipt[] @relation("ReceiptRefunds")
   lastSynced    DateTime  @default(now())
@@ -922,6 +929,7 @@ model KsiHdfcReceipt {
   @@index([fy, hidden])
   @@index([fy, date])
   @@index([refundForReceiptId])
+  @@index([tallyRefNo])
 
   allocations KsiReceiptAllocation[]
 }
