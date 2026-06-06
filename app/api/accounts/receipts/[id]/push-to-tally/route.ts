@@ -127,7 +127,11 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   // Party Cr = receiptAmt total. Bill allocations breakdown:
   //   • invoice: +amt (Agst Ref)
   //   • CN:      −amt (Agst Ref, knock-off)
-  //   • leftover: onAccount as "On Account" (no NAME)
+  //   • leftover: onAccount posted as a NEW REF with the receipt's
+  //               tallyRefNo (e.g. 'RC-{id}') so a future refund
+  //               Payment can Agst Ref it cleanly. Previously this was
+  //               an unnamed "On Account" line, which left no stable
+  //               handle for refunds to target.
   const billXmlParts: string[] = []
   for (const b of bills) {
     const signedAmt = b.isCN ? -b.amt : b.amt
@@ -139,7 +143,8 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   }
   if (onAccount > 0) {
     billXmlParts.push(`            <BILLALLOCATIONS.LIST>
-              <BILLTYPE>On Account</BILLTYPE>
+              <NAME>${escapeXml(refNo)}</NAME>
+              <BILLTYPE>New Ref</BILLTYPE>
               <AMOUNT>${onAccount}</AMOUNT>
             </BILLALLOCATIONS.LIST>`)
   }
