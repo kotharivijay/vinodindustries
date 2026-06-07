@@ -178,7 +178,31 @@ model BatchMakingSlipBatch {
   markaSnapshot       String?
   totalThanSnapshot   Int
   totalWeightSnapshot Decimal         @db.Decimal(10, 2)
+  // Jet planning fields — Sanker uses Tag Mode to assign which jet each
+  // batch goes into and in what serial order. Nullable because Tag Mode
+  // is optional; untagged batches still print under their fold grouping.
+  jetNo               Int? // 1..9
+  jetSerial           Int? // 1..6 — position in the queue for that jet
   createdAt           DateTime        @default(now())
+}
+
+// One in-progress draft per user (keyed by session email). Lets Sanker
+// pick batches + assign jets without committing, close the page, and
+// resume with the same selection on next open. Auto-cleared when the
+// real BatchMakingSlip is created.
+model BatchMakingDraft {
+  id             Int      @id @default(autoincrement())
+  userEmail      String   @unique
+  date           DateTime
+  batchMakerName String
+  notes          String?
+  tagMode        Boolean  @default(false)
+  // [{ batchId, jetNo?, jetSerial? }, ...] — kept as JSON to avoid an extra
+  // child table for ephemeral state. No FK on batchId since drafts don't
+  // need referential guarantees; hydrate logic skips stale ids.
+  data           Json
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
 }
 
 // ─── Jet Dyeing Machine ────────────────────────────────────────────────────

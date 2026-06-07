@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 
 // Matches the shape returned by /api/dyeing/batches (extended with batchMakingSlip)
@@ -54,6 +54,8 @@ interface SavedSlip {
     markaSnapshot: string | null
     totalThanSnapshot: number
     totalWeightSnapshot: number | string
+    jetNo: number | null
+    jetSerial: number | null
     foldBatch: {
       lots: { lotNo: string; than: number }[]
     }
@@ -65,6 +67,12 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 function todayISO() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
 function useDebounce(initial = '', delay = 200) {
@@ -103,6 +111,97 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
   const [printing, setPrinting] = useState(false)
   const [printError, setPrintError] = useState('')
   const [cancellingId, setCancellingId] = useState<number | null>(null)
+
+  // Jet planning state. tagMode toggles per-batch jet dropdowns; tags maps
+  // batchId → {jetNo, jetSerial}. Null entries are fine — POST stores nulls
+  // and the print template falls back to fold grouping when no jets are set.
+  const [tagMode, setTagMode] = useState(false)
+  const [tags, setTags] = useState<Map<number, { jetNo: number | null; jetSerial: number | null }>>(new Map())
+
+  // Preview/draft state. previewMode swaps the picker for a read-only summary
+  // grouped by jet. draftSaving guards the Save Draft button. draftLoaded is
+  // only true after the first GET completes so the modal doesn't flash an
+  // empty selection before hydration.
+  const [previewMode, setPreviewMode] = useState(false)
+  const [draftSaving, setDraftSaving] = useState(false)
+  const [draftLoaded, setDraftLoaded] = useState(false)
+  const [draftRestoredMsg, setDraftRestoredMsg] = useState('')
+
+  // Draft hydration on mount: load any saved selection + tags + form values
+  // from the server. Runs once per modal open; the draft is cleared by the
+  // server when a real BM slip is saved.
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/dyeing/batch-maker/draft')
+      .then(r => r.json())
+      .then((draft: any) => {
+        if (cancelled || !draft) { setDraftLoaded(true); return }
+        if (draft.date) setDate(String(draft.date).slice(0, 10))
+        if (draft.batchMakerName) setBatchMakerName(draft.batchMakerName)
+        if (draft.notes) setNotes(draft.notes)
+        if (typeof draft.tagMode === 'boolean') setTagMode(draft.tagMode)
+        if (Array.isArray(draft.data)) {
+          const nextSel = new Set<number>()
+          const nextTags = new Map<number, { jetNo: number | null; jetSerial: number | null }>()
+          for (const b of draft.data) {
+            const id = Number(b?.batchId)
+            if (!Number.isFinite(id)) continue
+            nextSel.add(id)
+            nextTags.set(id, {
+              jetNo: b?.jetNo == null ? null : Number(b.jetNo),
+              jetSerial: b?.jetSerial == null ? null : Number(b.jetSerial),
+            })
+          }
+          setSelected(nextSel)
+          setTags(nextTags)
+          if (nextSel.size > 0) {
+            setDraftRestoredMsg(`Restored draft — ${nextSel.size} batch${nextSel.size === 1 ? '' : 'es'}`)
+            setTimeout(() => setDraftRestoredMsg(''), 4000)
+          }
+        }
+        setDraftLoaded(true)
+      })
+      .catch(() => setDraftLoaded(true))
+    return () => { cancelled = true }
+  }, [])
+
+  // Group selected batches by jet for the preview panel. Untagged batches
+  // collect under an 'Untagged' bucket so the operator can see what still
+  // needs a jet (save remains allowed — that's the chosen policy).
+  const previewGroups = useMemo(() => {
+    const sel = allBatches.filter(b => selected.has(b.batchId))
+    const buckets = new Map<number | null, typeof sel>()
+    for (const b of sel) {
+      const t = tags.get(b.batchId)
+      const jet = tagMode ? (t?.jetNo ?? null) : null
+      if (!buckets.has(jet)) buckets.set(jet, [])
+      buckets.get(jet)!.push(b)
+    }
+    const groups = Array.from(buckets.entries())
+      .map(([jetNo, batches]) => ({
+        jetNo,
+        batches: batches.slice().sort((a, b) => {
+          const sa = tags.get(a.batchId)?.jetSerial ?? 999
+          const sb = tags.get(b.batchId)?.jetSerial ?? 999
+          return sa - sb
+        }),
+      }))
+      .sort((a, b) => {
+        if (a.jetNo == null) return 1
+        if (b.jetNo == null) return -1
+        return a.jetNo - b.jetNo
+      })
+    return groups
+  }, [allBatches, selected, tags, tagMode])
+
+  function setBatchTag(batchId: number, patch: { jetNo?: number | null; jetSerial?: number | null }) {
+    setTags(prev => {
+      const next = new Map(prev)
+      const cur = next.get(batchId) ?? { jetNo: null, jetSerial: null }
+      next.set(batchId, { ...cur, ...patch })
+      return next
+    })
+  }
 
   // Only show batches that need a BM slip: not cancelled, not already on
   // an active BM slip (server filters slipStatus='confirmed' on its side).
@@ -204,6 +303,44 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
     setBatchMakerName(name)
   }
 
+  async function handleSaveDraft() {
+    setError('')
+    if (selected.size === 0) { setError('Pick at least one batch to save a draft'); return }
+    if (!batchMakerName.trim()) { setError('Batch maker name required'); return }
+    setDraftSaving(true)
+    try {
+      const payload = {
+        date,
+        batchMakerName: batchMakerName.trim(),
+        notes: notes.trim() || null,
+        tagMode,
+        batches: selectedBatches.map(b => {
+          const t = tags.get(b.batchId)
+          return {
+            batchId: b.batchId,
+            jetNo: tagMode ? (t?.jetNo ?? null) : null,
+            jetSerial: tagMode ? (t?.jetSerial ?? null) : null,
+          }
+        }),
+      }
+      const res = await fetch('/api/dyeing/batch-maker/draft', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data?.error ?? 'Failed to save draft')
+        return
+      }
+      setPreviewMode(true)
+    } catch (e: any) {
+      setError(e?.message ?? 'Network error')
+    } finally {
+      setDraftSaving(false)
+    }
+  }
+
   async function handleSave() {
     setError('')
     if (selected.size === 0) { setError('Pick at least one batch'); return }
@@ -214,15 +351,20 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
         date,
         batchMakerName: batchMakerName.trim(),
         notes: notes.trim() || null,
-        batches: selectedBatches.map(b => ({
-          foldBatchId: b.batchId,
-          foldNo: b.foldNo,
-          batchNo: b.batchNo,
-          shadeName: b.shadeName,
-          marka: b.marka ?? null,
-          totalThan: b.totalThan,
-          totalWeight: b.totalWeight,
-        })),
+        batches: selectedBatches.map(b => {
+          const t = tags.get(b.batchId)
+          return {
+            foldBatchId: b.batchId,
+            foldNo: b.foldNo,
+            batchNo: b.batchNo,
+            shadeName: b.shadeName,
+            marka: b.marka ?? null,
+            totalThan: b.totalThan,
+            totalWeight: b.totalWeight,
+            jetNo: tagMode ? (t?.jetNo ?? null) : null,
+            jetSerial: tagMode ? (t?.jetSerial ?? null) : null,
+          }
+        }),
       }
       const res = await fetch('/api/dyeing/batch-maker', {
         method: 'POST',
@@ -302,12 +444,18 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
         <div className="flex items-center justify-between border-b border-slate-700 px-5 py-3">
           <div>
             <h2 className="text-lg font-semibold text-white">
-              {showPicker ? 'Batch Maker Slip' : `Saved: ${savedSlip!.slipNo}`}
+              {!showPicker
+                ? `Saved: ${savedSlip!.slipNo}`
+                : previewMode
+                  ? 'Preview — Batch Making Slip'
+                  : 'Batch Maker Slip'}
             </h2>
             <p className="text-xs text-slate-400">
-              {showPicker
-                ? 'Pick the fold batches you are physically assembling — one slip, one serial.'
-                : 'Connect a Bluetooth thermal printer and tap Print to give Shanker the slip.'}
+              {!showPicker
+                ? 'Connect a Bluetooth thermal printer and tap Print to give Shanker the slip.'
+                : previewMode
+                  ? 'Review batches by jet/serial. Edit to change, or Save & Print to commit.'
+                  : 'Pick the fold batches you are physically assembling — one slip, one serial.'}
             </p>
           </div>
           <button
@@ -318,7 +466,7 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
           </button>
         </div>
 
-        {showPicker && (
+        {showPicker && !previewMode && (
           <div className="flex gap-1 bg-slate-800 mx-5 mt-3 rounded p-1">
             <button
               onClick={() => setInnerTab('new')}
@@ -339,7 +487,100 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
           </div>
         )}
 
-        {showPicker && innerTab === 'saved' ? (
+        {showPicker && previewMode ? (
+          <>
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              <div className="rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                Draft saved. This is what the slip will print —
+                batches grouped by jet, in serial order.{' '}
+                {tagMode ? '' : 'Turn Tag Mode ON in the picker to assign jets.'}
+              </div>
+              {previewGroups.map((g, gi) => (
+                <div key={gi} className="rounded border border-slate-700 overflow-hidden">
+                  <div className="px-3 py-2 bg-slate-800/60 text-sm text-white flex items-center justify-between">
+                    <div>
+                      {g.jetNo == null ? (
+                        <span className="text-slate-300">Untagged</span>
+                      ) : (
+                        <span className="font-semibold text-amber-300">Jet-{g.jetNo}</span>
+                      )}
+                      <span className="ml-2 text-xs text-slate-400">
+                        {g.batches.length} batch{g.batches.length === 1 ? '' : 'es'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {g.batches.reduce((s, b) => s + b.totalThan, 0)} than
+                      {' · '}
+                      {g.batches.reduce((s, b) => s + b.totalWeight, 0).toFixed(1)} kg
+                    </div>
+                  </div>
+                  <div className="divide-y divide-slate-800">
+                    {g.batches.map(b => {
+                      const t = tags.get(b.batchId)
+                      const serial = t?.jetSerial
+                      return (
+                        <div key={b.batchId} className="px-3 py-2 text-sm">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <div>
+                              {serial != null && (
+                                <span className="font-mono text-amber-300 mr-2">
+                                  {ordinal(serial)}
+                                </span>
+                              )}
+                              <span className="text-white">B{b.batchNo}</span>
+                              <span className="ml-2 text-slate-400 text-xs">Fold {b.foldNo}</span>
+                              <span className="ml-2 text-slate-300 text-xs">{b.shadeName}</span>
+                              {b.marka && <span className="ml-2 text-amber-400 text-xs">Marka: {b.marka}</span>}
+                            </div>
+                            <span className="text-xs text-slate-400 whitespace-nowrap">
+                              {b.totalThan} than · {b.totalWeight.toFixed(1)} kg
+                            </span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {b.lots.map((l, li) => (
+                              <span key={li} className="inline-flex items-center rounded bg-slate-800 text-purple-300 text-xs px-2 py-0.5">
+                                {l.lotNo} ({l.than})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+              {error && (
+                <div className="rounded bg-red-500/10 border border-red-500/40 px-3 py-2 text-sm text-red-300">
+                  {error}
+                </div>
+              )}
+            </div>
+            <div className="border-t border-slate-700 px-5 py-3 flex items-center justify-between gap-3 bg-slate-900">
+              <div className="text-sm text-slate-300">
+                <span className="font-semibold text-white">{selected.size}</span> batch{selected.size === 1 ? '' : 'es'}
+                <span className="text-slate-500"> · </span>
+                {totalThan} than
+                <span className="text-slate-500"> · </span>
+                {totalWeight.toFixed(1)} kg
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPreviewMode(false)}
+                  className="px-3 py-1.5 rounded text-sm text-slate-300 hover:text-white"
+                >
+                  ← Edit
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || selected.size === 0}
+                  className="px-4 py-1.5 rounded text-sm bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:text-slate-500 text-white"
+                >
+                  {saving ? 'Saving…' : 'Save & Activate Print'}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : showPicker && innerTab === 'saved' ? (
           <div className="flex-1 overflow-y-auto p-5 space-y-2">
             {savedSlips.length === 0 ? (
               <div className="text-center text-slate-400 text-sm py-10">
@@ -425,14 +666,34 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                 </div>
               </div>
 
-              <div>
-                <input
-                  type="text"
-                  placeholder="Search fold no, batch no, shade, marka, lot…"
-                  value={batchSearch}
-                  onChange={e => { setBatchSearch(e.target.value); setDebSearch(e.target.value) }}
-                  className="w-full rounded bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-white"
-                />
+              {draftRestoredMsg && (
+                <div className="rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+                  {draftRestoredMsg}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    placeholder="Search fold no, batch no, shade, marka, lot…"
+                    value={batchSearch}
+                    onChange={e => { setBatchSearch(e.target.value); setDebSearch(e.target.value) }}
+                    className="w-full rounded bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-white"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTagMode(v => !v)}
+                  className={`shrink-0 text-xs font-medium px-3 py-2 rounded transition ${
+                    tagMode
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'
+                  }`}
+                  title="Toggle jet/serial tagging on each selected batch"
+                >
+                  🏷 Tag Mode: {tagMode ? 'ON' : 'OFF'}
+                </button>
               </div>
 
               {filtered.length === 0 ? (
@@ -493,6 +754,34 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                                   </span>
                                 ))}
                               </div>
+                              {tagMode && checked && (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <span className="text-[10px] uppercase font-semibold text-amber-300">Jet</span>
+                                  <select
+                                    value={tags.get(b.batchId)?.jetNo ?? ''}
+                                    onChange={e => setBatchTag(b.batchId, { jetNo: e.target.value ? Number(e.target.value) : null })}
+                                    onClick={ev => ev.stopPropagation()}
+                                    className="rounded bg-slate-800 border border-amber-500/40 text-xs text-amber-200 px-1.5 py-0.5"
+                                  >
+                                    <option value="">—</option>
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => (
+                                      <option key={n} value={n}>Jet-{n}</option>
+                                    ))}
+                                  </select>
+                                  <span className="text-[10px] uppercase font-semibold text-amber-300">Serial</span>
+                                  <select
+                                    value={tags.get(b.batchId)?.jetSerial ?? ''}
+                                    onChange={e => setBatchTag(b.batchId, { jetSerial: e.target.value ? Number(e.target.value) : null })}
+                                    onClick={ev => ev.stopPropagation()}
+                                    className="rounded bg-slate-800 border border-amber-500/40 text-xs text-amber-200 px-1.5 py-0.5"
+                                  >
+                                    <option value="">—</option>
+                                    {[1, 2, 3, 4, 5, 6].map(n => (
+                                      <option key={n} value={n}>{ordinal(n)}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              )}
                             </div>
                           </label>
                         )
@@ -535,6 +824,14 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                   Cancel
                 </button>
                 <button
+                  onClick={handleSaveDraft}
+                  disabled={draftSaving || selected.size === 0}
+                  className="px-3 py-1.5 rounded text-sm bg-amber-600/80 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-500 text-white"
+                  title="Save current selection + jet tags as a draft so you can resume after closing"
+                >
+                  {draftSaving ? 'Saving Draft…' : '👁 Save Draft & Preview'}
+                </button>
+                <button
                   onClick={handleSave}
                   disabled={saving || selected.size === 0}
                   className="px-4 py-1.5 rounded text-sm bg-purple-600 hover:bg-purple-500 disabled:bg-slate-700 disabled:text-slate-500 text-white"
@@ -559,6 +856,11 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                 {savedSlip!.batches.map((b, i) => (
                   <div key={i} className="px-3 py-2 text-sm">
                     <div className="text-white">
+                      {b.jetNo != null && (
+                        <span className="mr-2 text-[10px] font-mono uppercase bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">
+                          Jet-{b.jetNo}{b.jetSerial != null ? ` · ${ordinal(b.jetSerial)}` : ''}
+                        </span>
+                      )}
                       Fold {b.foldNoSnapshot} · B{b.batchNoSnapshot}
                       {b.shadeNameSnapshot && (
                         <span className="ml-2 text-slate-300">{b.shadeNameSnapshot}</span>

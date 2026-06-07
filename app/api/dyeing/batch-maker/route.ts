@@ -38,6 +38,8 @@ type IncomingBatch = {
   marka: string | null
   totalThan: number
   totalWeight: number
+  jetNo: number | null
+  jetSerial: number | null
 }
 
 export async function POST(req: Request) {
@@ -58,6 +60,12 @@ export async function POST(req: Request) {
   for (const b of rawBatches) {
     const foldBatchId = Number(b?.foldBatchId)
     if (!Number.isFinite(foldBatchId)) continue
+    const jetNoRaw = b?.jetNo
+    const jetSerialRaw = b?.jetSerial
+    const jetNo =
+      jetNoRaw == null || jetNoRaw === '' ? null : Math.max(1, Math.min(9, Math.floor(Number(jetNoRaw))))
+    const jetSerial =
+      jetSerialRaw == null || jetSerialRaw === '' ? null : Math.max(1, Math.min(6, Math.floor(Number(jetSerialRaw))))
     batches.push({
       foldBatchId,
       foldNo: String(b?.foldNo ?? ''),
@@ -66,6 +74,8 @@ export async function POST(req: Request) {
       marka: b?.marka ? String(b.marka) : null,
       totalThan: Number(b?.totalThan ?? 0),
       totalWeight: Number(b?.totalWeight ?? 0),
+      jetNo: Number.isFinite(jetNo as number) ? (jetNo as number) : null,
+      jetSerial: Number.isFinite(jetSerial as number) ? (jetSerial as number) : null,
     })
   }
   if (batches.length === 0) return NextResponse.json({ error: 'No valid batches' }, { status: 400 })
@@ -108,6 +118,14 @@ export async function POST(req: Request) {
       const serialNo = counter.lastNo
       const slipNo = `BM-${serialNo}`
 
+      // Clear this user's in-progress draft (if any) atomically with the
+      // real save so they get a fresh picker on next open.
+      if (session.user?.email) {
+        await tx.batchMakingDraft.deleteMany({
+          where: { userEmail: session.user.email },
+        })
+      }
+
       return tx.batchMakingSlip.create({
         data: {
           slipNo,
@@ -125,6 +143,8 @@ export async function POST(req: Request) {
               markaSnapshot: b.marka,
               totalThanSnapshot: b.totalThan,
               totalWeightSnapshot: b.totalWeight,
+              jetNo: b.jetNo,
+              jetSerial: b.jetSerial,
             })),
           },
         },
