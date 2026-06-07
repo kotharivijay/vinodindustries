@@ -87,11 +87,11 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
   const { data: savedSlips = [], mutate: mutateSavedSlips } = useSWR<SavedSlipListItem[]>('/api/dyeing/batch-maker', fetcher, { revalidateOnFocus: false })
 
   // Inner tab: 'new' is the picker, 'saved' is the cancel/audit view. Default
-  // is 'new' so opening the popup always lands Sanker on the create flow.
+  // is 'new' so opening the popup always lands Shanker on the create flow.
   const [innerTab, setInnerTab] = useState<'new' | 'saved'>('new')
 
   const [date, setDate] = useState(todayISO())
-  const [batchMakerName, setBatchMakerName] = useState('Sanker')
+  const [batchMakerName, setBatchMakerName] = useState('Shanker')
   const [notes, setNotes] = useState('')
   const [batchSearch, setBatchSearch] = useState('')
   const [debSearch, setDebSearch] = useDebounce()
@@ -258,7 +258,7 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
   }
 
   // Share the same text receipt the Bluetooth printer would emit so what
-  // Sanker reads on his phone matches the physical slip exactly.
+  // Shanker reads on his phone matches the physical slip exactly.
   const [sharing, setSharing] = useState(false)
   async function handleShare() {
     if (!savedSlip) return
@@ -307,7 +307,7 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
             <p className="text-xs text-slate-400">
               {showPicker
                 ? 'Pick the fold batches you are physically assembling — one slip, one serial.'
-                : 'Connect a Bluetooth thermal printer and tap Print to give Sanker the slip.'}
+                : 'Connect a Bluetooth thermal printer and tap Print to give Shanker the slip.'}
             </p>
           </div>
           <button
@@ -412,7 +412,7 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                     }}
                     className="w-full rounded bg-slate-800 border border-slate-700 px-2 py-1.5 text-sm text-white"
                   >
-                    {makers.length === 0 && <option value="Sanker">Sanker</option>}
+                    {makers.length === 0 && <option value="Shanker">Shanker</option>}
                     {makers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                     <option value="__add__">+ Add new…</option>
                   </select>
