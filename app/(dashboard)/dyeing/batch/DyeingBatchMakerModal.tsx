@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 
 // Matches the shape returned by /api/dyeing/batches (extended with batchMakingSlip)
@@ -254,26 +254,19 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">
-                    Batch Maker
-                    <button
-                      type="button"
-                      onClick={handleAddMaker}
-                      className="ml-2 text-purple-400 hover:text-purple-300"
-                    >
-                      + Add
-                    </button>
-                  </label>
-                  <input
-                    type="text"
-                    list="batch-makers-list"
+                  <label className="block text-xs text-slate-400 mb-1">Batch Maker</label>
+                  <select
                     value={batchMakerName}
-                    onChange={e => setBatchMakerName(e.target.value)}
+                    onChange={e => {
+                      if (e.target.value === '__add__') { handleAddMaker(); return }
+                      setBatchMakerName(e.target.value)
+                    }}
                     className="w-full rounded bg-slate-800 border border-slate-700 px-2 py-1.5 text-sm text-white"
-                  />
-                  <datalist id="batch-makers-list">
-                    {makers.map(m => <option key={m.id} value={m.name} />)}
-                  </datalist>
+                  >
+                    {makers.length === 0 && <option value="Sanker">Sanker</option>}
+                    {makers.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                    <option value="__add__">+ Add new…</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Next Slip No</label>
