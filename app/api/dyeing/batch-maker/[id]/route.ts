@@ -1,0 +1,74 @@
+export const dynamic = 'force-dynamic'
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+
+const db = prisma as any
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id } = await params
+  const slip = await db.batchMakingSlip.findUnique({
+    where: { id: parseInt(id) },
+    include: {
+      batches: {
+        include: {
+          foldBatch: {
+            include: {
+              lots: true,
+              foldProgram: { select: { foldNo: true, date: true } },
+            },
+          },
+        },
+      },
+    },
+  })
+  if (!slip) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  return NextResponse.json(slip)
+}
+
+// Soft cancel: flip slip status + cascade to all batch link rows so the
+// partial unique index drops the foldBatchIds from the active set. The slip
+// row + serial remain so the BM-N series stays gap-free.
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id } = await params
+  const slipId = parseInt(id)
+  const body = await req.json().catch(() => ({}))
+  const action = String(body?.action ?? '').trim()
+
+  if (action !== 'cancel') {
+    return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })
+  }
+
+  const slip = await db.batchMakingSlip.findUnique({
+    where: { id: slipId },
+    select: { id: true, status: true },
+  })
+  if (!slip) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  if (slip.status === 'cancelled') {
+    return NextResponse.json({ error: 'Already cancelled' }, { status: 400 })
+  }
+
+  const updated = await db.$transaction(async (tx: any) => {
+    await tx.batchMakingSlip.update({
+      where: { id: slipId },
+      data: { status: 'cancelled' },
+    })
+    await tx.batchMakingSlipBatch.updateMany({
+      where: { slipId },
+      data: { slipStatus: 'cancelled' },
+    })
+    return tx.batchMakingSlip.findUnique({
+      where: { id: slipId },
+      include: { batches: true },
+    })
+  })
+
+  return NextResponse.json(updated)
+}

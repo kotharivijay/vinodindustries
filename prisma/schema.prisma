@@ -133,6 +133,54 @@ model CheckingSlipLot {
   @@unique([checkingSlipId, greyEntryId])
 }
 
+// ─── Batch Making (batch-maker assembles physical batches before dyeing) ───
+// Sanker (default) picks pending FoldBatches, prints a slip with BM-N serial
+// + checkbox lot rows for physical marking, and that locks each batch on the
+// Dyeing Slip Step-1 picker until the BM- serial exists.
+//
+// Cancellation re-opens the foldBatch for a new BM slip: the partial-unique
+// index on foldBatchId is gated by slipStatus='confirmed' (added in raw SQL
+// in the migration since Prisma can't express partial indexes in schema).
+model BatchMaker {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model BatchMakingSlip {
+  id             Int                    @id @default(autoincrement())
+  slipNo         String                 @unique // 'BM-13'
+  serialNo       Int // 13 — raw counter, for sorting/gap report
+  fy             String // '2026-27'
+  date           DateTime
+  batchMakerName String
+  notes          String?
+  status         String                 @default("confirmed") // confirmed | cancelled
+  batches        BatchMakingSlipBatch[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+}
+
+model BatchMakingSlipBatch {
+  id                  Int             @id @default(autoincrement())
+  slipId              Int
+  slip                BatchMakingSlip @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  foldBatchId         Int
+  foldBatch           FoldBatch       @relation(fields: [foldBatchId], references: [id])
+  // mirrors parent slip status — denormalized so the partial unique index on
+  // foldBatchId can be gated by status without a cross-table WHERE
+  slipStatus          String          @default("confirmed")
+  // immutable snapshot at print time
+  foldNoSnapshot      String
+  batchNoSnapshot     Int
+  shadeNameSnapshot   String?
+  markaSnapshot       String?
+  totalThanSnapshot   Int
+  totalWeightSnapshot Decimal         @db.Decimal(10, 2)
+  createdAt           DateTime        @default(now())
+}
+
 // ─── Jet Dyeing Machine ────────────────────────────────────────────────────
 model DyeingMachine {
   id        Int              @id @default(autoincrement())
@@ -635,8 +683,9 @@ model FoldBatch {
   cancelled        Boolean        @default(false)
   cancelledReason  String?
   cancelledAt      DateTime?
-  lots             FoldBatchLot[]
-  dyeingEntries    DyeingEntry[]
+  lots                 FoldBatchLot[]
+  dyeingEntries        DyeingEntry[]
+  batchMakingSlipBatches BatchMakingSlipBatch[]
 }
 
 model FoldBatchLot {

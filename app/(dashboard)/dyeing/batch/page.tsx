@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
+import DyeingBatchMakerModal from './DyeingBatchMakerModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ interface BatchInfo {
   recipe: RecipeItem[]
   isPcJob?: boolean
   marka?: string | null
+  batchMakingSlip?: { slipNo: string; batchMakerName: string; date: string } | null
 }
 
 interface FoldGroup {
@@ -106,6 +108,11 @@ export default function BatchDyeingPage() {
 
   // Tab state
   const [tab, setTab] = useState<'new' | 'list'>('new')
+
+  // Batch Maker popup — Sanker opens this to issue BM-N slips that unlock
+  // the Select → buttons below. Closing with onSaved refetches batches so
+  // the lock state flips instantly.
+  const [bmModalOpen, setBmModalOpen] = useState(false)
 
   // Data
   const [batches, setBatches] = useState<BatchInfo[]>([])
@@ -545,13 +552,30 @@ export default function BatchDyeingPage() {
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Create dyeing slips from fold program batches</p>
           </div>
         </div>
-        <Link
-          href="/dyeing"
-          className="text-xs text-purple-600 hover:text-purple-800 font-medium"
-        >
-          Slip Module 1 &rarr;
-        </Link>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setBmModalOpen(true)}
+            className="text-xs bg-purple-600 hover:bg-purple-700 text-white font-medium px-3 py-1.5 rounded-lg transition"
+            title="Issue a Batch Making (BM-) slip — required before a batch can be picked here"
+          >
+            🖨 Batch Maker
+          </button>
+          <Link
+            href="/dyeing"
+            className="text-xs text-purple-600 hover:text-purple-800 font-medium"
+          >
+            Slip Module 1 &rarr;
+          </Link>
+        </div>
       </div>
+
+      {bmModalOpen && (
+        <DyeingBatchMakerModal
+          onClose={() => setBmModalOpen(false)}
+          onSaved={() => { refetchBatches() }}
+        />
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 mb-4">
@@ -663,21 +687,40 @@ export default function BatchDyeingPage() {
                           {/* Expanded — batch cards */}
                           {isExpanded && (
                             <div className="p-2 space-y-2 bg-white dark:bg-gray-800">
-                              {fg.batches.map(b => (
+                              {fg.batches.map(b => {
+                                const bmSlip = b.batchMakingSlip
+                                const locked = !bmSlip
+                                return (
                                 <div key={b.batchId}
                                   className="border border-gray-200 dark:border-gray-600 rounded-xl p-3 hover:border-purple-300 dark:hover:border-purple-600 transition">
                                   <div className="flex items-center justify-between mb-1.5">
                                     <div>
                                       <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">B{b.batchNo}</span>
                                       <span className="ml-2 text-xs text-purple-600 dark:text-purple-400 font-medium">{b.shadeName}{b.shadeDescription && ` — ${b.shadeDescription}`}</span>
+                                      {bmSlip && (
+                                        <span className="ml-2 text-[10px] font-mono bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded">
+                                          {bmSlip.slipNo} · {bmSlip.batchMakerName}
+                                        </span>
+                                      )}
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => selectBatch(b.batchId)}
-                                      className="bg-purple-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-purple-700 transition"
-                                    >
-                                      Select →
-                                    </button>
+                                    {locked ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => setBmModalOpen(true)}
+                                        title="This batch needs a BM- slip first — click to open the Batch Maker popup"
+                                        className="bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                                      >
+                                        🔒 BM Pending
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => selectBatch(b.batchId)}
+                                        className="bg-purple-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:bg-purple-700 transition"
+                                      >
+                                        Select →
+                                      </button>
+                                    )}
                                   </div>
                                   <div className="flex flex-wrap gap-1.5">
                                     {b.lots.map((l, li) => (
@@ -688,7 +731,8 @@ export default function BatchDyeingPage() {
                                     <span className="text-[10px] text-gray-400 ml-auto">{b.totalWeight.toFixed(1)} kg</span>
                                   </div>
                                 </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           )}
                         </div>

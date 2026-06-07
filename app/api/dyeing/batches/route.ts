@@ -26,7 +26,9 @@ export async function GET() {
     })
     const usedBatchIds = new Set(usedBatches.map((e: any) => e.foldBatchId))
 
-    // Fetch all fold programs with batches, lots, shade, recipe
+    // Fetch all fold programs with batches, lots, shade, recipe.
+    // batchMakingSlipBatches is filtered to active (slipStatus='confirmed')
+    // rows only — cancelled BM slips leave the batch unlocked again.
     const programs = await prisma.foldProgram.findMany({
       include: {
         batches: {
@@ -38,6 +40,13 @@ export async function GET() {
                   include: { chemical: true },
                 },
               },
+            },
+            batchMakingSlipBatches: {
+              where: { slipStatus: 'confirmed' },
+              select: {
+                slip: { select: { slipNo: true, batchMakerName: true, date: true } },
+              },
+              take: 1,
             },
           },
         },
@@ -197,6 +206,18 @@ export async function GET() {
 
         const shadeName = batch.shade?.name ?? batch.shadeName ?? 'No Shade'
 
+        // Batch maker lock state — null = needs a BM slip before this batch
+        // can be picked for a dyeing slip. The Step-1 picker disables Select
+        // when this is null.
+        const bmRow = (batch as any).batchMakingSlipBatches?.[0]
+        const batchMakingSlip = bmRow?.slip
+          ? {
+              slipNo: bmRow.slip.slipNo,
+              batchMakerName: bmRow.slip.batchMakerName,
+              date: bmRow.slip.date,
+            }
+          : null
+
         result.push({
           foldNo: prog.foldNo,
           foldDate: prog.date,
@@ -211,6 +232,7 @@ export async function GET() {
           totalWeight: Math.round(totalWeight * 100) / 100,
           recipe,
           isPcJob: isPali,
+          batchMakingSlip,
         })
       }
     }
