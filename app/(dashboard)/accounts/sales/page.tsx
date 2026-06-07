@@ -195,7 +195,7 @@ export default function SalesPage() {
     const log = (line: string) => setSyncLog(prev => [...prev, line])
     log(`▶ FY ${fy} · ${chunks.length} months to sync`)
 
-    let totalSaved = 0, totalFetched = 0
+    let totalSaved = 0, totalFetched = 0, totalPruned = 0
     try {
       for (let i = 0; i < chunks.length; i++) {
         const c = chunks[i]
@@ -213,12 +213,15 @@ export default function SalesPage() {
           mutate()
           return
         }
-        log(`✓ ${c.label}  ${sec}s  ${d.saved}/${d.fetched} invoices`)
+        const pruneSuffix = d.prunedCount ? `  ·  pruned ${d.prunedCount}` : ''
+        log(`✓ ${c.label}  ${sec}s  ${d.saved}/${d.fetched} invoices${pruneSuffix}`)
         totalSaved += d.saved || 0
         totalFetched += d.fetched || 0
+        totalPruned += d.prunedCount || 0
       }
-      log(`✅ Done · ${totalSaved}/${totalFetched} invoices across ${chunks.length} months`)
-      setSyncMsg(`Synced ${totalSaved}/${totalFetched} invoices across ${chunks.length} months`)
+      const pruneSummary = totalPruned ? ` · pruned ${totalPruned} Tally-deleted` : ''
+      log(`✅ Done · ${totalSaved}/${totalFetched} invoices across ${chunks.length} months${pruneSummary}`)
+      setSyncMsg(`Synced ${totalSaved}/${totalFetched} invoices across ${chunks.length} months${pruneSummary}`)
       mutate()
     } catch (e: any) {
       log(`✗ Network error: ${e?.message || 'unknown'}`)

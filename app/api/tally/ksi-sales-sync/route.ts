@@ -17,6 +17,9 @@ const SALES_TYPES = ['Process Job', 'Sales', 'Credit Note', 'Journal', 'Debit No
 const PARTYLESS_TYPES = new Set(['Journal', 'Debit Note'])
 
 const pad = (n: number) => String(n).padStart(2, '0')
+function isoDay(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
 function fyOf(date: Date): string {
   const y = date.getFullYear(), m = date.getMonth()
   const start = m < 3 ? y - 1 : y
@@ -287,9 +290,15 @@ export async function POST(req: NextRequest) {
   if (process.env.CF_ACCESS_CLIENT_ID) headers['CF-Access-Client-Id'] = process.env.CF_ACCESS_CLIENT_ID
   if (process.env.CF_ACCESS_CLIENT_SECRET) headers['CF-Access-Client-Secret'] = process.env.CF_ACCESS_CLIENT_SECRET
 
-  // Iterate monthly windows × voucher types and accumulate.
+  // Iterate monthly windows × voucher types and accumulate. We also
+  // track, per (window, vchType): whether Tally actually returned any
+  // vouchers (verified) or zero (unverified). The verified slots and the
+  // raw vchNumber/vchType/date keys drive the auto-prune step below.
   const windows = monthlyWindows(from, to)
   const vouchers: ParsedVoucher[] = []
+  const verifiedSlots: Array<{ from: string; to: string; vchType: string; count: number }> = []
+  const unverifiedSlots: Array<{ from: string; to: string; vchType: string; reason: string }> = []
+  const tallyKeys = new Set<string>() // `${vchType}|${vchNumber}|${YYYY-MM-DD}`
   for (const w of windows) {
     for (const vt of SALES_TYPES) {
       let res: Response
@@ -304,6 +313,24 @@ export async function POST(req: NextRequest) {
       }
       if (!res.ok) return NextResponse.json({ error: `Tally HTTP ${res.status} in ${w.from}–${w.to} ${vt}` }, { status: 502 })
       const xml = await res.text()
+      // Mirror /api/tally/ksi-sales-prune: zero <VOUCHER> blocks = unverified
+      // slot; rows in that slot are protected from auto-delete to guard
+      // against a transient empty response.
+      const blocks = xml.match(/<VOUCHER[^>]*>[\s\S]*?<\/VOUCHER>/g) || []
+      if (blocks.length === 0) {
+        unverifiedSlots.push({ from: w.from, to: w.to, vchType: vt, reason: 'zero vouchers (treated as unverified)' })
+        continue
+      }
+      let keyCount = 0
+      for (const b of blocks) {
+        const vchNumber = pickTag(b, 'VOUCHERNUMBER')
+        const vchTypeRaw = pickTag(b, 'VOUCHERTYPENAME')
+        const date = parseTallyDate(pickTag(b, 'DATE'))
+        if (!vchNumber || !vchTypeRaw || !date) continue
+        tallyKeys.add(`${vchTypeRaw}|${vchNumber}|${isoDay(date)}`)
+        keyCount++
+      }
+      verifiedSlots.push({ from: w.from, to: w.to, vchType: vt, count: keyCount })
       vouchers.push(...parseVouchers(xml))
     }
   }
@@ -427,6 +454,48 @@ export async function POST(req: NextRequest) {
     saved++
   }
 
+  // Auto-prune Tally-side deletions in the same pass. Same safety contract
+  // as /api/tally/ksi-sales-prune: only act on (vchType, window) slots
+  // where Tally actually returned vouchers; skip opening-balance rows.
+  // Caller can pass { skipPrune: true } to opt out (e.g. for narrow back-
+  // fills where reconcile should run manually).
+  let prunedCount = 0
+  const prunedExamples: Array<{ id: number; vchNumber: string; vchType: string; date: string; partyName: string; totalAmount: number }> = []
+  if (!body.skipPrune) {
+    const verifiedRanges = new Map<string, Array<{ from: string; to: string }>>()
+    for (const v of verifiedSlots) {
+      if (!verifiedRanges.has(v.vchType)) verifiedRanges.set(v.vchType, [])
+      verifiedRanges.get(v.vchType)!.push({ from: v.from, to: v.to })
+    }
+    const dbRows: any[] = await db.ksiSalesInvoice.findMany({
+      where: {
+        isOpeningBalance: false,
+        vchType: { in: SALES_TYPES },
+        date: { gte: new Date(from + 'T00:00:00'), lte: new Date(to + 'T23:59:59') },
+      },
+      select: { id: true, vchNumber: true, vchType: true, date: true, totalAmount: true, partyName: true },
+    })
+    const orphanIds: number[] = []
+    for (const r of dbRows) {
+      const dISO = isoDay(r.date)
+      const ranges = verifiedRanges.get(r.vchType) || []
+      if (!ranges.some(rg => dISO >= rg.from && dISO <= rg.to)) continue
+      const key = `${r.vchType}|${r.vchNumber}|${dISO}`
+      if (tallyKeys.has(key)) continue
+      orphanIds.push(r.id)
+      if (prunedExamples.length < 10) {
+        prunedExamples.push({
+          id: r.id, vchNumber: r.vchNumber, vchType: r.vchType, date: dISO,
+          partyName: r.partyName, totalAmount: r.totalAmount,
+        })
+      }
+    }
+    if (orphanIds.length > 0) {
+      const result = await db.ksiSalesInvoice.deleteMany({ where: { id: { in: orphanIds } } })
+      prunedCount = result.count
+    }
+  }
+
   return NextResponse.json({
     fetched: vouchers.length,
     inRange: inRange.length,
@@ -435,6 +504,10 @@ export async function POST(req: NextRequest) {
     skippedNoParty,
     skippedMultiParty,
     skippedExamples,
+    prunedCount,
+    prunedExamples,
+    verifiedSlots: verifiedSlots.length,
+    unverifiedSlots: unverifiedSlots.length,
     range: { from, to },
     types: SALES_TYPES,
   })

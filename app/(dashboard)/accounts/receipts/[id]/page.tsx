@@ -179,7 +179,8 @@ export default function ReceiptDetailPage() {
       })
       const d = await res.json()
       if (!res.ok) { setSyncMsg(d.error || 'Failed'); return }
-      setSyncMsg(`Synced ${d.saved} invoices (${d.fetched} fetched)`)
+      const pruneSuffix = d.prunedCount ? ` · pruned ${d.prunedCount} Tally-deleted` : ''
+      setSyncMsg(`Synced ${d.saved} invoices (${d.fetched} fetched)${pruneSuffix}`)
       mutate()
     } catch (e: any) { setSyncMsg(e?.message || 'Network error') }
     finally { setSyncing(false) }
