@@ -44,6 +44,8 @@ export async function GET() {
             batchMakingSlipBatches: {
               where: { slipStatus: 'confirmed' },
               select: {
+                jetNo: true,
+                jetSerial: true,
                 slip: { select: { slipNo: true, batchMakerName: true, date: true } },
               },
               take: 1,
@@ -215,6 +217,8 @@ export async function GET() {
               slipNo: bmRow.slip.slipNo,
               batchMakerName: bmRow.slip.batchMakerName,
               date: bmRow.slip.date,
+              jetNo: bmRow.jetNo ?? null,
+              jetSerial: bmRow.jetSerial ?? null,
             }
           : null
 

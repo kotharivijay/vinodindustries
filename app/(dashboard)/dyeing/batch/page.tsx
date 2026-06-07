@@ -40,7 +40,7 @@ interface BatchInfo {
   recipe: RecipeItem[]
   isPcJob?: boolean
   marka?: string | null
-  batchMakingSlip?: { slipNo: string; batchMakerName: string; date: string } | null
+  batchMakingSlip?: { slipNo: string; batchMakerName: string; date: string; jetNo?: number | null; jetSerial?: number | null } | null
 }
 
 interface FoldGroup {
@@ -320,6 +320,15 @@ export default function BatchDyeingPage() {
           processTag: 'shade',
         }))
       )
+
+      // Auto-pick the machine if the BM slip tagged this batch to a Jet.
+      // Jet-N maps to DyeingMachine where number === N. If the operator
+      // already picked a different machine, leave their choice alone.
+      const jetNo = batch.batchMakingSlip?.jetNo
+      if (jetNo != null && selectedMachineId == null) {
+        const match = machines.find(m => m.number === jetNo)
+        if (match) setSelectedMachineId(match.id)
+      }
     }
   }
 
