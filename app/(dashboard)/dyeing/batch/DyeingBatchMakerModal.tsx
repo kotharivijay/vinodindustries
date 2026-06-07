@@ -30,6 +30,18 @@ interface BatchInfo {
 
 interface BatchMaker { id: number; name: string }
 
+// Lightweight shape returned by GET /api/dyeing/batch-maker for the list view
+interface SavedSlipListItem {
+  id: number
+  slipNo: string
+  serialNo: number
+  date: string
+  batchMakerName: string
+  status: string  // 'confirmed' | 'cancelled'
+  batches: { batchNoSnapshot: number; foldNoSnapshot: string }[]
+  _count?: { batches: number }
+}
+
 interface SavedSlip {
   id: number
   slipNo: string
@@ -69,9 +81,14 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
   onClose: () => void
   onSaved: () => void
 }) {
-  const { data: allBatches = [] } = useSWR<BatchInfo[]>('/api/dyeing/batches', fetcher, { revalidateOnFocus: false })
+  const { data: allBatches = [], mutate: mutateBatches } = useSWR<BatchInfo[]>('/api/dyeing/batches', fetcher, { revalidateOnFocus: false })
   const { data: makers = [], mutate: mutateMakers } = useSWR<BatchMaker[]>('/api/batch-makers', fetcher, { revalidateOnFocus: false })
   const { data: nextSlip } = useSWR<{ next: string }>('/api/dyeing/batch-maker/next-slip-no', fetcher, { revalidateOnFocus: false })
+  const { data: savedSlips = [], mutate: mutateSavedSlips } = useSWR<SavedSlipListItem[]>('/api/dyeing/batch-maker', fetcher, { revalidateOnFocus: false })
+
+  // Inner tab: 'new' is the picker, 'saved' is the cancel/audit view. Default
+  // is 'new' so opening the popup always lands Sanker on the create flow.
+  const [innerTab, setInnerTab] = useState<'new' | 'saved'>('new')
 
   const [date, setDate] = useState(todayISO())
   const [batchMakerName, setBatchMakerName] = useState('Sanker')
@@ -85,6 +102,7 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
   const [savedSlip, setSavedSlip] = useState<SavedSlip | null>(null)
   const [printing, setPrinting] = useState(false)
   const [printError, setPrintError] = useState('')
+  const [cancellingId, setCancellingId] = useState<number | null>(null)
 
   // Only show batches that need a BM slip: not cancelled, not already on
   // an active BM slip (server filters slipStatus='confirmed' on its side).
@@ -140,6 +158,37 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
       else next.add(batchId)
       return next
     })
+  }
+
+  async function handleCancelSlip(slip: SavedSlipListItem) {
+    const ok = window.confirm(
+      `Cancel ${slip.slipNo} (${slip.batchMakerName})?\n\n` +
+      `${slip.batches.length} batch${slip.batches.length === 1 ? '' : 'es'} will re-open for a fresh BM slip.\n` +
+      `The serial ${slip.slipNo} stays in the audit trail.`
+    )
+    if (!ok) return
+    setCancellingId(slip.id)
+    try {
+      const res = await fetch(`/api/dyeing/batch-maker/${slip.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel' }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data?.error ?? 'Cancel failed')
+        return
+      }
+      // Refetch both lists so the cancelled slip shows greyed out AND the
+      // freed batches re-appear under the New tab + on the page's Step-1
+      // picker (via the onSaved bubble).
+      await Promise.all([mutateSavedSlips(), mutateBatches()])
+      onSaved()
+    } catch (e: any) {
+      alert(e?.message ?? 'Network error')
+    } finally {
+      setCancellingId(null)
+    }
   }
 
   async function handleAddMaker() {
@@ -208,6 +257,35 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
     }
   }
 
+  // Share the same text receipt the Bluetooth printer would emit so what
+  // Sanker reads on his phone matches the physical slip exactly.
+  const [sharing, setSharing] = useState(false)
+  async function handleShare() {
+    if (!savedSlip) return
+    setPrintError('')
+    setSharing(true)
+    try {
+      const { buildBatchMakerReceipt } = await import('./batchMakerPrint')
+      const text = buildBatchMakerReceipt(savedSlip)
+      const title = `KSI Batch Making — ${savedSlip.slipNo}`
+      // Prefer the native share sheet on mobile (lets the user pick WhatsApp,
+      // a specific contact, etc.). Fall back to wa.me on desktop.
+      if (navigator.share) {
+        try {
+          await navigator.share({ title, text })
+          return
+        } catch (e: any) {
+          if (e?.name === 'AbortError') return  // user dismissed sheet
+        }
+      }
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+    } catch (e: any) {
+      setPrintError(e?.message ?? 'Share failed')
+    } finally {
+      setSharing(false)
+    }
+  }
+
   function handleClose() {
     if (savedSlip) onSaved()
     onClose()
@@ -240,7 +318,78 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
           </button>
         </div>
 
-        {showPicker ? (
+        {showPicker && (
+          <div className="flex gap-1 bg-slate-800 mx-5 mt-3 rounded p-1">
+            <button
+              onClick={() => setInnerTab('new')}
+              className={`flex-1 text-xs font-medium rounded py-1.5 transition ${
+                innerTab === 'new' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              + New Slip
+            </button>
+            <button
+              onClick={() => setInnerTab('saved')}
+              className={`flex-1 text-xs font-medium rounded py-1.5 transition ${
+                innerTab === 'saved' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Saved BM Slips ({savedSlips.length})
+            </button>
+          </div>
+        )}
+
+        {showPicker && innerTab === 'saved' ? (
+          <div className="flex-1 overflow-y-auto p-5 space-y-2">
+            {savedSlips.length === 0 ? (
+              <div className="text-center text-slate-400 text-sm py-10">
+                No BM slips yet.
+              </div>
+            ) : (
+              savedSlips.map(s => {
+                const cancelled = s.status === 'cancelled'
+                return (
+                  <div
+                    key={s.id}
+                    className={`rounded border px-3 py-2 ${cancelled ? 'border-slate-800 bg-slate-900/50 opacity-60' : 'border-slate-700 bg-slate-800/40'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm">
+                          <span className={`font-mono font-semibold ${cancelled ? 'line-through text-slate-400' : 'text-purple-300'}`}>
+                            {s.slipNo}
+                          </span>
+                          <span className="ml-2 text-slate-300">{s.batchMakerName}</span>
+                          <span className="ml-2 text-xs text-slate-500">
+                            {new Date(s.date).toLocaleDateString('en-IN')}
+                          </span>
+                          {cancelled && (
+                            <span className="ml-2 text-[10px] uppercase font-semibold bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded">
+                              Cancelled
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-400 truncate">
+                          {s.batches.length} batch{s.batches.length === 1 ? '' : 'es'}:{' '}
+                          {s.batches.map(b => `Fold ${b.foldNoSnapshot}·B${b.batchNoSnapshot}`).join(', ')}
+                        </div>
+                      </div>
+                      {!cancelled && (
+                        <button
+                          onClick={() => handleCancelSlip(s)}
+                          disabled={cancellingId === s.id}
+                          className="shrink-0 text-xs bg-red-600/80 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white px-3 py-1.5 rounded"
+                        >
+                          {cancellingId === s.id ? 'Cancelling…' : 'Cancel'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        ) : showPicker ? (
           <>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -443,6 +592,13 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                 className="px-3 py-1.5 rounded text-sm text-slate-300 hover:text-white"
               >
                 Close
+              </button>
+              <button
+                onClick={handleShare}
+                disabled={sharing}
+                className="px-4 py-1.5 rounded text-sm bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 text-white"
+              >
+                {sharing ? 'Sharing…' : '📤 WhatsApp'}
               </button>
               <button
                 onClick={handlePrint}
