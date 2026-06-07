@@ -313,14 +313,17 @@ export async function POST(req: NextRequest) {
       }
       if (!res.ok) return NextResponse.json({ error: `Tally HTTP ${res.status} in ${w.from}–${w.to} ${vt}` }, { status: 502 })
       const xml = await res.text()
-      // Mirror /api/tally/ksi-sales-prune: zero <VOUCHER> blocks = unverified
-      // slot; rows in that slot are protected from auto-delete to guard
-      // against a transient empty response.
+      // We treat verification at the WINDOW level (not per vchType): a
+      // window is "verified" if Tally returned >=1 voucher of ANY type for
+      // it. Within a verified window, every type — including ones that
+      // legitimately returned 0 — is eligible for pruning. This is
+      // necessary because months can have e.g. zero Debit Notes; the old
+      // per-(window, type) rule shielded those orphans forever.
+      // Transient failures are still protected: the loop already early-
+      // returns 502 on tunnel/HTTP errors, and a window where ALL types
+      // return zero stays unverified (so future or vacant windows can't
+      // accidentally delete anything).
       const blocks = xml.match(/<VOUCHER[^>]*>[\s\S]*?<\/VOUCHER>/g) || []
-      if (blocks.length === 0) {
-        unverifiedSlots.push({ from: w.from, to: w.to, vchType: vt, reason: 'zero vouchers (treated as unverified)' })
-        continue
-      }
       let keyCount = 0
       for (const b of blocks) {
         const vchNumber = pickTag(b, 'VOUCHERNUMBER')
@@ -330,7 +333,11 @@ export async function POST(req: NextRequest) {
         tallyKeys.add(`${vchTypeRaw}|${vchNumber}|${isoDay(date)}`)
         keyCount++
       }
-      verifiedSlots.push({ from: w.from, to: w.to, vchType: vt, count: keyCount })
+      if (keyCount === 0) {
+        unverifiedSlots.push({ from: w.from, to: w.to, vchType: vt, reason: 'zero vouchers' })
+      } else {
+        verifiedSlots.push({ from: w.from, to: w.to, vchType: vt, count: keyCount })
+      }
       vouchers.push(...parseVouchers(xml))
     }
   }
@@ -462,11 +469,10 @@ export async function POST(req: NextRequest) {
   let prunedCount = 0
   const prunedExamples: Array<{ id: number; vchNumber: string; vchType: string; date: string; partyName: string; totalAmount: number }> = []
   if (!body.skipPrune) {
-    const verifiedRanges = new Map<string, Array<{ from: string; to: string }>>()
-    for (const v of verifiedSlots) {
-      if (!verifiedRanges.has(v.vchType)) verifiedRanges.set(v.vchType, [])
-      verifiedRanges.get(v.vchType)!.push({ from: v.from, to: v.to })
-    }
+    // Window-level verification: a window is pruneable if ANY vchType
+    // returned vouchers in it (see comment on the fetch loop above).
+    const verifiedWindows = new Set<string>()
+    for (const v of verifiedSlots) verifiedWindows.add(`${v.from}|${v.to}`)
     const dbRows: any[] = await db.ksiSalesInvoice.findMany({
       where: {
         isOpeningBalance: false,
@@ -478,8 +484,8 @@ export async function POST(req: NextRequest) {
     const orphanIds: number[] = []
     for (const r of dbRows) {
       const dISO = isoDay(r.date)
-      const ranges = verifiedRanges.get(r.vchType) || []
-      if (!ranges.some(rg => dISO >= rg.from && dISO <= rg.to)) continue
+      const w = windows.find(wn => dISO >= wn.from && dISO <= wn.to)
+      if (!w || !verifiedWindows.has(`${w.from}|${w.to}`)) continue
       const key = `${r.vchType}|${r.vchNumber}|${dISO}`
       if (tallyKeys.has(key)) continue
       orphanIds.push(r.id)

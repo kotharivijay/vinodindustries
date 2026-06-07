@@ -130,17 +130,15 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Build set of (vchType, fromISO, toISO) combos that ARE verified, so
-  // we can filter DB rows accordingly.
-  const verifiedRanges = new Map<string, Array<{ from: string; to: string }>>()
-  for (const v of verifiedWindows) {
-    if (!verifiedRanges.has(v.vchType)) verifiedRanges.set(v.vchType, [])
-    verifiedRanges.get(v.vchType)!.push({ from: v.from, to: v.to })
-  }
+  // Window-level verification: a window is pruneable if Tally returned
+  // >=1 voucher of ANY type for it. The old per-(window, vchType) rule
+  // shielded orphans of types that legitimately had zero entries that
+  // month (e.g. a stray Debit Note in a month with no other DNs).
+  // Transient failures stay protected — tunnel/HTTP errors and ALL-types-
+  // zero windows still leave the window unverified.
+  const verifiedWindowSet = new Set<string>()
+  for (const v of verifiedWindows) verifiedWindowSet.add(`${v.from}|${v.to}`)
 
-  // Pull DB rows for the full range, then filter to only those whose
-  // (vchType, date) sits inside a VERIFIED window before considering
-  // them for deletion.
   const dbRows: any[] = await db.ksiSalesInvoice.findMany({
     where: {
       isOpeningBalance: false,
@@ -153,10 +151,8 @@ export async function POST(req: NextRequest) {
   const orphans: Array<{ id: number; vchNumber: string; vchType: string; date: string; totalAmount: number; partyName: string }> = []
   for (const r of dbRows) {
     const dISO = isoDay(r.date)
-    // Is this row inside a verified Tally window for its type?
-    const ranges = verifiedRanges.get(r.vchType) || []
-    const inVerifiedRange = ranges.some(rg => dISO >= rg.from && dISO <= rg.to)
-    if (!inVerifiedRange) continue // can't verify => can't safely delete
+    const w = windows.find(wn => dISO >= wn.from && dISO <= wn.to)
+    if (!w || !verifiedWindowSet.has(`${w.from}|${w.to}`)) continue
     const key = `${r.vchType}|${r.vchNumber}|${dISO}`
     if (!tallyKeys.has(key)) {
       orphans.push({
