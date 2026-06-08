@@ -111,6 +111,7 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
   const [printing, setPrinting] = useState(false)
   const [printError, setPrintError] = useState('')
   const [cancellingId, setCancellingId] = useState<number | null>(null)
+  const [viewingId, setViewingId] = useState<number | null>(null)
 
   // Jet planning state. tagMode toggles per-batch jet dropdowns; tags maps
   // batchId → {jetNo, jetSerial}. Null entries are fine — POST stores nulls
@@ -257,6 +258,25 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
       else next.add(batchId)
       return next
     })
+  }
+
+  async function handleViewSlip(slipId: number) {
+    setViewingId(slipId)
+    try {
+      const res = await fetch(`/api/dyeing/batch-maker/${slipId}`)
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data?.error ?? 'Failed to load slip')
+        return
+      }
+      // Reuse the post-save print panel — it already renders batches,
+      // lots, jet/serial badges, and exposes Print + WhatsApp buttons.
+      setSavedSlip(data)
+    } catch (e: any) {
+      alert(e?.message ?? 'Network error')
+    } finally {
+      setViewingId(null)
+    }
   }
 
   async function handleCancelSlip(slip: SavedSlipListItem) {
@@ -615,15 +635,24 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                           {s.batches.map(b => `Fold ${b.foldNoSnapshot}·B${b.batchNoSnapshot}`).join(', ')}
                         </div>
                       </div>
-                      {!cancelled && (
+                      <div className="shrink-0 flex items-center gap-1.5">
                         <button
-                          onClick={() => handleCancelSlip(s)}
-                          disabled={cancellingId === s.id}
-                          className="shrink-0 text-xs bg-red-600/80 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white px-3 py-1.5 rounded"
+                          onClick={() => handleViewSlip(s.id)}
+                          disabled={viewingId === s.id}
+                          className="text-xs bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:text-slate-500 text-white px-3 py-1.5 rounded"
                         >
-                          {cancellingId === s.id ? 'Cancelling…' : 'Cancel'}
+                          {viewingId === s.id ? 'Loading…' : 'View'}
                         </button>
-                      )}
+                        {!cancelled && (
+                          <button
+                            onClick={() => handleCancelSlip(s)}
+                            disabled={cancellingId === s.id}
+                            className="text-xs bg-red-600/80 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white px-3 py-1.5 rounded"
+                          >
+                            {cancellingId === s.id ? 'Cancelling…' : 'Cancel'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
@@ -846,7 +875,12 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               <div className="rounded border border-green-500/40 bg-green-500/10 px-4 py-3">
                 <div className="text-sm text-green-300 font-semibold">
-                  Slip {savedSlip!.slipNo} saved.
+                  {savedSlip!.slipNo}
+                  {(savedSlip as any).status === 'cancelled' && (
+                    <span className="ml-2 text-[10px] uppercase font-semibold bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded">
+                      Cancelled
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-slate-300 mt-1">
                   {savedSlip!.batchMakerName} · {new Date(savedSlip!.date).toLocaleDateString('en-IN')}
