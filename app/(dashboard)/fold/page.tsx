@@ -472,13 +472,6 @@ export default function FoldListPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400">{programs?.length ?? 0} programs</p>
         </div>
         <button
-          onClick={() => importFromSheet('preview')}
-          disabled={sheetImporting}
-          className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-700 disabled:opacity-50 transition"
-        >
-          {sheetImporting ? 'Loading...' : '📊 Import Sheet'}
-        </button>
-        <button
           onClick={() => setShowImport(true)}
           className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition"
         >
