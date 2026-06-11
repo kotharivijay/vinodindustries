@@ -937,12 +937,6 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
               <div className="rounded border border-slate-700 divide-y divide-slate-800">
                 {savedSlip!.batches.map((b, i) => {
                   const cv = currentValues(b)
-                  // Surface a struck-through audit hint only when the live
-                  // value diverged from the BM snapshot. Reprints already
-                  // use the snapshot — this is just a "what changed since"
-                  // breadcrumb in the on-screen view.
-                  const shadeDrifted = !!b.shadeNameSnapshot && cv.shadeName !== b.shadeNameSnapshot
-                  const markaDrifted = !!b.markaSnapshot && cv.marka !== b.markaSnapshot
                   return (
                     <div key={i} className="px-3 py-2 text-sm">
                       <div className="text-white flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -953,11 +947,6 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                         )}
                         <span>Fold {b.foldNoSnapshot} · B{b.batchNoSnapshot}</span>
                         {cv.shadeName && <span className="text-slate-300">{cv.shadeName}</span>}
-                        {shadeDrifted && (
-                          <span className="text-[10px] text-slate-500 line-through" title="Shade at BM print time">
-                            {b.shadeNameSnapshot}
-                          </span>
-                        )}
                         {cv.slipNo != null && (
                           <span className="text-[10px] font-mono bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded">
                             Slip {cv.slipNo}
@@ -969,14 +958,7 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                         <div className="text-xs text-slate-400 mt-0.5">{cv.shadeDescription}</div>
                       )}
                       {cv.marka && (
-                        <div className="text-xs text-amber-400">
-                          Marka: {cv.marka}
-                          {markaDrifted && (
-                            <span className="ml-2 text-[10px] text-slate-500 line-through" title="Marka at BM print time">
-                              {b.markaSnapshot}
-                            </span>
-                          )}
-                        </div>
+                        <div className="text-xs text-amber-400">Marka: {cv.marka}</div>
                       )}
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         {b.foldBatch.lots.map((l, j) => (
