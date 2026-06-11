@@ -5,7 +5,7 @@ import useSWR, { useSWRConfig } from 'swr'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
 import { ITEM_USAGE_TAG_GROUPS, ITEM_USAGE_TAGS, labelForUsageTag } from '@/lib/inv/item-usage-tags'
-import { EditNameModal, MergeIntoModal } from './ItemFixModals'
+import { ChangeAliasModal, EditNameModal, MergeIntoModal } from './ItemFixModals'
 
 /** Title-case + collapse internal whitespace, e.g. "  reactive  yellow 145 " → "Reactive Yellow 145". */
 function normalizeDisplayName(s: string): string {
@@ -45,6 +45,7 @@ export default function ItemsPage() {
   const [tagFilter, setTagFilter] = useState<string>('') // '' = all
   const [editTagsForId, setEditTagsForId] = useState<number | null>(null)
   const [editNameTarget, setEditNameTarget] = useState<Item | null>(null)
+  const [aliasTarget, setAliasTarget] = useState<Item | null>(null)
   const [mergeSource, setMergeSource] = useState<Item | null>(null)
   const { mutate: globalMutate } = useSWRConfig()
 
@@ -229,6 +230,8 @@ export default function ItemsPage() {
                   <td className="px-3 py-1.5 text-right whitespace-nowrap">
                     <button onClick={() => setEditNameTarget(it)}
                       className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline mr-2">Rename</button>
+                    <button onClick={() => setAliasTarget(it)}
+                      className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline mr-2">Alias</button>
                     <button onClick={() => setMergeSource(it)}
                       className="text-[10px] text-purple-600 dark:text-purple-400 hover:underline">Merge</button>
                   </td>
@@ -257,6 +260,20 @@ export default function ItemsPage() {
           item={editNameTarget}
           onClose={() => setEditNameTarget(null)}
           onSaved={() => { setEditNameTarget(null); mutate() }}
+        />
+      )}
+      {aliasTarget && (
+        <ChangeAliasModal
+          item={aliasTarget}
+          onClose={() => setAliasTarget(null)}
+          onSaved={() => {
+            setAliasTarget(null)
+            mutate()
+            // Other pages cache item lookups via SWR (challan/PO/invoice
+            // pickers, line snapshots). Bust everything so the new
+            // alias+unit shows up wherever the item is referenced.
+            globalMutate(() => true, undefined, { revalidate: true })
+          }}
         />
       )}
       {mergeSource && (
