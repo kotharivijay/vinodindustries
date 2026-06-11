@@ -20,6 +20,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
             include: {
               lots: true,
               foldProgram: { select: { foldNo: true, date: true } },
+              // Live shade master (for the case where FoldBatch only carries
+              // shadeId without the free-text override).
+              shade: { select: { name: true, description: true } },
+              // Newest dyeing entry first — its shade / marka / slipNo win
+              // over the BM snapshot per the codebase's read priority
+              // (DyeingEntry → FoldBatch → Shade). Multiple entries exist
+              // when a batch is re-dyed.
+              dyeingEntries: {
+                orderBy: [{ date: 'desc' }, { id: 'desc' }],
+                select: {
+                  id: true, slipNo: true, date: true, status: true,
+                  shadeName: true, shadeDescription: true, marka: true,
+                },
+              },
             },
           },
         },

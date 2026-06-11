@@ -58,8 +58,56 @@ interface SavedSlip {
     jetSerial: number | null
     foldBatch: {
       lots: { lotNo: string; than: number }[]
+      // Live fields on the FoldBatch row — may have been edited after the
+      // BM slip was printed, so they shadow the snapshots in the detail
+      // view per the same priority Dyeing pages follow.
+      shadeName: string | null
+      shadeDescription: string | null
+      marka: string | null
+      shade: { name: string; description: string | null } | null
+      // Newest first. The latest entry's overrides win over FoldBatch /
+      // Shade master, matching DyeingEntry.shadeDescription's documented
+      // read order. Empty list = no dyeing slip cut yet for this batch.
+      dyeingEntries: {
+        id: number
+        slipNo: number
+        date: string
+        status: string
+        shadeName: string | null
+        shadeDescription: string | null
+        marka: string | null
+      }[]
     }
   }[]
+}
+
+// Resolve the values the saved-slip detail view should display for one
+// batch row. Read priority: latest DyeingEntry → live FoldBatch fields →
+// Shade master → the BM-print snapshot. The snapshot is the final
+// fallback so the row never blanks out even if the fold/dyeing rows are
+// somehow missing the field.
+function currentValues(b: SavedSlip['batches'][number]) {
+  const latest = b.foldBatch.dyeingEntries[0]
+  return {
+    shadeName:
+      latest?.shadeName ||
+      b.foldBatch.shadeName ||
+      b.foldBatch.shade?.name ||
+      b.shadeNameSnapshot ||
+      null,
+    shadeDescription:
+      latest?.shadeDescription ||
+      b.foldBatch.shadeDescription ||
+      b.foldBatch.shade?.description ||
+      null,
+    marka:
+      latest?.marka ||
+      b.foldBatch.marka ||
+      b.markaSnapshot ||
+      null,
+    slipNo: latest?.slipNo ?? null,
+    slipStatus: latest?.status ?? null,
+  }
 }
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -887,34 +935,62 @@ export default function DyeingBatchMakerModal({ onClose, onSaved }: {
                 </div>
               </div>
               <div className="rounded border border-slate-700 divide-y divide-slate-800">
-                {savedSlip!.batches.map((b, i) => (
-                  <div key={i} className="px-3 py-2 text-sm">
-                    <div className="text-white">
-                      {b.jetNo != null && (
-                        <span className="mr-2 text-[10px] font-mono uppercase bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">
-                          Jet-{b.jetNo}{b.jetSerial != null ? ` · ${ordinal(b.jetSerial)}` : ''}
-                        </span>
+                {savedSlip!.batches.map((b, i) => {
+                  const cv = currentValues(b)
+                  // Surface a struck-through audit hint only when the live
+                  // value diverged from the BM snapshot. Reprints already
+                  // use the snapshot — this is just a "what changed since"
+                  // breadcrumb in the on-screen view.
+                  const shadeDrifted = !!b.shadeNameSnapshot && cv.shadeName !== b.shadeNameSnapshot
+                  const markaDrifted = !!b.markaSnapshot && cv.marka !== b.markaSnapshot
+                  return (
+                    <div key={i} className="px-3 py-2 text-sm">
+                      <div className="text-white flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        {b.jetNo != null && (
+                          <span className="text-[10px] font-mono uppercase bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">
+                            Jet-{b.jetNo}{b.jetSerial != null ? ` · ${ordinal(b.jetSerial)}` : ''}
+                          </span>
+                        )}
+                        <span>Fold {b.foldNoSnapshot} · B{b.batchNoSnapshot}</span>
+                        {cv.shadeName && <span className="text-slate-300">{cv.shadeName}</span>}
+                        {shadeDrifted && (
+                          <span className="text-[10px] text-slate-500 line-through" title="Shade at BM print time">
+                            {b.shadeNameSnapshot}
+                          </span>
+                        )}
+                        {cv.slipNo != null && (
+                          <span className="text-[10px] font-mono bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded">
+                            Slip {cv.slipNo}
+                            {cv.slipStatus && cv.slipStatus !== 'pending' && ` · ${cv.slipStatus}`}
+                          </span>
+                        )}
+                      </div>
+                      {cv.shadeDescription && (
+                        <div className="text-xs text-slate-400 mt-0.5">{cv.shadeDescription}</div>
                       )}
-                      Fold {b.foldNoSnapshot} · B{b.batchNoSnapshot}
-                      {b.shadeNameSnapshot && (
-                        <span className="ml-2 text-slate-300">{b.shadeNameSnapshot}</span>
+                      {cv.marka && (
+                        <div className="text-xs text-amber-400">
+                          Marka: {cv.marka}
+                          {markaDrifted && (
+                            <span className="ml-2 text-[10px] text-slate-500 line-through" title="Marka at BM print time">
+                              {b.markaSnapshot}
+                            </span>
+                          )}
+                        </div>
                       )}
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {b.foldBatch.lots.map((l, j) => (
+                          <span
+                            key={j}
+                            className="inline-flex items-center rounded bg-slate-800 text-purple-300 text-xs px-2 py-0.5"
+                          >
+                            [ ] {l.lotNo} · {l.than} than
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                    {b.markaSnapshot && (
-                      <div className="text-xs text-amber-400">Marka: {b.markaSnapshot}</div>
-                    )}
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {b.foldBatch.lots.map((l, j) => (
-                        <span
-                          key={j}
-                          className="inline-flex items-center rounded bg-slate-800 text-purple-300 text-xs px-2 py-0.5"
-                        >
-                          [ ] {l.lotNo} · {l.than} than
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               {printError && (
                 <div className="rounded bg-red-500/10 border border-red-500/40 px-3 py-2 text-sm text-red-300">
