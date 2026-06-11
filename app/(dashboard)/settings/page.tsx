@@ -350,6 +350,7 @@ function ServiceTab() {
       <OrphanDyeingCard />
       <NegativeLotsCard />
       <PartyNameMergeCard />
+      <DuplicateReceiptsCard />
       <ReconcileSalesDeletionsCard />
       <BackfillJournalDirectionCard />
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
@@ -1339,6 +1340,187 @@ function BackfillJournalDirectionCard() {
         </p>
       )}
       {error && <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+    </div>
+  )
+}
+
+// ─── Duplicate Receipts (by NEFT bank ref) ──────────────────────────────
+// Catches the case where Tally has two Receipt vouchers for the same
+// wire transfer (same BANKALLOCATIONS.UNIQUEREFERENCENUMBER). Scan groups
+// rows by bankRef; the safe deletes are dupes with zero allocations and
+// zero refund Payments tied to them — the keeper twin in each group
+// holds the actual allocations.
+interface DupReceiptRow {
+  id: number
+  date: string
+  vchNumber: string
+  vchType: string
+  partyName: string
+  amount: number
+  direction: string
+  narration: string | null
+  allocationCount: number
+  refundCount: number
+  removable: boolean
+  hidden: boolean
+  tallyPushedAt: string | null
+}
+interface DupReceiptGroup {
+  bankRef: string
+  rows: DupReceiptRow[]
+  keeperCount: number
+  removableCount: number
+}
+interface DupReceiptScan {
+  groups: DupReceiptGroup[]
+  stats: { groupCount: number; totalRows: number; safeDeletes: number; unsafeGroups: number }
+}
+
+function DuplicateReceiptsCard() {
+  const [data, setData] = useState<DupReceiptScan | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState<{ deleted: number; skipped: number } | null>(null)
+
+  async function load() {
+    setLoading(true); setError(''); setDone(null)
+    try {
+      const r = await fetch('/api/maintenance/duplicate-receipts', { cache: 'no-store' })
+      const d = await r.json()
+      if (!r.ok) { setError(d.error || 'Load failed'); return }
+      setData(d)
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setLoading(false) }
+  }
+
+  const removableIds = !data
+    ? []
+    : data.groups
+        .filter(g => g.keeperCount > 0)
+        .flatMap(g => g.rows.filter(r => r.removable).map(r => r.id))
+
+  async function applyDelete() {
+    if (removableIds.length === 0) return
+    if (!confirm(`Delete ${removableIds.length} unallocated duplicate receipt${removableIds.length === 1 ? '' : 's'}? Each row's twin (with the allocations) stays. Irreversible — and if the dupe still exists in Tally, the next ksi-hdfc-sync will pull it back.`)) return
+    setDeleting(true); setError('')
+    try {
+      const r = await fetch('/api/maintenance/duplicate-receipts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: removableIds }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setError(d.error || 'Delete failed'); return }
+      setDone({ deleted: d.deleted, skipped: d.skipped?.length ?? 0 })
+      await load()
+    } catch (e: any) {
+      setError(e?.message || 'Network error')
+    } finally { setDeleting(false) }
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
+      <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Duplicate Receipts (NEFT bank ref)</h2>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">
+        Finds KsiHdfcReceipt rows that share the same <span className="font-mono">bankRef</span> (BANKALLOCATIONS
+        unique reference number) — same money entered as two Tally vouchers. Safe deletes are dupes
+        with zero allocations and zero refunds attached; the twin holding the allocations is kept.
+        If a dupe still exists in Tally itself, delete it there too or the next sync re-creates it.
+      </p>
+
+      {!data && !loading && (
+        <button onClick={load}
+          className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold">
+          Scan Receipts
+        </button>
+      )}
+      {loading && <div className="text-sm text-gray-400">Scanning…</div>}
+
+      {data && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+            <Stat label="Dup Groups" value={data.stats.groupCount} tone={data.stats.groupCount ? 'amber' : 'green'} />
+            <Stat label="Total Rows" value={data.stats.totalRows} />
+            <Stat label="Safe Deletes" value={data.stats.safeDeletes} tone={data.stats.safeDeletes ? 'rose' : 'green'} />
+            <Stat label="Needs Review" value={data.stats.unsafeGroups} tone={data.stats.unsafeGroups ? 'amber' : 'green'} />
+          </div>
+
+          {data.groups.length === 0 ? (
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">No duplicate bankRef found. ✅</p>
+          ) : (
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+              {data.groups.map(g => (
+                <div key={g.bankRef} className="border border-gray-200 dark:border-gray-700 rounded-lg p-2.5 bg-gray-50 dark:bg-gray-900/40">
+                  <div className="flex items-baseline justify-between mb-1.5 gap-2">
+                    <div className="text-[10px] uppercase tracking-wide text-gray-500 truncate">
+                      bankRef: <span className="font-mono text-gray-700 dark:text-gray-200">{g.bankRef}</span>
+                    </div>
+                    <div className="text-[10px] shrink-0 flex items-center gap-1.5">
+                      <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded">
+                        keep {g.keeperCount}
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded ${g.removableCount > 0 && g.keeperCount > 0
+                        ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'
+                        : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                      }`}>
+                        drop {g.removableCount}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-0.5 text-[11px] font-mono">
+                    {g.rows.map(r => {
+                      const isDrop = r.removable && g.keeperCount > 0
+                      return (
+                        <div key={r.id} className={`flex items-baseline gap-2 px-1.5 py-1 rounded ${
+                          isDrop
+                            ? 'bg-rose-100/60 dark:bg-rose-900/20 text-rose-800 dark:text-rose-200'
+                            : 'bg-emerald-100/40 dark:bg-emerald-900/20 text-emerald-800 dark:text-emerald-200'
+                        }`}>
+                          <span className="w-5 shrink-0">{isDrop ? '🗑' : '✓'}</span>
+                          <span className="text-gray-500 dark:text-gray-400">[{r.id}]</span>
+                          <span>{r.date}</span>
+                          <span>{r.vchType} #{r.vchNumber}</span>
+                          <span className="flex-1 truncate font-sans text-gray-700 dark:text-gray-200">{r.partyName}</span>
+                          <span className="tabular-nums">₹{r.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className="shrink-0 text-[10px] font-sans text-gray-500 dark:text-gray-400">
+                            alloc:{r.allocationCount} {r.refundCount > 0 && `· ref:${r.refundCount}`}{r.hidden && ' · hidden'}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {g.keeperCount === 0 && (
+                    <p className="text-[10px] text-amber-700 dark:text-amber-300 mt-1.5">
+                      ⚠ All rows are unallocated — needs manual review. Pick one to keep before deleting the others.
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button onClick={load} disabled={loading}
+              className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm">
+              Refresh
+            </button>
+            {removableIds.length > 0 && (
+              <button onClick={applyDelete} disabled={deleting}
+                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold disabled:opacity-50">
+                {deleting ? 'Deleting…' : `Delete ${removableIds.length} dup${removableIds.length === 1 ? '' : 'es'}`}
+              </button>
+            )}
+          </div>
+
+          {done && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400">
+              ✅ Deleted {done.deleted}. {done.skipped > 0 && `Skipped ${done.skipped} (allocation appeared, or no surviving sibling).`}
+            </p>
+          )}
+          {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+        </div>
+      )}
     </div>
   )
 }
