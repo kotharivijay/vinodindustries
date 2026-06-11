@@ -40,6 +40,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ typ
   if (!ALLOWED.includes(type as MasterType))
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
 
+  // Party names sync from upstream (Tally / grey-inward history) — the
+  // /masters/parties page is tag + lot-prefix maintenance only, no new
+  // names. Block here so a stale UI / curl can't slip a new row in.
+  if (type === 'parties') {
+    return NextResponse.json(
+      { error: 'Adding new parties from this page is disabled. Party names are managed upstream.' },
+      { status: 403 },
+    )
+  }
+
   const { name, force } = await req.json()
   if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 

@@ -27,6 +27,11 @@ export default function MasterPage() {
   const [confirmSuggestions, setConfirmSuggestions] = useState<Suggestion[] | null>(null)
   const [pendingName, setPendingName] = useState('')
 
+  // Search box for the parties screen — the Add form is gone, so an
+  // operator finding "M.Suresh Fab" in a 500-row list needs a filter.
+  // Combines with the existing tag chips via AND.
+  const [searchQuery, setSearchQuery] = useState('')
+
   // Tag state (parties only)
   const [tagFilter, setTagFilter] = useState<string | null>(null) // null = All
   const [bulkTagMode, setBulkTagMode] = useState(false)
@@ -60,12 +65,17 @@ export default function MasterPage() {
     return Array.from(tags).sort()
   }, [items, isParties])
 
-  // Filtered items
+  // Filtered items. For non-parties the list is just the raw items.
+  // For parties we AND the tag chip filter with the search-by-name box.
   const filteredItems = useMemo(() => {
-    if (!isParties || tagFilter === null) return items
-    if (tagFilter === '__untagged__') return items.filter(i => !i.tag)
-    return items.filter(i => i.tag === tagFilter)
-  }, [items, tagFilter, isParties])
+    if (!isParties) return items
+    let out = items
+    if (tagFilter === '__untagged__') out = out.filter(i => !i.tag)
+    else if (tagFilter !== null) out = out.filter(i => i.tag === tagFilter)
+    const q = searchQuery.trim().toLowerCase()
+    if (q) out = out.filter(i => i.name.toLowerCase().includes(q))
+    return out
+  }, [items, tagFilter, searchQuery, isParties])
 
   const liveSuggestions = useMemo<Suggestion[]>(() => {
     if (newName.trim().length < 2) return []
@@ -200,49 +210,71 @@ export default function MasterPage() {
   return (
     <div className={`p-4 md:p-8 max-w-2xl ${isParties && bulkTagMode ? 'pb-32' : ''}`}>
       <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-1">{label}</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Manage {label.toLowerCase()} used in dropdown lists</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+        {isParties
+          ? 'Tag parties and set lot prefixes. Names sync from elsewhere — can’t add new here.'
+          : `Manage ${label.toLowerCase()} used in dropdown lists`}
+      </p>
 
-      {/* Add form */}
-      <form onSubmit={handleAdd} className="flex gap-3 mb-2">
-        <div className="flex-1 relative">
+      {/* Add form — hidden for parties (read-only roster, names sync upstream) */}
+      {!isParties && (
+        <>
+          <form onSubmit={handleAdd} className="flex gap-3 mb-2">
+            <div className="flex-1 relative">
+              <input
+                type="text"
+                className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder={`Add new ${singular}... (auto-cleaned: spaces, quotes)`}
+                value={newName}
+                onChange={(e) => { setNewName(e.target.value); setError('') }}
+                autoComplete="off"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={adding}
+              className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 shrink-0"
+            >
+              {adding ? 'Adding...' : '+ Add'}
+            </button>
+          </form>
+
+          {/* Live suggestions */}
+          {liveSuggestions.length > 0 && newName.trim().length >= 2 && (
+            <div className="mb-4 rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+              <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">Similar names already exist -- did you mean one of these?</p>
+              <div className="flex flex-col gap-1">
+                {liveSuggestions.map(s => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => { setNewName(s.name); setError('') }}
+                    className="flex items-center justify-between text-left text-sm px-3 py-1.5 rounded-md bg-white dark:bg-gray-700 border border-amber-200 dark:border-amber-700 hover:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition"
+                  >
+                    <span className="font-medium text-gray-800 dark:text-gray-100">{s.name}</span>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ml-2 shrink-0 ${scoreColor(s.score)}`}>
+                      {s.score}% match
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">Click a name to use it, or continue typing to add as new.</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Search box — parties only. Filters by name on top of the tag chips. */}
+      {isParties && (
+        <div className="mb-2">
           <input
-            type="text"
+            type="search"
             className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            placeholder={`Add new ${singular}... (auto-cleaned: spaces, quotes)`}
-            value={newName}
-            onChange={(e) => { setNewName(e.target.value); setError('') }}
+            placeholder="Search party by name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             autoComplete="off"
           />
-        </div>
-        <button
-          type="submit"
-          disabled={adding}
-          className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60 shrink-0"
-        >
-          {adding ? 'Adding...' : '+ Add'}
-        </button>
-      </form>
-
-      {/* Live suggestions */}
-      {liveSuggestions.length > 0 && newName.trim().length >= 2 && (
-        <div className="mb-4 rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
-          <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">Similar names already exist -- did you mean one of these?</p>
-          <div className="flex flex-col gap-1">
-            {liveSuggestions.map(s => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => { setNewName(s.name); setError('') }}
-                className="flex items-center justify-between text-left text-sm px-3 py-1.5 rounded-md bg-white dark:bg-gray-700 border border-amber-200 dark:border-amber-700 hover:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition"
-              >
-                <span className="font-medium text-gray-800 dark:text-gray-100">{s.name}</span>
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ml-2 shrink-0 ${scoreColor(s.score)}`}>
-                  {s.score}% match
-                </span>
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">Click a name to use it, or continue typing to add as new.</p>
         </div>
       )}
 
@@ -564,8 +596,8 @@ export default function MasterPage() {
         </div>
       )}
 
-      {/* Confirmation dialog */}
-      {confirmSuggestions && (
+      {/* Confirmation dialog — only reachable from the (now hidden-for-parties) Add form */}
+      {!isParties && confirmSuggestions && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6">
             <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1">Similar names found</h2>
