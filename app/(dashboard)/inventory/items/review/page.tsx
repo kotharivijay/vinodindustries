@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../../../BackButton'
 import { EditNameModal, MergeIntoModal } from '../ItemFixModals'
@@ -11,6 +12,25 @@ export default function ReviewQueuePage() {
   const { data, mutate, isLoading } = useSWR<any[]>('/api/inv/items/review-queue', fetcher)
   const [editTarget, setEditTarget] = useState<any | null>(null)
   const [mergeTarget, setMergeTarget] = useState<any | null>(null)
+
+  // ?focus=N from the invoice page — scroll the matching card into view
+  // and ring-highlight it for a few seconds so the operator's eye lands
+  // on it. Runs only after the list is rendered.
+  const searchParams = useSearchParams()
+  const focusId = searchParams.get('focus')
+  const [highlightId, setHighlightId] = useState<number | null>(null)
+  useEffect(() => {
+    if (!focusId || !data?.length) return
+    const id = Number(focusId)
+    if (!Number.isFinite(id)) return
+    const el = document.getElementById(`item-${id}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightId(id)
+      const t = setTimeout(() => setHighlightId(null), 3000)
+      return () => clearTimeout(t)
+    }
+  }, [focusId, data])
 
   async function approve(id: number) {
     await fetch(`/api/inv/items/${id}/approve`, { method: 'POST' })
@@ -42,7 +62,12 @@ export default function ReviewQueuePage() {
       ) : (
         <div className="space-y-2">
           {data.map((it: any) => (
-            <div key={it.id} className="bg-white dark:bg-gray-800 rounded-xl border border-amber-300 dark:border-amber-700 p-4 flex items-center gap-3 flex-wrap">
+            <div key={it.id} id={`item-${it.id}`}
+              className={`bg-white dark:bg-gray-800 rounded-xl border p-4 flex items-center gap-3 flex-wrap transition ${
+                highlightId === it.id
+                  ? 'border-amber-500 ring-2 ring-amber-400 dark:ring-amber-500'
+                  : 'border-amber-300 dark:border-amber-700'
+              }`}>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-bold text-gray-800 dark:text-gray-100">{it.displayName}</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">

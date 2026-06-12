@@ -2,6 +2,7 @@
 
 import useSWR from 'swr'
 import { useParams } from 'next/navigation'
+import Link from 'next/link'
 import BackButton from '../../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
@@ -89,7 +90,21 @@ export default function InvoiceDetailPage() {
               <tr key={l.id}>
                 <td className="px-2 py-1 text-gray-500">{l.lineNo}</td>
                 <td className="px-2 py-1">
-                  <div>{l.description || l.item?.displayName || l.freeTextLabel}</div>
+                  {l.item?.reviewStatus === 'pending_review' ? (
+                    // Pending-review items block the push (per CLAUDE.md rule 8),
+                    // so wrap the name in a link that jumps straight to the
+                    // review queue with the row focused — operator clicks
+                    // through, approves / edits, then comes back to push.
+                    <Link href={`/inventory/items/review?focus=${l.item.id}`}
+                      className="text-amber-700 dark:text-amber-300 hover:underline inline-flex items-center gap-1.5 flex-wrap">
+                      <span>{l.description || l.item.displayName || l.freeTextLabel}</span>
+                      <span className="text-[9px] font-bold uppercase tracking-wide bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 rounded">
+                        Pending Review
+                      </span>
+                    </Link>
+                  ) : (
+                    <div>{l.description || l.item?.displayName || l.freeTextLabel}</div>
+                  )}
                   {l.item?.alias?.tallyStockItem && (
                     <div className="text-[10px] text-indigo-600 dark:text-indigo-300 font-mono mt-0.5"
                       title="Tally stock-item name — this is what the Purchase voucher will be pushed against">
