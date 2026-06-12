@@ -1502,6 +1502,7 @@ model InvParty {
   challans InvChallan[]
   pos      InvPO[]
   invoices InvPurchaseInvoice[]
+  invoiceDrafts InvPurchaseInvoiceDraft[]
 
   @@index([displayName])
   @@index([gstin])
@@ -1755,6 +1756,50 @@ model InvPurchaseInvoice {
   @@unique([partyId, supplierInvoiceNo])
   @@index([supplierInvoiceDate])
   @@index([status])
+}
+
+// Pre-invoice preview / draft. Captures the same shape the real invoice
+// will get on promote — party, selected challans, line snapshots, header
+// charges — minus the supplier invoice number, which the operator stamps
+// at promote time. Lives on the server so a draft created on one device
+// can be verified and finalized on another. Multiple open drafts per
+// party are allowed (different supplier invoices in flight); promote
+// stamps `promotedInvoiceId/promotedAt` so the row stays as audit history
+// (hidden by default in the list filter).
+model InvPurchaseInvoiceDraft {
+  id                Int       @id @default(autoincrement())
+  partyId           Int
+  party             InvParty  @relation(fields: [partyId], references: [id])
+  // Selected challan IDs — Int[] so we can query "is challan X in any
+  // open draft?" with `has` for the soft-warn check, without a join.
+  challanIds        Int[]     @default([])
+  // Lines snapshot. Each entry mirrors the shape the real invoice POST
+  // accepts: { itemId, description, qty, unit, rate, gstRate,
+  // discountAmount, challanLineId, freeTextLabel }.
+  lines             Json
+  freightAmount     Decimal?  @db.Decimal(14, 2)
+  otherCharges      Decimal?  @db.Decimal(14, 2)
+  discountAmount    Decimal?  @db.Decimal(14, 2)
+  notes             String?
+  // Server-computed totals at last save — what the preview screen shows
+  // without re-running the math on the client.
+  gstTreatment      String?   // 'NONE' | 'CGST_SGST' | 'IGST'
+  taxableAmount     Decimal?  @db.Decimal(16, 2)
+  igstAmount        Decimal?  @db.Decimal(14, 2)
+  cgstAmount        Decimal?  @db.Decimal(14, 2)
+  sgstAmount        Decimal?  @db.Decimal(14, 2)
+  totalAmount       Decimal?  @db.Decimal(16, 2)
+  hasPendingReviewItems Boolean @default(false)
+  createdById       Int?
+  // Stamped at promote — the draft row stays for audit but drops out
+  // of the default list filter.
+  promotedInvoiceId Int?
+  promotedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([partyId])
+  @@index([promotedAt])
 }
 
 model InvPurchaseInvoiceLine {
