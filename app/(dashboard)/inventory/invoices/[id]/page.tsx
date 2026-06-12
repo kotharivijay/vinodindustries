@@ -88,7 +88,15 @@ export default function InvoiceDetailPage() {
             {inv.lines.map((l: any) => (
               <tr key={l.id}>
                 <td className="px-2 py-1 text-gray-500">{l.lineNo}</td>
-                <td className="px-2 py-1">{l.description || l.item?.displayName || l.freeTextLabel}</td>
+                <td className="px-2 py-1">
+                  <div>{l.description || l.item?.displayName || l.freeTextLabel}</div>
+                  {l.item?.alias?.tallyStockItem && (
+                    <div className="text-[10px] text-indigo-600 dark:text-indigo-300 font-mono mt-0.5"
+                      title="Tally stock-item name — this is what the Purchase voucher will be pushed against">
+                      alias: {l.item.alias.tallyStockItem}
+                    </div>
+                  )}
+                </td>
                 <td className="px-2 py-1 text-right">{l.qty != null ? `${Number(l.qty)} ${l.unit || ''}` : '—'}</td>
                 <td className="px-2 py-1 text-right">{l.rate != null ? '₹' + Number(l.rate).toFixed(2) : '—'}</td>
                 <td className="px-2 py-1 text-right">₹{Number(l.amount).toLocaleString('en-IN')}</td>
