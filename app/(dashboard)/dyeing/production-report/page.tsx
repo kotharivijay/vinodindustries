@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
+import { makeProductionPdf, productionFileName, type ProductionPayload } from './pdf'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 const fmtINR = (n: number) => '₹' + n.toLocaleString('en-IN')
@@ -49,6 +50,8 @@ export default function ProductionReportPage() {
   const [customTo, setCustomTo] = useState('')
   const [view, setView] = useState<View>('entries')
   const [expandedEntries, setExpandedEntries] = useState<Set<number>>(new Set())
+  const [expandedOperators, setExpandedOperators] = useState<Set<string>>(new Set())
+  const [exporting, setExporting] = useState(false)
 
   const range = useMemo(() => {
     if (period === 'custom' && customFrom && customTo) return { from: customFrom, to: customTo, label: `${fmtDate(customFrom)} — ${fmtDate(customTo)}` }
@@ -64,6 +67,40 @@ export default function ProductionReportPage() {
     setExpandedEntries(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
   }
 
+  function toggleOperator(name: string) {
+    setExpandedOperators(prev => { const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name); return n })
+  }
+
+  // Lookup of slips per operator — built once per data load so each expanded
+  // operator row reads its slips in O(1). Falls back to '_unknown' so the
+  // 'Unknown' bucket in byOperator stays expandable too.
+  const slipsByOperator = useMemo(() => {
+    const m = new Map<string, any[]>()
+    for (const e of (data?.entries ?? [])) {
+      const key = (e.operator || 'Unknown')
+      if (!m.has(key)) m.set(key, [])
+      m.get(key)!.push(e)
+    }
+    for (const arr of m.values()) {
+      arr.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.slipNo - a.slipNo)
+    }
+    return m
+  }, [data])
+
+  async function handleExportPdf() {
+    if (!data) return
+    setExporting(true)
+    try {
+      const doc = makeProductionPdf(data as ProductionPayload, range.label, false)
+      doc.save(productionFileName(range.label, false, 'pdf'))
+    } catch (err) {
+      console.error('PDF export failed:', err)
+      alert('PDF export failed — see console')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   function navigate(dir: number) {
     if (period === 'today' || period === 'yesterday') setDayOffset(prev => prev + dir)
     else if (period === 'week') setDayOffset(prev => prev + dir * 7)
@@ -75,6 +112,14 @@ export default function ProductionReportPage() {
       <div className="flex items-center gap-4 mb-5">
         <BackButton />
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Dyeing Production Report</h1>
+        <button
+          onClick={handleExportPdf}
+          disabled={exporting || !data}
+          className="ml-auto text-xs bg-rose-600 hover:bg-rose-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-medium"
+          title="Export the current range to PDF"
+        >
+          {exporting ? 'Exporting…' : '⬇ Export PDF'}
+        </button>
       </div>
 
       {/* Period selector */}
@@ -187,15 +232,47 @@ export default function ProductionReportPage() {
           {/* Operator view */}
           {view === 'operator' && (
             <div className="space-y-2">
-              {data.byOperator.map((o: any) => (
-                <div key={o.name} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm px-4 py-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{o.name}</span>
-                  <div className="text-right">
-                    <span className="text-xs text-gray-500">{o.batches} batches · {o.than}</span>
-                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(o.cost)}</span>
+              {data.byOperator.map((o: any) => {
+                const isOpen = expandedOperators.has(o.name)
+                const slips = slipsByOperator.get(o.name) ?? []
+                return (
+                  <div key={o.name} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+                    <button onClick={() => toggleOperator(o.name)} className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                        <span className={`text-gray-400 text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                        {o.name}
+                      </span>
+                      <div className="text-right">
+                        <span className="text-xs text-gray-500">{o.batches} batches · {o.than}</span>
+                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(o.cost)}</span>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 px-4 py-2 divide-y divide-gray-100 dark:divide-gray-700">
+                        {slips.length === 0 ? (
+                          <div className="py-2 text-xs text-gray-400">No slips found for this operator in the selected range.</div>
+                        ) : slips.map((e: any) => (
+                          <div key={e.id} className="py-1.5 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Link href={`/dyeing/${e.id}`} className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline whitespace-nowrap">Slip {e.slipNo}</Link>
+                              {e.batchNo && <span className="text-[10px] bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-500">B{e.batchNo}</span>}
+                              {e.foldNo && <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">F{e.foldNo}</span>}
+                              {e.shade && <span className="text-[10px] text-purple-500 truncate">{e.shade}</span>}
+                              <span className="text-[10px] text-gray-400 whitespace-nowrap">{fmtDate(e.date)}</span>
+                              {e.isReDyed && <span className="text-[9px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded whitespace-nowrap">Re-Dye ×{e.totalRounds}</span>}
+                              {e.status === 'patchy' && <span className="text-[9px] text-red-500 font-bold whitespace-nowrap">Patchy</span>}
+                            </div>
+                            <div className="text-right whitespace-nowrap">
+                              <span className="text-xs font-bold text-gray-800 dark:text-gray-100">{e.than} than</span>
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(e.totalCost)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
