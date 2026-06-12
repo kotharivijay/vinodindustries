@@ -87,7 +87,7 @@ export default function DraftPreviewPage() {
             ))}
           </ul>
           <p className="text-amber-600 dark:text-amber-400 mt-1">
-            First promote wins; the loser sees a "challan already invoiced" error.
+            First promote wins; the loser sees a &quot;challan already invoiced&quot; error.
           </p>
         </div>
       )}
