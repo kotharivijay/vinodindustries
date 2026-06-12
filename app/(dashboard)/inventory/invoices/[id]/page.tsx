@@ -17,12 +17,20 @@ export default function InvoiceDetailPage() {
     if (!res.ok) { const d = await res.json(); alert(d.error || 'Failed'); return }
     mutate()
   }
-  async function pushToTally() {
-    if (!confirm('Push this invoice to Tally as a Purchase voucher?')) return
-    const res = await fetch(`/api/inv/invoices/${id}/push-to-tally`, { method: 'POST' })
+  async function pushToTally(force = false) {
+    const prompt = force
+      ? 'Re-push this invoice? The previous Tally voucher must already be deleted there — otherwise you will end up with two vouchers for the same supplier invoice.'
+      : 'Push this invoice to Tally as a Purchase voucher?'
+    if (!confirm(prompt)) return
+    const res = await fetch(`/api/inv/invoices/${id}/push-to-tally`, {
+      method: 'POST',
+      headers: force ? { 'Content-Type': 'application/json' } : undefined,
+      body: force ? JSON.stringify({ force: true }) : undefined,
+    })
     const d = await res.json()
     if (d.failures && d.failures.length) {
       alert('Pre-push validation failed:\n' + d.failures.map((f: any) => `• ${f.message}`).join('\n'))
+      mutate()
       return
     }
     if (!d.ok) {
@@ -30,7 +38,7 @@ export default function InvoiceDetailPage() {
       mutate()
       return
     }
-    alert(`✓ Pushed to Tally — voucher ${d.vchkey || 'created'}`)
+    alert(`✓ ${force ? 'Re-pushed' : 'Pushed'} to Tally — voucher ${d.vchkey || 'created'}`)
     mutate()
   }
   async function previewPayload() {
@@ -148,7 +156,14 @@ export default function InvoiceDetailPage() {
             <button onClick={previewPayload} className="bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg text-sm font-medium">👁 Preview JSON</button>
           )}
           {inv.status !== 'Voided' && inv.status !== 'PushedToTally' && (
-            <button onClick={pushToTally} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">📤 Push to Tally</button>
+            <button onClick={() => pushToTally(false)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">📤 Push to Tally</button>
+          )}
+          {inv.status === 'PushedToTally' && (
+            <button onClick={() => pushToTally(true)}
+              title="Re-push if the voucher was deleted or voided in Tally"
+              className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 px-4 py-2 rounded-lg text-sm font-semibold">
+              🔄 Re-push to Tally
+            </button>
           )}
           {inv.status !== 'Voided' && (
             <button onClick={voidInv} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 px-4 py-2 rounded-lg text-sm font-semibold border border-red-200 dark:border-red-800">Void</button>

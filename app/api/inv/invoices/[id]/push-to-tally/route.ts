@@ -10,11 +10,33 @@ export const maxDuration = 60
 
 const db = prisma as any
 
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const id = Number(params.id)
+
+  // Re-push path. The voucher was previously pushed but has been deleted
+  // (or voided) in Tally itself, so the operator wants a fresh push. Clear
+  // the prior Tally pointers and tallyResponse first so the success branch
+  // overwrites with the new voucher's guid; pushAttempts keeps incrementing
+  // for audit. The UI button is gated on status='PushedToTally', so a body
+  // of { force: true } only arrives from the explicit Re-push affordance.
+  const body = await req.json().catch(() => ({}))
+  if (body?.force === true) {
+    await db.invPurchaseInvoice.update({
+      where: { id },
+      data: {
+        status: 'Verified',
+        tallyPushedAt: null,
+        tallyVoucherNo: null,
+        tallyVoucherGuid: null,
+        tallyResponse: null,
+        lastPushError: null,
+      },
+    })
+  }
+
   const failures = await prePushValidate(id)
   if (failures.length > 0) {
     return NextResponse.json({ ok: false, failures }, { status: 409 })
