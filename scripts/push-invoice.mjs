@@ -119,29 +119,31 @@ function buildPayload(invoice, party, cfg, lines) {
   ]
 
   if (!isUnreg) {
+    const groupedGst = {}
     for (const [rate, gstAmt] of Object.entries(gstByRate)) {
       if (gstAmt === 0) continue
       if (isIntra) {
         const half = +(gstAmt / 2).toFixed(2)
         const otherHalf = +(gstAmt - half).toFixed(2)
         const halfRate = String(parseFloat(rate) / 2)
-        ledgerentries.push({
-          ledgername: cfg.gstLedgers.CGST[halfRate],
-          isdeemedpositive: true, ispartyledger: false,
-          amount: neg(half), vatexpamount: neg(half),
-        })
-        ledgerentries.push({
-          ledgername: cfg.gstLedgers.SGST[halfRate],
-          isdeemedpositive: true, ispartyledger: false,
-          amount: neg(otherHalf), vatexpamount: neg(otherHalf),
-        })
+        const cgstLedger = cfg.gstLedgers.CGST[halfRate]
+        const sgstLedger = cfg.gstLedgers.SGST[halfRate]
+        if (!cgstLedger) throw new Error(`CGST ledger for ${halfRate}% not configured`)
+        if (!sgstLedger) throw new Error(`SGST ledger for ${halfRate}% not configured`)
+        groupedGst[cgstLedger] = (groupedGst[cgstLedger] || 0) + half
+        groupedGst[sgstLedger] = (groupedGst[sgstLedger] || 0) + otherHalf
       } else {
-        ledgerentries.push({
-          ledgername: cfg.gstLedgers.IGST[rate],
-          isdeemedpositive: true, ispartyledger: false,
-          amount: neg(gstAmt), vatexpamount: neg(gstAmt),
-        })
+        const igstLedger = cfg.gstLedgers.IGST[rate]
+        if (!igstLedger) throw new Error(`IGST ledger for ${rate}% not configured`)
+        groupedGst[igstLedger] = (groupedGst[igstLedger] || 0) + gstAmt
       }
+    }
+    for (const [ledgername, amt] of Object.entries(groupedGst)) {
+      ledgerentries.push({
+        ledgername,
+        isdeemedpositive: true, ispartyledger: false,
+        amount: neg(amt), vatexpamount: neg(amt),
+      })
     }
   }
 
