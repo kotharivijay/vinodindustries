@@ -87,6 +87,69 @@ export default function ProductionReportPage() {
     return m
   }, [data])
 
+  // Operator-wise Excel: one sheet, each operator block split into PC Pali
+  // Job Parties + Other Parties with subtotals + a per-operator grand total.
+  // xlsx is dynamically imported so it stays out of the initial JS bundle.
+  async function handleExportExcel() {
+    if (!data) return
+    setExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const rows: any[][] = []
+      const headers = ['Slip', 'Date', 'Batch', 'Fold', 'Shade', 'Party', 'Quality', 'Than', 'Cost']
+      rows.push([`KSI — Dyeing Production (Operator-wise) — ${range.label}`])
+      rows.push([])
+
+      for (const o of data.byOperator as any[]) {
+        const slips = slipsByOperator.get(o.name) ?? []
+        if (slips.length === 0) continue
+        const pali = slips.filter(e => e.isPaliPc)
+        const others = slips.filter(e => !e.isPaliPc)
+
+        rows.push([`OPERATOR: ${o.name}`])
+
+        const block = (title: string, list: any[]) => {
+          if (list.length === 0) return
+          rows.push([title])
+          rows.push(headers)
+          for (const e of list) {
+            rows.push([
+              e.slipNo, fmtDate(e.date), e.batchNo ?? '', e.foldNo ?? '',
+              e.shade ?? '', e.party ?? '', e.quality ?? '',
+              e.than, e.totalCost,
+            ])
+          }
+          const subBatches = list.length
+          const subThan = list.reduce((s, e) => s + (e.than || 0), 0)
+          const subCost = list.reduce((s, e) => s + (e.totalCost || 0), 0)
+          rows.push(['', '', '', '', '', '', `Subtotal (${subBatches} batches)`, subThan, subCost])
+          rows.push([])
+        }
+
+        block('PC Pali Job Parties', pali)
+        block('Other Parties', others)
+
+        const opThan = slips.reduce((s, e) => s + (e.than || 0), 0)
+        const opCost = slips.reduce((s, e) => s + (e.totalCost || 0), 0)
+        rows.push(['', '', '', '', '', '', `TOTAL — ${o.name}`, opThan, opCost])
+        rows.push([])
+        rows.push([])
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(rows)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Operator-wise')
+
+      const slug = range.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      XLSX.writeFile(wb, `dyeing-operator-${slug || 'report'}.xlsx`)
+    } catch (err) {
+      console.error('Excel export failed:', err)
+      alert('Excel export failed — see console')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   async function handleExportPdf() {
     if (!data) return
     setExporting(true)
@@ -112,14 +175,24 @@ export default function ProductionReportPage() {
       <div className="flex items-center gap-4 mb-5">
         <BackButton />
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Dyeing Production Report</h1>
-        <button
-          onClick={handleExportPdf}
-          disabled={exporting || !data}
-          className="ml-auto text-xs bg-rose-600 hover:bg-rose-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-medium"
-          title="Export the current range to PDF"
-        >
-          {exporting ? 'Exporting…' : '⬇ Export PDF'}
-        </button>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting || !data}
+            className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-medium"
+            title="Export operator-wise breakdown to Excel"
+          >
+            {exporting ? 'Exporting…' : '⬇ Excel'}
+          </button>
+          <button
+            onClick={handleExportPdf}
+            disabled={exporting || !data}
+            className="text-xs bg-rose-600 hover:bg-rose-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-medium"
+            title="Export the current range to PDF"
+          >
+            {exporting ? 'Exporting…' : '⬇ PDF'}
+          </button>
+        </div>
       </div>
 
       {/* Period selector */}
@@ -247,29 +320,64 @@ export default function ProductionReportPage() {
                         <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(o.cost)}</span>
                       </div>
                     </button>
-                    {isOpen && (
-                      <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 px-4 py-2 divide-y divide-gray-100 dark:divide-gray-700">
-                        {slips.length === 0 ? (
-                          <div className="py-2 text-xs text-gray-400">No slips found for this operator in the selected range.</div>
-                        ) : slips.map((e: any) => (
-                          <div key={e.id} className="py-1.5 flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Link href={`/dyeing/${e.id}`} className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline whitespace-nowrap">Slip {e.slipNo}</Link>
-                              {e.batchNo && <span className="text-[10px] bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-500">B{e.batchNo}</span>}
-                              {e.foldNo && <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">F{e.foldNo}</span>}
-                              {e.shade && <span className="text-[10px] text-purple-500 truncate">{e.shade}</span>}
-                              <span className="text-[10px] text-gray-400 whitespace-nowrap">{fmtDate(e.date)}</span>
-                              {e.isReDyed && <span className="text-[9px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded whitespace-nowrap">Re-Dye ×{e.totalRounds}</span>}
-                              {e.status === 'patchy' && <span className="text-[9px] text-red-500 font-bold whitespace-nowrap">Patchy</span>}
+                    {isOpen && (() => {
+                      // Split slips into PC Pali Job parties (isPaliPc) vs the rest.
+                      // Server already classifies via party tag containing "Pali".
+                      const pali = slips.filter((e: any) => e.isPaliPc)
+                      const others = slips.filter((e: any) => !e.isPaliPc)
+                      const subtotal = (rows: any[]) => ({
+                        batches: rows.length,
+                        than: rows.reduce((s, e) => s + (e.than || 0), 0),
+                        cost: rows.reduce((s, e) => s + (e.totalCost || 0), 0),
+                      })
+                      const renderSlipRow = (e: any) => (
+                        <div key={e.id} className="py-1.5 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Link href={`/dyeing/${e.id}`} className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline whitespace-nowrap">Slip {e.slipNo}</Link>
+                            {e.batchNo && <span className="text-[10px] bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-500">B{e.batchNo}</span>}
+                            {e.foldNo && <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">F{e.foldNo}</span>}
+                            {e.shade && <span className="text-[10px] text-purple-500 truncate">{e.shade}</span>}
+                            <span className="text-[10px] text-gray-400 whitespace-nowrap">{fmtDate(e.date)}</span>
+                            {e.isReDyed && <span className="text-[9px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded whitespace-nowrap">Re-Dye ×{e.totalRounds}</span>}
+                            {e.status === 'patchy' && <span className="text-[9px] text-red-500 font-bold whitespace-nowrap">Patchy</span>}
+                          </div>
+                          <div className="text-right whitespace-nowrap">
+                            <span className="text-xs font-bold text-gray-800 dark:text-gray-100">{e.than} than</span>
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(e.totalCost)}</span>
+                          </div>
+                        </div>
+                      )
+                      const renderSection = (title: string, color: string, rows: any[]) => {
+                        if (rows.length === 0) return null
+                        const sub = subtotal(rows)
+                        return (
+                          <div className="mb-2 last:mb-0">
+                            <div className={`text-[10px] uppercase tracking-wide font-bold ${color} mt-1 mb-1`}>
+                              {title} ({rows.length})
                             </div>
-                            <div className="text-right whitespace-nowrap">
-                              <span className="text-xs font-bold text-gray-800 dark:text-gray-100">{e.than} than</span>
-                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(e.totalCost)}</span>
+                            <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                              {rows.map(renderSlipRow)}
+                            </div>
+                            <div className="mt-1 px-2 py-1 flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded text-[11px] font-semibold">
+                              <span className="text-gray-600 dark:text-gray-300">Subtotal: {sub.batches} batches · {sub.than} than</span>
+                              <span className="text-emerald-700 dark:text-emerald-400">{fmtINR(sub.cost)}</span>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        )
+                      }
+                      return (
+                        <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 px-4 py-2">
+                          {slips.length === 0 ? (
+                            <div className="py-2 text-xs text-gray-400">No slips found for this operator in the selected range.</div>
+                          ) : (
+                            <>
+                              {renderSection('PC Pali Job Parties', 'text-blue-600 dark:text-blue-400', pali)}
+                              {renderSection('Other Parties', 'text-gray-600 dark:text-gray-400', others)}
+                            </>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
