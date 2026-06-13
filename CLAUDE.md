@@ -125,7 +125,7 @@ See PRD §14. Update this line as we progress:
 - No SMS or email — WhatsApp only
 - No GST return filing — only reconciliation (Phase 2)
 
-## When Unsure
+## When Uns ure
 
 1. Re-read PRD §0 (locked decisions)
 2. Search `lib/tally/`, `lib/series/`, `lib/drive/` for similar patterns

@@ -139,7 +139,7 @@ export async function fetchPartiesFromTally(): Promise<FetchedParty[]> {
       gstRegistrationType: ['Regular', 'Composition', 'Unregistered'].includes(gstType) ? gstType : 'Regular',
       whatsapp: phone || null,
       email: email || null,
-      city: null,
+      city: null as string | null,
     }
   }).filter((p): p is FetchedParty => p !== null && !!p.tallyLedger)
 }
