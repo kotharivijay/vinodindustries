@@ -48,6 +48,11 @@ export async function GET(req: NextRequest) {
   const allLotNos: string[] = entries.flatMap((e: any) => (e.lots?.length ? e.lots : [{ lotNo: e.lotNo }]).map((l: any) => l.lotNo))
   const lotInfoMap = await buildLotInfoMap([...new Set(allLotNos)])
 
+  // Party tag lookup → classify "Pali PC Job" parties (tag contains "Pali").
+  const partyTagRows = await db.party.findMany({ select: { name: true, tag: true } })
+  const tagByName = new Map<string, string>(partyTagRows.map((p: any) => [p.name, p.tag || '']))
+  const isPaliPcParty = (name: string) => /pali/i.test(tagByName.get(name) || '')
+
   // Build enriched entries
   const enriched = entries.map((e: any) => {
     const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
@@ -85,6 +90,7 @@ export async function GET(req: NextRequest) {
       isPcJob: e.isPcJob,
       lots: lotInfos,
       party: partyNames.join(', ') || null,
+      isPaliPc: partyNames.some((n: any) => isPaliPcParty(n)),
       quality: qualityNames.join(', ') || null,
       isReDyed: (e.additions?.length ?? 0) > 0,
       additions: (e.additions || []).map((a: any) => ({
@@ -100,17 +106,22 @@ export async function GET(req: NextRequest) {
     }
   })
 
+  // "Non PC Pali Job" filter — exclude parties tagged "Pali PC Job" before
+  // any aggregation so summary cards + all views + exports reflect the filter.
+  const nonPcPali = req.nextUrl.searchParams.get('nonPcPali') === '1'
+  const visible = nonPcPali ? enriched.filter((e: any) => !e.isPaliPc) : enriched
+
   // Aggregations
-  const totalBatches = enriched.length
-  const totalThan = enriched.reduce((s: number, e: any) => s + e.than, 0)
-  const totalCost = enriched.reduce((s: number, e: any) => s + e.totalCost, 0)
-  const doneCount = enriched.filter((e: any) => e.status === 'done').length
-  const patchyCount = enriched.filter((e: any) => e.status === 'patchy').length
-  const reDyeCount = enriched.filter((e: any) => e.isReDyed).length
+  const totalBatches = visible.length
+  const totalThan = visible.reduce((s: number, e: any) => s + e.than, 0)
+  const totalCost = visible.reduce((s: number, e: any) => s + e.totalCost, 0)
+  const doneCount = visible.filter((e: any) => e.status === 'done').length
+  const patchyCount = visible.filter((e: any) => e.status === 'patchy').length
+  const reDyeCount = visible.filter((e: any) => e.isReDyed).length
 
   // By Machine
   const byMachine: Record<string, { batches: number; than: number; cost: number }> = {}
-  for (const e of enriched) {
+  for (const e of visible) {
     const m = e.machine || 'Unknown'
     if (!byMachine[m]) byMachine[m] = { batches: 0, than: 0, cost: 0 }
     byMachine[m].batches++
@@ -120,7 +131,7 @@ export async function GET(req: NextRequest) {
 
   // By Operator
   const byOperator: Record<string, { batches: number; than: number; cost: number }> = {}
-  for (const e of enriched) {
+  for (const e of visible) {
     const o = e.operator || 'Unknown'
     if (!byOperator[o]) byOperator[o] = { batches: 0, than: 0, cost: 0 }
     byOperator[o].batches++
@@ -130,7 +141,7 @@ export async function GET(req: NextRequest) {
 
   // By Quality
   const byQuality: Record<string, { batches: number; than: number; cost: number }> = {}
-  for (const e of enriched) {
+  for (const e of visible) {
     const q = e.quality || 'Unknown'
     if (!byQuality[q]) byQuality[q] = { batches: 0, than: 0, cost: 0 }
     byQuality[q].batches++
@@ -140,7 +151,7 @@ export async function GET(req: NextRequest) {
 
   // By Date
   const byDate: Record<string, { batches: number; than: number; cost: number }> = {}
-  for (const e of enriched) {
+  for (const e of visible) {
     const d = new Date(e.date).toISOString().split('T')[0]
     if (!byDate[d]) byDate[d] = { batches: 0, than: 0, cost: 0 }
     byDate[d].batches++
@@ -154,6 +165,6 @@ export async function GET(req: NextRequest) {
     byOperator: Object.entries(byOperator).map(([name, d]) => ({ name, ...d })).sort((a, b) => b.batches - a.batches),
     byQuality: Object.entries(byQuality).map(([name, d]) => ({ name, ...d })).sort((a, b) => b.than - a.than),
     byDate: Object.entries(byDate).map(([date, d]) => ({ date, ...d })).sort((a, b) => a.date.localeCompare(b.date)),
-    entries: enriched,
+    entries: visible,
   })
 }
