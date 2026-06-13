@@ -103,8 +103,12 @@ export default function ProductionReportPage() {
       for (const o of data.byOperator as any[]) {
         const slips = slipsByOperator.get(o.name) ?? []
         if (slips.length === 0) continue
-        const pali = slips.filter(e => e.isPaliPc)
-        const others = slips.filter(e => !e.isPaliPc)
+        // Same dual-flag classifier as the on-screen split — see operator
+        // expansion comment. isPaliPc + isPcJob OR'd avoids missing slips
+        // whose lots don't resolve to a Pali-tagged party via lot-info.
+        const isPali = (e: any) => !!(e.isPaliPc || e.isPcJob)
+        const pali = slips.filter(isPali)
+        const others = slips.filter(e => !isPali(e))
 
         rows.push([`OPERATOR: ${o.name}`])
 
@@ -321,10 +325,15 @@ export default function ProductionReportPage() {
                       </div>
                     </button>
                     {isOpen && (() => {
-                      // Split slips into PC Pali Job parties (isPaliPc) vs the rest.
-                      // Server already classifies via party tag containing "Pali".
-                      const pali = slips.filter((e: any) => e.isPaliPc)
-                      const others = slips.filter((e: any) => !e.isPaliPc)
+                      // Classify as PC Pali if EITHER:
+                      //   - server's isPaliPc (party-tag lookup) caught it, OR
+                      //   - the slip itself is flagged isPcJob (manual at create time).
+                      // Either signal alone reliably covers PC Pali Job slips —
+                      // tag-lookup misses RE-PRO lots and any party-name mismatches,
+                      // and isPcJob misses slips marked-by-party but not by-flag.
+                      const isPali = (e: any) => !!(e.isPaliPc || e.isPcJob)
+                      const pali = slips.filter(isPali)
+                      const others = slips.filter((e: any) => !isPali(e))
                       const subtotal = (rows: any[]) => ({
                         batches: rows.length,
                         than: rows.reduce((s, e) => s + (e.than || 0), 0),
