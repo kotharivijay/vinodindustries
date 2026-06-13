@@ -43,6 +43,7 @@ export async function PATCH(
     data.paymentMode = body.paymentMode === 'CONTRACTOR_LINKED' ? 'CONTRACTOR_LINKED' : 'SALARIED'
   }
   if ('tallyLedgerName' in body) data.tallyLedgerName = body.tallyLedgerName?.trim() || null
+  if ('registerGroup' in body) data.registerGroup = body.registerGroup?.trim() || null
   if ('notes' in body) data.notes = body.notes?.trim() || null
 
   // status drives isActive (and vice versa for back-compat callers). On a

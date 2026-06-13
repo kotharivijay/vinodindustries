@@ -15,7 +15,12 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const month = (searchParams.get('month') || currentMonthKey()).trim()
+  const group = searchParams.get('group') // 'KSI-1' | 'KSI-2'
   const data = await getRegisterRows(month)
+
+  if (group) {
+    data.rows = data.rows.filter((r) => r.registerGroup === group)
+  }
 
   const totals = data.rows.reduce(
     (a, r) => ({

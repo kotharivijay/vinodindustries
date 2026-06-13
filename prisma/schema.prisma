@@ -1950,6 +1950,7 @@ model Staff {
   isActive          Boolean  @default(true) // kept in sync with status (ACTIVE -> true). All existing queries continue to use this.
   inRegister        Boolean  @default(false)
   registerSn        Int?
+  registerGroup     String? // KSI-1 | KSI-2 | null
   inactivatedMonth  String?
   notes             String?
   createdAt         DateTime @default(now())

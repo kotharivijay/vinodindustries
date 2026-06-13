@@ -23,10 +23,15 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const month = (searchParams.get('month') || currentMonthKey()).trim()
   const format = (searchParams.get('format') || 'salary').toLowerCase()
+  const group = searchParams.get('group') // 'KSI-1' | 'KSI-2'
   const pfOnly = format === 'pf'
 
   const { rows } = await getRegisterRows(month)
-  const out = pfOnly ? rows.filter((r) => r.inRegister) : rows
+  let out = pfOnly ? rows.filter((r) => r.inRegister) : rows
+
+  if (group) {
+    out = out.filter((r) => r.registerGroup === group)
+  }
 
   const lines = [HEADERS.join(',')]
   out.forEach((r, i) => {
@@ -44,7 +49,8 @@ export async function GET(request: Request) {
   })
   const csv = '﻿' + lines.join('\r\n') // BOM so Excel reads UTF-8 (₹, Hindi names)
 
-  const fname = `${pfOnly ? 'PF' : 'Salary'}Register_${month}.csv`
+  const groupSuffix = group ? `_${group}` : ''
+  const fname = `${pfOnly ? 'PF' : 'Salary'}Register${groupSuffix}_${month}.csv`
   return new Response(csv, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',

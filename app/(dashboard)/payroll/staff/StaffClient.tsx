@@ -21,6 +21,7 @@ type Staff = {
   inRegister: boolean
   inactivatedMonth: string | null
   notes: string | null
+  registerGroup: string | null
 }
 
 type SalaryRevision = {
@@ -83,6 +84,7 @@ export default function StaffClient({ initialStaff, contractors }: { initialStaf
   const [modalSaving, setModalSaving] = useState(false)
   const [modalError, setModalError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<'' | 'ACTIVE' | 'INACTIVE' | 'DELETED'>('ACTIVE')
+  const [groupFilter, setGroupFilter] = useState<string>('')
 
   const filtered = useMemo(() => {
     return staff.filter((s) => {
@@ -90,13 +92,18 @@ export default function StaffClient({ initialStaff, contractors }: { initialStaf
       if (mode && s.paymentMode !== mode) return false
       if (contractorFilter === 'none' && s.contractors.length > 0) return false
       if (contractorFilter && contractorFilter !== 'none' && !s.contractors.some((c) => c.id === contractorFilter)) return false
+      if (groupFilter === 'unassigned') {
+        if (s.registerGroup) return false
+      } else if (groupFilter && s.registerGroup !== groupFilter) {
+        return false
+      }
       if (search) {
         const q = search.toLowerCase()
         if (!s.name.toLowerCase().includes(q) && !s.code.toLowerCase().includes(q) && !(s.department || '').toLowerCase().includes(q)) return false
       }
       return true
     })
-  }, [staff, search, mode, contractorFilter, statusFilter])
+  }, [staff, search, mode, contractorFilter, statusFilter, groupFilter])
 
   const counts = useMemo(() => ({
     total: staff.filter((s) => s.isActive).length,
@@ -271,6 +278,16 @@ export default function StaffClient({ initialStaff, contractors }: { initialStaf
             {contractors.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Register Group</label>
+          <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}
+            className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800">
+            <option value="">All</option>
+            <option value="KSI-1">KSI-1</option>
+            <option value="KSI-2">KSI-2</option>
+            <option value="unassigned">— Unassigned —</option>
+          </select>
+        </div>
         <span className="text-xs text-gray-500 ml-auto">{filtered.length} of {staff.length}</span>
       </div>
 
@@ -286,13 +303,14 @@ export default function StaffClient({ initialStaff, contractors }: { initialStaf
                 <th className="px-3 py-2 text-center">Mode</th>
                 <th className="px-3 py-2 text-left">Contractor</th>
                 <th className="px-3 py-2 text-left">Tally Ledger</th>
+                <th className="px-3 py-2 text-center">Group</th>
                 <th className="px-3 py-2 text-center">Status</th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No staff match</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">No staff match</td></tr>
               )}
               {filtered.map((s) => (
                 <tr key={s.id} className={s.status === 'ACTIVE' ? '' : 'opacity-60'}>
@@ -322,6 +340,9 @@ export default function StaffClient({ initialStaff, contractors }: { initialStaf
                         </div>}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400">{s.tallyLedgerName || '—'}</td>
+                  <td className="px-3 py-2 text-center text-xs">
+                    {s.registerGroup ? <span className="badge badge-gray">{s.registerGroup}</span> : <span className="text-gray-400">—</span>}
+                  </td>
                   <td className="px-3 py-2 text-center">{statusBadge(s.status, s.inactivatedMonth)}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <button onClick={() => openEditModal(s)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 mr-1">Edit</button>
@@ -440,6 +461,14 @@ function StaffFormModal({ mode, draft, setDraft, contractors, onSave, onClose, s
               <option value="ACTIVE">Active</option>
               <option value="INACTIVE">Inactive</option>
               <option value="DELETED">Deleted</option>
+            </select>
+          </Field>
+          <Field label="Register Group">
+            <select value={draft.registerGroup || ''}
+              onChange={(e) => setDraft({ ...draft, registerGroup: e.target.value || null })} className="input">
+              <option value="">None</option>
+              <option value="KSI-1">KSI-1</option>
+              <option value="KSI-2">KSI-2</option>
             </select>
           </Field>
           <Field label="Notes" full>

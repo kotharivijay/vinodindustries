@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { code, name, fatherName, aadhar, dob, department, monthlyBaseSalary, actualSalary, paymentMode, contractorIds, tallyLedgerName, notes, status } = body
+  const { code, name, fatherName, aadhar, dob, department, monthlyBaseSalary, actualSalary, paymentMode, contractorIds, tallyLedgerName, notes, status, registerGroup } = body
   if (!code?.trim()) return Response.json({ error: 'Code is required' }, { status: 400 })
   if (!name?.trim()) return Response.json({ error: 'Name is required' }, { status: 400 })
 
@@ -78,6 +78,7 @@ export async function POST(request: Request) {
         actualSalary: actualSalary != null ? Number(actualSalary) : null,
         paymentMode: paymentMode === 'CONTRACTOR_LINKED' ? 'CONTRACTOR_LINKED' : 'SALARIED',
         tallyLedgerName: tallyLedgerName?.trim() || null,
+        registerGroup: registerGroup?.trim() || null,
         notes: notes?.trim() || null,
         status: st,
         isActive: isActiveFromStatus(st),

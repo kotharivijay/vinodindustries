@@ -240,7 +240,7 @@ function JobTemplatesPanel({ contractorId, contractorName }: { contractorId: str
       {loading ? <p className="text-xs text-gray-400">Loading…</p> : (
         <>
           {templates.length === 0 && (
-            <p className="text-xs text-gray-400 italic mb-2">No templates yet. Add the regular jobs this contractor does so they appear pre-filled in every month's wages.</p>
+            <p className="text-xs text-gray-400 italic mb-2">{"No templates yet. Add the regular jobs this contractor does so they appear pre-filled in every month's wages."}</p>
           )}
           {templates.length > 0 && (
             <table className="w-full text-xs mb-2">

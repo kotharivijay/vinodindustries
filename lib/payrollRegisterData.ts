@@ -27,6 +27,7 @@ export async function getRegisterRows(month: string): Promise<{
       select: {
         id: true, code: true, name: true, department: true,
         monthlyBaseSalary: true, inRegister: true, registerSn: true,
+        registerGroup: true,
         inactivatedMonth: true, status: true, createdAt: true,
       },
     }),
@@ -102,6 +103,7 @@ export async function getRegisterRows(month: string): Promise<{
       autoStatus,
       statusOverridden: override != null,
       inRegister: s.inRegister,
+      registerGroup: s.registerGroup,
     }
   })
 

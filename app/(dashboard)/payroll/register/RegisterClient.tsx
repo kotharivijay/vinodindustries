@@ -16,6 +16,7 @@ type Row = {
   autoStatus: string
   statusOverridden: boolean
   inRegister: boolean
+  registerGroup: string | null
 }
 
 type RegisterResponse = {
@@ -26,7 +27,7 @@ type RegisterResponse = {
   totals: { salary: number; amount: number; reg: number }
 }
 
-type SortKey = 'status' | 'sn' | 'code' | 'name' | 'department' | 'salary' | 'perDay' | 'days' | 'amount'
+type SortKey = 'status' | 'sn' | 'code' | 'name' | 'department' | 'salary' | 'perDay' | 'days' | 'amount' | 'registerGroup'
 const NUMERIC_KEYS: SortKey[] = ['sn', 'code', 'salary', 'perDay', 'days', 'amount']
 
 function currentMonthKey(): string {
@@ -56,6 +57,7 @@ export default function RegisterClient() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [filter, setFilter] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
+  const [groupFilter, setGroupFilter] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -99,9 +101,28 @@ export default function RegisterClient() {
     }
   }
 
-  const exportUrl = (format: 'salary' | 'pf') => `/api/payroll/register/export?month=${month}&format=${format}`
+  const exportUrl = (format: 'salary' | 'pf', group?: string) =>
+    `/api/payroll/register/export?month=${month}&format=${format}${group ? `&group=${group}` : ''}`
 
   const rows = data?.rows || []
+
+  const groupedRows = useMemo(() => {
+    if (groupFilter === 'unassigned') return rows.filter((r) => !r.registerGroup)
+    if (!groupFilter) return rows
+    return rows.filter((r) => r.registerGroup === groupFilter)
+  }, [rows, groupFilter])
+
+  const summary = useMemo(() => {
+    const count = groupedRows.length
+    let salary = 0, amount = 0, reg = 0
+    groupedRows.forEach((r) => {
+      salary += r.salary
+      amount += r.amount || 0
+      if (r.inRegister) reg++
+    })
+    return { count, salary, amount, reg }
+  }, [groupedRows])
+
   const fmt = (n: number | null) => (n == null ? '' : n.toLocaleString('en-IN'))
 
   const departments = useMemo(
@@ -117,7 +138,7 @@ export default function RegisterClient() {
   // Client-side filter + sort over the loaded rows. Default (no sortKey)
   // keeps the server's register order (registerSn).
   const view = useMemo(() => {
-    let v = rows
+    let v = groupedRows
     const q = filter.trim().toLowerCase()
     if (q) v = v.filter((r) =>
       r.code.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) ||
@@ -154,30 +175,34 @@ export default function RegisterClient() {
     <div className="max-w-7xl mx-auto animate-fade-in">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h1 className="text-xl md:text-2xl font-bold">Payroll · Salary Register</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input type="month" value={month} onChange={(e) => setMonth(e.target.value)}
             className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800" />
           <button onClick={() => setShowImport((v) => !v)}
             className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer">
             {showImport ? '✕ Close' : '📋 Paste Register'}
           </button>
-          <a href={exportUrl('salary')}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white">
-            ⬇ Salary Register
-          </a>
-          <a href={exportUrl('pf')}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white">
-            ⬇ PF Register
-          </a>
+          <div className="flex items-center gap-1 border border-gray-200 dark:border-gray-700 rounded-lg p-1 bg-gray-50 dark:bg-gray-800/40">
+            <span className="text-[10px] text-gray-500 font-medium px-1 uppercase tracking-wider">Salary:</span>
+            <a href={exportUrl('salary')} className="text-[10px] font-semibold px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white">All</a>
+            <a href={exportUrl('salary', 'KSI-1')} className="text-[10px] font-semibold px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white">KSI-1</a>
+            <a href={exportUrl('salary', 'KSI-2')} className="text-[10px] font-semibold px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white">KSI-2</a>
+          </div>
+          <div className="flex items-center gap-1 border border-gray-200 dark:border-gray-700 rounded-lg p-1 bg-gray-50 dark:bg-gray-800/40">
+            <span className="text-[10px] text-gray-500 font-medium px-1 uppercase tracking-wider">PF:</span>
+            <a href={exportUrl('pf')} className="text-[10px] font-semibold px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white">All</a>
+            <a href={exportUrl('pf', 'KSI-1')} className="text-[10px] font-semibold px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white">KSI-1</a>
+            <a href={exportUrl('pf', 'KSI-2')} className="text-[10px] font-semibold px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white">KSI-2</a>
+          </div>
         </div>
       </div>
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <div className="stat-card"><p className="text-xs text-gray-500 mb-0.5">Month</p><p className="text-lg font-bold">{monthLabel}</p></div>
-        <div className="stat-card"><p className="text-xs text-gray-500 mb-0.5">Staff in register</p><p className="text-xl font-bold">{data?.count ?? '—'}</p></div>
-        <div className="stat-card"><p className="text-xs text-gray-500 mb-0.5">On PF (Reg)</p><p className="text-xl font-bold text-blue-600">{data?.totals.reg ?? '—'}</p></div>
-        <div className="stat-card"><p className="text-xs text-gray-500 mb-0.5">Total Amount</p><p className="text-xl font-bold">₹{fmt(data?.totals.amount ?? 0)}</p></div>
+        <div className="stat-card"><p className="text-xs text-gray-500 mb-0.5">Staff in register</p><p className="text-xl font-bold">{data ? summary.count : '—'}</p></div>
+        <div className="stat-card"><p className="text-xs text-gray-500 mb-0.5">On PF (Reg)</p><p className="text-xl font-bold text-blue-600">{data ? summary.reg : '—'}</p></div>
+        <div className="stat-card"><p className="text-xs text-gray-500 mb-0.5">Total Amount</p><p className="text-xl font-bold">₹{data ? fmt(summary.amount) : '—'}</p></div>
       </div>
 
       {showImport && (
@@ -215,8 +240,15 @@ export default function RegisterClient() {
           <option value="">All departments</option>
           {departments.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
-        {(filter || deptFilter || sortKey) && (
-          <button onClick={() => { setFilter(''); setDeptFilter(''); setSortKey(null) }}
+        <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}
+          className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800">
+          <option value="">All Groups</option>
+          <option value="KSI-1">KSI-1</option>
+          <option value="KSI-2">KSI-2</option>
+          <option value="unassigned">— Unassigned —</option>
+        </select>
+        {(filter || deptFilter || groupFilter || sortKey) && (
+          <button onClick={() => { setFilter(''); setDeptFilter(''); setGroupFilter(''); setSortKey(null) }}
             className="text-xs px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600">Reset</button>
         )}
         <span className="text-xs text-gray-500 ml-auto">{view.length} of {rows.length}</span>
@@ -232,6 +264,7 @@ export default function RegisterClient() {
                 {thCell('Code', 'code')}
                 {thCell('Employee Name', 'name')}
                 {thCell('Department', 'department')}
+                {thCell('Group', 'registerGroup')}
                 {thCell('Salary', 'salary', 'right')}
                 {thCell('Perday', 'perDay', 'right')}
                 {thCell('Day', 'days', 'right')}
@@ -239,8 +272,8 @@ export default function RegisterClient() {
               </tr>
             </thead>
             <tbody>
-              {loading && (<tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>)}
-              {!loading && view.length === 0 && (<tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">{rows.length === 0 ? "No staff in this month's register." : 'No rows match the filter.'}</td></tr>)}
+              {loading && (<tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">Loading…</td></tr>)}
+              {!loading && view.length === 0 && (<tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{rows.length === 0 ? "No staff in this month's register." : 'No rows match the filter.'}</td></tr>)}
               {!loading && view.map((r) => (
                 <tr key={r.staffId} className="border-t border-gray-100 dark:border-gray-800">
                   <td className="px-2 py-1.5">
@@ -268,6 +301,9 @@ export default function RegisterClient() {
                     {r.inRegister && <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 font-semibold align-middle">Reg</span>}
                   </td>
                   <td className="px-2 py-1.5 text-gray-600 dark:text-gray-400 text-xs">{r.department || '—'}</td>
+                  <td className="px-2 py-1.5 text-xs">
+                    {r.registerGroup ? <span className="badge badge-gray">{r.registerGroup}</span> : <span className="text-gray-400">—</span>}
+                  </td>
                   <td className="px-2 py-1.5 text-right font-semibold">{fmt(r.salary)}</td>
                   <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400">{fmt(r.perDay)}</td>
                   <td className="px-2 py-1.5 text-right text-gray-600 dark:text-gray-400">{r.days ?? ''}</td>

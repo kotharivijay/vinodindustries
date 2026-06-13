@@ -60,4 +60,5 @@ export type RegisterRow = {
   autoStatus: string // the computed marker (for the UI to show "auto" vs override)
   statusOverridden: boolean
   inRegister: boolean
+  registerGroup: string | null
 }
