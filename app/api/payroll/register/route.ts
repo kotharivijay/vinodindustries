@@ -19,7 +19,8 @@ export async function GET(request: Request) {
   const data = await getRegisterRows(month)
 
   if (group) {
-    data.rows = data.rows.filter((r) => r.registerGroup === group)
+    const groupUpper = group.toUpperCase()
+    data.rows = data.rows.filter((r) => r.registerGroup?.toUpperCase() === groupUpper)
   }
 
   const totals = data.rows.reduce(

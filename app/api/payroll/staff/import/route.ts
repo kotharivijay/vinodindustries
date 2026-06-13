@@ -154,7 +154,7 @@ export async function POST(request: Request) {
           isActive: true,
         }
         if (registerGroup !== null) {
-          updateData.registerGroup = registerGroup.trim() || null
+          updateData.registerGroup = registerGroup.trim().toUpperCase() || null
         }
 
         await prisma.staff.update({
@@ -172,7 +172,7 @@ export async function POST(request: Request) {
             department: department.trim() || null,
             monthlyBaseSalary: salary,
             paymentMode: 'SALARIED',
-            registerGroup: registerGroup ? registerGroup.trim() : null,
+            registerGroup: registerGroup ? registerGroup.trim().toUpperCase() : null,
           },
         })
         results.push({ code: String(code), name: name.trim(), status: 'created' })

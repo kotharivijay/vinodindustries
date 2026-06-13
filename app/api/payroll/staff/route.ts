@@ -78,7 +78,7 @@ export async function POST(request: Request) {
         actualSalary: actualSalary != null ? Number(actualSalary) : null,
         paymentMode: paymentMode === 'CONTRACTOR_LINKED' ? 'CONTRACTOR_LINKED' : 'SALARIED',
         tallyLedgerName: tallyLedgerName?.trim() || null,
-        registerGroup: registerGroup?.trim() || null,
+        registerGroup: registerGroup?.trim().toUpperCase() || null,
         notes: notes?.trim() || null,
         status: st,
         isActive: isActiveFromStatus(st),

@@ -30,7 +30,8 @@ export async function GET(request: Request) {
   let out = pfOnly ? rows.filter((r) => r.inRegister) : rows
 
   if (group) {
-    out = out.filter((r) => r.registerGroup === group)
+    const groupUpper = group.toUpperCase()
+    out = out.filter((r) => r.registerGroup?.toUpperCase() === groupUpper)
   }
 
   const lines = [HEADERS.join(',')]
