@@ -20,10 +20,8 @@ function buildPartiesXML(): string {
 <TDL><TDLMESSAGE>
 <COLLECTION NAME="InvPartiesExport" ISMODIFY="No">
 <TYPE>Ledger</TYPE>
-<FETCH>Name,Parent,GUID,Address,LedStateName,GSTRegistrationType,PartyGSTIN,LedgerPhone,LedgerMobile,Email,IsBillWiseOn</FETCH>
-<FILTER>SundryParty</FILTER>
+<FETCH>Name,Parent,GUID,Address,LedStateName,GSTRegistrationType,PartyGSTIN,LedgerPhone,LedgerMobile,Email,IsBillWiseOn,LEDGSTREGDETAILS.LIST</FETCH>
 </COLLECTION>
-<SYSTEM TYPE="Formulae" NAME="SundryParty">$$IsBeneath:$Parent:"Sundry Creditors" OR $Parent = "Sundry Creditors" OR $$IsBeneath:$Parent:"Sundry Debtors" OR $Parent = "Sundry Debtors"</SYSTEM>
 </TDLMESSAGE></TDL>
 </DESC>
 </BODY>
@@ -116,10 +114,20 @@ export async function fetchPartiesFromTally(): Promise<FetchedParty[]> {
   return ledgers.map(block => {
     const tallyLedger = (block.match(/<LEDGER\s[^>]*NAME="([^"]+)"/) || [])[1]?.trim() || ''
     const parent = xml(block, 'PARENT')
+    
+    // Filter in JS: only Sundry Creditor/Debtor or similar groups
+    const parentLower = parent ? parent.toLowerCase() : ''
+    const isSundry = parentLower.includes('creditor') || 
+                     parentLower.includes('debtor') || 
+                     parentLower.includes('sundry') || 
+                     parentLower.includes('sundury')
+    if (!isSundry) return null
+
     const guid = xml(block, 'GUID')
     const state = xml(block, 'LEDSTATENAME')
-    const gstin = xml(block, 'PARTYGSTIN')
-    const gstType = xml(block, 'GSTREGISTRATIONTYPE') || 'Regular'
+    const gstDetails = xml(block, 'LEDGSTREGDETAILS\\.LIST')
+    const gstin = xml(gstDetails, 'GSTIN') || xml(block, 'PARTYGSTIN')
+    const gstType = xml(gstDetails, 'GSTREGISTRATIONTYPE') || xml(block, 'GSTREGISTRATIONTYPE') || 'Regular'
     const phone = xml(block, 'LEDGERMOBILE') || xml(block, 'LEDGERPHONE')
     const email = xml(block, 'EMAIL')
     return {
@@ -133,7 +141,7 @@ export async function fetchPartiesFromTally(): Promise<FetchedParty[]> {
       email: email || null,
       city: null,
     }
-  }).filter(p => p.tallyLedger)
+  }).filter((p): p is FetchedParty => p !== null && !!p.tallyLedger)
 }
 
 export interface FetchedAlias {

@@ -23,7 +23,7 @@ function buildLedgerXML(tallyCompany: string): string {
 <TDL><TDLMESSAGE>
 <COLLECTION NAME="LedgerExport" ISMODIFY="No">
 <TYPE>Ledger</TYPE>
-<FETCH>Name,Parent,Address,LedStateName,GSTRegistrationType,PartyGSTIN,IncomeTaxNumber,LedgerPhone,LedgerMobile</FETCH>
+<FETCH>Name,Parent,Address,LedStateName,GSTRegistrationType,PartyGSTIN,IncomeTaxNumber,LedgerPhone,LedgerMobile,LEDGSTREGDETAILS.LIST</FETCH>
 </COLLECTION>
 </TDLMESSAGE></TDL>
 </DESC>
@@ -41,7 +41,8 @@ function parseXMLLedgers(xml: string) {
     const addrLines = block.match(/<ADDRESS TYPE="String">([^<]*)<\/ADDRESS>/g)?.map(a => a.replace(/<[^>]+>/g, '')) || []
     const address = addrLines.length ? addrLines.join(', ') : null
     const state = block.match(/<LEDSTATENAME[^>]*>([^<]*)<\/LEDSTATENAME>/)?.[1] || null
-    const gstNo = block.match(/<PARTYGSTIN[^>]*>([^<]*)<\/PARTYGSTIN>/)?.[1] || null
+    const gstDetails = block.match(/<LEDGSTREGDETAILS\.LIST[^>]*>([\s\S]*?)<\/LEDGSTREGDETAILS\.LIST>/)?.[1] || ''
+    const gstNo = gstDetails.match(/<GSTIN[^>]*>([^<]*)<\/GSTIN>/)?.[1] || block.match(/<PARTYGSTIN[^>]*>([^<]*)<\/PARTYGSTIN>/)?.[1] || null
     const panNo = block.match(/<INCOMETAXNUMBER[^>]*>([^<]*)<\/INCOMETAXNUMBER>/)?.[1] || null
     const mobile = block.match(/<LEDGERMOBILE[^>]*>([^<]*)<\/LEDGERMOBILE>/)?.[1] || null
     const phone = block.match(/<LEDGERPHONE[^>]*>([^<]*)<\/LEDGERPHONE>/)?.[1] || null
