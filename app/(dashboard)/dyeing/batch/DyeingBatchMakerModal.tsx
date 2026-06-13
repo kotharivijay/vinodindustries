@@ -87,22 +87,26 @@ interface SavedSlip {
 // fallback so the row never blanks out even if the fold/dyeing rows are
 // somehow missing the field.
 function currentValues(b: SavedSlip['batches'][number]) {
-  const latest = b.foldBatch.dyeingEntries[0]
+  // POST response only includes foldBatch.lots; the richer GET shape adds
+  // shade, foldProgram, dyeingEntries. Optional-chain everything so the
+  // post-save panel can render against either response without crashing.
+  const fb: any = (b as any).foldBatch ?? {}
+  const latest = fb.dyeingEntries?.[0]
   return {
     shadeName:
       latest?.shadeName ||
-      b.foldBatch.shadeName ||
-      b.foldBatch.shade?.name ||
+      fb.shadeName ||
+      fb.shade?.name ||
       b.shadeNameSnapshot ||
       null,
     shadeDescription:
       latest?.shadeDescription ||
-      b.foldBatch.shadeDescription ||
-      b.foldBatch.shade?.description ||
+      fb.shadeDescription ||
+      fb.shade?.description ||
       null,
     marka:
       latest?.marka ||
-      b.foldBatch.marka ||
+      fb.marka ||
       b.markaSnapshot ||
       null,
     slipNo: latest?.slipNo ?? null,

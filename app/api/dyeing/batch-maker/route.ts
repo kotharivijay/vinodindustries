@@ -151,7 +151,23 @@ export async function POST(req: Request) {
         include: {
           batches: {
             include: {
-              foldBatch: { include: { lots: true } },
+              // Mirror the GET endpoint's shape so the post-save panel can
+              // render with the same currentValues() helper used by view-only
+              // mode (shade fallback chain, dyeing-entry live overrides).
+              foldBatch: {
+                include: {
+                  lots: true,
+                  foldProgram: { select: { foldNo: true, date: true } },
+                  shade: { select: { name: true, description: true } },
+                  dyeingEntries: {
+                    orderBy: [{ date: 'desc' }, { id: 'desc' }],
+                    select: {
+                      id: true, slipNo: true, date: true, status: true,
+                      shadeName: true, shadeDescription: true, marka: true,
+                    },
+                  },
+                },
+              },
             },
           },
         },
