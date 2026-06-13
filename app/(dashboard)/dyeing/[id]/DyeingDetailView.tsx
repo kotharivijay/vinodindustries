@@ -54,11 +54,105 @@ interface Entry {
   additions?: Addition[]
 }
 
+// Editable row used by the Round edit modal. Keeps the original chemicalId
+// link by default so editing only qty/rate doesn't sever the master-data tie.
+interface EditableItem {
+  chemicalId: number | null
+  name: string
+  quantity: string
+  unit: string
+  rate: string
+}
+
 export default function DyeingDetailView({ id }: { id: string }) {
   const router = useRouter()
   const [entry, setEntry] = useState<Entry | null>(null)
   const [loading, setLoading] = useState(true)
   const [sharing, setSharing] = useState(false)
+
+  // Edit Round state — null when closed.
+  const [editingRound, setEditingRound] = useState<Addition | null>(null)
+  const [editItems, setEditItems] = useState<EditableItem[]>([])
+  const [savingRound, setSavingRound] = useState(false)
+  const [deletingRound, setDeletingRound] = useState(false)
+  const [roundError, setRoundError] = useState('')
+
+  function openEditRound(a: Addition) {
+    setRoundError('')
+    setEditingRound(a)
+    setEditItems(
+      (a.chemicals ?? []).map(c => ({
+        chemicalId: (c as any).chemicalId ?? null,
+        name: c.name,
+        quantity: c.quantity != null ? String(c.quantity) : '',
+        unit: c.unit ?? 'kg',
+        rate: c.rate != null ? String(c.rate) : '',
+      })),
+    )
+  }
+
+  function updateItem(idx: number, patch: Partial<EditableItem>) {
+    setEditItems(items => items.map((it, i) => (i === idx ? { ...it, ...patch } : it)))
+  }
+
+  function removeItem(idx: number) {
+    setEditItems(items => items.filter((_, i) => i !== idx))
+  }
+
+  function addBlankItem() {
+    setEditItems(items => [...items, { chemicalId: null, name: '', quantity: '', unit: 'kg', rate: '' }])
+  }
+
+  async function saveRound() {
+    if (!editingRound) return
+    setRoundError('')
+    setSavingRound(true)
+    try {
+      const payload = {
+        chemicals: editItems
+          .filter(c => c.name.trim())
+          .map(c => {
+            const qty = parseFloat(c.quantity) || 0
+            const rate = c.rate !== '' ? parseFloat(c.rate) : null
+            const cost = rate != null ? Math.round(qty * rate * 100) / 100 : null
+            return { chemicalId: c.chemicalId, name: c.name.trim(), quantity: qty, unit: c.unit || 'kg', rate, cost }
+          }),
+      }
+      const res = await fetch(`/api/dyeing/${id}/additions/${editingRound.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) { setRoundError(data?.error ?? 'Save failed'); return }
+      // Refetch the slip so all rounds + costs update consistently.
+      const refreshed = await fetch(`/api/dyeing/${id}`).then(r => r.json())
+      setEntry(refreshed)
+      setEditingRound(null)
+    } catch (e: any) {
+      setRoundError(e?.message ?? 'Network error')
+    } finally {
+      setSavingRound(false)
+    }
+  }
+
+  async function deleteRound() {
+    if (!editingRound) return
+    if (!window.confirm(`Delete Round ${editingRound.roundNo} entirely? This removes all its items and decrements the slip's total rounds.`)) return
+    setDeletingRound(true)
+    try {
+      const res = await fetch(`/api/dyeing/${id}/additions/${editingRound.id}`, { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setRoundError(data?.error ?? 'Delete failed'); return }
+      const refreshed = await fetch(`/api/dyeing/${id}`).then(r => r.json())
+      setEntry(refreshed)
+      setEditingRound(null)
+    } catch (e: any) {
+      setRoundError(e?.message ?? 'Network error')
+    } finally {
+      setDeletingRound(false)
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/dyeing/${id}`)
@@ -270,7 +364,16 @@ export default function DyeingDetailView({ id }: { id: string }) {
                       <span className="text-[10px] font-medium bg-red-900/30 text-red-300 px-1.5 py-0.5 rounded capitalize">{a.defectType}</span>
                     )}
                   </div>
-                  <span className="text-xs text-gray-400">{new Date(a.createdAt).toLocaleDateString('en-IN')}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{new Date(a.createdAt).toLocaleDateString('en-IN')}</span>
+                    <button
+                      onClick={() => openEditRound(a)}
+                      className="text-[11px] font-medium text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300 border border-purple-200 dark:border-purple-700 rounded px-2 py-0.5"
+                      title="Edit items and quantities for this round"
+                    >
+                      ✏ Edit
+                    </button>
+                  </div>
                 </div>
 
                 {a.reason && (
@@ -360,6 +463,115 @@ export default function DyeingDetailView({ id }: { id: string }) {
         }
         return null
       })()}
+
+      {editingRound && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-hidden rounded-lg bg-gray-900 border border-gray-700 shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between border-b border-gray-700 px-5 py-3">
+              <div>
+                <h2 className="text-lg font-semibold text-white">
+                  Edit Round {editingRound.roundNo} {editingRound.type === 're-dye' ? '(Re-Dye)' : '(Addition)'}
+                </h2>
+                <p className="text-xs text-gray-400">Slip #{entry.slipNo} — change item / quantity / rate</p>
+              </div>
+              <button onClick={() => setEditingRound(null)} className="text-gray-400 hover:text-white text-xl leading-none px-2">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-2">
+              {editItems.length === 0 ? (
+                <div className="text-center text-gray-500 text-sm py-8">No items. Tap + Add Item to add one.</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-12 gap-2 text-[10px] uppercase tracking-wide text-gray-500 px-1">
+                    <div className="col-span-5">Item</div>
+                    <div className="col-span-2 text-right">Qty</div>
+                    <div className="col-span-1">Unit</div>
+                    <div className="col-span-2 text-right">Rate</div>
+                    <div className="col-span-1 text-right">Cost</div>
+                    <div className="col-span-1"></div>
+                  </div>
+                  {editItems.map((it, i) => {
+                    const qty = parseFloat(it.quantity) || 0
+                    const rate = it.rate !== '' ? parseFloat(it.rate) : null
+                    const cost = rate != null ? qty * rate : null
+                    return (
+                      <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                        <input
+                          value={it.name}
+                          onChange={e => updateItem(i, { name: e.target.value })}
+                          placeholder="Chemical name"
+                          className="col-span-5 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-white"
+                        />
+                        <input
+                          type="number" step="0.001" value={it.quantity}
+                          onChange={e => updateItem(i, { quantity: e.target.value })}
+                          className="col-span-2 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-white text-right"
+                        />
+                        <input
+                          value={it.unit}
+                          onChange={e => updateItem(i, { unit: e.target.value })}
+                          className="col-span-1 bg-gray-800 border border-gray-700 rounded px-1 py-1.5 text-xs text-white"
+                        />
+                        <input
+                          type="number" step="0.01" value={it.rate}
+                          onChange={e => updateItem(i, { rate: e.target.value })}
+                          className="col-span-2 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-white text-right"
+                        />
+                        <div className="col-span-1 text-right text-xs text-purple-400">
+                          {cost != null ? `₹${cost.toFixed(2)}` : '—'}
+                        </div>
+                        <button
+                          onClick={() => removeItem(i)}
+                          className="col-span-1 text-red-400 hover:text-red-300 text-sm"
+                          title="Remove this item"
+                        >✕</button>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+
+              <button
+                onClick={addBlankItem}
+                className="mt-2 w-full text-sm bg-gray-800 hover:bg-gray-700 border border-dashed border-gray-600 text-gray-300 rounded px-3 py-2"
+              >
+                + Add Item
+              </button>
+
+              {roundError && (
+                <div className="rounded bg-red-500/10 border border-red-500/40 px-3 py-2 text-sm text-red-300">
+                  {roundError}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-gray-700 px-5 py-3 flex items-center justify-between gap-2 bg-gray-900">
+              <button
+                onClick={deleteRound}
+                disabled={deletingRound}
+                className="text-xs bg-red-600/80 hover:bg-red-500 disabled:bg-gray-700 disabled:text-gray-500 text-white px-3 py-1.5 rounded"
+              >
+                {deletingRound ? 'Deleting…' : 'Delete Round'}
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingRound(null)}
+                  className="px-3 py-1.5 rounded text-sm text-gray-300 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveRound}
+                  disabled={savingRound}
+                  className="px-4 py-1.5 rounded text-sm bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 text-white"
+                >
+                  {savingRound ? 'Saving…' : 'Save Round'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
