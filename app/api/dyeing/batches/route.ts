@@ -32,6 +32,7 @@ export async function GET() {
     const programs = await prisma.foldProgram.findMany({
       include: {
         batches: {
+          orderBy: { batchNo: 'asc' },
           include: {
             lots: true,
             shade: {

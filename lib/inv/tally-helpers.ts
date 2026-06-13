@@ -17,5 +17,6 @@ export function fmtDate(input: string | Date): string {
 }
 
 export function neg(n: number): string {
-  return `-${n.toFixed(2)}`
+  if (n === 0) return '0.00'
+  return (-n).toFixed(2)
 }
