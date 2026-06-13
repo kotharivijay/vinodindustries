@@ -566,8 +566,8 @@ function ChallanCard(props: {
   const [returnOpen, setReturnOpen] = useState(false)
   const [cashOpen, setCashOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
-  // Lines lock when challan is terminal — same as the existing Invoiced lock.
-  const lineDisabled = isTerminal
+  // Lines lock when challan is terminal or linked to an invoice
+  const lineDisabled = isTerminal || linked
 
   async function flipRatesIncludeGst() {
     const body = JSON.stringify({ ratesIncludeGst: !c.ratesIncludeGst })
@@ -623,6 +623,14 @@ function ChallanCard(props: {
     if (res.ok) onChange(await res.json())
   }
 
+  async function deleteLine(lineId: number) {
+    if (!confirm('Are you sure you want to delete this item?')) return
+    const res = await fetch(`/api/inv/challans/${c.id}/lines/${lineId}`, {
+      method: 'DELETE',
+    })
+    if (res.ok) onChange(await res.json())
+  }
+
   return (
     <div className={`bg-white dark:bg-gray-800 rounded-xl border transition ${
       selected ? 'border-indigo-500 ring-2 ring-indigo-300/50'
@@ -647,8 +655,8 @@ function ChallanCard(props: {
               KSI/IN/{c.seriesFy}/{String(c.internalSeriesNo).padStart(4, '0')}
             </Link>
             <div className="flex items-center gap-1">
-              <button onClick={() => setEditOpen(true)} disabled={isTerminal}
-                title={isTerminal ? `Cannot edit a ${c.status.toLowerCase()} challan` : 'Edit challan header (date, bilty, vehicle, transporter, notes)'}
+              <button onClick={() => setEditOpen(true)} disabled={isTerminal || linked}
+                title={isTerminal ? `Cannot edit a ${c.status.toLowerCase()} challan` : linked ? 'Cannot edit a challan linked to an invoice' : 'Edit challan (header, items, and details)'}
                 className="text-[10px] font-semibold px-2 py-0.5 rounded border border-indigo-200 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 disabled:opacity-40 disabled:cursor-not-allowed">
                 Edit
               </button>
@@ -665,17 +673,17 @@ function ChallanCard(props: {
                       <div className="absolute right-0 top-full mt-1 z-20 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
                         <MenuItem
                           label="↩ Return lines…"
-                          disabled={isTerminal}
+                          disabled={isTerminal || linked}
                           onClick={() => { setMenuOpen(false); setReturnOpen(true) }}
                         />
                         <MenuItem
                           label="₹ Mark Cash Paid…"
-                          disabled={isTerminal || c.lines.some(l => Number(l.returnedQty ?? 0) > 0)}
+                          disabled={isTerminal || linked || c.lines.some(l => Number(l.returnedQty ?? 0) > 0)}
                           onClick={() => { setMenuOpen(false); setCashOpen(true) }}
                         />
                         <MenuItem
                           label="✕ Cancel challan…"
-                          disabled={isTerminal}
+                          disabled={isTerminal || linked}
                           danger
                           onClick={() => { setMenuOpen(false); setCancelOpen(true) }}
                         />
@@ -748,7 +756,7 @@ function ChallanCard(props: {
 
           <div className="space-y-3">
             {c.lines.map(l => (
-              <LineCard key={l.id} line={l} disabled={lineDisabled} onSave={patch => patchLine(l.id, patch)} />
+              <LineCard key={l.id} line={l} disabled={lineDisabled} onSave={patch => patchLine(l.id, patch)} onDelete={() => deleteLine(l.id)} />
             ))}
           </div>
 
@@ -878,16 +886,172 @@ function EditChallanModal({ challan, onClose, onSaved }: {
   onClose: () => void
   onSaved: (updated: Challan) => void
 }) {
-  // Only header fields are editable here. Lines stay inline-editable on the
-  // expanded card; party + challanNo are immutable once the series is locked.
   const [challanNo] = useState(challan.challanNo)
   const [challanDate, setChallanDate] = useState(challan.challanDate.slice(0, 10))
   const [biltyNo, setBiltyNo] = useState(challan.biltyNo ?? '')
   const [vehicleNo, setVehicleNo] = useState(challan.vehicleNo ?? '')
   const [transporter, setTransporter] = useState(challan.transporter ?? '')
   const [notes, setNotes] = useState(challan.notes ?? '')
+  const [ratesIncludeGst, setRatesIncludeGst] = useState(challan.ratesIncludeGst)
+  
+  const [lines, setLines] = useState<any[]>(() => challan.lines.map(l => ({
+    ...l,
+    discountText: l.discountType === 'PCT' && l.discountValue != null ? `${l.discountValue}%` : (l.discountAmount ?? '')
+  })))
+
+  const [addingItem, setAddingItem] = useState(false)
+  const [itemQuery, setItemQuery] = useState('')
+  const [itemResults, setItemResults] = useState<any[]>([])
+  const [itemSearching, setItemSearching] = useState(false)
+
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!addingItem || !itemQuery.trim()) { setItemResults([]); return }
+    const q = itemQuery.trim()
+    setItemSearching(true)
+    const handle = setTimeout(() => {
+      fetch(`/api/inv/items?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(d => { if (Array.isArray(d)) setItemResults(d) })
+        .catch(() => {})
+        .finally(() => setItemSearching(false))
+    }, 200)
+    return () => clearTimeout(handle)
+  }, [itemQuery, addingItem])
+
+  function localLineMath(
+    qty: number,
+    rate: number | null,
+    gstRate: number | null,
+    discountAmount: number | null,
+    includeGst: boolean
+  ) {
+    if (rate == null) return { amount: 0, gstAmount: 0, totalWithGst: 0 }
+    const q = Number(qty || 0)
+    const r = Number(rate)
+    const disc = Number(discountAmount ?? 0)
+    const gst = Number(gstRate ?? 0)
+    const gross = q * r
+
+    const round2 = (n: number) => Math.round(n * 100) / 100
+
+    if (includeGst && gst > 0) {
+      const inclusive = gross - disc
+      const taxable = inclusive / (1 + gst / 100)
+      const gstAmt = inclusive - taxable
+      return {
+        amount: round2(taxable),
+        gstAmount: round2(gstAmt),
+        totalWithGst: round2(inclusive),
+      }
+    }
+    const taxable = gross - disc
+    const gstAmt = (taxable * gst) / 100
+    return {
+      amount: round2(taxable),
+      gstAmount: round2(gstAmt),
+      totalWithGst: round2(taxable + gstAmt),
+    }
+  }
+
+  function addLocalLine(item: any) {
+    const nextLineNo = lines.reduce((m, l) => Math.max(m, l.lineNo || 0), 0) + 1
+    const aliasGst = item.alias?.gstRate != null ? Number(item.alias.gstRate) : null
+    const freshLine = {
+      itemId: item.id,
+      item: item,
+      qty: 0,
+      unit: item.unit || 'PCS',
+      rate: null,
+      gstRate: aliasGst,
+      discountType: null,
+      discountValue: null,
+      discountAmount: null,
+      discountText: '',
+      notes: null,
+      lineNo: nextLineNo,
+      amount: 0,
+      gstAmount: 0,
+      totalWithGst: 0,
+    }
+    setLines([...lines, freshLine])
+    setItemQuery('')
+    setItemResults([])
+    setAddingItem(false)
+  }
+
+  function updateLine(index: number, patch: Partial<any>) {
+    setLines(prev => {
+      const next = [...prev]
+      const l = { ...next[index], ...patch }
+
+      if (patch.discountText !== undefined) {
+        const trimmed = (patch.discountText || '').trim()
+        if (trimmed === '') {
+          l.discountType = null
+          l.discountValue = null
+          l.discountAmount = null
+        } else {
+          const isPct = trimmed.endsWith('%')
+          const numStr = isPct ? trimmed.slice(0, -1).trim() : trimmed
+          const num = Number(numStr)
+          if (Number.isFinite(num) && num >= 0) {
+            if (isPct) {
+              l.discountType = 'PCT'
+              l.discountValue = num
+              const gross = Number(l.qty || 0) * Number(l.rate || 0)
+              l.discountAmount = Math.round(gross * num / 100 * 100) / 100
+            } else {
+              l.discountType = 'AMT'
+              l.discountValue = num
+              l.discountAmount = num
+            }
+          }
+        }
+      }
+
+      if ((patch.qty !== undefined || patch.rate !== undefined) && l.discountType === 'PCT' && l.discountValue != null) {
+        const gross = Number(l.qty || 0) * Number(l.rate || 0)
+        l.discountAmount = Math.round(gross * Number(l.discountValue) / 100 * 100) / 100
+      }
+
+      const math = localLineMath(
+        Number(l.qty || 0),
+        l.rate != null && l.rate !== '' ? Number(l.rate) : null,
+        l.gstRate != null && l.gstRate !== '' ? Number(l.gstRate) : null,
+        l.discountAmount != null ? Number(l.discountAmount) : null,
+        ratesIncludeGst
+      )
+      l.amount = math.amount
+      l.gstAmount = math.gstAmount
+      l.totalWithGst = math.totalWithGst
+
+      next[index] = l
+      return next
+    })
+  }
+
+  function toggleRatesIncludeGst() {
+    const nextVal = !ratesIncludeGst
+    setRatesIncludeGst(nextVal)
+    setLines(prev => prev.map(l => {
+      const math = localLineMath(
+        Number(l.qty || 0),
+        l.rate != null && l.rate !== '' ? Number(l.rate) : null,
+        l.gstRate != null && l.gstRate !== '' ? Number(l.gstRate) : null,
+        l.discountAmount != null ? Number(l.discountAmount) : null,
+        nextVal
+      )
+      return {
+        ...l,
+        amount: math.amount,
+        gstAmount: math.gstAmount,
+        totalWithGst: math.totalWithGst,
+      }
+    }))
+  }
 
   async function save() {
     setSaving(true); setError('')
@@ -900,6 +1064,24 @@ function EditChallanModal({ challan, onClose, onSaved }: {
         vehicleNo: vehicleNo.trim() || null,
         transporter: transporter.trim() || null,
         notes: notes.trim() || null,
+        ratesIncludeGst,
+        lines: lines.map(l => ({
+          itemId: l.itemId,
+          qty: Number(l.qty || 0),
+          unit: l.unit,
+          rate: l.rate,
+          gstRate: l.gstRate,
+          discountType: l.discountType,
+          discountValue: l.discountValue,
+          discountAmount: l.discountAmount,
+          notes: l.notes,
+          poLineId: l.poLineId,
+          returnedQty: l.returnedQty,
+          damageQty: l.damageQty,
+          damageRemarks: l.damageRemarks,
+          rateVariancePct: l.rateVariancePct,
+          varianceReason: l.varianceReason,
+        }))
       }),
     })
     setSaving(false)
@@ -910,8 +1092,8 @@ function EditChallanModal({ challan, onClose, onSaved }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto" onClick={onClose}>
       <div onClick={e => e.stopPropagation()}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg my-6">
-        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl my-6 flex flex-col max-h-[90vh]">
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between shrink-0">
           <div>
             <h3 className="text-base font-bold text-gray-800 dark:text-gray-100">Edit Challan</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 font-mono mt-0.5">
@@ -920,9 +1102,9 @@ function EditChallanModal({ challan, onClose, onSaved }: {
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-lg">✕</button>
         </div>
-        <div className="p-5 space-y-3">
+        <div className="p-5 overflow-y-auto space-y-4 flex-1">
           <p className="text-[11px] text-gray-500 dark:text-gray-400">
-            Party and series number can&apos;t be changed once the challan is created. Edit lines by expanding the card.
+            Party and series number can&apos;t be changed once the challan is created. Customize header, edit items, delete existing lines, or add new ones.
           </p>
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-xs">
@@ -958,11 +1140,142 @@ function EditChallanModal({ challan, onClose, onSaved }: {
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
               className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
           </label>
+          
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4" />
+          
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-bold text-gray-800 dark:text-gray-200">Items ({lines.length})</h4>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">Rates include GST?</span>
+              <button type="button" onClick={toggleRatesIncludeGst}
+                className={`text-[11px] font-semibold rounded-full px-3 py-0.5 border transition ${
+                  ratesIncludeGst
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+                }`}>
+                {ratesIncludeGst ? 'Yes' : 'No'}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {lines.map((l, index) => {
+              const aliasGst = l.item?.alias?.gstRate != null ? String(Number(l.item.alias.gstRate)) : ''
+              return (
+                <div key={index} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/10 p-3 space-y-2 relative">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">{l.item.displayName}</p>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400">{l.item.alias.tallyStockItem}</p>
+                    </div>
+                    <button type="button" onClick={() => setLines(prev => prev.filter((_, i) => i !== index))}
+                      className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 px-1.5 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950/20 font-bold text-sm">
+                      ✕
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Qty</span>
+                      <input type="number" step="0.001" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 text-xs"
+                        value={l.qty} onChange={e => updateLine(index, { qty: e.target.value })} />
+                    </div>
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Unit</span>
+                      <input type="text" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 text-xs"
+                        value={l.unit} onChange={e => updateLine(index, { unit: e.target.value })} />
+                    </div>
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Rate</span>
+                      <input type="number" step="0.0001" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 text-xs"
+                        value={l.rate ?? ''} onChange={e => updateLine(index, { rate: e.target.value })} />
+                    </div>
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Discount (₹ or %)</span>
+                      <input type="text" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 text-xs"
+                        placeholder="0 or 5%"
+                        value={l.discountText} onChange={e => updateLine(index, { discountText: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">GST %</span>
+                      <input type="number" step="0.01" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 text-xs"
+                        value={l.gstRate ?? aliasGst} onChange={e => updateLine(index, { gstRate: e.target.value })} />
+                    </div>
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Amount</span>
+                      <p className="px-1.5 py-1 text-xs text-gray-700 dark:text-gray-300 font-medium">₹{fmtMoney(l.amount)}</p>
+                    </div>
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Total</span>
+                      <p className="px-1.5 py-1 text-xs font-bold text-gray-900 dark:text-gray-100 font-mono">₹{fmtMoney(l.totalWithGst)}</p>
+                    </div>
+                    <div>
+                      <span className="block text-[9px] uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-0.5">Notes</span>
+                      <input type="text" className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded px-1.5 py-1 text-xs" placeholder="—"
+                        value={l.notes ?? ''} onChange={e => updateLine(index, { notes: e.target.value })} />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {lines.length > 0 && (
+            <div className="bg-gray-50 dark:bg-gray-900/20 p-3 rounded-lg flex flex-col gap-1 text-xs border border-gray-100 dark:border-gray-700/50">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Subtotal (taxable)</span>
+                <span className="font-semibold">₹{fmtMoney(lines.reduce((s, l) => s + Number(l.amount || 0), 0))}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">GST</span>
+                <span className="font-semibold">₹{fmtMoney(lines.reduce((s, l) => s + Number(l.gstAmount || 0), 0))}</span>
+              </div>
+              <div className="flex justify-between text-sm font-bold border-t border-dashed border-gray-200 dark:border-gray-700 pt-1 mt-1">
+                <span>Total</span>
+                <span className="font-mono">₹{fmtMoney(lines.reduce((s, l) => s + Number(l.totalWithGst || 0), 0))}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="border border-dashed border-indigo-300 dark:border-indigo-700 rounded-lg p-2.5 bg-indigo-50/40 dark:bg-indigo-900/10">
+            {!addingItem ? (
+              <button type="button" onClick={() => setAddingItem(true)}
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 hover:text-indigo-700">
+                + Add Item
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input autoFocus type="text" value={itemQuery} onChange={e => setItemQuery(e.target.value)}
+                    placeholder="Search items by name…"
+                    className="flex-1 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-xs" />
+                  <button type="button" onClick={() => { setAddingItem(false); setItemQuery(''); setItemResults([]) }}
+                    className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Close</button>
+                </div>
+                {itemSearching && <p className="text-[10px] text-gray-400">Searching…</p>}
+                {!itemSearching && itemQuery.trim() && itemResults.length === 0 && (
+                  <p className="text-[10px] text-gray-400">No matches. Add the item from Items Master first.</p>
+                )}
+                {itemResults.length > 0 && (
+                  <div className="max-h-44 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                    {itemResults.map(it => (
+                      <button type="button" key={it.id} onClick={() => addLocalLine(it)}
+                        className="w-full text-left px-2.5 py-1.5 text-[11px] hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between">
+                        <span className="font-medium text-gray-800 dark:text-gray-100 truncate">{it.displayName}</span>
+                        <span className="text-[10px] text-gray-400 shrink-0 ml-2">{it.unit}{it.alias?.gstRate ? ` · GST ${Number(it.alias.gstRate)}%` : ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
         </div>
-        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2 shrink-0">
           <button onClick={onClose}
-            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+            className="px-4 py-2 rounded-lg text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
             Cancel
           </button>
           <button onClick={save} disabled={saving}
@@ -1192,10 +1505,11 @@ function CancelChallanModal({ challan, onClose, onDone }: {
   )
 }
 
-function LineCard({ line, disabled, onSave }: {
+function LineCard({ line, disabled, onSave, onDelete }: {
   line: Line
   disabled: boolean
   onSave: (patch: Record<string, any>) => void | Promise<void>
+  onDelete?: () => void | Promise<void>
 }) {
   // Discount display: percent if discountType=PCT, else flat amount.
   // The input accepts both formats: "5" → flat ₹5, "5%" → 5 percent.
@@ -1277,15 +1591,24 @@ function LineCard({ line, disabled, onSave }: {
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-2.5 space-y-2">
       {/* Row 1 — Item name + alias (click name → last-5 buys popup) */}
       <div>
-        <div className="flex items-baseline justify-between gap-2">
-          <button type="button" onClick={() => setHistoryOpen(true)}
-            className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:underline leading-tight text-left">
-            {line.item.displayName}
-          </button>
-          {Number(line.returnedQty ?? 0) > 0 && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 shrink-0">
-              {Number(line.returnedQty) >= Number(line.qty) ? 'Returned' : `${Number(line.returnedQty)} returned`}
-            </span>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <button type="button" onClick={() => setHistoryOpen(true)}
+              className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:underline leading-tight text-left">
+              {line.item.displayName}
+            </button>
+            {Number(line.returnedQty ?? 0) > 0 && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 shrink-0">
+                {Number(line.returnedQty) >= Number(line.qty) ? 'Returned' : `${Number(line.returnedQty)} returned`}
+              </span>
+            )}
+          </div>
+          {!disabled && onDelete && (
+            <button type="button" onClick={onDelete}
+              title="Delete item"
+              className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-400 px-1 py-0 rounded hover:bg-rose-50 dark:hover:bg-rose-950/20 transition duration-150 leading-none font-bold text-sm">
+              ✕
+            </button>
           )}
         </div>
         <p className="text-[10px] text-gray-500 dark:text-gray-400">{line.item.alias.tallyStockItem}</p>

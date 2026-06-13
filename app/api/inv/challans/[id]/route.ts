@@ -30,10 +30,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const id = Number(params.id)
-  const existing = await db.invChallan.findUnique({ where: { id } })
+  const existing = await db.invChallan.findUnique({
+    where: { id },
+    include: { invoiceLink: true },
+  })
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  if (existing.status === 'Invoiced') {
-    return NextResponse.json({ error: 'Cannot edit an invoiced challan' }, { status: 409 })
+  if (existing.status === 'Invoiced' || existing.invoiceLink) {
+    return NextResponse.json({ error: 'Cannot edit a challan linked to an invoice' }, { status: 409 })
   }
 
   const body = await req.json()
@@ -97,6 +100,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         discountType: l.discountType || null,
         discountValue: l.discountValue != null ? Number(l.discountValue) : null,
         discountAmount,
+        notes: l.notes || null,
+        returnedQty: l.returnedQty != null ? Number(l.returnedQty) : null,
+        damageQty: l.damageQty != null ? Number(l.damageQty) : 0,
+        damageRemarks: l.damageRemarks || null,
+        rateVariancePct: l.rateVariancePct != null ? Number(l.rateVariancePct) : null,
+        varianceReason: l.varianceReason || null,
       })
     }
     await db.$transaction([

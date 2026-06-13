@@ -26,11 +26,11 @@ export async function POST(
   const challanId = Number(params.id)
   const challan = await db.invChallan.findUnique({
     where: { id: challanId },
-    select: { id: true, status: true, ratesIncludeGst: true },
+    include: { invoiceLink: true },
   })
   if (!challan) return NextResponse.json({ error: 'Challan not found' }, { status: 404 })
-  if (challan.status === 'Invoiced') {
-    return NextResponse.json({ error: 'Cannot edit an invoiced challan' }, { status: 409 })
+  if (challan.status === 'Invoiced' || challan.invoiceLink) {
+    return NextResponse.json({ error: 'Cannot edit a challan linked to an invoice' }, { status: 409 })
   }
 
   const body = await req.json()

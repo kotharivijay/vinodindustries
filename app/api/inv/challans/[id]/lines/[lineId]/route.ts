@@ -25,11 +25,11 @@ export async function PUT(
 
   const challan = await db.invChallan.findUnique({
     where: { id: challanId },
-    select: { id: true, status: true, ratesIncludeGst: true },
+    include: { invoiceLink: true },
   })
   if (!challan) return NextResponse.json({ error: 'Challan not found' }, { status: 404 })
-  if (challan.status === 'Invoiced') {
-    return NextResponse.json({ error: 'Cannot edit an invoiced challan' }, { status: 409 })
+  if (challan.status === 'Invoiced' || challan.invoiceLink) {
+    return NextResponse.json({ error: 'Cannot edit a challan linked to an invoice' }, { status: 409 })
   }
 
   const existingLine = await db.invChallanLine.findUnique({
@@ -118,6 +118,80 @@ export async function PUT(
         totalGstAmount,
         totalWithGst,
         hasRatelessLines,
+      },
+    })
+  })
+
+  // Return the freshly recomputed challan + lines for the UI to swap in.
+  const fresh = await db.invChallan.findUnique({
+    where: { id: challanId },
+    include: { lines: { include: { item: { include: { alias: true } } }, orderBy: { lineNo: 'asc' } } },
+  })
+  return NextResponse.json(fresh)
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string; lineId: string } },
+) {
+  const session = await getServerSession(authOptions)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const challanId = Number(params.id)
+  const lineId = Number(params.lineId)
+
+  const challan = await db.invChallan.findUnique({
+    where: { id: challanId },
+    include: { invoiceLink: true },
+  })
+  if (!challan) return NextResponse.json({ error: 'Challan not found' }, { status: 404 })
+  if (challan.status === 'Invoiced' || challan.invoiceLink) {
+    return NextResponse.json({ error: 'Cannot edit a challan linked to an invoice' }, { status: 409 })
+  }
+
+  const existingLine = await db.invChallanLine.findUnique({
+    where: { id: lineId },
+    select: { id: true, challanId: true },
+  })
+  if (!existingLine || existingLine.challanId !== challanId) {
+    return NextResponse.json({ error: 'Line not found' }, { status: 404 })
+  }
+
+  await db.$transaction(async (tx: any) => {
+    await tx.invChallanLine.delete({
+      where: { id: lineId },
+    })
+
+    // Recompute parent rollups
+    const lines = await tx.invChallanLine.findMany({
+      where: { challanId },
+      select: { qty: true, amount: true, gstAmount: true, totalWithGst: true, rate: true, itemId: true },
+    })
+    const totalQty = lines.reduce((s: number, l: any) => s + Number(l.qty || 0), 0)
+    const totalAmount = lines.reduce((s: number, l: any) => s + Number(l.amount || 0), 0)
+    const totalGstAmount = lines.reduce((s: number, l: any) => s + Number(l.gstAmount || 0), 0)
+    const totalWithGst = lines.reduce((s: number, l: any) => s + Number(l.totalWithGst || 0), 0)
+    const hasRatelessLines = lines.some((l: any) => l.rate == null)
+
+    // Check if there are any remaining lines with pending review status
+    const itemIds = lines.map((l: any) => l.itemId)
+    const pendingReviewItems = await tx.invItem.count({
+      where: {
+        id: { in: itemIds },
+        reviewStatus: 'pending_review',
+      },
+    })
+    const hasPendingReviewItems = pendingReviewItems > 0
+
+    await tx.invChallan.update({
+      where: { id: challanId },
+      data: {
+        totalQty,
+        totalAmount,
+        totalGstAmount,
+        totalWithGst,
+        hasRatelessLines,
+        hasPendingReviewItems,
       },
     })
   })
