@@ -264,12 +264,13 @@ export async function postPurchaseVoucher(payload: any) {
       (text.match(new RegExp(`"${k}"\\s*:\\s*"([^"]+)"`)) || [])[1] ??
       (text.match(new RegExp(`"${k}"\\s*:\\s*([^,\\s}]+)`)) || [])[1]
     const created = grab('created')
+    const altered = grab('altered')
     const lastvchid = grab('lastvchid')
     const vchkey = grab('vchkey')
     const vchnumber = grab('vchnumber')
     const errors = grab('errors')
     const exceptions = grab('exceptions')
-    parsed = { fallback: true, created, lastvchid, vchkey, vchnumber, errors, exceptions, raw: text }
+    parsed = { fallback: true, created, altered, lastvchid, vchkey, vchnumber, errors, exceptions, raw: text }
   }
   return { http: res.status, body: text, parsed }
 }

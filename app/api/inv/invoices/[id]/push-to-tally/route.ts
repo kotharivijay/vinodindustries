@@ -122,11 +122,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // onto parsed itself. Check both shapes so success is detected either way.
   const importResult = result.parsed?.data?.import_result ?? result.parsed?.RESPONSE ?? result.parsed
   const created = Number(importResult?.created ?? importResult?.CREATED ?? 0)
+  const altered = Number(importResult?.altered ?? importResult?.ALTERED ?? 0)
   const errors = Number(importResult?.errors ?? importResult?.ERRORS ?? 0)
   const exceptions = Number(importResult?.exceptions ?? importResult?.EXCEPTIONS ?? 0)
   const vchkey = importResult?.vchkey
     ?? (importResult?.lastvchid != null ? String(importResult.lastvchid) : null)
-  const success = created > 0 && errors === 0 && exceptions === 0
+  const success = (created > 0 || altered > 0) && errors === 0 && exceptions === 0
 
   if (success) {
     await db.invPurchaseInvoice.update({

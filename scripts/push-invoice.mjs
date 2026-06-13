@@ -19,7 +19,10 @@ const fmtDate = input => {
   const d = new Date()
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
 }
-const neg = n => `-${n.toFixed(2)}`
+const neg = n => {
+  if (n === 0) return '0.00'
+  return (-n).toFixed(2)
+}
 
 function buildPayload(invoice, party, cfg, lines) {
   const isUnreg = ['Unregistered', 'Composition'].includes(party.gstRegistrationType)
