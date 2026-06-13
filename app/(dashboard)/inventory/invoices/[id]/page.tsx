@@ -1,7 +1,7 @@
 'use client'
 
 import useSWR from 'swr'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import BackButton from '../../../BackButton'
 
@@ -9,13 +9,14 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 export default function InvoiceDetailPage() {
   const { id } = useParams() as { id: string }
+  const router = useRouter()
   const { data: inv, mutate } = useSWR<any>(id ? `/api/inv/invoices/${id}` : null, fetcher)
 
   async function voidInv() {
-    if (!confirm('Void this invoice? Linked challans will be freed back to PendingInvoice.')) return
+    if (!confirm('Void and delete this invoice? Linked challans will be freed back to PendingInvoice.')) return
     const res = await fetch(`/api/inv/invoices/${id}/void`, { method: 'POST' })
     if (!res.ok) { const d = await res.json(); alert(d.error || 'Failed'); return }
-    mutate()
+    router.push('/inventory/invoices')
   }
   async function pushToTally(force = false) {
     const prompt = force

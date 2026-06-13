@@ -28,7 +28,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     challanIds.length
       ? db.invChallan.updateMany({ where: { id: { in: challanIds } }, data: { status: 'PendingInvoice' } })
       : db.$executeRaw`SELECT 1`,
-    db.invPurchaseInvoice.update({ where: { id }, data: { status: 'Voided' } }),
+    db.invPurchaseInvoice.delete({ where: { id } }),
   ])
   return NextResponse.json({ ok: true, freedChallans: challanIds.length })
 }
