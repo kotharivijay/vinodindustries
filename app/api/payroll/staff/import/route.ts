@@ -35,17 +35,46 @@ export async function POST(request: Request) {
 
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   // Auto-detect header: first row contains any of these tokens (case-insensitive)
-  let startIdx = 0
-  if (body.hasHeader || /\b(code|employee|name|department|salary|sn)\b/i.test(lines[0] || '')) startIdx = 1
+  const isHeaderRow = body.hasHeader || /\b(code|employee|name|department|salary|sn|firm|group)\b/i.test(lines[0] || '')
+  let startIdx = isHeaderRow ? 1 : 0
+
+  // Parse header indices if present
+  let firmIdx = -1
+  let codeIdx = -1
+  let nameIdx = -1
+  let deptIdx = -1
+  let salaryIdx = -1
+
+  const splitCells = (l: string) => (/\t/.test(l) ? l.split('\t') : l.split(','))
+    .map((c) => c.trim().replace(/^"(.*)"$/, '$1'))
+
+  if (isHeaderRow && lines.length > 0) {
+    const headerCells = splitCells(lines[0])
+    const lowerHeaders = headerCells.map(h => h.toLowerCase())
+    for (let idx = 0; idx < lowerHeaders.length; idx++) {
+      const h = lowerHeaders[idx]
+      if (h === 'firm' || h === 'group' || h === 'register group' || h === 'registergroup') {
+        firmIdx = idx
+      } else if (h === 'code' || h === 'emp code' || h === 'employee code' || h === 'staff code') {
+        codeIdx = idx
+      } else if (h === 'employee name' || h === 'staff name' || h === 'name of employee' || h === 'name') {
+        nameIdx = idx
+      } else if (h === 'department' || h === 'dept' || h === 'designation') {
+        deptIdx = idx
+      } else if (h === 'salary' || h === 'monthly salary' || h === 'base salary' || h === 'wages') {
+        salaryIdx = idx
+      }
+    }
+  }
+
+  const hasValidHeader = (codeIdx !== -1 && nameIdx !== -1)
 
   const results: RowResult[] = []
   let created = 0, updated = 0, errors = 0
 
   for (let i = startIdx; i < lines.length; i++) {
     const raw = lines[i]
-    // Split on tab if any tab present (Excel paste); else split on comma.
-    const cells = (/\t/.test(raw) ? raw.split('\t') : raw.split(','))
-      .map((c) => c.trim().replace(/^"(.*)"$/, '$1'))
+    const cells = splitCells(raw)
 
     if (cells.length < 3) {
       results.push({ code: '', name: raw, status: 'error', message: 'Too few columns' })
@@ -53,21 +82,52 @@ export async function POST(request: Request) {
       continue
     }
 
-    // Detect leading sn — if 1st col is a small int and 2nd looks like a 4-digit code, shift.
-    let cursor = 0
-    const first = cells[0]
-    const second = cells[1]
-    const isInt = (s: string) => /^\d+$/.test(s)
-    if (isInt(first) && isInt(second) && Number(first) < 10000 && Number(second) >= 1000) {
-      // first = sn, second = code
-      cursor = 1
-    }
+    let code = ''
+    let name = ''
+    let department = ''
+    let salaryRaw = ''
+    let registerGroup: string | null = null
 
-    const code = cells[cursor]
-    const name = cells[cursor + 1]
-    const department = cells[cursor + 2] || ''
-    const salaryRaw = cells[cursor + 3] || ''
-    // (J1 / daily-rate column at cursor+4 is derived — ignored.)
+    if (hasValidHeader) {
+      code = codeIdx !== -1 ? cells[codeIdx] : ''
+      name = nameIdx !== -1 ? cells[nameIdx] : ''
+      department = deptIdx !== -1 ? cells[deptIdx] : ''
+      salaryRaw = salaryIdx !== -1 ? cells[salaryIdx] : ''
+      registerGroup = firmIdx !== -1 ? cells[firmIdx] : null
+    } else {
+      // Positional fallback
+      const isGroup = (s: string) => /^(ksi|vi)-\d+$/i.test(s)
+      const isInt = (s: string) => /^\d+$/.test(s)
+
+      if (cells.length >= 6 && isGroup(cells[0])) {
+        // Format: firm | status | sn | code | name | department | salary
+        registerGroup = cells[0].toUpperCase()
+        let codeIdxPos = 1
+        if (isInt(cells[1]) && isInt(cells[2]) && Number(cells[1]) < 1000 && Number(cells[2]) >= 1000) {
+          codeIdxPos = 2
+        } else if (isInt(cells[2]) && isInt(cells[3]) && Number(cells[2]) < 1000 && Number(cells[3]) >= 1000) {
+          codeIdxPos = 3
+        } else {
+          const foundCodeIdx = cells.findIndex((c, idx) => idx > 0 && isInt(c) && c.length >= 4)
+          if (foundCodeIdx !== -1) codeIdxPos = foundCodeIdx
+        }
+        code = cells[codeIdxPos] || ''
+        name = cells[codeIdxPos + 1] || ''
+        department = cells[codeIdxPos + 2] || ''
+        salaryRaw = cells[codeIdxPos + 3] || ''
+      } else {
+        let cursor = 0
+        const first = cells[0] || ''
+        const second = cells[1] || ''
+        if (isInt(first) && isInt(second) && Number(first) < 10000 && Number(second) >= 1000) {
+          cursor = 1
+        }
+        code = cells[cursor] || ''
+        name = cells[cursor + 1] || ''
+        department = cells[cursor + 2] || ''
+        salaryRaw = cells[cursor + 3] || ''
+      }
+    }
 
     if (!code) { results.push({ code: '', name: name || raw, status: 'error', message: 'Missing code' }); errors++; continue }
     if (!name) { results.push({ code, name: '', status: 'error', message: 'Missing name' }); errors++; continue }
@@ -77,9 +137,6 @@ export async function POST(request: Request) {
     try {
       const existing = await prisma.staff.findUnique({ where: { code: String(code) } })
       if (existing) {
-        // Record a Register Salary revision when the pasted figure differs
-        // from what's on file (a re-paste of the register is the common way
-        // salaries get bumped).
         const rev = buildRevision({
           staffId: existing.id,
           field: 'REGISTER',
@@ -89,15 +146,20 @@ export async function POST(request: Request) {
           changedBy: session.user?.email ?? null,
           note: 'register paste-import',
         })
+
+        const updateData: any = {
+          name: name.trim(),
+          department: department.trim() || null,
+          monthlyBaseSalary: salary,
+          isActive: true,
+        }
+        if (registerGroup !== null) {
+          updateData.registerGroup = registerGroup.trim() || null
+        }
+
         await prisma.staff.update({
           where: { code: String(code) },
-          data: {
-            name: name.trim(),
-            department: department.trim() || null,
-            monthlyBaseSalary: salary,
-            // paymentMode + contractorId intentionally NOT touched.
-            isActive: true,
-          },
+          data: updateData,
         })
         if (rev) await prisma.staffSalaryRevision.create({ data: rev })
         results.push({ code: String(code), name: name.trim(), status: 'updated' })
@@ -110,6 +172,7 @@ export async function POST(request: Request) {
             department: department.trim() || null,
             monthlyBaseSalary: salary,
             paymentMode: 'SALARIED',
+            registerGroup: registerGroup ? registerGroup.trim() : null,
           },
         })
         results.push({ code: String(code), name: name.trim(), status: 'created' })
