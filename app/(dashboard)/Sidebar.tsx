@@ -106,6 +106,16 @@ const ksiNavGroups = [
     ],
   },
   {
+    label: 'Payroll',
+    links: [
+      { href: '/payroll', label: 'Overview', icon: '📋' },
+      { href: '/payroll/wages', label: 'Wages Register', icon: '💸' },
+      { href: '/payroll/register', label: 'Salary Register', icon: '📊' },
+      { href: '/payroll/staff', label: 'Staff Directory', icon: '👥' },
+      { href: '/payroll/contractors', label: 'Contractors', icon: '👷' },
+    ],
+  },
+  {
     label: 'Settings',
     links: [
       { href: '/settings', label: 'Settings', icon: '⚙️' },
@@ -125,6 +135,16 @@ const viNavGroups = [
       { href: '/vi/orders', label: 'Orders', icon: '📋' },
       { href: '/vi/contacts', label: 'Contacts', icon: '👥' },
       { href: '/vi/calls', label: 'Call Reminders', icon: '🔔' },
+    ],
+  },
+  {
+    label: 'Payroll',
+    links: [
+      { href: '/payroll', label: 'Overview', icon: '📋' },
+      { href: '/payroll/wages', label: 'Wages Register', icon: '💸' },
+      { href: '/payroll/register', label: 'Salary Register', icon: '📊' },
+      { href: '/payroll/staff', label: 'Staff Directory', icon: '👥' },
+      { href: '/payroll/contractors', label: 'Contractors', icon: '👷' },
     ],
   },
   {

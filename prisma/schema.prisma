@@ -1898,3 +1898,196 @@ model BatchLotCorrection {
   @@index([foldBatchLotId])
   @@index([userEmail, createdAt])
 }
+
+model TallyFirmConfig {
+  id                   String   @id @default(cuid())
+  firmCode             String   @unique // VI | VCF | VF
+  firmName             String // Vinod Industries | Vimal Cotton Fabrics | Vijay Fabrics
+  tallyCompanyName     String // exact name in Tally
+  firmState            String? // buyer firm state (e.g. "Rajasthan") - drives CGST/SGST vs IGST split
+  tallyTunnelUrl       String? // e.g. https://tally-vcf.vinodindustries.co.in
+  cfAccessClientId     String?
+  cfAccessClientSecret String?
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Contractor {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  tallyLedgerName String? // for journal credit if paying through contractor
+  notes           String?
+  isActive        Boolean  @default(true)
+  hiddenInWages   Boolean  @default(false) // per-contractor hide flag for /payroll/wages - persists across sessions
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  staffContractors StaffContractor[]
+  processJobs      ContractorProcessJob[]
+  jobTemplates     ContractorJobTemplate[]
+  monthlyBalances  ContractorMonthlyBalance[]
+  wageAllocations  WageContractorAllocation[]
+
+  @@index([isActive])
+}
+
+model Staff {
+  id                String   @id @default(cuid())
+  code              String   @unique // employee code from register (e.g. "1002")
+  name              String
+  fatherName        String?
+  aadhar            String? // 12-digit India national ID
+  dob               DateTime? // age >= 18 enforced server-side at write time
+  department        String? // free-form (kadap, OPERATOR, FOLDING, ...)
+  monthlyBaseSalary Float    @default(0)
+  actualSalary      Float?
+  paymentMode       String   @default("SALARIED") // SALARIED | CONTRACTOR_LINKED
+  tallyLedgerName   String? // for staff advance lookup + credit ledger
+  tallyLedgerFound     Boolean?
+  tallyLedgerSyncedAt  DateTime?
+  status            String   @default("ACTIVE") // ACTIVE | INACTIVE | DELETED
+  isActive          Boolean  @default(true) // kept in sync with status (ACTIVE -> true). All existing queries continue to use this.
+  inRegister        Boolean  @default(false)
+  registerSn        Int?
+  inactivatedMonth  String?
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  wages            MonthlyWageEntry[]
+  salaryRevisions  StaffSalaryRevision[]
+  staffContractors StaffContractor[]
+
+  @@index([isActive])
+  @@index([status])
+  @@index([paymentMode])
+  @@index([name])
+}
+
+model MonthlyWageEntry {
+  id              String    @id @default(cuid())
+  staffId         String
+  staff           Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  monthKey        String // "2026-05" - YYYY-MM
+  monthDays       Int       @default(30)
+  dailyRate       Float     @default(0) // monthlyBaseSalary / monthDays at calc time
+  daysWorked      Float     @default(0) // 0.5 increments allowed
+  actualDaysWorked Float?
+  strategy        String    @default("DAYS_FIRST")
+  calculatedWage  Float     @default(0)
+  staffAdvance    Float     @default(0) // Tally ledger closing balance at sync
+  advanceSyncedAt DateTime?
+  netPayable      Float     @default(0)
+  openingCarry    Float     @default(0)
+  closingCarry    Float     @default(0)
+  postedToTally   Boolean   @default(false)
+  postedAt        DateTime?
+  journalNo       String?
+  paymentPostedToTally   Boolean   @default(false)
+  paymentPostedAt        DateTime?
+  paymentVoucherNo       String?
+  registerStatus  String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  allocations WageContractorAllocation[]
+
+  @@unique([staffId, monthKey])
+  @@index([monthKey])
+  @@index([postedToTally])
+}
+
+model StaffSalaryRevision {
+  id             String   @id @default(cuid())
+  staffId        String
+  staff          Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  field          String // "REGISTER" | "ACTUAL"
+  oldValue       Float
+  newValue       Float
+  deltaAmount    Float // newValue - oldValue (negative = decrease)
+  deltaPercent   Float // deltaAmount / oldValue * 100 (0 when oldValue = 0)
+  effectiveMonth String // "2026-05" - the register month that shows "salary inc"
+  changedBy      String?
+  note           String?
+  changedAt      DateTime @default(now())
+
+  @@index([staffId])
+  @@index([effectiveMonth])
+}
+
+model StaffContractor {
+  id           String     @id @default(cuid())
+  staffId      String
+  staff        Staff      @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  contractorId String
+  contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([staffId, contractorId])
+  @@index([contractorId])
+}
+
+model ContractorJobTemplate {
+  id           String     @id @default(cuid())
+  contractorId String
+  contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  processName  String // "Checking"
+  quality      String? // "Poplin"
+  rate         Float
+  sortOrder    Int        @default(0)
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([contractorId, isActive])
+}
+
+model ContractorProcessJob {
+  id           String     @id @default(cuid())
+  contractorId String
+  contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  monthKey     String // YYYY-MM
+  processName  String // "Checking", "Folding", ...
+  quality      String? // "Poplin", optional
+  rate         Float // ₹ per unit
+  quantity     Float // thans / pcs / kg
+  total        Float // rate * quantity
+  notes        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([contractorId, monthKey])
+  @@index([monthKey])
+}
+
+model ContractorMonthlyBalance {
+  id           String     @id @default(cuid())
+  contractorId String
+  contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  monthKey     String
+  openingCarry Float      @default(0)
+  jobsTotal    Float      @default(0)
+  distributed  Float      @default(0)
+  closingCarry Float      @default(0)
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([contractorId, monthKey])
+  @@index([monthKey])
+}
+
+model WageContractorAllocation {
+  id           String           @id @default(cuid())
+  wageEntryId  String
+  wageEntry    MonthlyWageEntry @relation(fields: [wageEntryId], references: [id], onDelete: Cascade)
+  contractorId String
+  contractor   Contractor       @relation(fields: [contractorId], references: [id])
+  share        Float            @default(0) // ₹ allocated to this staff under this contractor
+  daysWorked   Float            @default(0) // derived from share / dailyRate (or vice versa per strategy)
+  strategy     String           @default("SHARE_FIRST") // SHARE_FIRST | DAYS_FIRST
+
+  @@unique([wageEntryId, contractorId])
+  @@index([contractorId])
+}
+
