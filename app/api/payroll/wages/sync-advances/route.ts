@@ -8,7 +8,7 @@ import { fetchPreviousCarry, targetSalaryFor, computeClosingCarry } from '@/lib/
 export const maxDuration = 300
 
 // POST /api/payroll/wages/sync-advances
-// Body: { month: 'YYYY-MM', firm?: 'VI' (default) }
+// Body: { month: 'YYYY-MM', firm?: 'KSI' (default) }
 //
 // For every active staff that has tallyLedgerName set, looks up its closing
 // balance in the firm's Tally and writes the magnitude into the month's
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({})) as { month?: string; firm?: string }
   const monthKey = (body.month || '').trim()
-  const firm = (body.firm || 'VI').toUpperCase()
+  const firm = (body.firm || 'KSI').toUpperCase()
   if (!monthKey) return Response.json({ error: 'month is required' }, { status: 400 })
 
   const monthDays = monthDaysFor(monthKey)

@@ -110,7 +110,7 @@ export default function WagesClient() {
   // Default to the PREVIOUS month — wages are usually entered after a month
   // closes, not during the in-progress current month.
   const [monthKey, setMonthKey] = useState(previousMonthKey(currentMonthKey()))
-  const [firm, setFirm] = useState<string>('VI')
+  const [firm, setFirm] = useState<string>('KSI')
   const [rows, setRows] = useState<Row[]>([])
   const [balances, setBalances] = useState<Record<string, ContractorBalance>>({})
   const [totals, setTotals] = useState<Totals>({ budget: 0, calculated: 0, netPayable: 0, advance: 0, withEntry: 0, posted: 0 })

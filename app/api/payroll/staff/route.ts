@@ -7,6 +7,69 @@ export async function GET(request: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // One-time Tally ledger name updates on load
+  try {
+    const MAPPINGS = [
+      { code: '1321', ledger: 'Sanjay Thakur S/0 Kapil Dev  Spoting' },
+      { code: '1239', ledger: 'Bhopa Ram S/o Gaja Ji' },
+      { code: '1325', ledger: 'Idan S/o Sumer Singh (Center)' },
+      { code: '1209', ledger: 'Chatra s/o Ramaram' },
+      { code: '1209', ledger: 'Devi Singh (Center)' },
+      { code: '1340', ledger: 'Dinesh S/o Pannalal Chauhan ( Mistry)' },
+      { code: '1343', ledger: 'Bagaram s/o Viraram (cal)' },
+      { code: '1349', ledger: 'Gomaram bagaram calender' },
+      { code: '1311', ledger: 'laxman singh s/o narpat singh' },
+      { code: '1339', ledger: 'Yuvraj S/o Jabarsingh' },
+      { code: '1303', ledger: 'Manish s/o fusaram' },
+      { code: '1284', ledger: 'MOSIN KHAN S/O MUNIR KHAN' },
+      { code: '1314', ledger: 'Gorwardhan s/o pokarlal' },
+      { code: '1333', ledger: 'Sharvansingh S/o Narpatsingh' },
+      { code: '1150', ledger: 'Loon Singh S/o Ran Singh' },
+      { code: '1198', ledger: 'Vijaybhai S/o Babubhai' },
+      { code: '1203', ledger: 'Mela Ram S/o Hara Ram' },
+      { code: '1215', ledger: 'Baburam S/O HARA RAM' },
+      { code: '1231', ledger: 'Raju Ram s/o Hara Ram' },
+      { code: '1231', ledger: 'Ajay babu hydro' },
+      { code: '1279', ledger: 'TULACHHA RAM S/O LIKHAMARAM' },
+      { code: '1166', ledger: 'Babusing S/o Padamsingh' },
+      { code: '1289', ledger: 'CHHAIL S/O BABUSINGH' },
+      { code: '1338', ledger: 'Shantilal Mali (Balepack)' },
+      { code: '1304', ledger: 'Khushal S/O LALSINGH' },
+      { code: '1304', ledger: 'Sharvan Singh (Texi)' },
+      { code: '1347', ledger: 'Mukesh s/o Daya Ram' },
+      { code: '1350', ledger: 'Harsh Kumar' },
+      { code: '1268', ledger: 'DHIRARAM S/O MULARAM' },
+      { code: '1353', ledger: 'Lalan Staff' },
+      { code: '1359', ledger: 'Bhura Ram Jet' },
+      { code: '1351', ledger: 'Jalaram NATHURAM' },
+      { code: '1281', ledger: 'THANARAM S/O CHENARAM (Jet)' },
+      { code: '1358', ledger: 'Mohmmed Jamal Jet' },
+      { code: '1357', ledger: 'Amararam Center' },
+      { code: '1360', ledger: 'Sanker Batching' }
+    ]
+    for (const m of MAPPINGS) {
+      const staff = await prisma.staff.findUnique({ where: { code: m.code } })
+      if (staff) {
+        let selectedLedger = m.ledger
+        if (m.code === '1231') {
+          selectedLedger = staff.name.toLowerCase().includes('ajay') ? 'Ajay babu hydro' : 'Raju Ram s/o Hara Ram'
+        } else if (m.code === '1209') {
+          selectedLedger = staff.name.toLowerCase().includes('chatra') ? 'Chatra s/o Ramaram' : 'Devi Singh (Center)'
+        } else if (m.code === '1304') {
+          selectedLedger = staff.name.toLowerCase().includes('khushal') ? 'Khushal S/O LALSINGH' : 'Sharvan Singh (Texi)'
+        }
+        if (staff.tallyLedgerName !== selectedLedger) {
+          await prisma.staff.update({
+            where: { id: staff.id },
+            data: { tallyLedgerName: selectedLedger }
+          })
+        }
+      }
+    }
+  } catch (err) {
+    console.error('One-time tally update error:', err)
+  }
+
   const { searchParams } = new URL(request.url)
   const search = searchParams.get('search')
   const paymentMode = searchParams.get('paymentMode') // SALARIED | CONTRACTOR_LINKED

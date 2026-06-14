@@ -46,14 +46,14 @@ async function buildPayload(monthKey: string, firm: string, entryIds?: string[])
   return { firm, monthKey, monthDays, legs, skipped, total }
 }
 
-// GET /api/payroll/wages/post-payment?month=YYYY-MM&firm=VI&entryIds=id1,id2
+// GET /api/payroll/wages/post-payment?month=YYYY-MM&firm=KSI&entryIds=id1,id2
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
   const monthKey = (searchParams.get('month') || '').trim()
-  const firm = (searchParams.get('firm') || 'VI').toUpperCase()
+  const firm = (searchParams.get('firm') || 'KSI').toUpperCase()
   if (!monthKey) return Response.json({ error: 'month is required' }, { status: 400 })
 
   const entryIdsStr = searchParams.get('entryIds')
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     bankDetails?: Record<string, { accountNumber: string; ifsc: string; bankName: string }>
   }
   const monthKey = (body.month || '').trim()
-  const firm = (body.firm || 'VI').toUpperCase()
+  const firm = (body.firm || 'KSI').toUpperCase()
   if (!monthKey) return Response.json({ error: 'month is required' }, { status: 400 })
 
   const payload = await buildPayload(monthKey, firm, body.entryIds)

@@ -8,6 +8,43 @@
 
 import { prisma } from '@/lib/prisma'
 
+interface UnifiedTallyConfig {
+  tallyCompanyName: string
+  tallyTunnelUrl: string | null
+  cfAccessClientId: string | null
+  cfAccessClientSecret: string | null
+  tallyApiSecret: string | null
+}
+
+async function getTallyConfig(firm: string): Promise<UnifiedTallyConfig> {
+  const db = prisma as any
+  try {
+    const c1 = await db.tallyConfig.findUnique({ where: { firmCode: firm } })
+    if (c1) {
+      return {
+        tallyCompanyName: c1.tallyCompanyName,
+        tallyTunnelUrl: c1.tallyTunnelUrl,
+        cfAccessClientId: c1.cfAccessClientId,
+        cfAccessClientSecret: c1.cfAccessClientSecret,
+        tallyApiSecret: c1.tallyApiSecret,
+      }
+    }
+  } catch (err) {
+    console.error('Failed to query tallyConfig:', err)
+  }
+  const c2 = await prisma.tallyFirmConfig.findUnique({ where: { firmCode: firm } })
+  if (c2) {
+    return {
+      tallyCompanyName: c2.tallyCompanyName,
+      tallyTunnelUrl: c2.tallyTunnelUrl,
+      cfAccessClientId: c2.cfAccessClientId,
+      cfAccessClientSecret: c2.cfAccessClientSecret,
+      tallyApiSecret: null,
+    }
+  }
+  throw new Error(`No Tally configuration found for firm code ${firm}`)
+}
+
 function decodeTally(s: string | null | undefined): string {
   if (!s) return ''
   return s
@@ -84,13 +121,18 @@ export interface TallyLedgerBalance {
 // Fetch closing balances for ALL ledgers in a Tally company, returned as a
 // case-insensitive name → balance details map.
 export async function fetchTallyLedgerBalances(firm: string, asOfDate?: Date): Promise<Map<string, TallyLedgerBalance>> {
-  const cfg = await prisma.tallyFirmConfig.findUnique({ where: { firmCode: firm } })
-  if (!cfg?.tallyTunnelUrl) throw new Error(`No Tally tunnel URL for firm ${firm}`)
+  const cfg = await getTallyConfig(firm)
+  if (!cfg.tallyTunnelUrl) throw new Error(`No Tally tunnel URL for firm ${firm}`)
 
   const headers: Record<string, string> = { 'Content-Type': 'text/xml' }
   if (cfg.cfAccessClientId && cfg.cfAccessClientSecret) {
     headers['CF-Access-Client-Id'] = cfg.cfAccessClientId
     headers['CF-Access-Client-Secret'] = cfg.cfAccessClientSecret
+  }
+  if (cfg.tallyApiSecret) {
+    headers['X-Tally-Key'] = cfg.tallyApiSecret
+  } else if (process.env.TALLY_API_SECRET) {
+    headers['X-Tally-Key'] = process.env.TALLY_API_SECRET.trim()
   }
 
   const toDate = fmtTallyDate(asOfDate || new Date())
@@ -171,13 +213,18 @@ export async function postWageJournal(
   failedCount: number
   results: { staffLedger: string; amount: number; ok: boolean; vchId: string | null; error?: string; raw?: string }[]
 }> {
-  const cfg = await prisma.tallyFirmConfig.findUnique({ where: { firmCode: firm } })
-  if (!cfg?.tallyTunnelUrl) throw new Error(`No Tally tunnel URL for firm ${firm}`)
+  const cfg = await getTallyConfig(firm)
+  if (!cfg.tallyTunnelUrl) throw new Error(`No Tally tunnel URL for firm ${firm}`)
 
   const headers: Record<string, string> = { 'Content-Type': 'text/xml' }
   if (cfg.cfAccessClientId && cfg.cfAccessClientSecret) {
     headers['CF-Access-Client-Id'] = cfg.cfAccessClientId
     headers['CF-Access-Client-Secret'] = cfg.cfAccessClientSecret
+  }
+  if (cfg.tallyApiSecret) {
+    headers['X-Tally-Key'] = cfg.tallyApiSecret
+  } else if (process.env.TALLY_API_SECRET) {
+    headers['X-Tally-Key'] = process.env.TALLY_API_SECRET.trim()
   }
 
   const results: { staffLedger: string; amount: number; ok: boolean; vchId: string | null; error?: string; raw?: string }[] = []
@@ -225,13 +272,18 @@ export interface TallyBankDetails {
 }
 
 export async function fetchTallyBankDetails(firm: string): Promise<Map<string, TallyBankDetails>> {
-  const cfg = await prisma.tallyFirmConfig.findUnique({ where: { firmCode: firm } })
-  if (!cfg?.tallyTunnelUrl) throw new Error(`No Tally tunnel URL for firm ${firm}`)
+  const cfg = await getTallyConfig(firm)
+  if (!cfg.tallyTunnelUrl) throw new Error(`No Tally tunnel URL for firm ${firm}`)
 
   const headers: Record<string, string> = { 'Content-Type': 'text/xml' }
   if (cfg.cfAccessClientId && cfg.cfAccessClientSecret) {
     headers['CF-Access-Client-Id'] = cfg.cfAccessClientId
     headers['CF-Access-Client-Secret'] = cfg.cfAccessClientSecret
+  }
+  if (cfg.tallyApiSecret) {
+    headers['X-Tally-Key'] = cfg.tallyApiSecret
+  } else if (process.env.TALLY_API_SECRET) {
+    headers['X-Tally-Key'] = process.env.TALLY_API_SECRET.trim()
   }
 
   const queryXml = `<ENVELOPE>
@@ -319,13 +371,18 @@ export async function postWagePayments(
     }[]
   }
 ): Promise<{ ok: boolean; lastVchId: string | null; created: number; errors: number; exceptions: number; raw: string }> {
-  const cfg = await prisma.tallyFirmConfig.findUnique({ where: { firmCode: firm } })
-  if (!cfg?.tallyTunnelUrl) throw new Error(`No Tally tunnel URL for firm ${firm}`)
+  const cfg = await getTallyConfig(firm)
+  if (!cfg.tallyTunnelUrl) throw new Error(`No Tally tunnel URL for firm ${firm}`)
 
   const headers: Record<string, string> = { 'Content-Type': 'text/xml' }
   if (cfg.cfAccessClientId && cfg.cfAccessClientSecret) {
     headers['CF-Access-Client-Id'] = cfg.cfAccessClientId
     headers['CF-Access-Client-Secret'] = cfg.cfAccessClientSecret
+  }
+  if (cfg.tallyApiSecret) {
+    headers['X-Tally-Key'] = cfg.tallyApiSecret
+  } else if (process.env.TALLY_API_SECRET) {
+    headers['X-Tally-Key'] = process.env.TALLY_API_SECRET.trim()
   }
 
   const messagesXml = opts.payments.map((p) => {

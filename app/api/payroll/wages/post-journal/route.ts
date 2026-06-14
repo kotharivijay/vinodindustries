@@ -45,7 +45,7 @@ async function buildPayload(monthKey: string, firm: string, entryIds?: string[])
   return { firm, monthKey, monthDays, legs, skipped, total }
 }
 
-// GET /api/payroll/wages/post-journal?month=YYYY-MM&firm=VI&entryIds=id1,id2
+// GET /api/payroll/wages/post-journal?month=YYYY-MM&firm=KSI&entryIds=id1,id2
 // Preview only — no push, no DB writes.
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions)
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const monthKey = (searchParams.get('month') || '').trim()
-  const firm = (searchParams.get('firm') || 'VI').toUpperCase()
+  const firm = (searchParams.get('firm') || 'KSI').toUpperCase()
   if (!monthKey) return Response.json({ error: 'month is required' }, { status: 400 })
 
   const entryIdsStr = searchParams.get('entryIds')
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     narration?: string
   }
   const monthKey = (body.month || '').trim()
-  const firm = (body.firm || 'VI').toUpperCase()
+  const firm = (body.firm || 'KSI').toUpperCase()
   if (!monthKey) return Response.json({ error: 'month is required' }, { status: 400 })
 
   const payload = await buildPayload(monthKey, firm, body.entryIds)

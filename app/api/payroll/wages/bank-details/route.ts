@@ -4,13 +4,13 @@ import { fetchTallyBankDetails } from '@/lib/tallyPayroll'
 
 export const maxDuration = 300
 
-// GET /api/payroll/wages/bank-details?firm=VI
+// GET /api/payroll/wages/bank-details?firm=KSI
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions)
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(request.url)
-  const firm = (searchParams.get('firm') || 'VI').toUpperCase()
+  const firm = (searchParams.get('firm') || 'KSI').toUpperCase()
 
   try {
     const bankDetailsMap = await fetchTallyBankDetails(firm)
