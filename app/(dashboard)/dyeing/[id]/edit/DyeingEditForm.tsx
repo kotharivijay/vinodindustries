@@ -141,7 +141,14 @@ export default function DyeingEditForm({ id }: { id: string }) {
           }
         })
         setChemicals(newChems)
-        setShadeName(shade.name + (shade.description ? ' — ' + shade.description : ''))
+        // Write name and description into their own fields rather than
+        // gluing them into shadeName. Previously this stored "T-6 — Green"
+        // as the slip-level shadeName snapshot and left shadeDescription
+        // null, which made the cost report / detail view double up the
+        // description ("T-6 — Green — Green") and broke any logic that
+        // expected just the shade-code in shadeName.
+        setShadeName(shade.name)
+        setShadeDescription(shade.description || '')
         setShowShadePicker(false)
         setShadeSearch('')
       })
@@ -158,7 +165,14 @@ export default function DyeingEditForm({ id }: { id: string }) {
           processTag: 'shade',
         }))
         setChemicals(newChems)
-        setShadeName(shade.name + (shade.description ? ' — ' + shade.description : ''))
+        // Write name and description into their own fields rather than
+        // gluing them into shadeName. Previously this stored "T-6 — Green"
+        // as the slip-level shadeName snapshot and left shadeDescription
+        // null, which made the cost report / detail view double up the
+        // description ("T-6 — Green — Green") and broke any logic that
+        // expected just the shade-code in shadeName.
+        setShadeName(shade.name)
+        setShadeDescription(shade.description || '')
         setShowShadePicker(false)
         setShadeSearch('')
       })
