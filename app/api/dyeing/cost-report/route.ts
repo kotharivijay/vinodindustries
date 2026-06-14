@@ -77,8 +77,26 @@ export async function GET(req: NextRequest) {
     fg.than += entryThan
     fg.cost += entryCost
 
-    const shadeName = e.shadeName || e.foldBatch?.shade?.name || e.foldBatch?.shadeName || 'Unknown'
-    const shadeDesc = e.foldBatch?.shade?.description || e.foldBatch?.shadeDescription || ''
+    // Pick name + description from the SAME source so they can't drift after
+    // a shade-master rename. Priority follows the codebase convention:
+    // slip snapshot → fold-batch snapshot → live shade master. Without this
+    // lockstep the cost report can show "T-296 — D chiku": the old name
+    // pulled from a stale slip snapshot paired with the renamed-master's
+    // current description.
+    let shadeName: string, shadeDesc: string
+    if (e.shadeName) {
+      shadeName = e.shadeName
+      shadeDesc = e.shadeDescription || ''
+    } else if (e.foldBatch?.shadeName) {
+      shadeName = e.foldBatch.shadeName
+      shadeDesc = e.foldBatch.shadeDescription || ''
+    } else if (e.foldBatch?.shade?.name) {
+      shadeName = e.foldBatch.shade.name
+      shadeDesc = e.foldBatch.shade.description || ''
+    } else {
+      shadeName = 'Unknown'
+      shadeDesc = ''
+    }
     const shadeLabel = shadeName + (shadeDesc ? ` — ${shadeDesc}` : '')
 
     // Split chemicals into dyes and auxiliary
