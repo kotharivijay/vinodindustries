@@ -32,16 +32,65 @@ async function getTallyConfig(firm: string): Promise<UnifiedTallyConfig> {
   } catch (err) {
     console.error('Failed to query tallyConfig:', err)
   }
-  const c2 = await prisma.tallyFirmConfig.findUnique({ where: { firmCode: firm } })
-  if (c2) {
-    return {
-      tallyCompanyName: c2.tallyCompanyName,
-      tallyTunnelUrl: c2.tallyTunnelUrl,
-      cfAccessClientId: c2.cfAccessClientId,
-      cfAccessClientSecret: c2.cfAccessClientSecret,
-      tallyApiSecret: null,
+  try {
+    const c2 = await (prisma as any).tallyFirmConfig.findUnique({ where: { firmCode: firm } })
+    if (c2) {
+      return {
+        tallyCompanyName: c2.tallyCompanyName,
+        tallyTunnelUrl: c2.tallyTunnelUrl,
+        cfAccessClientId: c2.cfAccessClientId,
+        cfAccessClientSecret: c2.cfAccessClientSecret,
+        tallyApiSecret: null,
+      }
+    }
+  } catch (err) {
+    console.error('Failed to query tallyFirmConfig:', err)
+  }
+
+  // Auto-initialize KSI default configuration in db.tallyConfig if it is missing
+  if (firm === 'KSI') {
+    try {
+      console.log('Auto-initializing default TallyConfig for KSI')
+      const created = await db.tallyConfig.create({
+        data: {
+          firmCode: 'KSI',
+          firmName: 'Kothari Synthetic Industries',
+          tallyCompanyName: 'Kothari Synthetic Industries -( from 2023)',
+          tallyTunnelUrl: process.env.TALLY_TUNNEL_URL || null,
+          cfAccessClientId: process.env.CF_ACCESS_CLIENT_ID || null,
+          cfAccessClientSecret: process.env.CF_ACCESS_CLIENT_SECRET || null,
+          tallyApiSecret: process.env.TALLY_API_SECRET || null,
+        },
+      })
+      if (created) {
+        return {
+          tallyCompanyName: created.tallyCompanyName,
+          tallyTunnelUrl: created.tallyTunnelUrl,
+          cfAccessClientId: created.cfAccessClientId,
+          cfAccessClientSecret: created.cfAccessClientSecret,
+          tallyApiSecret: created.tallyApiSecret,
+        }
+      }
+    } catch (createErr) {
+      console.error('Failed to auto-create TallyConfig for KSI:', createErr)
+      // Retry query in case of parallel create race condition
+      try {
+        const c3 = await db.tallyConfig.findUnique({ where: { firmCode: 'KSI' } })
+        if (c3) {
+          return {
+            tallyCompanyName: c3.tallyCompanyName,
+            tallyTunnelUrl: c3.tallyTunnelUrl,
+            cfAccessClientId: c3.cfAccessClientId,
+            cfAccessClientSecret: c3.cfAccessClientSecret,
+            tallyApiSecret: c3.tallyApiSecret,
+          }
+        }
+      } catch (retryErr) {
+        console.error('Failed to query tallyConfig on retry:', retryErr)
+      }
     }
   }
+
   throw new Error(`No Tally configuration found for firm code ${firm}`)
 }
 
