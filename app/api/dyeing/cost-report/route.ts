@@ -77,25 +77,23 @@ export async function GET(req: NextRequest) {
     fg.than += entryThan
     fg.cost += entryCost
 
-    // Pick name + description from the SAME source so they can't drift after
-    // a shade-master rename. Priority follows the codebase convention:
-    // slip snapshot → fold-batch snapshot → live shade master. Without this
-    // lockstep the cost report can show "T-296 — D chiku": the old name
-    // pulled from a stale slip snapshot paired with the renamed-master's
-    // current description.
-    let shadeName: string, shadeDesc: string
-    if (e.shadeName) {
-      shadeName = e.shadeName
-      shadeDesc = e.shadeDescription || ''
-    } else if (e.foldBatch?.shadeName) {
-      shadeName = e.foldBatch.shadeName
-      shadeDesc = e.foldBatch.shadeDescription || ''
-    } else if (e.foldBatch?.shade?.name) {
-      shadeName = e.foldBatch.shade.name
-      shadeDesc = e.foldBatch.shade.description || ''
-    } else {
-      shadeName = 'Unknown'
-      shadeDesc = ''
+    // Name follows the codebase convention: slip snapshot → live shade
+    // master → fold-batch snapshot.
+    const shadeName = e.shadeName || e.foldBatch?.shade?.name || e.foldBatch?.shadeName || 'Unknown'
+
+    // Description fall-through: slip snapshot → fold-batch snapshot → live
+    // shade master. The live-master fallback is gated on a name match so a
+    // renamed master (T-296 -> T-293 + new description "D chiku") can't
+    // attach its current description to a slip still showing the old name
+    // T-296. When the master has been renamed, its description is treated
+    // as not-applicable for this slip and we fall through to empty.
+    let shadeDesc = ''
+    if (e.shadeDescription) {
+      shadeDesc = e.shadeDescription
+    } else if (e.foldBatch?.shadeDescription) {
+      shadeDesc = e.foldBatch.shadeDescription
+    } else if (e.foldBatch?.shade?.name === shadeName && e.foldBatch?.shade?.description) {
+      shadeDesc = e.foldBatch.shade.description
     }
     const shadeLabel = shadeName + (shadeDesc ? ` — ${shadeDesc}` : '')
 
