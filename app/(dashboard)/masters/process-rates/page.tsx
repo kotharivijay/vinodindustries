@@ -196,7 +196,13 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
             ))}
           </div>
 
-          {c.notes && <p className="text-[11px] text-gray-500 dark:text-gray-400 italic">“{c.notes}”</p>}
+          {c.validityQty != null && <ValidityBar c={c} />}
+
+          {c.notes && (
+            <div className="flex gap-2 items-start text-[12px] text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg px-3 py-2">
+              <span>📝</span><span>{c.notes}</span>
+            </div>
+          )}
 
           {/* Linked lot cards */}
           <div>
@@ -290,6 +296,30 @@ function LinkLotsModal({ contract: c, onClose, onLinked }: { contract: Contract;
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Quantity-validity progress bar — fetches cumulative usage for the contract.
+function ValidityBar({ c }: { c: Contract }) {
+  const { data: u } = useSWR<{ used: number; validityUnit: string; exceeded: boolean; kgTracked: boolean }>(
+    `/api/process-rates/qty-usage?partyId=${c.partyId}&contractId=${c.id}`, fetcher)
+  if (c.validityQty == null) return null
+  if (!u) return <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-700 animate-pulse" />
+  const cap = Number(c.validityQty)
+  const pct = cap > 0 ? Math.min(100, Math.round((u.used / cap) * 100)) : 0
+  const bar = u.exceeded ? 'bg-rose-500' : pct >= 85 ? 'bg-amber-500' : 'bg-emerald-500'
+  const txt = u.exceeded ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px] mb-1 gap-2">
+        <span className="text-gray-500 dark:text-gray-400">Quantity validity · since {fmtDate(c.effectiveFrom)}</span>
+        <span className={`font-bold whitespace-nowrap ${txt}`}>{enIN(u.used)} {u.validityUnit} / {enIN(cap)} {u.validityUnit} · {pct}%</span>
+      </div>
+      <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+        <div className={`h-full ${bar} transition-all`} style={{ width: `${pct}%` }} />
+      </div>
+      {!u.kgTracked && <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">kg cap approximated by than count</p>}
     </div>
   )
 }
