@@ -458,11 +458,11 @@ export default function ReceiptsPage() {
           foot: [[
             'Total',
             '',
-            sgn(tOrig),
-            sgn(r.linkedCash),
-            r.linkedTds > 0 ? num(r.linkedTds) : '—',
-            r.linkedDiscount > 0 ? num(r.linkedDiscount) : '—',
-            num(tPending),
+            { content: sgn(tOrig), styles: { halign: 'right' } },
+            { content: sgn(r.linkedCash), styles: { halign: 'right' } },
+            { content: r.linkedTds > 0 ? num(r.linkedTds) : '—', styles: { halign: 'right' } },
+            { content: r.linkedDiscount > 0 ? num(r.linkedDiscount) : '—', styles: { halign: 'right' } },
+            { content: num(tPending), styles: { halign: 'right' } },
             '',
           ]],
           footStyles: { fillColor: [229, 231, 235], textColor: 30, fontStyle: 'bold' },
@@ -505,19 +505,9 @@ export default function ReceiptsPage() {
           },
           margin: { left: MARGIN, right: MARGIN },
         })
-        y = (doc as any).lastAutoTable.finalY + 2
-
-        // Per-receipt summary line
-        doc.setFontSize(8)
-        doc.setFont('helvetica', 'italic')
-        const onAcc = Math.max(0, r.amount - r.linkedCash - r.carryOverPriorFy)
-        doc.text(
-          `Linked ${rs(r.linkedCash)}  ·  TDS ${rs(r.linkedTds)}  ·  disc ${rs(r.linkedDiscount)}` +
-          (onAcc > 0.5 ? `  ·  on-account ${rs(onAcc)}` : '  ·  ✓ fully matched'),
-          MARGIN, y + 4,
-        )
-        doc.setFont('helvetica', 'normal')
-        y += 11
+        // Gap before the next receipt block (Total footer row already
+        // carries the per-receipt figures, so no summary line).
+        y = (doc as any).lastAutoTable.finalY + 6
       }
 
       const blob = doc.output('blob') as Blob
