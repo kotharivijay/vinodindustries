@@ -5,14 +5,16 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
 // GET /api/process-rates/qty-usage?partyId=N&contractId=M[&extraThan=12]
-// Cumulative grey-inward quantity booked for a party since its contract's
-// effectiveFrom date — used to warn when a quantity-capped rate is exhausted.
+// Quantity consumed against a contract = total of the grey lots LINKED to it —
+// used to warn when a quantity-capped rate is exhausted, and to fill the
+// register's validity bar.
 //
 // `than` is a clean integer on GreyEntry, so it's summed exactly. `mtr` sums
 // grayMtr. Weight is stored as a free-text string ("106g") with no reliable
 // total-kg field, so a 'kg' cap falls back to the than count and the response
 // flags kgTracked:false — the UI should warn on than/mtr and note kg is
-// approximate. `extraThan` lets the caller fold in the row being saved.
+// approximate. `extraThan` lets the caller fold in the row being saved (it
+// will link on save, so it isn't yet in the linked total).
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -32,8 +34,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Contract not found for party' }, { status: 404 })
   }
 
+  // Consumption = total of the lots actually LINKED to this contract (not the
+  // party's whole inward since the date). `extraThan` lets the grey-inward save
+  // check add the row being created (which will link on save) before it exists.
   const agg = await (prisma as any).greyEntry.aggregate({
-    where: { partyId, date: { gte: contract.effectiveFrom } },
+    where: { processRateContractId: contractId },
     _sum: { than: true, grayMtr: true },
     _count: { _all: true },
   })

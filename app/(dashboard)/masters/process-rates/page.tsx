@@ -6,9 +6,13 @@
 // edit a contract in place (PUT), or delete one (blocked when lots are linked).
 
 import { useState, useMemo } from 'react'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
+import { LotLink } from '@/lib/viewStatePersist'
+import BackButton from '../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
+// Back-nav state key — lets /lot/[lotNo] return here with scroll restored.
+const PR_VIEW_KEY = 'process-rates-view'
 
 interface ProcessType { id: number; code: string; name: string; rateMode: 'FLAT' | 'BY_COLOR_CATEGORY' }
 interface RateLine {
@@ -59,10 +63,11 @@ export default function ProcessRatesPage() {
 
   return (
     <div className="p-4 md:p-8 max-w-5xl">
-      <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <BackButton fallback="/dashboard" />
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Approved Process Rate Register</h1>
         <button onClick={() => setEditing({ mode: 'create' })}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+          className="ml-auto px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
           ＋ New Rate
         </button>
       </div>
@@ -131,6 +136,21 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
   const [open, setOpen] = useState(c.status === 'active')
   const [busy, setBusy] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
+  const { mutate: globalMutate } = useSWRConfig()
+  // Revalidate every process-rate cache (candidate lists + usage bars) so a
+  // just-(un)linked lot can't linger in another version's modal and the bars
+  // recompute their linked totals.
+  const refreshAll = () => globalMutate((key: any) => typeof key === 'string' && key.includes('/process-rates'))
+
+  async function unlinkLot(lotId: number) {
+    if (!confirm('Unlink this lot from the rate? It returns to the link pool.')) return
+    const res = await fetch(`/api/process-rates/${c.id}/lots`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unlinkIds: [lotId] }),
+    })
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Unlink failed'); return }
+    onChanged(); refreshAll()
+  }
 
   async function del() {
     if (!confirm(`Delete v${c.version} for ${c.party.name}? This cannot be undone.`)) return
@@ -196,7 +216,7 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
             ))}
           </div>
 
-          {c.validityQty != null && <ValidityBar c={c} />}
+          <ValidityBar c={c} />
 
           {c.notes && (
             <div className="flex gap-2 items-start text-[12px] text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg px-3 py-2">
@@ -212,9 +232,16 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {c.greyEntries.map(lot => (
-                  <div key={lot.id} className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 bg-gray-50 dark:bg-gray-700/40">
-                    <div className="text-[12px] font-mono font-bold text-gray-700 dark:text-gray-200">{lot.lotNo}</div>
-                    <div className="text-[9px] text-gray-400">{lot.than} than · {fmtDate(lot.date)}</div>
+                  <div key={lot.id} className="relative group">
+                    <LotLink lotNo={lot.lotNo} storageKey={PR_VIEW_KEY}
+                      className="block border border-gray-200 dark:border-gray-600 rounded-lg pl-2.5 pr-6 py-1.5 bg-gray-50 dark:bg-gray-700/40 hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition">
+                      <div className="text-[12px] font-mono font-bold text-indigo-700 dark:text-indigo-300 hover:underline">{lot.lotNo}</div>
+                      <div className="text-[9px] text-gray-400">{lot.than} than · {fmtDate(lot.date)}</div>
+                    </LotLink>
+                    <button onClick={() => unlinkLot(lot.id)} title="Unlink this lot"
+                      className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center rounded text-rose-400 hover:text-white hover:bg-rose-500 text-[11px] leading-none opacity-0 group-hover:opacity-100 transition">
+                      ×
+                    </button>
                   </div>
                 ))}
               </div>
@@ -234,6 +261,7 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
 // ── Link non-linked lots to this contract (multi-select) ────────────────────
 function LinkLotsModal({ contract: c, onClose, onLinked }: { contract: Contract; onClose: () => void; onLinked: () => void }) {
   const { data, isLoading } = useSWR<{ lots: GreyLot[] }>(`/api/process-rates/${c.id}/lots`, fetcher)
+  const { mutate: globalMutate } = useSWRConfig()
   const lots = data?.lots ?? []
   const [sel, setSel] = useState<Set<number>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -251,6 +279,9 @@ function LinkLotsModal({ contract: c, onClose, onLinked }: { contract: Contract;
     })
     setSaving(false)
     if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Link failed'); return }
+    // Refresh candidate lists + usage bars so these lots drop out everywhere
+    // and the linked totals recompute.
+    globalMutate((key: any) => typeof key === 'string' && key.includes('/process-rates'))
     onLinked()
   }
 
@@ -300,12 +331,23 @@ function LinkLotsModal({ contract: c, onClose, onLinked }: { contract: Contract;
   )
 }
 
-// Quantity-validity progress bar — fetches cumulative usage for the contract.
+// Quantity bar — "used" is the total `than` of the lots LINKED to this contract.
+// Shows a progress bar against the cap when one is set; otherwise just the
+// linked total so you can always see consumption.
 function ValidityBar({ c }: { c: Contract }) {
   const { data: u } = useSWR<{ used: number; validityUnit: string; exceeded: boolean; kgTracked: boolean }>(
     `/api/process-rates/qty-usage?partyId=${c.partyId}&contractId=${c.id}`, fetcher)
-  if (c.validityQty == null) return null
   if (!u) return <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-700 animate-pulse" />
+
+  if (c.validityQty == null) {
+    return (
+      <div className="flex items-center justify-between text-[11px] gap-2">
+        <span className="text-gray-500 dark:text-gray-400">Linked total · since {fmtDate(c.effectiveFrom)}</span>
+        <span className="font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap">{enIN(u.used)} {u.validityUnit} · no cap</span>
+      </div>
+    )
+  }
+
   const cap = Number(c.validityQty)
   const pct = cap > 0 ? Math.min(100, Math.round((u.used / cap) * 100)) : 0
   const bar = u.exceeded ? 'bg-rose-500' : pct >= 85 ? 'bg-amber-500' : 'bg-emerald-500'
