@@ -433,7 +433,16 @@ export default function ReceiptsPage() {
           const o = inv.priorPending ?? inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)
           return s + (inv.allocatedAmount < 0 ? -o : o)
         }, 0)
-        const tPending = r.linkedInvoices.reduce((s, inv) => s + (inv.pending || 0), 0)
+        // Pending here is the running balance left on the bill *after this
+        // receipt* (Original − Allocated − TDS − Discount), NOT the global
+        // pending across every receipt. On a split bill the earlier receipt
+        // must show the amount it carries forward to the next one; the global
+        // figure would read 0 once a later receipt clears it.
+        const rowPendingOf = (inv: LinkedInvoice) => {
+          const o = inv.priorPending ?? inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)
+          return Math.max(0, +(o - Math.abs(inv.allocatedAmount) - (inv.tdsAmount || 0) - (inv.discountAmount || 0)).toFixed(2))
+        }
+        const tPending = r.linkedInvoices.reduce((s, inv) => s + rowPendingOf(inv), 0)
         const sgn = (n: number) => `${n < 0 ? '−' : ''}${num(Math.abs(n))}`
 
         autoTable(doc, {
@@ -479,7 +488,7 @@ export default function ReceiptsPage() {
               `${isCN ? '−' : ''}${num(Math.abs(inv.allocatedAmount))}`,
               inv.tdsAmount > 0 ? num(inv.tdsAmount) : '—',
               inv.discountAmount > 0 ? num(inv.discountAmount) : '—',
-              num(inv.pending),
+              num(rowPendingOf(inv)),
               dueDays != null ? (dueDays >= 0 ? `${dueDays}` : `${-dueDays} adv`) : '—',
             ]
           }),
