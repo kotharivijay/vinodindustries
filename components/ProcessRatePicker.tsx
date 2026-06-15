@@ -36,6 +36,7 @@ interface Usage {
 
 const inr = (v: string | number | null | undefined) =>
   v == null || v === '' ? '—' : `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(Number(v))}`
+const nf = (n: number) => new Intl.NumberFormat('en-IN').format(n)
 const today = () => new Date().toISOString().split('T')[0]
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 
@@ -184,7 +185,7 @@ function ViewCard({
                 <div className="grid grid-cols-3 gap-1.5">
                   <Cat k="Light" v={l.rateLight} cls="text-yellow-600" />
                   <Cat k="Medium" v={l.rateMedium} cls="text-orange-600" />
-                  <Cat k="Dark" v={l.rateDark} cls="text-violet-600" />
+                  <Cat k="Deep" v={l.rateDark} cls="text-violet-600" />
                 </div>
               )}
               {picked && <div className="text-[10px] font-semibold text-emerald-700 mt-1.5">✓ this lot</div>}
@@ -192,16 +193,34 @@ function ViewCard({
           )
         })}
 
-        <div className="text-[11px] text-slate-500 bg-slate-50 border border-dashed border-slate-300 rounded-lg px-3 py-2">
-          Effective <b className="text-slate-700">{fmtDate(contract.effectiveFrom)}</b>
-          {contract.validityQty != null && usage && (
-            <> · valid till <b className="text-slate-700">{new Intl.NumberFormat('en-IN').format(Number(contract.validityQty))} {usage.validityUnit}</b>
-              {' · '}used <b className="text-slate-700">{new Intl.NumberFormat('en-IN').format(usage.used)}</b>
-              {usage.remaining != null && <> · <b className={usage.exceeded ? 'text-rose-600' : 'text-slate-700'}>{new Intl.NumberFormat('en-IN').format(usage.remaining)} left</b></>}
-              {!usage.kgTracked && <span className="text-amber-600"> (kg approx — counted in than)</span>}
-            </>
-          )}
-        </div>
+        {/* Quantity validity progress bar */}
+        {contract.validityQty != null && usage ? (() => {
+          const cap = Number(contract.validityQty)
+          const pct = cap > 0 ? Math.min(100, Math.round((usage.used / cap) * 100)) : 0
+          const bar = usage.exceeded ? 'bg-rose-500' : pct >= 85 ? 'bg-amber-500' : 'bg-emerald-500'
+          const txt = usage.exceeded ? 'text-rose-600' : 'text-emerald-600'
+          return (
+            <div>
+              <div className="flex items-center justify-between text-[11px] mb-1 gap-2">
+                <span className="text-slate-500">Quantity validity · since {fmtDate(contract.effectiveFrom)}</span>
+                <span className={`font-bold whitespace-nowrap ${txt}`}>{nf(usage.used)} {usage.validityUnit} / {nf(cap)} {usage.validityUnit} · {pct}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                <div className={`h-full ${bar} transition-all`} style={{ width: `${pct}%` }} />
+              </div>
+              {!usage.kgTracked && <p className="text-[10px] text-amber-600 mt-1">kg cap approximated by than count</p>}
+            </div>
+          )
+        })() : (
+          <p className="text-[11px] text-slate-500">Effective {fmtDate(contract.effectiveFrom)}{contract.validityQty == null ? ' · no quantity cap' : ''}</p>
+        )}
+
+        {/* Notes */}
+        {contract.notes && (
+          <div className="flex gap-2 items-start text-[12px] text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+            <span>📝</span><span>{contract.notes}</span>
+          </div>
+        )}
 
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onUpdate}
@@ -343,7 +362,7 @@ function RateForm({
                 <div className="grid grid-cols-3 gap-1.5">
                   <input type="number" step="0.01" value={l.rateLight} onChange={e => setLine(i, { rateLight: e.target.value })} placeholder="Light" className={inp} />
                   <input type="number" step="0.01" value={l.rateMedium} onChange={e => setLine(i, { rateMedium: e.target.value })} placeholder="Medium" className={inp} />
-                  <input type="number" step="0.01" value={l.rateDark} onChange={e => setLine(i, { rateDark: e.target.value })} placeholder="Dark" className={inp} />
+                  <input type="number" step="0.01" value={l.rateDark} onChange={e => setLine(i, { rateDark: e.target.value })} placeholder="Deep" className={inp} />
                 </div>
               )}
             </div>
@@ -356,6 +375,11 @@ function RateForm({
             {available.map(t => <option key={t.id} value={t.id}>{t.name} ({t.rateMode === 'FLAT' ? 'flat' : 'L/M/D'})</option>)}
           </select>
         )}
+
+        <label className="block text-[11px] font-semibold text-slate-600">
+          Notes <span className="text-slate-400 font-normal">(opt)</span>
+          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. confirmed on call by Rahul" className={inp} />
+        </label>
 
         <div className="flex gap-2 pt-1">
           <button type="button" onClick={onCancel}

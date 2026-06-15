@@ -43,7 +43,7 @@ export async function validateLines(tx: any, lines: LineInput[]): Promise<string
     if (mode === 'FLAT' && dec(l.rate) === null) return 'Flat-rate line needs a rate'
     if (mode === 'BY_COLOR_CATEGORY' &&
         (dec(l.rateLight) === null || dec(l.rateMedium) === null || dec(l.rateDark) === null)) {
-      return 'By-colour line needs Light, Medium and Dark rates'
+      return 'By-colour line needs Light, Medium and Deep rates'
     }
   }
   return null
