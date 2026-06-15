@@ -130,6 +130,7 @@ function PartyBlock({ party, contracts, onNew, onEdit, onChanged }: {
 function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; onEdit: () => void; onChanged: () => void }) {
   const [open, setOpen] = useState(c.status === 'active')
   const [busy, setBusy] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
 
   async function del() {
     if (!confirm(`Delete v${c.version} for ${c.party.name}? This cannot be undone.`)) return
@@ -148,7 +149,14 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
         <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${statusPill[c.status] ?? statusPill.superseded}`}>
           v{c.version} · {c.status}
         </span>
-        <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:inline">{fmtDate(c.effectiveFrom)}</span>
+        {/* Link button sits above the contract date */}
+        <div className="flex flex-col items-start gap-0.5">
+          <button onClick={() => setLinkOpen(true)}
+            className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded px-1.5 py-0.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 whitespace-nowrap">
+            🔗 Link lots
+          </button>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400 hidden sm:inline">{fmtDate(c.effectiveFrom)}</span>
+        </div>
         {c.validityQty != null && (
           <span className="text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 rounded px-1.5 py-0.5">
             cap {enIN(c.validityQty)} {c.validityUnit}
@@ -208,6 +216,80 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
           </div>
         </div>
       )}
+
+      {linkOpen && (
+        <LinkLotsModal contract={c} onClose={() => setLinkOpen(false)}
+          onLinked={() => { setLinkOpen(false); onChanged() }} />
+      )}
+    </div>
+  )
+}
+
+// ── Link non-linked lots to this contract (multi-select) ────────────────────
+function LinkLotsModal({ contract: c, onClose, onLinked }: { contract: Contract; onClose: () => void; onLinked: () => void }) {
+  const { data, isLoading } = useSWR<{ lots: GreyLot[] }>(`/api/process-rates/${c.id}/lots`, fetcher)
+  const lots = data?.lots ?? []
+  const [sel, setSel] = useState<Set<number>>(new Set())
+  const [saving, setSaving] = useState(false)
+
+  const allChecked = lots.length > 0 && sel.size === lots.length
+  const toggle = (id: number) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleAll = () => setSel(allChecked ? new Set() : new Set(lots.map(l => l.id)))
+
+  async function link() {
+    if (!sel.size) return
+    setSaving(true)
+    const res = await fetch(`/api/process-rates/${c.id}/lots`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ greyEntryIds: [...sel] }),
+    })
+    setSaving(false)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Link failed'); return }
+    onLinked()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-slate-900/45" />
+      <div onClick={e => e.stopPropagation()}
+        className="relative w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[88vh] flex flex-col">
+        <div className="sm:hidden w-9 h-1 bg-slate-300 rounded-full mx-auto mt-2 mb-1" />
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+          <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Link lots — {c.party.name} · v{c.version}</span>
+          {lots.length > 0 && (
+            <button onClick={toggleAll} className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+              {allChecked ? 'Clear all' : 'Select all'}
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+          {isLoading ? (
+            <p className="text-gray-400 text-sm px-1 py-4">Loading…</p>
+          ) : lots.length === 0 ? (
+            <p className="text-gray-400 text-sm px-1 py-4">No unlinked lots for this party — every lot is already linked.</p>
+          ) : lots.map(lot => {
+            const on = sel.has(lot.id)
+            return (
+              <button key={lot.id} type="button" onClick={() => toggle(lot.id)}
+                className={`w-full flex items-center gap-3 text-left border rounded-lg px-3 py-2 transition ${
+                  on ? 'border-indigo-400 ring-1 ring-indigo-300 bg-indigo-50/50 dark:bg-indigo-900/20' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                }`}>
+                <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${on ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 dark:border-gray-500'}`}>{on ? '✓' : ''}</span>
+                <span className="font-mono font-bold text-[13px] text-gray-700 dark:text-gray-200">{lot.lotNo}</span>
+                <span className="text-[11px] text-gray-400 ml-auto">{lot.than} than · {fmtDate(lot.date)}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="flex gap-2 p-3 border-t border-gray-100 dark:border-gray-700">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">Cancel</button>
+          <button onClick={link} disabled={saving || sel.size === 0} className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
+            {saving ? 'Linking…' : `Link ${sel.size || ''} lot${sel.size === 1 ? '' : 's'}`.trim()}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
