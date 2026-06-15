@@ -361,9 +361,11 @@ export default function ReceiptsPage() {
     } finally { setSharingLinkedPdf(false) }
   }
 
-  // View 2: structured table per receipt. Bank header text + a 7-column
-  // allocation table (Date · Invoice · Original · TDS · Disc · Pending ·
-  // Due Days). Due Days = invoice.date − receipt.date in whole days.
+  // View 2: structured table per receipt. Bank header text + an 8-column
+  // allocation table (Date · Invoice · Original · Allocated · TDS · Disc ·
+  // Pending · Due Days). Original = balance this receipt settles against
+  // (priorPending); Allocated = cash applied on this receipt only.
+  // Due Days = invoice.date − receipt.date in whole days.
   const [sharingLinkedV2, setSharingLinkedV2] = useState(false)
   async function shareLinkedReceiptsPdfV2() {
     if (sharingLinkedV2) return
@@ -422,16 +424,40 @@ export default function ReceiptsPage() {
 
         const receiptMs = new Date(r.date).getTime()
 
+        // Column totals for the footer row. Allocated uses the signed
+        // linkedCash so CN credits subtract and the total ties back to the
+        // receipt's applied cash; Original mirrors the same sign so the row
+        // identity (Original = Allocated + TDS + Discount + Pending) holds at
+        // the total level too.
+        const tOrig = r.linkedInvoices.reduce((s, inv) => {
+          const o = inv.priorPending ?? inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)
+          return s + (inv.allocatedAmount < 0 ? -o : o)
+        }, 0)
+        const tPending = r.linkedInvoices.reduce((s, inv) => s + (inv.pending || 0), 0)
+        const sgn = (n: number) => `${n < 0 ? '−' : ''}${num(Math.abs(n))}`
+
         autoTable(doc, {
           head: [[
             'Date',
             'Invoice',
             { content: 'Original', styles: { halign: 'right' } },
+            { content: 'Allocated', styles: { halign: 'right' } },
             { content: 'TDS', styles: { halign: 'right' } },
             { content: 'Discount', styles: { halign: 'right' } },
             { content: 'Pending', styles: { halign: 'right' } },
             { content: 'Days', styles: { halign: 'right' } },
           ]],
+          foot: [[
+            'Total',
+            '',
+            sgn(tOrig),
+            sgn(r.linkedCash),
+            r.linkedTds > 0 ? num(r.linkedTds) : '—',
+            r.linkedDiscount > 0 ? num(r.linkedDiscount) : '—',
+            num(tPending),
+            '',
+          ]],
+          footStyles: { fillColor: [229, 231, 235], textColor: 30, fontStyle: 'bold' },
           body: r.linkedInvoices.map(inv => {
             const isCN = inv.allocatedAmount < 0
             // "Original" = the outstanding balance THIS receipt settles
@@ -450,6 +476,7 @@ export default function ReceiptsPage() {
               invDate ? fmtD(invDate.toISOString()) : '—',
               `${isCN ? 'CN ' : ''}${inv.vchNumber}`,
               `${isCN ? '−' : ''}${num(orig)}`,
+              `${isCN ? '−' : ''}${num(Math.abs(inv.allocatedAmount))}`,
               inv.tdsAmount > 0 ? num(inv.tdsAmount) : '—',
               inv.discountAmount > 0 ? num(inv.discountAmount) : '—',
               num(inv.pending),
@@ -466,6 +493,7 @@ export default function ReceiptsPage() {
             4: { halign: 'right' },
             5: { halign: 'right' },
             6: { halign: 'right' },
+            7: { halign: 'right' },
           },
           margin: { left: MARGIN, right: MARGIN },
         })
@@ -997,10 +1025,6 @@ export default function ReceiptsPage() {
                           : days <= 30 ? 'text-emerald-600 dark:text-emerald-400'
                           : days <= 60 ? 'text-amber-600 dark:text-amber-400'
                           : 'text-rose-600 dark:text-rose-400'
-                        const boxDaysColor = days == null ? '' : days < 0 ? 'text-gray-400'
-                          : days <= 30 ? 'text-emerald-300'
-                          : days <= 60 ? 'text-amber-300'
-                          : 'text-rose-300'
                         // html2canvas (V1 PDF snapshot) drops the box's dark
                         // background unreliably, leaving the light Tailwind
                         // text invisible on the white card. Force every colour
