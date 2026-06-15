@@ -37,7 +37,7 @@ export async function GET() {
 
   // Run lot info + dyeing queries in parallel
   const db2 = prisma as any
-  let dyeingByLot = new Map<string, { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }>()
+  let dyeingByLot = new Map<string, { slipNo: number; shadeName: string | null; shadeDesc: string | null; colorCategory: string | null; foldNo: string | null }>()
   let dyeingAllByLot = new Map<string, any[]>()
 
   const [lotInfoMap, dyeingEntries] = await Promise.all([
@@ -59,7 +59,7 @@ export async function GET() {
           select: {
             shadeDescription: true,
             foldProgram: { select: { foldNo: true } },
-            shade: { select: { name: true, description: true } },
+            shade: { select: { name: true, description: true, colorCategory: true } },
           },
         },
       },
@@ -69,7 +69,7 @@ export async function GET() {
   // Per-id index so an FEL row with dyeingEntryId can resolve its exact
   // source slip's meta (slipNo / shade / fold) without the lot-level
   // heuristic in dyeingByLot.
-  const dyeingById = new Map<number, { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null }>()
+  const dyeingById = new Map<number, { slipNo: number; shadeName: string | null; shadeDesc: string | null; colorCategory: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
@@ -77,7 +77,9 @@ export async function GET() {
     // then fold-batch override, then the master. Lets generic recipes
     // (Hitset / APC) carry the real colour per slip.
     const shadeDesc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
-    dyeingById.set(de.id, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
+    // Colour category lives only on the live master — gate on a name match.
+    const colorCategory = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
+    dyeingById.set(de.id, { slipNo: de.slipNo, shadeName, shadeDesc, colorCategory, foldNo })
   }
 
   // Index dyeing entries by lotNo so we can quickly pick the relevant subset
@@ -90,16 +92,17 @@ export async function GET() {
     // then fold-batch override, then the master. Lets generic recipes
     // (Hitset / APC) carry the real colour per slip.
     const shadeDesc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
+    const colorCategory = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
     const dLots = de.lots?.length ? de.lots : []
     for (const lot of dLots) {
       // Normalized key: DyeingEntryLot.lotNo casing can differ from
       // FinishEntryLot's — the lookups below use the same normalization.
       const ln = lot.lotNo.toLowerCase().trim()
       if (!dyeingByLot.has(ln)) {
-        dyeingByLot.set(ln, { slipNo: de.slipNo, shadeName, shadeDesc, foldNo })
+        dyeingByLot.set(ln, { slipNo: de.slipNo, shadeName, shadeDesc, colorCategory, foldNo })
       }
       if (!dyeingAllByLot.has(ln)) dyeingAllByLot.set(ln, [])
-      dyeingAllByLot.get(ln)!.push({ slipNo: de.slipNo, shadeName, shadeDesc, foldNo, dyedThan: lot.than || 0 })
+      dyeingAllByLot.get(ln)!.push({ slipNo: de.slipNo, shadeName, shadeDesc, colorCategory, foldNo, dyedThan: lot.than || 0 })
       if (!dyeingByLotNo.has(ln)) dyeingByLotNo.set(ln, [])
       dyeingByLotNo.get(ln)!.push(de)
     }
@@ -127,6 +130,7 @@ export async function GET() {
         dyeSlipNo: dye?.slipNo || null,
         shadeName: dye?.shadeName || null,
         shadeDesc: dye?.shadeDesc || null,
+        shadeColorCategory: dye?.colorCategory || null,
         foldNo: dye?.foldNo || null,
         dyeSlips: allDyes,
       }

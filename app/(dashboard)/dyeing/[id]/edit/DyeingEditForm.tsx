@@ -7,6 +7,12 @@ type StockStatus = 'idle' | 'loading' | 'ok' | 'no_stock' | 'not_found'
 
 interface ChemicalMaster { id: number; name: string; unit: string; currentPrice: number | null }
 
+const shadeCategoryBadge: Record<string, string> = {
+  Light: 'bg-amber-500/20 text-amber-300',
+  Medium: 'bg-orange-500/20 text-orange-300',
+  Dark: 'bg-gray-200 text-gray-800',
+}
+
 interface ChemicalRow {
   name: string
   chemicalId: number | null
@@ -982,7 +988,10 @@ export default function DyeingEditForm({ id }: { id: string }) {
                     className="w-full text-left bg-gray-700/50 hover:bg-purple-900/30 border border-gray-600 hover:border-purple-600 rounded-xl p-3 transition"
                   >
                     <div className="flex items-center justify-between mb-0.5">
-                      <span className="text-sm font-semibold text-white">{s.name}</span>
+                      <span className="text-sm font-semibold text-white flex items-center gap-1.5">
+                        {s.name}
+                        {s.colorCategory && <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${shadeCategoryBadge[s.colorCategory] ?? 'bg-gray-600 text-gray-200'}`}>{s.colorCategory}</span>}
+                      </span>
                       <span className="text-[10px] text-gray-400">{s.recipeItems?.length || 0} items</span>
                     </div>
                     {s.description && <p className="text-xs text-gray-400">{s.description}</p>}

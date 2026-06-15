@@ -12,20 +12,23 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const id = parseInt(params.id)
   if (!id) return NextResponse.json({ error: 'Invalid ID' }, { status: 400 })
 
-  const { name, description, recipeItems } = await req.json() as {
+  const { name, description, colorCategory, recipeItems } = await req.json() as {
     name: string
     description?: string
+    colorCategory?: string | null
     recipeItems: { chemicalId: number; quantity: number }[]
   }
 
   if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
+
+  const cleanCategory = ['Light', 'Medium', 'Dark'].includes(colorCategory ?? '') ? colorCategory : null
 
   try {
     const shade = await (prisma as any).$transaction(async (tx: any) => {
       // Update shade fields
       await tx.shade.update({
         where: { id },
-        data: { name: name.trim(), description: description?.trim() || null },
+        data: { name: name.trim(), description: description?.trim() || null, colorCategory: cleanCategory },
       })
 
       // Replace all recipe items

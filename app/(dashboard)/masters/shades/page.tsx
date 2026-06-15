@@ -8,7 +8,15 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 
 interface Chemical { id: number; name: string; unit: string }
 interface RecipeItem { id?: number; chemicalId: number; chemical: { id: number; name: string; unit: string }; quantity: number }
-interface Shade { id: number; name: string; description?: string; createdAt: string; recipeItems: RecipeItem[] }
+interface Shade { id: number; name: string; description?: string; colorCategory?: string | null; createdAt: string; recipeItems: RecipeItem[] }
+
+const COLOR_CATEGORIES = ['Light', 'Medium', 'Dark'] as const
+
+const categoryBadge: Record<string, string> = {
+  Light: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400',
+  Medium: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
+  Dark: 'bg-gray-800 dark:bg-gray-900 text-gray-100',
+}
 
 // ── Chemical search dropdown ──────────────────────────────────────────────────
 function ChemicalDropdown({ value, chemicals, onChange }: {
@@ -144,6 +152,7 @@ export default function ShadesPage() {
   const { data: chemicals } = useSWR<Chemical[]>('/api/chemicals', fetcher)
 
   const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [sortMode, setSortMode] = useState<'prefix' | 'name' | 'recent'>('prefix')
   const [selected, setSelected] = useState<Shade | null>(null)
   const [isNew, setIsNew] = useState(false)
@@ -151,6 +160,7 @@ export default function ShadesPage() {
   // Editor state
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
+  const [editCategory, setEditCategory] = useState<string>('')
   const [editRecipe, setEditRecipe] = useState<DraftItem[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -160,6 +170,7 @@ export default function ShadesPage() {
     setIsNew(true)
     setEditName('')
     setEditDesc('')
+    setEditCategory('')
     setEditRecipe([])
     setError('')
   }
@@ -169,6 +180,7 @@ export default function ShadesPage() {
     setIsNew(false)
     setEditName(shade.name)
     setEditDesc(shade.description ?? '')
+    setEditCategory(shade.colorCategory ?? '')
     setEditRecipe(shade.recipeItems.map(r => ({
       chemicalId: r.chemical.id,
       chemical: r.chemical,
@@ -198,7 +210,7 @@ export default function ShadesPage() {
         res = await fetch('/api/shades', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: editName.trim(), description: editDesc.trim() || null }),
+          body: JSON.stringify({ name: editName.trim(), description: editDesc.trim() || null, colorCategory: editCategory || null }),
         })
         const newShade = await res.json()
         if (!res.ok) { setError(newShade.error ?? 'Failed'); return }
@@ -207,14 +219,14 @@ export default function ShadesPage() {
           await fetch(`/api/shades/${newShade.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: editName.trim(), description: editDesc.trim() || null, recipeItems }),
+            body: JSON.stringify({ name: editName.trim(), description: editDesc.trim() || null, colorCategory: editCategory || null, recipeItems }),
           })
         }
       } else {
         res = await fetch(`/api/shades/${selected!.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: editName.trim(), description: editDesc.trim() || null, recipeItems }),
+          body: JSON.stringify({ name: editName.trim(), description: editDesc.trim() || null, colorCategory: editCategory || null, recipeItems }),
         })
         if (!res.ok) { const d = await res.json(); setError(d.error ?? 'Failed'); return }
       }
@@ -242,6 +254,7 @@ export default function ShadesPage() {
   }
 
   const filtered = (shades ?? [])
+    .filter(s => !categoryFilter || s.colorCategory === categoryFilter)
     .filter(s =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
       (s.description ?? '').toLowerCase().includes(search.toLowerCase())
@@ -294,6 +307,19 @@ export default function ShadesPage() {
             onChange={e => setSearch(e.target.value)}
           />
           <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            <span className="text-[10px] text-gray-500">Colour:</span>
+            <button onClick={() => setCategoryFilter('')}
+              className={`text-[10px] px-2 py-0.5 rounded border ${categoryFilter === '' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'}`}>
+              All
+            </button>
+            {COLOR_CATEGORIES.map(cat => (
+              <button key={cat} onClick={() => setCategoryFilter(categoryFilter === cat ? '' : cat)}
+                className={`text-[10px] px-2 py-0.5 rounded-full font-medium border border-transparent ${categoryFilter === cat ? 'ring-2 ring-indigo-400 ' + (categoryBadge[cat] ?? '') : (categoryBadge[cat] ?? 'bg-gray-100 text-gray-600') + ' opacity-80 hover:opacity-100'}`}>
+                {cat}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
             <span className="text-[10px] text-gray-500">Sort:</span>
             {([['prefix', 'Prefix'], ['name', 'A-Z'], ['recent', 'Recent']] as const).map(([key, label]) => (
               <button key={key} onClick={() => setSortMode(key)}
@@ -335,11 +361,18 @@ export default function ShadesPage() {
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{shade.name}</span>
-                    {shade.recipeItems.length > 0 && (
-                      <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full font-medium">
-                        {shade.recipeItems.length} chem
-                      </span>
-                    )}
+                    <span className="flex items-center gap-1 shrink-0">
+                      {shade.colorCategory && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${categoryBadge[shade.colorCategory] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {shade.colorCategory}
+                        </span>
+                      )}
+                      {shade.recipeItems.length > 0 && (
+                        <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full font-medium">
+                          {shade.recipeItems.length} chem
+                        </span>
+                      )}
+                    </span>
                   </div>
                   {shade.description && (
                     <p className="text-xs text-gray-400 mt-0.5 truncate">{shade.description}</p>
@@ -389,6 +422,29 @@ export default function ShadesPage() {
                   value={editDesc}
                   onChange={e => setEditDesc(e.target.value)}
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Colour Category</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditCategory('')}
+                    className={`px-3 py-1.5 text-sm rounded-lg border transition ${editCategory === '' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+                  >
+                    None
+                  </button>
+                  {COLOR_CATEGORIES.map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setEditCategory(cat)}
+                      className={`px-3 py-1.5 text-sm rounded-lg border transition ${editCategory === cat ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'}`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="border-t border-gray-100 dark:border-gray-700 pt-4">

@@ -101,34 +101,39 @@ export async function GET() {
         shadeName: true,
         shadeDescription: true,
         lots: { select: { lotNo: true } },
-        foldBatch: { select: { shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
+        foldBatch: { select: { shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true, colorCategory: true } } } },
       },
     }),
   ])
 
   // Per-id map — when a FEL has dyeingEntryId set, resolve its EXACT source
   // slip's shade/fold/slipNo instead of the lot-level first-match heuristic.
-  const dyeingById = new Map<number, { dyeSlipNo: number; shadeName: string | null; shadeDescription: string | null; foldNo: string | null }>()
+  const dyeingById = new Map<number, { dyeSlipNo: number; shadeName: string | null; shadeDescription: string | null; shadeColorCategory: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
+    const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
+    // Colour category lives only on the live master — gate on a name match.
+    const colorCategory = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
     dyeingById.set(de.id, {
       dyeSlipNo: de.slipNo,
-      shadeName: de.shadeName || de.foldBatch?.shade?.name || null,
+      shadeName,
       // Slip > fold batch > master so dyeing form Step 2 wins.
       shadeDescription: (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null,
+      shadeColorCategory: colorCategory,
       foldNo: de.foldBatch?.foldProgram?.foldNo || null,
     })
   }
   // Fallback for unlinked FELs — first dye entry that touched this lot.
-  const lotDyeMap = new Map<string, { shadeName: string | null; shadeDescription: string | null; foldNo: string | null }>()
+  const lotDyeMap = new Map<string, { shadeName: string | null; shadeDescription: string | null; shadeColorCategory: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
     const shade = de.shadeName || de.foldBatch?.shade?.name || null
     // Slip > fold batch > master.
     const desc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
+    const colorCategory = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shade ? (de.foldBatch.shade.colorCategory ?? null) : null
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const lotsInEntry = de.lots?.length ? de.lots.map((l: any) => l.lotNo) : [de.lotNo]
     for (const ln of lotsInEntry) {
       if (!lotDyeMap.has(ln.toLowerCase().trim())) {
-        lotDyeMap.set(ln.toLowerCase().trim(), { shadeName: shade, shadeDescription: desc, foldNo })
+        lotDyeMap.set(ln.toLowerCase().trim(), { shadeName: shade, shadeDescription: desc, shadeColorCategory: colorCategory, foldNo })
       }
     }
   }
@@ -153,6 +158,7 @@ export async function GET() {
         foldNo: dye?.foldNo || null,
         shadeName: dye?.shadeName || null,
         shadeDescription: dye?.shadeDescription || null,
+        shadeColorCategory: dye?.shadeColorCategory || null,
         dyeSlipNo: direct?.dyeSlipNo ?? null,
         foldingReceipts: l.foldingReceipts || [],
         receivedThan: l.receivedThan || 0,
@@ -203,6 +209,7 @@ export async function GET() {
           foldNo: null,
           shadeName: null,
           shadeDescription: null,
+          shadeColorCategory: null,
           foldingReceipts: [],
           receivedThan: 0,
           foldingComplete: false,

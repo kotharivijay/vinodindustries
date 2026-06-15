@@ -53,7 +53,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         select: {
           shadeDescription: true,
           foldProgram: { select: { foldNo: true } },
-          shade: { select: { name: true, description: true } },
+          shade: { select: { name: true, description: true, colorCategory: true } },
         },
       },
     },
@@ -73,7 +73,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   // Re-shape into the existing fold→quality→slip→lots structure the printer
   // expects. (Quality is the single FP-level quality name — we don't split.)
-  type SlipInfo = { slipNo: number; shadeName: string; shadeDesc: string; lots: { lotNo: string; than: number }[] }
+  type SlipInfo = { slipNo: number; shadeName: string; shadeDesc: string; shadeColorCategory: string | null; lots: { lotNo: string; than: number }[] }
   type QualityInfo = { quality: string; slips: SlipInfo[] }
   type FoldInfo = { foldNo: string; qualities: QualityInfo[] }
   const foldMapShaped: FoldInfo[] = foldGroups.map(fg => ({
@@ -84,6 +84,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         slipNo: s.slipNo,
         shadeName: s.shadeName ?? '',
         shadeDesc: s.shadeDesc ?? '',
+        shadeColorCategory: s.shadeColorCategory ?? null,
         lots: s.lots,
       })),
     }],

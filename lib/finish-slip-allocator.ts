@@ -28,7 +28,7 @@ interface DyeingEntryLike {
     // / APC) can carry a per-batch descriptor without touching the master.
     shadeDescription?: string | null
     foldProgram?: { foldNo: string | null } | null
-    shade?: { name: string | null; description: string | null } | null
+    shade?: { name: string | null; description: string | null; colorCategory?: string | null } | null
   } | null
 }
 
@@ -41,6 +41,7 @@ export interface AllocatedSlip {
   slipNo: number
   shadeName: string | null
   shadeDesc: string | null
+  shadeColorCategory: string | null
   foldNo: string
   lots: AllocatedLot[]
 }
@@ -88,15 +89,20 @@ export function allocateFpToDyeingSlips(
     foldNo: string
     shadeName: string | null
     shadeDesc: string | null
+    shadeColorCategory: string | null
     lots: Map<string, { than: number; fpLotId?: number }>
   }>()
 
   function metaOf(de: DyeingEntryLike) {
+    const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
     return {
       foldNo: de.foldBatch?.foldProgram?.foldNo || 'No Fold',
-      shadeName: de.shadeName || de.foldBatch?.shade?.name || null,
+      shadeName,
       // Slip > fold batch > master.
       shadeDesc: de.shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null,
+      // Colour category lives only on the live master — gate on a name match
+      // so a renamed master can't attach its category to an old shade name.
+      shadeColorCategory: de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null,
     }
   }
 
@@ -189,6 +195,7 @@ export function allocateFpToDyeingSlips(
       slipNo,
       shadeName: b.shadeName,
       shadeDesc: b.shadeDesc,
+      shadeColorCategory: b.shadeColorCategory,
       foldNo: b.foldNo,
       lots: lotsOut,
     })

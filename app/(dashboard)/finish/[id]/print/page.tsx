@@ -58,7 +58,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
           batchNo: true,
           shadeDescription: true,
           foldProgram: { select: { foldNo: true } },
-          shade: { select: { name: true, description: true } },
+          shade: { select: { name: true, description: true, colorCategory: true } },
         },
       },
     },
@@ -66,7 +66,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
     distinct: ['id'],
   })
 
-  type SlipInfo = { slipNo: number; shadeName: string | null; shadeDesc: string | null; lots: { lotNo: string; than: number }[] }
+  type SlipInfo = { slipNo: number; shadeName: string | null; shadeDesc: string | null; shadeColorCategory: string | null; lots: { lotNo: string; than: number }[] }
   type FoldGroup = { foldNo: string; slips: SlipInfo[] }
 
   // Pass FEL id + dyeingEntryId so the allocator runs its Pass 0 direct
@@ -90,6 +90,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
       slipNo: s.slipNo,
       shadeName: s.shadeName,
       shadeDesc: s.shadeDesc,
+      shadeColorCategory: s.shadeColorCategory,
       lots: s.lots,
     })),
   }))
@@ -208,7 +209,16 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
                 slip.lots.map((lot, li) => (
                   <tr key={`${si}-${li}`} className="border-b border-gray-200">
                     <td className="py-1 font-medium">{li === 0 ? slip.slipNo : ''}</td>
-                    <td className="py-1 text-gray-700">{li === 0 ? [slip.shadeName, slip.shadeDesc].filter(Boolean).join(' \u2014 ') || '\u2014' : ''}</td>
+                    <td className="py-1 text-gray-700">
+                      {li === 0 ? (
+                        <>
+                          {[slip.shadeName, slip.shadeDesc].filter(Boolean).join(' \u2014 ') || '\u2014'}
+                          {slip.shadeColorCategory && (
+                            <span className="ml-1 px-1 border border-gray-500 rounded text-[10px] font-semibold uppercase">{slip.shadeColorCategory}</span>
+                          )}
+                        </>
+                      ) : ''}
+                    </td>
                     <td className="py-1 font-medium">{lot.lotNo}</td>
                     <td className="py-1 text-right">{lot.than}</td>
                   </tr>

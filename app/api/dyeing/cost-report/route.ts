@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
         select: {
           batchNo: true,
           foldProgram: { select: { foldNo: true } },
-          shade: { select: { name: true, description: true } },
+          shade: { select: { name: true, description: true, colorCategory: true } },
           shadeName: true,
           shadeDescription: true,
         },
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
   let totalThan = 0
   let totalCost = 0
   const foldMap = new Map<string, { slips: number; than: number; cost: number; batches: any[] }>()
-  const shadeMap = new Map<string, { than: number; cost: number; count: number }>()
+  const shadeMap = new Map<string, { than: number; cost: number; count: number; colorCategory: string | null }>()
   const qualityMap = new Map<string, { than: number; cost: number; count: number }>()
 
   for (const e of entries) {
@@ -97,6 +97,11 @@ export async function GET(req: NextRequest) {
     }
     const shadeLabel = shadeName + (shadeDesc ? ` — ${shadeDesc}` : '')
 
+    // Colour category lives only on the live shade master (not snapshotted on
+    // the slip), so gate it on a name match to avoid mis-attributing a renamed
+    // master's category to a slip showing the old name.
+    const colorCategory = e.foldBatch?.shade?.name === shadeName ? (e.foldBatch?.shade?.colorCategory ?? null) : null
+
     // Split chemicals into dyes and auxiliary
     const dyes: any[] = []
     const auxiliary: any[] = []
@@ -114,6 +119,7 @@ export async function GET(req: NextRequest) {
       slipNo: e.slipNo,
       date: e.date,
       shade: shadeLabel,
+      colorCategory,
       than: entryThan,
       cost: Math.round(entryCost),
       dyeCost: Math.round(dyeCost),
@@ -123,8 +129,9 @@ export async function GET(req: NextRequest) {
       auxiliary,
     })
 
-    if (!shadeMap.has(shadeLabel)) shadeMap.set(shadeLabel, { than: 0, cost: 0, count: 0 })
+    if (!shadeMap.has(shadeLabel)) shadeMap.set(shadeLabel, { than: 0, cost: 0, count: 0, colorCategory })
     const sg = shadeMap.get(shadeLabel)!
+    if (!sg.colorCategory && colorCategory) sg.colorCategory = colorCategory
     sg.than += entryThan
     sg.cost += entryCost
     sg.count++
@@ -151,6 +158,7 @@ export async function GET(req: NextRequest) {
 
   const shades = Array.from(shadeMap.entries()).map(([shade, d]) => ({
     shade,
+    colorCategory: d.colorCategory,
     than: d.than,
     cost: Math.round(d.cost),
     avgPerThan: d.than > 0 ? Math.round(d.cost / d.than * 100) / 100 : 0,

@@ -30,7 +30,7 @@ export async function GET() {
         machine: { select: { name: true } },
         operator: { select: { name: true } },
         lots: { select: { lotNo: true, than: true } },
-        foldBatch: { select: { batchNo: true, shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
+        foldBatch: { select: { batchNo: true, shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true, colorCategory: true } } } },
       },
       orderBy: { dyeingDoneAt: 'desc' },
     }),
@@ -108,6 +108,9 @@ export async function GET() {
     // Priority: slip > fold batch > master. Slip-level descriptor (typed in
     // dyeing form Step 2) wins so each slip can carry its own colour.
     const shadeDesc = d.shadeDescription || d.foldBatch?.shadeDescription || d.foldBatch?.shade?.description || null
+    // Colour category lives only on the live shade master. Gate on a name match
+    // so a renamed master can't attach its category to a slip's old shade name.
+    const shadeColorCategory = d.foldBatch?.shade?.name && d.foldBatch.shade.name === shadeName ? (d.foldBatch.shade.colorCategory ?? null) : null
 
     // Piece-color jobs use the customer/owner name as the lotNo and don't
     // have grey/OB records — without explicit handling they fall through to
@@ -145,6 +148,7 @@ export async function GET() {
       dyeingDoneAt: d.dyeingDoneAt,
       shadeName,
       shadeDescription: shadeDesc,
+      shadeColorCategory,
       foldNo: d.foldBatch?.foldProgram?.foldNo || null,
       batchNo: d.foldBatch?.batchNo || null,
       lots: adjustedLots,
@@ -186,6 +190,7 @@ export async function GET() {
         dyeingDoneAt: b.greyDate || b.createdAt,
         shadeName: null,
         shadeDescription: null,
+        shadeColorCategory: null,
         foldNo: null,
         batchNo: null,
         lots: [{
@@ -266,6 +271,7 @@ export async function GET() {
         dyeingDoneAt: info.date,
         shadeName: null,
         shadeDescription: null,
+        shadeColorCategory: null,
         foldNo: null,
         batchNo: null,
         lots: [{

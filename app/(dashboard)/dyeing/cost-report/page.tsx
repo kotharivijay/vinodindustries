@@ -6,6 +6,21 @@ import BackButton from '../../BackButton'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
+const shadeCategoryBadge: Record<string, string> = {
+  Light: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400',
+  Medium: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
+  Dark: 'bg-gray-800 dark:bg-gray-900 text-gray-100',
+}
+
+function ShadeCategoryBadge({ category }: { category?: string | null }) {
+  if (!category) return null
+  return (
+    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${shadeCategoryBadge[category] ?? 'bg-gray-100 text-gray-600'}`}>
+      {category}
+    </span>
+  )
+}
+
 interface ChemItem {
   name: string
   quantity: number | null
@@ -19,6 +34,7 @@ interface BatchDetail {
   slipNo: number
   date: string
   shade: string
+  colorCategory?: string | null
   than: number
   cost: number
   dyeCost: number
@@ -39,6 +55,7 @@ interface FoldGroup {
 
 interface ShadeGroup {
   shade: string
+  colorCategory?: string | null
   than: number
   cost: number
   avgPerThan: number
@@ -241,7 +258,7 @@ export default function DyeingCostReportPage() {
                                         {b.batchNo && <span className="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">B{b.batchNo}</span>}
                                         <span className="text-[10px] text-gray-400">{new Date(b.date).toLocaleDateString('en-IN')}</span>
                                       </div>
-                                      <p className="text-[10px] text-purple-500 dark:text-purple-400">{b.shade}</p>
+                                      <p className="text-[10px] text-purple-500 dark:text-purple-400 flex items-center gap-1.5">{b.shade} <ShadeCategoryBadge category={b.colorCategory} /></p>
                                     </div>
                                     <div className="text-right flex items-center gap-2">
                                       <div>
@@ -312,9 +329,10 @@ export default function DyeingCostReportPage() {
                 <div className="divide-y divide-gray-50 dark:divide-gray-700">
                   {report.shades.map((s, i) => (
                     <div key={i} className="px-4 py-2.5 flex items-center justify-between">
-                      <div>
+                      <div className="flex items-center gap-1.5">
                         <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{s.shade}</span>
-                        <span className="text-[10px] text-gray-400 ml-2">{s.count} slips</span>
+                        <ShadeCategoryBadge category={s.colorCategory} />
+                        <span className="text-[10px] text-gray-400 ml-1">{s.count} slips</span>
                       </div>
                       <div className="text-right">
                         <span className="text-xs text-gray-500">{s.than} · {fmtINR(s.cost)}</span>

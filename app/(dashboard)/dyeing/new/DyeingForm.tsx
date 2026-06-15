@@ -25,7 +25,13 @@ interface ChemicalRow {
 
 interface MachineOption { id: number; number: number; name: string; isActive: boolean }
 interface OperatorOption { id: number; name: string; mobileNo: string | null; isActive: boolean }
-interface ShadeWithRecipe { id: number; name: string; description?: string | null; recipeItems: { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }[] }
+interface ShadeWithRecipe { id: number; name: string; description?: string | null; colorCategory?: string | null; recipeItems: { chemicalId: number; quantity: number; chemical: { id: number; name: string; unit: string } }[] }
+
+const shadeCategoryBadge: Record<string, string> = {
+  Light: 'bg-amber-500/20 text-amber-300',
+  Medium: 'bg-orange-500/20 text-orange-300',
+  Dark: 'bg-gray-200 text-gray-800',
+}
 
 // ─── Image Zoom Modal ─────────────────────────────────────────────────────────
 
@@ -1841,6 +1847,7 @@ export default function DyeingForm() {
                             className={`w-full text-left px-3 py-2 text-sm hover:bg-purple-900/30 text-gray-200 ${selectedShadeId === s.id ? 'bg-purple-900/30 font-medium' : ''}`}
                             onClick={e => { e.stopPropagation(); applyShadeRecipe(s) }}>
                             <span className="font-medium">{s.name}</span>
+                            {s.colorCategory && <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ml-1.5 ${shadeCategoryBadge[s.colorCategory] ?? 'bg-gray-600 text-gray-200'}`}>{s.colorCategory}</span>}
                             {s.description && <span className="text-xs text-gray-400 ml-1">— {s.description}</span>}
                             <span className="text-xs text-gray-500 ml-2">({s.recipeItems.length} chemicals)</span>
                           </button>

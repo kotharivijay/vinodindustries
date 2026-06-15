@@ -39,6 +39,7 @@ interface StockEntry {
   date: string
   shadeName: string | null
   shadeDescription: string | null
+  shadeColorCategory: string | null
   foldNo: string | null
   batchNo: number | null
   marka: string | null
@@ -83,6 +84,7 @@ interface FinishLot {
   dyeSlipNo: number | null
   shadeName: string | null
   shadeDesc: string | null
+  shadeColorCategory: string | null
   foldNo: string | null
   dyeSlips: { slipNo: number; shadeName: string | null; shadeDesc: string | null; foldNo: string | null; dyedThan: number }[]
 }
@@ -151,6 +153,21 @@ function shadeDisplay(name: string | null, desc: string | null) {
   return desc ? `${name} \u2014 ${desc}` : name
 }
 
+const shadeCategoryBadgeClass: Record<string, string> = {
+  Light: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400',
+  Medium: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
+  Dark: 'bg-gray-800 dark:bg-gray-900 text-gray-100',
+}
+
+function ShadeCategoryBadge({ category }: { category?: string | null }) {
+  if (!category) return null
+  return (
+    <span className={`inline-block align-middle ml-1 text-[9px] px-1.5 py-0.5 rounded-full font-medium ${shadeCategoryBadgeClass[category] ?? 'bg-gray-200 text-gray-600'}`}>
+      {category}
+    </span>
+  )
+}
+
 /* ── Stock Report grouping types ──────────────────────────────────── */
 
 interface SlipDetail {
@@ -159,6 +176,7 @@ interface SlipDetail {
   date: string
   shadeName: string | null
   shadeDescription: string | null
+  shadeColorCategory: string | null
   foldNo: string | null
   batchNo: number | null
   lots: StockLot[]
@@ -216,6 +234,7 @@ interface PackingLot {
   weight: string | null
   shadeName: string | null
   shadeDescription: string | null
+  shadeColorCategory?: string | null
   // dyeSlipNo — exact source dye slip when the FEL was linked. null for
   // legacy unlinked rows; renderer falls back to foldNo display.
   dyeSlipNo?: number | null
@@ -1843,6 +1862,7 @@ export default function FinishStockPage() {
                                       <span className="text-gray-400 ml-2">Slip {e.slipNo}</span>
                                       {e.foldNo && <span className="text-indigo-500 ml-1">F{e.foldNo}</span>}
                                       {e.shadeName && <span className="text-purple-500 ml-1">{e.shadeName}</span>}
+                                      <ShadeCategoryBadge category={e.shadeColorCategory} />
                                     </div>
                                     <span className="font-bold text-gray-700 dark:text-gray-200">{l.than}</span>
                                   </button>
@@ -2334,7 +2354,7 @@ export default function FinishStockPage() {
                                     <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 mb-1">📁 Fold {foldNo}</div>
                                     {(() => {
                                       type Row = {
-                                        slipNo: number; shade: string;
+                                        slipNo: number; shade: string; shadeColorCategory: string | null;
                                         lotNo: string; allocatedThan: number;
                                         lotId: number; status: string; doneThan: number;
                                       }
@@ -2357,6 +2377,7 @@ export default function FinishStockPage() {
                                             rows.push({
                                               slipNo: slip.slipNo,
                                               shade: [slip.shadeName, slip.shadeDesc].filter(Boolean).join(' — '),
+                                              shadeColorCategory: slip.shadeColorCategory ?? null,
                                               lotNo: al.lotNo,
                                               allocatedThan: al.than,
                                               lotId: fpLot.id,
@@ -2377,7 +2398,7 @@ export default function FinishStockPage() {
                                         if (allocatedFelIds.has(lot.id)) continue
                                         if (allocatedLotsWithoutFel.has(lot.lotNo)) continue
                                         rows.push({
-                                          slipNo: 0, shade: '',
+                                          slipNo: 0, shade: '', shadeColorCategory: null,
                                           lotNo: lot.lotNo, allocatedThan: lot.than,
                                           lotId: lot.id, status: lot.status, doneThan: lot.doneThan,
                                         })
@@ -2391,11 +2412,12 @@ export default function FinishStockPage() {
                                       const slipsSorted = Array.from(slipMap.entries()).sort((a, b) => b[0] - a[0])
                                       return slipsSorted.map(([slipNo, slipRows]) => {
                                         const shade = slipRows[0]?.shade || ''
+                                        const shadeCat = slipRows[0]?.shadeColorCategory ?? null
                                         return (
                                           <div key={slipNo} className="ml-3 mb-1.5">
                                             {slipNo > 0 && (
                                               <div className="text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">
-                                                Slip {slipNo}{shade ? ` — ${shade}` : ''}
+                                                Slip {slipNo}{shade ? ` — ${shade}` : ''}<ShadeCategoryBadge category={shadeCat} />
                                               </div>
                                             )}
                                             <div className="space-y-1">
@@ -2846,7 +2868,7 @@ export default function FinishStockPage() {
                               </Link>
                             ))}
                           </div>
-                          {shade && <p className="text-xs text-gray-600 dark:text-gray-300 mb-0.5">{shade}</p>}
+                          {(shade || e.shadeColorCategory) && <p className="text-xs text-gray-600 dark:text-gray-300 mb-0.5">{shade}<ShadeCategoryBadge category={e.shadeColorCategory} /></p>}
                           {parties && <p className="text-[10px] text-gray-500 dark:text-gray-400">{parties}</p>}
                           {qualities && <p className="text-[10px] text-gray-400 dark:text-gray-500">{qualities}</p>}
                           <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-400 dark:text-gray-500">
@@ -2893,7 +2915,7 @@ export default function FinishStockPage() {
                                   ))}
                                 </div>
                               </td>
-                              <td className="px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300 max-w-[200px] truncate">{shade ?? '\u2014'}</td>
+                              <td className="px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300 max-w-[200px] truncate">{shade ?? '\u2014'}<ShadeCategoryBadge category={e.shadeColorCategory} /></td>
                               <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{parties || '\u2014'}</td>
                               <td className="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{qualities || '\u2014'}</td>
                               <td className="px-3 py-2.5 text-right font-semibold">{e.totalThan}</td>
@@ -3105,7 +3127,7 @@ export default function FinishStockPage() {
                                                       </div>
                                                       <span className="text-xs font-semibold text-gray-600 dark:text-gray-300">{slipQualityThan}</span>
                                                     </div>
-                                                    {shade && <p className="text-xs text-gray-600 dark:text-gray-300 mb-0.5">{shade}</p>}
+                                                    {(shade || slip.shadeColorCategory) && <p className="text-xs text-gray-600 dark:text-gray-300 mb-0.5">{shade}<ShadeCategoryBadge category={slip.shadeColorCategory} /></p>}
                                                     <div className="flex flex-wrap gap-1.5">
                                                       {qLots.map((lot, li) => {
                                                         const lotData: SelectedLot = {
@@ -3246,6 +3268,7 @@ export default function FinishStockPage() {
                                           {s.shadeName && (
                                             <span className="text-indigo-600 dark:text-indigo-400">{shadeDisplay(s.shadeName, s.shadeDescription)}</span>
                                           )}
+                                          <ShadeCategoryBadge category={s.shadeColorCategory} />
                                         </div>
                                         <p className="text-[10px] mt-0.5 truncate text-green-600 dark:text-green-400 font-semibold">{slipParties}</p>
                                       </div>
@@ -3769,6 +3792,7 @@ export default function FinishStockPage() {
                                                     : <span className="text-gray-400 italic">unlinked</span>}
                                                   {fel.foldNo && <span className="text-[9px] text-indigo-500">F{fel.foldNo}</span>}
                                                   {fel.shadeName && <span className="text-[10px] text-gray-500 dark:text-gray-400">{fel.shadeName}</span>}
+                                                  <ShadeCategoryBadge category={fel.shadeColorCategory} />
                                                 </div>
                                                 <span className="text-[11px] font-medium">{received}/{fel.than} {complete ? '✅' : '⏳'}</span>
                                               </div>
@@ -3975,6 +3999,7 @@ export default function FinishStockPage() {
                                                       )}
                                                     </LotLink>
                                                     {shade && <span className="text-[10px] text-gray-400 dark:text-gray-500">{shade}</span>}
+                                                    <ShadeCategoryBadge category={lot.shadeColorCategory} />
                                                   </div>
                                                   {lot.meter != null && (
                                                     <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-2">{Math.round(lot.meter)}m</span>
