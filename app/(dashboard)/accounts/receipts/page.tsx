@@ -398,7 +398,6 @@ export default function ReceiptsPage() {
       doc.text(`${sorted.length} receipts · ${rs(totalReceived)} received · ${new Date().toLocaleDateString('en-IN')}`, MARGIN, MARGIN + 7)
 
       let y = MARGIN + 12
-      let gTotalCash = 0, gTotalTds = 0, gTotalDisc = 0
 
       for (const r of sorted) {
         if (y > 250) { doc.addPage(); y = MARGIN }
@@ -512,9 +511,6 @@ export default function ReceiptsPage() {
         doc.setFontSize(8)
         doc.setFont('helvetica', 'italic')
         const onAcc = Math.max(0, r.amount - r.linkedCash - r.carryOverPriorFy)
-        gTotalCash += r.linkedCash
-        gTotalTds += r.linkedTds
-        gTotalDisc += r.linkedDiscount
         doc.text(
           `Linked ${rs(r.linkedCash)}  ·  TDS ${rs(r.linkedTds)}  ·  disc ${rs(r.linkedDiscount)}` +
           (onAcc > 0.5 ? `  ·  on-account ${rs(onAcc)}` : '  ·  ✓ fully matched'),
@@ -522,27 +518,6 @@ export default function ReceiptsPage() {
         )
         doc.setFont('helvetica', 'normal')
         y += 11
-      }
-
-      // Grand totals
-      if (y > 240) { doc.addPage(); y = MARGIN }
-      doc.setFontSize(11)
-      doc.setFont('helvetica', 'bold')
-      doc.text('Grand Totals', MARGIN, y + 4)
-      const totalsRows: [string, string][] = [
-        ['Receipts', `${sorted.length}`],
-        ['Σ Received', rs(totalReceived)],
-        ['Σ Cash allocated', rs(gTotalCash)],
-        ['Σ TDS', rs(gTotalTds)],
-        ['Σ Discount', rs(gTotalDisc)],
-      ]
-      doc.setFontSize(9)
-      doc.setFont('helvetica', 'normal')
-      let ty = y + 9
-      for (const [k, v] of totalsRows) {
-        doc.text(k, MARGIN, ty)
-        doc.text(v, doc.internal.pageSize.getWidth() - MARGIN, ty, { align: 'right' })
-        ty += 5
       }
 
       const blob = doc.output('blob') as Blob
