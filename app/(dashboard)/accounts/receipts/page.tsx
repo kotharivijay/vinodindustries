@@ -434,7 +434,14 @@ export default function ReceiptsPage() {
           ]],
           body: r.linkedInvoices.map(inv => {
             const isCN = inv.allocatedAmount < 0
-            const orig = inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)
+            // "Original" = the outstanding balance THIS receipt settles
+            // against, not the static bill total. For a bill split across
+            // multiple receipts, earlier receipts have already consumed
+            // part of it, so a later receipt must show the carried-forward
+            // balance. priorPending = bill total − Σ(earlier receipts on
+            // this bill), which equals the full bill total on the first
+            // allocation — correct for both first and subsequent receipts.
+            const orig = inv.priorPending ?? inv.invoiceTotalAmount ?? Math.abs(inv.allocatedAmount)
             const invDate = (inv as any).date
               ? new Date((inv as any).date)
               : null
@@ -994,6 +1001,14 @@ export default function ReceiptsPage() {
                           : days <= 30 ? 'text-emerald-300'
                           : days <= 60 ? 'text-amber-300'
                           : 'text-rose-300'
+                        // html2canvas (V1 PDF snapshot) drops the box's dark
+                        // background unreliably, leaving the light Tailwind
+                        // text invisible on the white card. Force every colour
+                        // via inline hex so the capture always renders them.
+                        const boxDaysHex = days == null ? '#ffffff' : days < 0 ? '#9ca3af'
+                          : days <= 30 ? '#6ee7b7'
+                          : days <= 60 ? '#fcd34d'
+                          : '#fda4af'
 
                         return (
                           <div key={i}>
@@ -1024,28 +1039,29 @@ export default function ReceiptsPage() {
                               </div>
                             )}
                             {showPartialBox && (
-                              <div className="text-[10px] mt-1 mb-1 px-2 py-1 rounded bg-gray-900 text-white font-mono leading-snug inline-block">
+                              <div className="text-[10px] mt-1 mb-1 px-2 py-1 rounded font-mono leading-snug inline-block"
+                                style={{ backgroundColor: '#111827', color: '#ffffff' }}>
                                 {isSubsequent ? (
                                   <>
                                     <div className="flex items-baseline gap-1.5 flex-wrap">
-                                      <span className="text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
+                                      <span style={{ color: '#a5b4fc' }}>{inv.vchType} {inv.vchNumber}</span>
                                     </div>
                                     <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
-                                      <span className="text-rose-300 tabular-nums">prev pending ₹{fmtMoney(priorPending)}</span>
-                                      <span className="text-gray-500">−</span>
-                                      <span className="text-green-300 tabular-nums">bal ₹{fmtMoney(Math.max(0, balAfterMe))}</span>
-                                      <span className="text-gray-500">=</span>
-                                      <span className="text-orange-300 font-bold tabular-nums">used ₹{fmtMoney(myCash)}</span>
+                                      <span className="tabular-nums" style={{ color: '#fda4af' }}>prev pending ₹{fmtMoney(priorPending)}</span>
+                                      <span style={{ color: '#6b7280' }}>−</span>
+                                      <span className="tabular-nums" style={{ color: '#86efac' }}>bal ₹{fmtMoney(Math.max(0, balAfterMe))}</span>
+                                      <span style={{ color: '#6b7280' }}>=</span>
+                                      <span className="font-bold tabular-nums" style={{ color: '#fdba74' }}>used ₹{fmtMoney(myCash)}</span>
                                       {myTds > 0 && (
                                         <>
-                                          <span className="text-gray-500">+</span>
-                                          <span className="text-amber-300 tabular-nums">TDS ₹{fmtMoney(myTds)}</span>
+                                          <span style={{ color: '#6b7280' }}>+</span>
+                                          <span className="tabular-nums" style={{ color: '#fcd34d' }}>TDS ₹{fmtMoney(myTds)}</span>
                                         </>
                                       )}
                                       {myDisc > 0 && (
                                         <>
-                                          <span className="text-gray-500">+</span>
-                                          <span className="text-rose-300 tabular-nums">disc ₹{fmtMoney(myDisc)}</span>
+                                          <span style={{ color: '#6b7280' }}>+</span>
+                                          <span className="tabular-nums" style={{ color: '#fda4af' }}>disc ₹{fmtMoney(myDisc)}</span>
                                         </>
                                       )}
                                     </div>
@@ -1053,23 +1069,23 @@ export default function ReceiptsPage() {
                                 ) : (
                                   <>
                                     <div className="flex items-baseline gap-1.5 flex-wrap">
-                                      <span className="text-indigo-300">{inv.vchType} {inv.vchNumber}</span>
-                                      <span className="text-white tabular-nums">₹{fmtMoney(billTotal)}</span>
-                                      {myTds > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myTds)} TDS</span>}
-                                      {myDisc > 0 && <span className="text-amber-300 tabular-nums">−₹{fmtMoney(myDisc)} disc</span>}
+                                      <span style={{ color: '#a5b4fc' }}>{inv.vchType} {inv.vchNumber}</span>
+                                      <span className="tabular-nums" style={{ color: '#ffffff' }}>₹{fmtMoney(billTotal)}</span>
+                                      {myTds > 0 && <span className="tabular-nums" style={{ color: '#fcd34d' }}>−₹{fmtMoney(myTds)} TDS</span>}
+                                      {myDisc > 0 && <span className="tabular-nums" style={{ color: '#fcd34d' }}>−₹{fmtMoney(myDisc)} disc</span>}
                                     </div>
                                     <div className="flex items-baseline gap-1.5 flex-wrap mt-0.5">
-                                      <span className="text-emerald-300 tabular-nums">₹{fmtMoney(balAfterDed)}</span>
-                                      <span className="text-gray-500">−</span>
-                                      <span className="text-rose-300 tabular-nums">pending ₹{fmtMoney(amtLeftOriginal)}</span>
-                                      <span className="text-gray-500">=</span>
-                                      <span className="text-orange-300 font-bold tabular-nums">used ₹{fmtMoney(myCash)}</span>
+                                      <span className="tabular-nums" style={{ color: '#6ee7b7' }}>₹{fmtMoney(balAfterDed)}</span>
+                                      <span style={{ color: '#6b7280' }}>−</span>
+                                      <span className="tabular-nums" style={{ color: '#fda4af' }}>pending ₹{fmtMoney(amtLeftOriginal)}</span>
+                                      <span style={{ color: '#6b7280' }}>=</span>
+                                      <span className="font-bold tabular-nums" style={{ color: '#fdba74' }}>used ₹{fmtMoney(myCash)}</span>
                                     </div>
                                   </>
                                 )}
                                 {daysLabel && (
                                   <div className="mt-0.5">
-                                    <span className={`${boxDaysColor} font-semibold`} title="Receipt date − invoice date">• {daysLabel}</span>
+                                    <span className="font-semibold" style={{ color: boxDaysHex }} title="Receipt date − invoice date">• {daysLabel}</span>
                                   </div>
                                 )}
                               </div>
