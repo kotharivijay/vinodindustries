@@ -26,6 +26,7 @@ model Party {
   foldBatchLots    FoldBatchLot[]
   finishRecipes    FinishRecipe[]
   finishRecipeTags FinishRecipeTag[]
+  processRateContracts ProcessRateContract[]
 }
 
 model Weaver {
@@ -91,10 +92,82 @@ model GreyEntry {
   // creating a CheckingSlip.
   openedAt      DateTime?
   openedByEmail String?
+  // Process-rate contract this lot was booked under (party-level, versioned).
+  // Stamped at grey-inward save from the active contract; immutable link so
+  // every lot permanently records which rate version it agreed to. Optional —
+  // older lots and parties without a contract carry null.
+  processRateContractId Int?
+  processRateContract   ProcessRateContract? @relation(fields: [processRateContractId], references: [id])
+  // Which process type (within the contract) this lot is booked for — Heatset,
+  // Dyeing flat, Dyeing by-colour, etc. Optional until the operator picks one.
+  processTypeId Int?
+  processType   ProcessType? @relation(fields: [processTypeId], references: [id])
   // stock & tDesp are calculated live — not stored
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   checkingLots  CheckingSlipLot[]
+}
+
+// ─── Process Rate Contracts (party-level dyeing/heatset rate cards) ───────────
+// A rate contract is owned by the PARTY, not the lot. Each contract holds one
+// or more rate lines (one per process type) and is VERSIONED: changing rates
+// supersedes the active contract and inserts version+1 — old versions are kept
+// as history. Grey-inward lots stamp the contract id they were booked under.
+// Invariant: at most one status='active' contract per party (enforced by a
+// partial unique index added in the migration SQL — Prisma can't express it).
+
+// Master of process types. Extensible at runtime (process type "d" — add more
+// in future) instead of a hard-coded enum. rateMode decides the rate shape:
+//   FLAT             → single `rate` (Heatset, Dyeing all-colours-same)
+//   BY_COLOR_CATEGORY → three rates keyed off Shade.colorCategory (Light/Med/Dark)
+model ProcessType {
+  id        Int               @id @default(autoincrement())
+  code      String            @unique // HEATSET | DYEING_FLAT | DYEING_BY_COLOR | …
+  name      String            // "Heat Set", "Dyeing (all colours)", …
+  rateMode  String            // FLAT | BY_COLOR_CATEGORY
+  isActive  Boolean           @default(true)
+  sortOrder Int               @default(0)
+  rateLines ProcessRateLine[]
+  greyEntries GreyEntry[]
+}
+
+model ProcessRateContract {
+  id             Int               @id @default(autoincrement())
+  partyId        Int
+  party          Party             @relation(fields: [partyId], references: [id])
+  version        Int               // 1, 2, 3 … per party
+  status         String            @default("active") // active | superseded | cancelled
+  effectiveFrom  DateTime          // "rate approval date" — validity window starts here
+  // Optional quantity cap: rate valid till this much grey arrives (since
+  // effectiveFrom). Soft warning on grey-inward save when cumulative qty
+  // exceeds it. validityUnit chooses how the cap is measured.
+  validityQty    Decimal?          @db.Decimal(14, 3)
+  validityUnit   String?           // than | kg | mtr
+  notes          String?
+  createdByEmail String?
+  createdAt      DateTime          @default(now())
+  supersededAt   DateTime?
+  lines          ProcessRateLine[]
+  greyEntries    GreyEntry[]
+
+  @@index([partyId, status])
+}
+
+model ProcessRateLine {
+  id            Int                 @id @default(autoincrement())
+  contractId    Int
+  contract      ProcessRateContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  processTypeId Int
+  processType   ProcessType         @relation(fields: [processTypeId], references: [id])
+  unit          String              @default("kg") // per kg | mtr | than — configurable per line
+  // FLAT rate mode
+  rate          Decimal?            @db.Decimal(16, 2)
+  // BY_COLOR_CATEGORY rate mode (keyed off Shade.colorCategory)
+  rateLight     Decimal?            @db.Decimal(16, 2)
+  rateMedium    Decimal?            @db.Decimal(16, 2)
+  rateDark      Decimal?            @db.Decimal(16, 2)
+
+  @@unique([contractId, processTypeId])
 }
 
 // ─── Grey Checking (intermediate review of incoming grey before fold/dye) ─
@@ -658,12 +731,13 @@ model VaultNotification {
 // ─── Fold Program Module ─────────────────────────────────────────────────────
 
 model Shade {
-  id          Int               @id @default(autoincrement())
-  name        String            @unique
-  description String?
-  createdAt   DateTime          @default(now())
-  foldBatches FoldBatch[]
-  recipeItems ShadeRecipeItem[]
+  id             Int               @id @default(autoincrement())
+  name           String            @unique
+  description    String?
+  colorCategory  String? // Light | Medium | Dark
+  createdAt      DateTime          @default(now())
+  foldBatches    FoldBatch[]
+  recipeItems    ShadeRecipeItem[]
 }
 
 model ShadeRecipeItem {

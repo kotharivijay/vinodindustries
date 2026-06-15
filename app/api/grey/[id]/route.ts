@@ -47,6 +47,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       lrNo: data.lrNo || null,
       lotNo: normalizeLotNo(data.lotNo) ?? '',
       marka: data.marka != null ? (data.marka.trim() || null) : undefined,
+      // Process-rate link — only touched when the key is present in the body
+      // (the edit form always sends it), so older callers stay unaffected.
+      processRateContractId: 'processRateContractId' in data
+        ? (data.processRateContractId ? parseInt(data.processRateContractId) : null) : undefined,
+      processTypeId: 'processTypeId' in data
+        ? (data.processTypeId ? parseInt(data.processTypeId) : null) : undefined,
     },
     include: { party: true, quality: true, transport: true, weaver: true },
   })

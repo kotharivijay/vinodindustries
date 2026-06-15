@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ComboSelect from '@/components/ComboSelect'
+import ProcessRatePicker, { type ProcessRateValue } from '@/components/ProcessRatePicker'
 
 interface Option { id: number; name: string; tag?: string | null; lotPrefixes?: string[] | null }
 interface Masters { parties: Option[]; qualities: Option[]; weavers: Option[]; transports: Option[] }
@@ -27,6 +28,8 @@ export default function GreyForm() {
   }
   const [form, setForm] = useState(emptyForm)
   const [prefillApplied, setPrefillApplied] = useState(false)
+  // Process-rate contract link for this lot (set via the pill on party-select).
+  const [processRate, setProcessRate] = useState<ProcessRateValue>({ contractId: null, processTypeId: null })
 
   useEffect(() => {
     const load = async (type: string) => {
@@ -130,6 +133,7 @@ export default function GreyForm() {
     setPrefillApplied(true)
     setLotNoTouched(false)
     setSelectedPrefix(null)
+    setProcessRate({ contractId: null, processTypeId: null })
   }
 
   async function addMaster(type: string, name: string): Promise<Option> {
@@ -170,10 +174,28 @@ export default function GreyForm() {
       setError('Date, Challan No, Than, and Lot No are required.')
       return
     }
+
+    // Process-rate quantity-validity warning: if the party's active rate is
+    // quantity-capped and this entry tips the cumulative grey inward past the
+    // cap, warn before saving (the rate may need re-approval). Non-blocking.
+    if (processRate.contractId) {
+      try {
+        const u = await fetch(`/api/process-rates/qty-usage?partyId=${form.partyId}&contractId=${processRate.contractId}&extraThan=${parseInt(form.than) || 0}`).then(r => r.json())
+        if (u?.exceeded) {
+          const ok = window.confirm(
+            `⚠ Process-rate quantity cap reached for this party.\n\n` +
+            `Approved till ${u.validityQty} ${u.validityUnit}; with this entry the total is ${u.used} ${u.validityUnit}.\n\n` +
+            `The rate may need re-approval. Save anyway?`,
+          )
+          if (!ok) return
+        }
+      } catch { /* don't block save on a usage-check failure */ }
+    }
+
     setSaving(true); setError('')
     const res = await fetch('/api/grey', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, processRateContractId: processRate.contractId, processTypeId: processRate.processTypeId }),
     })
     if (res.ok) {
       router.push('/grey')
@@ -206,9 +228,13 @@ export default function GreyForm() {
             <input type="number" className={inp} value={form.challanNo} onChange={e => set('challanNo', e.target.value)} required />
           </Field>
 
-          <Field label="A-Party Name *">
+          <div>
+            <div className="flex items-center justify-between mb-1 gap-2">
+              <label className="block text-xs font-medium text-gray-600">A-Party Name *</label>
+              <ProcessRatePicker partyId={form.partyId} value={processRate} onChange={setProcessRate} />
+            </div>
             <ComboSelect options={masters.parties} value={form.partyId} onChange={id => set('partyId', id)} onAddNew={n => addMaster('parties', n)} placeholder="Select party..." />
-          </Field>
+          </div>
           <Field label="A-Quality *">
             <ComboSelect options={masters.qualities} value={form.qualityId} onChange={id => set('qualityId', id)} onAddNew={n => addMaster('qualities', n)} placeholder="Select quality..." />
           </Field>

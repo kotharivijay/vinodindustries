@@ -184,6 +184,12 @@ export async function POST(req: NextRequest) {
       lrNo: data.lrNo || undefined,
       lotNo: normalizeLotNo(data.lotNo) ?? '',
       marka: data.marka?.trim() || undefined,
+      // Process-rate contract this lot is booked under (stamped from the active
+      // party contract via the Process Rate pill). Both optional.
+      processRateContractId: data.processRateContractId != null && data.processRateContractId !== ''
+        ? parseInt(data.processRateContractId) : undefined,
+      processTypeId: data.processTypeId != null && data.processTypeId !== ''
+        ? parseInt(data.processTypeId) : undefined,
     },
     include: { party: true, quality: true, transport: true, weaver: true },
   })

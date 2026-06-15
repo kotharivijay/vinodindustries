@@ -44,6 +44,7 @@ const ksiNavGroups = [
       { href: '/masters/machines', label: 'Machine Master', icon: '⚙️' },
       { href: '/masters/operators', label: 'Operator Master', icon: '👷' },
       { href: '/masters/processes', label: 'Process Master', icon: '🔬' },
+      { href: '/masters/process-rates', label: 'Process Rates', icon: '💱' },
       { href: '/masters/finish-recipe', label: 'Finish Recipe', icon: '📋' },
     ],
   },
@@ -208,6 +209,7 @@ function NavRow({
   onNavigate,
   setFlyout,
   pinControl,
+  pinAlwaysVisible,
   rowRef,
 }: {
   link: NavLink
@@ -219,6 +221,7 @@ function NavRow({
   onNavigate: () => void
   setFlyout?: (f: Flyout | null) => void
   pinControl?: { pinned: boolean; toggle: () => void } | null
+  pinAlwaysVisible?: boolean
   rowRef?: Ref<HTMLAnchorElement>
 }) {
   const layout = expanded ? 'gap-3 px-3 py-2.5' : 'justify-center py-2.5'
@@ -251,7 +254,11 @@ function NavRow({
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); pinControl.toggle() }}
           title={pinControl.pinned ? 'Unpin' : 'Pin to top'}
           className={`flex-shrink-0 text-[13px] cursor-pointer transition-opacity ${
-            pinControl.pinned ? 'opacity-100' : 'opacity-0 group-hover/navrow:opacity-50 hover:!opacity-100'
+            pinControl.pinned
+              ? 'opacity-100'
+              : pinAlwaysVisible
+              ? 'opacity-50 hover:opacity-100'
+              : 'opacity-0 group-hover/navrow:opacity-50 hover:!opacity-100'
           }`}
         >
           {pinControl.pinned ? '⭐' : '☆'}
@@ -680,6 +687,7 @@ function SidebarContent({
                   onNavigate={onNavigate}
                   setFlyout={!expanded ? setFlyout : undefined}
                   pinControl={expanded ? { pinned: pinned.includes(l.href), toggle: () => togglePin(l.href) } : undefined}
+                  pinAlwaysVisible={!desktop}
                   rowRef={usePill ? activeRowRef : undefined}
                 />
               )
@@ -765,6 +773,7 @@ function SidebarContent({
                         onNavigate={onNavigate}
                         setFlyout={!expanded ? setFlyout : undefined}
                         pinControl={expanded ? { pinned: pinned.includes(l.href), toggle: () => togglePin(l.href) } : undefined}
+                        pinAlwaysVisible={!desktop}
                         rowRef={usePill ? activeRowRef : undefined}
                       />
                     )
