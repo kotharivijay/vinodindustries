@@ -136,21 +136,12 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
   const [open, setOpen] = useState(c.status === 'active')
   const [busy, setBusy] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
+  const [unlinkOpen, setUnlinkOpen] = useState(false)
   const { mutate: globalMutate } = useSWRConfig()
   // Revalidate every process-rate cache (candidate lists + usage bars) so a
   // just-(un)linked lot can't linger in another version's modal and the bars
   // recompute their linked totals.
   const refreshAll = () => globalMutate((key: any) => typeof key === 'string' && key.includes('/process-rates'))
-
-  async function unlinkLot(lotId: number) {
-    if (!confirm('Unlink this lot from the rate? It returns to the link pool.')) return
-    const res = await fetch(`/api/process-rates/${c.id}/lots`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ unlinkIds: [lotId] }),
-    })
-    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Unlink failed'); return }
-    onChanged(); refreshAll()
-  }
 
   async function del() {
     if (!confirm(`Delete v${c.version} for ${c.party.name}? This cannot be undone.`)) return
@@ -226,23 +217,25 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
 
           {/* Linked lot cards */}
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">Linked lots ({c.greyEntries.length})</p>
+            <div className="flex items-center justify-between mb-1.5 gap-2">
+              <p className="text-[10px] uppercase tracking-wide text-gray-400">Linked lots ({c.greyEntries.length})</p>
+              {c.greyEntries.length > 0 && (
+                <button onClick={() => setUnlinkOpen(true)}
+                  className="text-[10px] font-semibold text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded px-1.5 py-0.5 hover:bg-rose-50 dark:hover:bg-rose-900/20 whitespace-nowrap">
+                  ⛓️‍💥 Unlink
+                </button>
+              )}
+            </div>
             {c.greyEntries.length === 0 ? (
               <p className="text-[11px] text-gray-400">No grey-inward lots linked to this version yet.</p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {c.greyEntries.map(lot => (
-                  <div key={lot.id} className="relative group">
-                    <LotLink lotNo={lot.lotNo} storageKey={PR_VIEW_KEY}
-                      className="block border border-gray-200 dark:border-gray-600 rounded-lg pl-2.5 pr-6 py-1.5 bg-gray-50 dark:bg-gray-700/40 hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition">
-                      <div className="text-[12px] font-mono font-bold text-indigo-700 dark:text-indigo-300 hover:underline">{lot.lotNo}</div>
-                      <div className="text-[9px] text-gray-400">{lot.than} than · {fmtDate(lot.date)}</div>
-                    </LotLink>
-                    <button onClick={() => unlinkLot(lot.id)} title="Unlink this lot"
-                      className="absolute top-1 right-1 w-4 h-4 flex items-center justify-center rounded text-rose-400 hover:text-white hover:bg-rose-500 text-[11px] leading-none opacity-0 group-hover:opacity-100 transition">
-                      ×
-                    </button>
-                  </div>
+                  <LotLink key={lot.id} lotNo={lot.lotNo} storageKey={PR_VIEW_KEY}
+                    className="block border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 bg-gray-50 dark:bg-gray-700/40 hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition">
+                    <div className="text-[12px] font-mono font-bold text-indigo-700 dark:text-indigo-300 hover:underline">{lot.lotNo}</div>
+                    <div className="text-[9px] text-gray-400">{lot.than} than · {fmtDate(lot.date)}</div>
+                  </LotLink>
                 ))}
               </div>
             )}
@@ -254,6 +247,76 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
         <LinkLotsModal contract={c} onClose={() => setLinkOpen(false)}
           onLinked={() => { setLinkOpen(false); onChanged() }} />
       )}
+      {unlinkOpen && (
+        <UnlinkLotsModal contract={c} onClose={() => setUnlinkOpen(false)}
+          onUnlinked={() => { setUnlinkOpen(false); onChanged(); refreshAll() }} />
+      )}
+    </div>
+  )
+}
+
+// ── Unlink linked lots from this contract (multi-select) ────────────────────
+function UnlinkLotsModal({ contract: c, onClose, onUnlinked }: { contract: Contract; onClose: () => void; onUnlinked: () => void }) {
+  const lots = c.greyEntries // already the contract's linked lots
+  const [sel, setSel] = useState<Set<number>>(new Set())
+  const [saving, setSaving] = useState(false)
+
+  const allChecked = lots.length > 0 && sel.size === lots.length
+  const toggle = (id: number) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleAll = () => setSel(allChecked ? new Set() : new Set(lots.map(l => l.id)))
+
+  async function unlink() {
+    if (!sel.size) return
+    setSaving(true)
+    const res = await fetch(`/api/process-rates/${c.id}/lots`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ unlinkIds: [...sel] }),
+    })
+    setSaving(false)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Unlink failed'); return }
+    onUnlinked()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-slate-900/45" />
+      <div onClick={e => e.stopPropagation()}
+        className="relative w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[88vh] flex flex-col">
+        <div className="sm:hidden w-9 h-1 bg-slate-300 rounded-full mx-auto mt-2 mb-1" />
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+          <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Unlink lots — {c.party.name} · v{c.version}</span>
+          {lots.length > 0 && (
+            <button onClick={toggleAll} className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+              {allChecked ? 'Clear all' : 'Select all'}
+            </button>
+          )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+          {lots.length === 0 ? (
+            <p className="text-gray-400 text-sm px-1 py-4">No lots linked to this contract.</p>
+          ) : lots.map(lot => {
+            const on = sel.has(lot.id)
+            return (
+              <button key={lot.id} type="button" onClick={() => toggle(lot.id)}
+                className={`w-full flex items-center gap-3 text-left border rounded-lg px-3 py-2 transition ${
+                  on ? 'border-rose-400 ring-1 ring-rose-300 bg-rose-50/50 dark:bg-rose-900/20' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                }`}>
+                <span className={`w-4 h-4 rounded border flex items-center justify-center text-[10px] ${on ? 'bg-rose-600 border-rose-600 text-white' : 'border-gray-300 dark:border-gray-500'}`}>{on ? '✓' : ''}</span>
+                <span className="font-mono font-bold text-[13px] text-gray-700 dark:text-gray-200">{lot.lotNo}</span>
+                <span className="text-[11px] text-gray-400 ml-auto">{lot.than} than · {fmtDate(lot.date)}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="flex gap-2 p-3 border-t border-gray-100 dark:border-gray-700">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">Cancel</button>
+          <button onClick={unlink} disabled={saving || sel.size === 0} className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50">
+            {saving ? 'Unlinking…' : `Unlink ${sel.size || ''} lot${sel.size === 1 ? '' : 's'}`.trim()}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
