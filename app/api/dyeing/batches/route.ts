@@ -32,6 +32,10 @@ export async function GET() {
     const programs = await prisma.foldProgram.findMany({
       include: {
         batches: {
+          // Cancelled batches are no longer pending — their lots have
+          // already returned to the unallocated pool, so a fold whose
+          // batches are all cancelled must drop off this pending list.
+          where: { cancelled: false },
           orderBy: { batchNo: 'asc' },
           include: {
             lots: true,
