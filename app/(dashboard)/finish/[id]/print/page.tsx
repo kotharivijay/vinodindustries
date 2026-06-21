@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import { buildLotInfoMap } from '@/lib/lot-info'
 import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
+import { summariseCategoriesByLot } from '@/lib/finish-category-summary'
 import PrintActions from './PrintActions'
 
 export default async function FinishPrintPage({ params }: { params: Promise<{ id: string }> }) {
@@ -125,6 +126,10 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
       shades: Array.from(catMap.get(c.key)!.shades.values()).sort((a, b) => b.than - a.than),
     }))
 
+  // Flat colour-category → lots (with than). Same allocator output, grouped by
+  // lot instead of shade — the shop-floor wants per-lot detail per colour.
+  const categoryLotSummary = summariseCategoriesByLot(foldGroups)
+
   const chemicals = (entry.chemicals || []).map((c: any) => ({
     name: c.name || c.chemical?.name || '',
     quantity: c.quantity,
@@ -142,6 +147,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
     foldGroups,
     lotSummary,
     categorySummary,
+    categoryLotSummary,
     totalThan,
     totalMeter: entry.meter,
     chemicals,
@@ -247,6 +253,39 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
                       <td className="py-1 px-3 font-medium">{s.shadeName || '—'}</td>
                       <td className="py-1 px-3 text-gray-700">{s.shadeDesc || '—'}</td>
                       <td className="py-1 px-3 text-right">{s.than}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Colour Category — Lot Detail: flat category → lots (with than). */}
+      {categoryLotSummary.length > 0 && (
+        <div className="mb-4 border border-gray-300 rounded">
+          <h3 className="text-sm font-bold uppercase tracking-wide px-3 py-1.5 border-b border-gray-300 bg-gray-50">
+            Colour Category — Lot Detail
+          </h3>
+          {categoryLotSummary.map(cat => (
+            <div key={cat.label} className="border-b border-gray-300 last:border-b-0">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-gray-50/60 font-bold text-sm">
+                <span>Total {cat.label} Colour</span>
+                <span>{cat.total} Than</span>
+              </div>
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-y border-gray-200 text-gray-600">
+                    <th className="text-left py-1 px-3 font-semibold">Lot No</th>
+                    <th className="text-right py-1 px-3 font-semibold w-24">Than</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cat.lots.map((l, i) => (
+                    <tr key={i} className="border-b border-gray-100 last:border-b-0">
+                      <td className="py-1 px-3 font-medium">{l.lotNo}</td>
+                      <td className="py-1 px-3 text-right">{l.than}</td>
                     </tr>
                   ))}
                 </tbody>

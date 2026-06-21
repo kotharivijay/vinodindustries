@@ -2,8 +2,10 @@ import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import { buildLotInfoMap } from '@/lib/lot-info'
 import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
+import { summariseCategoriesByLot } from '@/lib/finish-category-summary'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
+import ColourCategoryLotSummary from './ColourCategoryLotSummary'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,7 +43,7 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
     select: {
       slipNo: true, shadeName: true,
       lots: { select: { lotNo: true, than: true } },
-      foldBatch: { select: { foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true } } } },
+      foldBatch: { select: { foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true, colorCategory: true } } } },
     },
     orderBy: { slipNo: 'desc' },
   })
@@ -54,6 +56,9 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
       foldBatch: de.foldBatch ?? null,
     })),
   )
+
+  // Flat colour-category → lots (with than) — reuses the allocator output above.
+  const categoryLotSummary = summariseCategoriesByLot(allocatedFolds)
 
   // FP lot status (done / partial / pending) is keyed on lotNo regardless of
   // which dyeing slip it came from, so look it up once per lotNo.
@@ -201,6 +206,9 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
           </div>
         ))}
       </div>
+
+      {/* Colour Category — Lot Detail (flat: category → lots with than) */}
+      <ColourCategoryLotSummary summary={categoryLotSummary} />
 
       {/* 100 Ltr Recipe */}
       {chemicals.length > 0 && (

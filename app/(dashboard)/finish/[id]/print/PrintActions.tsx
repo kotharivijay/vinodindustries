@@ -21,6 +21,7 @@ interface PrintData {
   qualityName: string | null
   foldGroups: FoldGroup[]
   lotSummary: { lotNo: string; than: number }[]
+  categoryLotSummary: { label: string; total: number; lots: { lotNo: string; than: number }[] }[]
   totalThan: number
   totalMeter: number | null
   chemicals: { name: string; quantity: number | null; unit: string }[]
@@ -49,6 +50,17 @@ function buildWhatsAppText(data: PrintData): string {
       lines.push(`  ${l.lotNo.padEnd(longest)}  ${l.than}`)
     }
     lines.push(`  ${'Total'.padEnd(longest)}  ${data.totalThan}`)
+  }
+
+  // Colour Category — Lot Detail
+  if (data.categoryLotSummary && data.categoryLotSummary.length > 0) {
+    lines.push('')
+    lines.push('🎨 *Colour Category — Lot Detail*')
+    for (const cat of data.categoryLotSummary) {
+      lines.push(`*${cat.label}: ${cat.total} than*`)
+      const longest = cat.lots.reduce((m, l) => Math.max(m, l.lotNo.length), 0)
+      for (const l of cat.lots) lines.push(`  ${l.lotNo.padEnd(longest)}  ${l.than}`)
+    }
   }
 
   for (const fg of data.foldGroups) {
@@ -120,6 +132,16 @@ function buildReceipt(data: PrintData, width = 32): string {
       lines.push(kv(`  ${l.lotNo}`, `${l.than}T`))
     }
     lines.push(kv('  Total', `${data.totalThan}T`))
+    lines.push(div())
+  }
+
+  if (data.categoryLotSummary && data.categoryLotSummary.length > 0) {
+    lines.push('COLOUR CATEGORY - LOTS')
+    lines.push(div())
+    for (const cat of data.categoryLotSummary) {
+      lines.push(kv(`${cat.label}`, `${cat.total}T`))
+      for (const l of cat.lots) lines.push(kv(`  ${l.lotNo}`, `${l.than}T`))
+    }
     lines.push(div())
   }
 
