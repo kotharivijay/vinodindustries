@@ -1,15 +1,17 @@
 /**
- * Allocate this Finish Program's per-lot than counts back to the dyeing
- * slips they came from. There's no FK linking FinishEntryLot → DyeingEntryLot,
- * so we infer: walk dyeing entries newest → oldest, take each slip's lot than
- * as long as it fits in the FP's remaining allocation for that lot. Skip
- * slips that are too big (a smaller, exact-match slip may come later). After
- * a "whole-take" pass, any unsatisfied remainder is filled by partial-capping.
+ * Allocate this Finish Program's per-lot than counts back to the dyeing slips
+ * they came from — using ONLY the explicit FinishEntryLot.dyeingEntryId link
+ * (Pass 0). The old fit-by-than heuristic has been removed: we never guess a
+ * slip for an unlinked row, because that produced a different distribution than
+ * the real links (e.g. wrong colour-category splits between screen and print).
  *
- * The resulting hierarchy:
- *   - sums to the FP's totalThan by construction (no over-counting)
- *   - shows each contributing dyeing slip with its real lot than
- *   - skips dyeing slips for the same lot that went to a different FP
+ * Any than without a dyeingEntryId is parked in a single "Unlinked" bucket
+ * (foldNo "No Fold", slipNo 0, no shade / colour category) so it stays visible
+ * and the totals still reconcile with the FP's lot summary — it is simply not
+ * attributed to a real slip. Finish programs created since the dyeingEntryId
+ * link existed are fully linked and never hit this bucket.
+ *
+ * The resulting hierarchy still sums to the FP's totalThan by construction.
  */
 
 interface DyeingEntryLike {
@@ -133,52 +135,22 @@ export function allocateFpToDyeingSlips(
     }
   }
 
-  // Pass 1 — take whole slips that fit cleanly
-  for (const de of entries) {
-    for (const dl of de.lots || []) {
-      const k = dl.lotNo.toLowerCase()
-      const rem = remaining.get(k) ?? 0
-      if (rem <= 0) continue
-      const slipThan = Number(dl.than) || 0
-      if (slipThan <= 0 || slipThan > rem) continue
-      let bucket = allocs.get(de.slipNo)
-      if (!bucket) {
-        bucket = { ...metaOf(de), lots: new Map() }
-        allocs.set(de.slipNo, bucket)
-      }
-      const cur = bucket.lots.get(k)
-      bucket.lots.set(k, { than: (cur?.than ?? 0) + slipThan, fpLotId: cur?.fpLotId })
-      remaining.set(k, rem - slipThan)
-      // Track original casing in case the FP's casing was different
-      if (!originalCasing.has(k)) originalCasing.set(k, dl.lotNo)
-    }
-  }
-
-  // Pass 2 — partial fill for anything still short. Walk newest → oldest;
-  // take min(remaining, slip's leftover than) and stop when satisfied.
+  // NO HEURISTIC (by request): we never GUESS which dyeing slip an unlinked FEL
+  // came from. Anything not directly linked via dyeingEntryId (Pass 0 above) is
+  // parked in a single "Unlinked" bucket (slipNo 0) so it stays visible and the
+  // totals reconcile — but it is NOT attributed to a real slip / shade / colour
+  // category. Only finish programs whose FELs predate the dyeingEntryId link
+  // land here; everything created since is fully Pass-0 linked.
+  const UNLINKED_SLIP = 0
   for (const [k, rem] of remaining) {
     if (rem <= 0) continue
-    let stillNeeded = rem
-    for (const de of entries) {
-      if (stillNeeded <= 0) break
-      const dl = (de.lots || []).find(l => l.lotNo.toLowerCase() === k)
-      if (!dl) continue
-      const dyeingTotal = Number(dl.than) || 0
-      if (dyeingTotal <= 0) continue
-      const alreadyHere = allocs.get(de.slipNo)?.lots.get(k)?.than ?? 0
-      const leftover = dyeingTotal - alreadyHere
-      if (leftover <= 0) continue
-      const take = Math.min(leftover, stillNeeded)
-      let bucket = allocs.get(de.slipNo)
-      if (!bucket) {
-        bucket = { ...metaOf(de), lots: new Map() }
-        allocs.set(de.slipNo, bucket)
-      }
-      const cur = bucket.lots.get(k)
-      bucket.lots.set(k, { than: alreadyHere + take, fpLotId: cur?.fpLotId })
-      stillNeeded -= take
+    let bucket = allocs.get(UNLINKED_SLIP)
+    if (!bucket) {
+      bucket = { foldNo: 'No Fold', shadeName: null, shadeDesc: null, shadeColorCategory: null, lots: new Map() }
+      allocs.set(UNLINKED_SLIP, bucket)
     }
-    remaining.set(k, stillNeeded)
+    const cur = bucket.lots.get(k)
+    bucket.lots.set(k, { than: (cur?.than ?? 0) + rem, fpLotId: cur?.fpLotId })
   }
 
   // Materialise into fold-grouped output, ordering slips desc within a fold

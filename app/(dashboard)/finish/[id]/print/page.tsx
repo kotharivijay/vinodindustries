@@ -314,7 +314,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
               {fg.slips.map((slip, si) => (
                 slip.lots.map((lot, li) => (
                   <tr key={`${si}-${li}`} className="border-b border-gray-200">
-                    <td className="py-1 font-medium">{li === 0 ? slip.slipNo : ''}</td>
+                    <td className="py-1 font-medium">{li === 0 ? (slip.slipNo > 0 ? slip.slipNo : 'Unlinked') : ''}</td>
                     <td className="py-1 text-gray-700">
                       {li === 0 ? (
                         <>
