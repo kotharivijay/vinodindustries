@@ -10,7 +10,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 function matchesSearch(l: LotStockItem, query: string): boolean {
   const tokens = query.toLowerCase().split(/[\s,]+/).filter(Boolean)
   if (tokens.length === 0) return true
-  const fields = [l.lotNo, l.party, l.quality].map(s => (s ?? '').toLowerCase())
+  const fields = [l.lotNo, l.party, l.quality, l.markas].map(s => (s ?? '').toLowerCase())
   return tokens.every(token => fields.some(field => field.includes(token)))
 }
 
@@ -21,6 +21,7 @@ interface LotStockItem {
   stock: number
   manuallyUsed: number
   foldAvailable: number
+  markas?: string
 }
 
 interface PartyStock {
@@ -809,7 +810,7 @@ export default function NewFoldPage() {
                       {/* Stock info below trigger */}
                       {stockInfo && (
                         <p className="text-[10px] text-gray-400 mt-0.5">
-                          {stockInfo.party} · {stockInfo.quality} · Balance: {stockInfo.stock} · Avail: <span className="text-emerald-600 font-medium">{stockInfo.foldAvailable}</span>
+                          {stockInfo.party} · {stockInfo.quality}{stockInfo.markas && <> · <span className="text-indigo-500 dark:text-indigo-400 font-medium">{stockInfo.markas}</span></>} · Balance: {stockInfo.stock} · Avail: <span className="text-emerald-600 font-medium">{stockInfo.foldAvailable}</span>
                         </p>
                       )}
 
@@ -849,7 +850,10 @@ export default function NewFoldPage() {
                                   className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between ${lot.lotNo === l.lotNo ? 'bg-indigo-50 dark:bg-indigo-900/30 font-medium' : ''}`}
                                   onClick={e => { e.stopPropagation(); selectLot(batchIdx, lotIdx, l.lotNo) }}
                                 >
-                                  <span className="font-medium text-gray-800 dark:text-gray-200">{l.lotNo}</span>
+                                  <span className="font-medium text-gray-800 dark:text-gray-200">
+                                    {l.lotNo}
+                                    {l.markas && <span className="ml-2 text-xs font-normal text-indigo-500 dark:text-indigo-400">{l.markas}</span>}
+                                  </span>
                                   <span className="text-xs text-gray-400">{l.party} · Avail: {l.foldAvailable}</span>
                                 </button>
                               ))}
@@ -1017,7 +1021,10 @@ function LotBottomSheet({ availableLots, currentLotNo, onSelect, onClose }: {
               onClick={() => { onSelect(l.lotNo); onClose() }}
             >
               <div>
-                <p className="font-semibold text-gray-800 dark:text-gray-100 text-base">{l.lotNo}</p>
+                <p className="font-semibold text-gray-800 dark:text-gray-100 text-base">
+                  {l.lotNo}
+                  {l.markas && <span className="ml-2 text-sm font-normal text-indigo-500 dark:text-indigo-400">{l.markas}</span>}
+                </p>
                 <p className="text-xs text-gray-400 mt-0.5">{l.party} · {l.quality}</p>
               </div>
               <div className="text-right shrink-0 ml-3">
