@@ -57,7 +57,7 @@ interface SavedSlip {
     jetNo: number | null
     jetSerial: number | null
     foldBatch: {
-      lots: { lotNo: string; than: number }[]
+      lots: { lotNo: string; than: number; marka?: string | null }[]
       // Live fields on the FoldBatch row — may have been edited after the
       // BM slip was printed, so they shadow the snapshots in the detail
       // view per the same priority Dyeing pages follow.

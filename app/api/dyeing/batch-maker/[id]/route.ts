@@ -41,6 +41,31 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     },
   })
   if (!slip) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // FoldBatchLot carries no marka — it lives on GreyEntry, keyed by lotNo.
+  // Attach a comma-joined `marka` per lot so the print shows the grey marka
+  // under each lot line (matches /api/dyeing/batch-maker GET enrichment).
+  const lotNos = new Set<string>()
+  for (const b of slip.batches ?? [])
+    for (const l of b.foldBatch?.lots ?? [])
+      if (l.lotNo) lotNos.add(l.lotNo)
+  if (lotNos.size > 0) {
+    const greyMeta = await prisma.greyEntry.findMany({
+      where: { lotNo: { in: Array.from(lotNos) } },
+      select: { lotNo: true, marka: true },
+    })
+    const markaMap = new Map<string, Set<string>>()
+    for (const g of greyMeta) {
+      if (!g.marka) continue
+      const k = g.lotNo.toLowerCase()
+      if (!markaMap.has(k)) markaMap.set(k, new Set())
+      markaMap.get(k)!.add(g.marka)
+    }
+    for (const b of slip.batches ?? [])
+      for (const l of b.foldBatch?.lots ?? [])
+        l.marka = Array.from(markaMap.get((l.lotNo || '').toLowerCase()) || []).join(', ') || null
+  }
+
   return NextResponse.json(slip)
 }
 

@@ -7,6 +7,37 @@ import { getCurrentFy } from '@/lib/inv/series'
 
 const db = prisma as any
 
+// FoldBatchLot rows carry no marka — it lives on GreyEntry, keyed by lotNo.
+// Enrich every lot in the given slip(s) with a comma-joined `marka` string so
+// the Batch Making Slip print can show the grey marka under each lot line.
+// Mutates in place (matches the comma-joined, lowercase-keyed convention in
+// /api/stock).
+async function attachLotMarkas(slips: any[]) {
+  const lotNos = new Set<string>()
+  for (const s of slips)
+    for (const b of s.batches ?? [])
+      for (const l of b.foldBatch?.lots ?? [])
+        if (l.lotNo) lotNos.add(l.lotNo)
+  if (lotNos.size === 0) return
+
+  const greyMeta = await prisma.greyEntry.findMany({
+    where: { lotNo: { in: Array.from(lotNos) } },
+    select: { lotNo: true, marka: true },
+  })
+  const markaMap = new Map<string, Set<string>>()
+  for (const g of greyMeta) {
+    if (!g.marka) continue
+    const k = g.lotNo.toLowerCase()
+    if (!markaMap.has(k)) markaMap.set(k, new Set())
+    markaMap.get(k)!.add(g.marka)
+  }
+
+  for (const s of slips)
+    for (const b of s.batches ?? [])
+      for (const l of b.foldBatch?.lots ?? [])
+        l.marka = Array.from(markaMap.get((l.lotNo || '').toLowerCase()) || []).join(', ') || null
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -27,6 +58,7 @@ export async function GET() {
       _count: { select: { batches: true } },
     },
   })
+  await attachLotMarkas(slips)
   return NextResponse.json(slips)
 }
 
@@ -174,6 +206,7 @@ export async function POST(req: Request) {
       })
     })
 
+    await attachLotMarkas([slip])
     return NextResponse.json(slip)
   } catch (err: any) {
     // Partial unique index trips here when two saves race on the same batch

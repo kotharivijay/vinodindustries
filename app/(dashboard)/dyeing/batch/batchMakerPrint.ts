@@ -12,7 +12,7 @@ interface SavedSlipBatch {
   jetNo?: number | null
   jetSerial?: number | null
   foldBatch: {
-    lots: { lotNo: string; than: number }[]
+    lots: { lotNo: string; than: number; marka?: string | null }[]
   }
 }
 
@@ -69,6 +69,8 @@ export function buildBatchMakerReceipt(slip: SavedSlip, width = 32): string {
       const right = `${l.than} than`
       const pad = Math.max(1, width - left.length - right.length)
       lines.push(left + ' '.repeat(pad) + right)
+      // Per-lot grey marka on an indented second line (e.g. VISHAL-333).
+      if (l.marka) lines.push(`        > ${l.marka}`)
     }
     const w = Number(b.totalWeightSnapshot)
     lines.push(`  Total: ${b.totalThanSnapshot} than · ${w.toFixed(1)} kg`)
