@@ -76,7 +76,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json(program)
 }
 
-// PUT /api/fold/[id] — full update (replace batches+lots)
+// PUT /api/fold/[id] — update header + batches. Additive: batches locked by a
+// dyeing slip or a confirmed Batch Making Slip are preserved untouched; only
+// free batches are replaced and newly-added batches are created.
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -95,77 +97,94 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     })
     if (existing) return NextResponse.json({ error: 'Fold No already exists' }, { status: 409 })
 
-    // Guard: deleting batches that have dyeing slips would silently null
-    // out DyeingEntry.foldBatchId (Prisma's default ON DELETE for optional
-    // relations is SET NULL) → orphan slips. We refuse PUT only when a
-    // NON-CANCELLED batch has linked slips. Cancelled batches with slips
-    // are fine (they're preserved separately below) — that's the whole
-    // point of cancelling: retire a locked batch without orphaning it.
-    const dyedBatches = await (prisma as any).foldBatch.findMany({
+    // Editing a fold is ADDITIVE for locked batches. A batch already committed
+    // downstream must not be deleted/recreated:
+    //   • has dyeingEntries        → delete would SET NULL the slip's optional
+    //                                foldBatchId FK and orphan it
+    //   • confirmed Batch Making   → BatchMakingSlipBatch.foldBatchId is a hard
+    //     Slip link                  FK (no ON DELETE); delete crashes, and the
+    //                                slip holds an immutable batch snapshot
+    // So we PRESERVE those batches untouched and only replace the free ones +
+    // create newly-added batches. This lets the operator append a batch to a
+    // fold whose earlier batches are already in batch-making/dyeing WITHOUT
+    // cancelling those slips. (Edits to a locked batch's own lots/shade are
+    // intentionally ignored — it stays frozen until its slip is cancelled.)
+    const currentBatches = await (prisma as any).foldBatch.findMany({
       where: { foldProgramId: id, cancelled: false },
-      include: { dyeingEntries: { select: { id: true, slipNo: true } } },
+      select: {
+        id: true,
+        dyeingEntries: { select: { id: true } },
+        batchMakingSlipBatches: { where: { slipStatus: 'confirmed' }, select: { id: true } },
+      },
     })
-    const conflicts = dyedBatches.filter((b: any) => b.dyeingEntries.length > 0)
-    if (conflicts.length > 0) {
-      const details = conflicts.map((b: any) =>
-        `B${b.batchNo} (Slip ${b.dyeingEntries.map((d: any) => d.slipNo).join(', ')})`,
-      ).join('; ')
-      return NextResponse.json({
-        error: `Cannot replace batches — ${conflicts.length} active batch(es) have dyeing slips: ${details}. Cancel the batch first (locked batches keep their slips and lots return to unallocated stock).`,
-      }, { status: 409 })
-    }
+    const protectedIds = new Set<number>(
+      currentBatches
+        .filter((b: any) => b.dyeingEntries.length > 0 || b.batchMakingSlipBatches.length > 0)
+        .map((b: any) => b.id),
+    )
+    const freeIds = currentBatches
+      .filter((b: any) => !protectedIds.has(b.id))
+      .map((b: any) => b.id)
 
-    // Delete only non-cancelled batches; cancelled ones survive the edit so
-    // their audit trail + slip linkage remains intact. Their batchNos are
-    // preserved, so the form's new batches must avoid collision.
-    await (prisma as any).foldBatch.deleteMany({ where: { foldProgramId: id, cancelled: false } })
+    // Create only payload batches that aren't an existing protected batch
+    // (those keep their DB rows). New batches have no id; free existing ones
+    // are deleted below and recreated from the payload.
+    const batchesToCreate = batches.filter((b: any) => !(b.id != null && protectedIds.has(b.id)))
 
-    // Find the max cancelled batchNo so we can offset new batchNos and avoid
-    // unique collisions. (FoldBatch has no @@unique on (programId, batchNo)
-    // but operators expect monotonic numbering.)
-    const cancelled = await (prisma as any).foldBatch.findMany({
-      where: { foldProgramId: id, cancelled: true },
-      select: { batchNo: true },
-    })
-    const cancelledNos = new Set<number>(cancelled.map((b: any) => b.batchNo))
+    const program = await (prisma as any).$transaction(async (tx: any) => {
+      if (freeIds.length > 0) {
+        // Clear dangling CANCELLED bm link rows on the free batches first
+        // (cancellation already released them, but the row still holds the FK).
+        await tx.batchMakingSlipBatch.deleteMany({
+          where: { foldBatchId: { in: freeIds }, slipStatus: 'cancelled' },
+        })
+        await tx.foldBatch.deleteMany({ where: { id: { in: freeIds } } })
+      }
 
-    // Update program and recreate batches
-    const program = await (prisma as any).foldProgram.update({
-      where: { id },
-      data: {
-        foldNo: foldNo.trim(),
-        date: new Date(date),
-        notes: notes?.trim() || null,
-        batches: {
-          create: batches.map((batch: any, idx: number) => ({
-            batchNo: batch.batchNo ?? idx + 1,
-            shadeId: batch.shadeId || undefined,
-            shadeName: batch.shadeName?.trim() || undefined,
-            shadeDescription: batch.shadeDescription?.trim() || undefined,
-            lots: {
-              create: (batch.lots ?? []).map((lot: any) => ({
-                lotNo: normalizeLotNo(lot.lotNo) ?? '',
-                partyId: lot.partyId || undefined,
-                qualityId: lot.qualityId || undefined,
-                than: parseInt(lot.than) || 0,
+      return tx.foldProgram.update({
+        where: { id },
+        data: {
+          foldNo: foldNo.trim(),
+          date: new Date(date),
+          notes: notes?.trim() || null,
+          ...(batchesToCreate.length > 0 && {
+            batches: {
+              create: batchesToCreate.map((batch: any, idx: number) => ({
+                batchNo: batch.batchNo ?? idx + 1,
+                shadeId: batch.shadeId || undefined,
+                shadeName: batch.shadeName?.trim() || undefined,
+                shadeDescription: batch.shadeDescription?.trim() || undefined,
+                lots: {
+                  create: (batch.lots ?? []).map((lot: any) => ({
+                    lotNo: normalizeLotNo(lot.lotNo) ?? '',
+                    partyId: lot.partyId || undefined,
+                    qualityId: lot.qualityId || undefined,
+                    than: parseInt(lot.than) || 0,
+                  })),
+                },
               })),
             },
-          })),
+          }),
         },
-      },
-      include: {
-        batches: {
-          include: {
-            shade: true,
-            lots: { include: { party: true, quality: true } },
+        include: {
+          batches: {
+            include: {
+              shade: true,
+              lots: { include: { party: true, quality: true } },
+            },
+            orderBy: { batchNo: 'asc' },
           },
-          orderBy: { batchNo: 'asc' },
         },
-      },
+      })
     })
     return NextResponse.json(program)
   } catch (e: any) {
     if (e.code === 'P2002') return NextResponse.json({ error: 'Fold No already exists' }, { status: 409 })
+    // FK violation safety net — e.g. a batch still linked to a Batch Making
+    // Slip slipped past the guard. Surface a clear message, not a raw 500.
+    if (e.code === 'P2003') return NextResponse.json({
+      error: 'Cannot replace batches — a batch is still linked to a Batch Making Slip. Cancel that slip first, then edit the fold.',
+    }, { status: 409 })
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
 }
