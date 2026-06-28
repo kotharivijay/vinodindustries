@@ -54,6 +54,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         if (Object.prototype.hasOwnProperty.call(m, 'dyeingEntryId')) {
           base.dyeingEntryId = m.dyeingEntryId != null ? (parseInt(m.dyeingEntryId) || null) : null
         }
+        if (Object.prototype.hasOwnProperty.call(m, 'pcReprocessLotId')) {
+          base.pcReprocessLotId = m.pcReprocessLotId != null ? (parseInt(m.pcReprocessLotId) || null) : null
+        }
         return base
       })
     : [{ id: null, lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: null }]
@@ -123,10 +126,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         claimedIds.add(match.id)
         const updateData: any = { lotNo: l.lotNo, than: l.than, meter: l.meter }
         if (l.dyeingEntryId !== undefined) updateData.dyeingEntryId = l.dyeingEntryId
+        if (l.pcReprocessLotId !== undefined) updateData.pcReprocessLotId = l.pcReprocessLotId
         await db.finishEntryLot.update({ where: { id: match.id }, data: updateData })
       } else {
         await db.finishEntryLot.create({
-          data: { entryId, lotNo: l.lotNo, than: l.than, meter: l.meter, dyeingEntryId: l.dyeingEntryId ?? null },
+          data: {
+            entryId,
+            lotNo: l.lotNo,
+            than: l.than,
+            meter: l.meter,
+            dyeingEntryId: l.dyeingEntryId ?? null,
+            pcReprocessLotId: l.pcReprocessLotId ?? null,
+          },
         })
       }
     }
@@ -188,6 +199,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       where: { id: entryId },
       include: { chemicals: { include: { chemical: true } }, lots: true, additions: { include: { chemicals: true } } },
     })
+
+    // PC Pali rework hook — flip any merged-against PC-RPs to 'merged'.
+    try {
+      const { onPcRpMerged } = await import('@/lib/pc-reprocess-lifecycle')
+      const ids = (updated?.lots ?? []).map((l: any) => l.pcReprocessLotId).filter((x: any) => x != null)
+      if (ids.length) await onPcRpMerged([...new Set(ids)] as number[])
+    } catch {}
+
     return NextResponse.json(updated)
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })

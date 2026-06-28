@@ -229,6 +229,43 @@ export async function GET() {
     }
   } catch {}
 
+  // Active PC Pali rework lots — surface under the INHERITED party (not a
+  // generic bucket) so the operator sees them as part of that party's pool.
+  // Gated on status >= 'pending' (i.e. NOT 'pending-approval' — those are
+  // hidden until a manager approves). 'merged' is excluded because the than
+  // is already credited back to the original lot via FinishEntryLot.
+  try {
+    const pcRepros = await db.pcPaliReprocessLot.findMany({
+      where: { status: { in: ['pending', 'in-fold', 'in-dyeing', 'finished'] } },
+      include: { party: { select: { name: true } }, quality: { select: { name: true } } },
+    })
+    for (const r of pcRepros) {
+      const k = r.reproNo.toLowerCase().trim()
+      const despatched = despatchedMap.get(k) || 0
+      const folded = foldedMap.get(k) || 0
+      const remaining = r.totalThan - despatched - folded
+      if (remaining <= 0) continue
+      const partyName = r.party?.name || 'PC Re-Process'
+      lots.push({
+        lotNo: r.reproNo,
+        remaining,
+        party: partyName,
+        partyTag: partyTagMap.get(partyName) || 'Pali PC Job',
+        quality: r.quality?.name || 'Unknown',
+        weight: r.weight,
+        marka: r.marka,
+        grayMtr: r.grayMtr,
+        date: r.createdAt,
+        challanNos: '',
+        lrNos: '',
+        weaverBills: '',
+        isOB: false,
+        originalThan: r.totalThan,
+        deducted: { despatched, folded, obAllocated: 0 },
+      })
+    }
+  } catch {}
+
   // Group into hierarchy: party -> quality -> lots
   type QualityGroup = { quality: string; totalThan: number; lots: Lot[] }
   type PartyGroup = { party: string; totalThan: number; totalLots: number; qualities: QualityGroup[] }

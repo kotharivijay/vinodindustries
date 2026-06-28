@@ -73,6 +73,20 @@ export async function POST(req: NextRequest) {
         },
       },
     })
+
+    // PC Pali rework hook — advance any PC-RP lots referenced in the new
+    // fold's batches from 'pending' to 'in-fold'.
+    try {
+      const { onPcRpFolded } = await import('@/lib/pc-reprocess-lifecycle')
+      const lotNos: string[] = []
+      for (const b of batches) {
+        for (const l of (b.lots ?? [])) {
+          if (l.lotNo) lotNos.push(l.lotNo)
+        }
+      }
+      if (lotNos.length) await onPcRpFolded(lotNos)
+    } catch {}
+
     return NextResponse.json(program)
   } catch (e: any) {
     if (e.code === 'P2002') return NextResponse.json({ error: 'Fold No already exists' }, { status: 409 })

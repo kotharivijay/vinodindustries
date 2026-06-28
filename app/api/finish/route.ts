@@ -214,8 +214,11 @@ export async function POST(req: NextRequest) {
         // finish (slip-wise view), record the source so the stock route can
         // deduct exactly instead of falling back to the FIFO heuristic.
         dyeingEntryId: m.dyeingEntryId != null ? parseInt(m.dyeingEntryId) || null : null,
+        // pcReprocessLotId — set when this finish row is the merge-back of a
+        // PC Pali rework cycle. lotNo here is the ORIGINAL lot (not PC-RP-N).
+        pcReprocessLotId: m.pcReprocessLotId != null ? parseInt(m.pcReprocessLotId) || null : null,
       }))
-    : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: data.meter != null ? parseFloat(data.meter) : null, dyeingEntryId: null }]
+    : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: data.meter != null ? parseFloat(data.meter) : null, dyeingEntryId: null, pcReprocessLotId: null }]
 
   // Reject finish-than that exceeds the source dyeing slip's than for the
   // same lot. Catches the +1/-1 mis-entry pattern at write time so the
@@ -281,6 +284,13 @@ export async function POST(req: NextRequest) {
         // ChemicalAlias table may not exist yet -- skip
       }
     }
+
+    // PC Pali rework hook — flip any merged-against PC-RPs to 'merged'.
+    try {
+      const { onPcRpMerged } = await import('@/lib/pc-reprocess-lifecycle')
+      const ids = lots.map((l: any) => l.pcReprocessLotId).filter((x: any) => x != null)
+      if (ids.length) await onPcRpMerged([...new Set(ids)] as number[])
+    } catch {}
 
     return NextResponse.json(entry, { status: 201 })
   } catch (err: any) {

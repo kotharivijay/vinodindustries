@@ -131,7 +131,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       colorK: colorK != null ? parseFloat(colorK) : null,
       colorHex: colorHex || null,
     },
+    include: { lots: { select: { lotNo: true } } },
   })
+
+  // PC Pali rework hook — if this slip dyed any PC-RP lots, mark them as
+  // 'finished' (ready for finish-entry merge-back).
+  try {
+    const { onPcRpDyeDone } = await import('@/lib/pc-reprocess-lifecycle')
+    const lotNos = (updated.lots ?? []).map((l: any) => l.lotNo).filter(Boolean)
+    if (lotNos.length) await onPcRpDyeDone(lotNos)
+  } catch {}
 
   return NextResponse.json(updated)
 }

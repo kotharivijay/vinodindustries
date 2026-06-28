@@ -177,6 +177,20 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
         },
       })
     })
+
+    // PC Pali rework hook — if this fold save introduced any PC-RP lot codes
+    // into batches (newly created), advance those PC-RPs to 'in-fold'.
+    try {
+      const { onPcRpFolded } = await import('@/lib/pc-reprocess-lifecycle')
+      const newLotNos: string[] = []
+      for (const b of batchesToCreate) {
+        for (const l of (b.lots ?? [])) {
+          if (l.lotNo) newLotNos.push(l.lotNo)
+        }
+      }
+      if (newLotNos.length) await onPcRpFolded(newLotNos)
+    } catch {}
+
     return NextResponse.json(program)
   } catch (e: any) {
     if (e.code === 'P2002') return NextResponse.json({ error: 'Fold No already exists' }, { status: 409 })

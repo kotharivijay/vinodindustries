@@ -28,12 +28,33 @@ export async function GET(req: NextRequest) {
   const allLotNos = [...new Set([...greyLots.map((g: any) => g.lotNo), ...obLots.map((o: any) => o.lotNo)])]
   if (allLotNos.length === 0) return NextResponse.json({ party: party.name, totalSlips: 0, folds: [], shades: [] })
 
-  // Get dyeing entries
+  // PC Pali rework slips that touched this party's lots — included so the
+  // rework dye chemical cost flows back to the original lot's report
+  // (attributed under a "Rework" badge per batch, summed into reworkCost).
+  let pcReworkSlipIds: number[] = []
+  try {
+    const pcRps = await db.pcPaliReprocessLot.findMany({
+      where: { sources: { some: { originalLotNo: { in: allLotNos, mode: 'insensitive' } } } },
+      include: { sources: { select: { originalLotNo: true } } },
+    })
+    // Identify dye slips that have any of these PC-RP-N codes in their lots
+    const reproNos = pcRps.map((r: any) => r.reproNo)
+    if (reproNos.length) {
+      const reworkSlips = await db.dyeingEntry.findMany({
+        where: { lots: { some: { lotNo: { in: reproNos, mode: 'insensitive' } } } },
+        select: { id: true },
+      })
+      pcReworkSlipIds = reworkSlips.map((s: any) => s.id)
+    }
+  } catch {}
+
+  // Get dyeing entries (party's direct slips + rework slips merged into this report)
   const entries = await db.dyeingEntry.findMany({
     where: {
       OR: [
         { lotNo: { in: allLotNos } },
         { lots: { some: { lotNo: { in: allLotNos } } } },
+        ...(pcReworkSlipIds.length ? [{ id: { in: pcReworkSlipIds } }] : []),
       ],
     },
     include: {
@@ -51,6 +72,7 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { date: 'desc' },
   })
+  const reworkIdSet = new Set(pcReworkSlipIds)
 
   // Get quality per lot
   const { buildLotInfoMap } = await import('@/lib/lot-info')
@@ -59,6 +81,7 @@ export async function GET(req: NextRequest) {
 
   let totalThan = 0
   let totalCost = 0
+  let reworkCost = 0
   const foldMap = new Map<string, { slips: number; than: number; cost: number; batches: any[] }>()
   const shadeMap = new Map<string, { than: number; cost: number; count: number; colorCategory: string | null }>()
   const qualityMap = new Map<string, { than: number; cost: number; count: number }>()
@@ -67,8 +90,10 @@ export async function GET(req: NextRequest) {
     const lots = e.lots?.length ? e.lots : [{ lotNo: e.lotNo, than: e.than }]
     const entryThan = lots.reduce((s: number, l: any) => s + l.than, 0)
     const entryCost = (e.chemicals || []).reduce((s: number, c: any) => s + (c.cost ?? 0), 0)
+    const isRework = reworkIdSet.has(e.id)
     totalThan += entryThan
     totalCost += entryCost
+    if (isRework) reworkCost += entryCost
 
     const foldNo = e.foldBatch?.foldProgram?.foldNo || 'No Fold'
     if (!foldMap.has(foldNo)) foldMap.set(foldNo, { slips: 0, than: 0, cost: 0, batches: [] })
@@ -127,6 +152,7 @@ export async function GET(req: NextRequest) {
       costPerThan: entryThan > 0 ? Math.round(entryCost / entryThan * 100) / 100 : 0,
       dyes,
       auxiliary,
+      isRework,
     })
 
     if (!shadeMap.has(shadeLabel)) shadeMap.set(shadeLabel, { than: 0, cost: 0, count: 0, colorCategory })
@@ -179,6 +205,11 @@ export async function GET(req: NextRequest) {
     totalThan,
     totalCost: Math.round(totalCost),
     avgCostPerThan: totalThan > 0 ? Math.round(totalCost / totalThan * 100) / 100 : 0,
+    // Rework cost from PC Pali rework cycles for this party — already
+    // included in totalCost. Surfaced separately so the UI can show the
+    // premium operators paid on patchy slips.
+    reworkCost: Math.round(reworkCost),
+    reworkSlips: reworkIdSet.size,
     folds,
     shades,
     qualities,

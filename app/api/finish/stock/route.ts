@@ -13,7 +13,7 @@ export async function GET() {
   // Run dyeing entries + finish lots in parallel (independent queries)
   const { buildLotInfoMap } = await import('@/lib/lot-info')
 
-  const [doneSlips, finishLots] = await Promise.all([
+  const [doneSlips, finishLots, pcReclaims] = await Promise.all([
     db.dyeingEntry.findMany({
       where: { dyeingDoneAt: { not: null } },
       select: {
@@ -38,6 +38,13 @@ export async function GET() {
     // user explicitly bound it to a source dye slip (dyeingEntryId).
     db.finishEntryLot.findMany({
       select: { lotNo: true, than: true, dyeingEntryId: true },
+    }),
+    // PC Pali rework reclaims (status not yet 'merged') — each row reduces
+    // the un-finished pool on its source dye slip. Without this, stock
+    // would show than that is physically already in the rework cycle.
+    db.pcPaliReprocessSource.findMany({
+      where: { pcReprocess: { status: { not: 'merged' } } },
+      select: { sourceDyeingEntryId: true, originalLotNo: true, than: true },
     }),
   ])
 
@@ -65,6 +72,15 @@ export async function GET() {
     } else {
       unlinkedMap.set(key, (unlinkedMap.get(key) || 0) + fl.than)
     }
+  }
+
+  // PC reprocess reclaims behave like direct finish deductions on the same
+  // (slipId, lotKey) key — they reduce that slip's remaining un-finished
+  // than even though no FinishEntryLot exists yet.
+  for (const r of pcReclaims) {
+    const key = r.originalLotNo.toLowerCase().trim()
+    const dk = `${r.sourceDyeingEntryId}|${key}`
+    directMap.set(dk, (directMap.get(dk) || 0) + r.than)
   }
 
   // Pre-compute remaining-than for each (slipId, lotKey) in two passes.

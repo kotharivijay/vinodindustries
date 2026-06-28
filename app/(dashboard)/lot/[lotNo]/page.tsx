@@ -210,6 +210,32 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
     reproEntries = [...asSrc.map((s: any) => ({ type: 'source', ...s })), ...asRepro.map((r: any) => ({ type: 'repro', ...r }))]
   } catch {}
 
+  // PC Pali rework legs — show when this lot was sent to PC rework OR when
+  // the URL lot is itself a PC-RP-N code (history view of the rework lot).
+  let pcReproEntries: any[] = []
+  try {
+    const asSrc = await db.pcPaliReprocessSource.findMany({
+      where: { originalLotNo: { equals: lotNo, mode: 'insensitive' } },
+      include: {
+        pcReprocess: { include: { party: { select: { name: true } }, quality: { select: { name: true } } } },
+        sourceDyeingEntry: { select: { slipNo: true } },
+      },
+      orderBy: { id: 'asc' },
+    })
+    const asRepro = await db.pcPaliReprocessLot.findMany({
+      where: { reproNo: { equals: lotNo, mode: 'insensitive' } },
+      include: {
+        sources: { include: { sourceDyeingEntry: { select: { slipNo: true } } } },
+        party: { select: { name: true } },
+        quality: { select: { name: true } },
+      },
+    })
+    pcReproEntries = [
+      ...asSrc.map((s: any) => ({ type: 'source', ...s })),
+      ...asRepro.map((r: any) => ({ type: 'repro', ...r })),
+    ]
+  } catch {}
+
   // Inject OB allocations as synthetic entries — skip if a real slipNo=0 entry exists
   const obAllocations = openingBalance?.allocations || []
   const hasRealOBFinish = finishEntries.some((e: any) => e.slipNo === 0)
@@ -673,7 +699,42 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
         </section>
       )}
 
-      {!openingBalance && greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && foldEntries.length === 0 && foldingReceipts.length === 0 && packingEntries.length === 0 && reproEntries.length === 0 && (
+      {/* PC Pali Reprocess history */}
+      {pcReproEntries.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-3">🧪 PC Pali Reprocess</h2>
+          <div className="space-y-2">
+            {pcReproEntries.map((r: any, i: number) => (
+              <div key={`pc-${i}`} className="bg-white dark:bg-gray-800 rounded-xl border border-orange-200 dark:border-orange-800 shadow-sm p-4">
+                {r.type === 'source' ? (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{r.pcReprocess?.reproNo}</span>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${r.pcReprocess?.status === 'merged' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{r.pcReprocess?.status}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Sent <strong>{r.than}</strong> from dye slip <strong>{r.sourceDyeingEntry?.slipNo ?? r.sourceDyeingEntryId}</strong> for PC rework ({r.reason || r.pcReprocess?.reason}) · Quality: {r.pcReprocess?.quality?.name}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{r.reproNo}</span>
+                      <span className="text-sm font-bold text-emerald-600">{r.totalThan}</span>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{r.party?.name} · {r.quality?.name} · {r.reason} · {r.sources?.length} source slip{r.sources?.length !== 1 ? 's' : ''}</p>
+                    {r.sources?.map((s: any) => (
+                      <p key={s.id} className="text-xs text-gray-500 ml-2">← {s.originalLotNo} ({s.than}T) from dye slip {s.sourceDyeingEntry?.slipNo ?? s.sourceDyeingEntryId}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!openingBalance && greyEntries.length === 0 && despatchEntries.length === 0 && dyeingEntries.length === 0 && finishEntries.length === 0 && foldEntries.length === 0 && foldingReceipts.length === 0 && packingEntries.length === 0 && reproEntries.length === 0 && pcReproEntries.length === 0 && (
         <div className="text-center text-gray-400 py-16">No records found for lot <strong>{lotNo}</strong></div>
       )}
     </div>

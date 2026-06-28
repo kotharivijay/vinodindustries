@@ -147,6 +147,14 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // PC Pali rework hook — any PC-RP lots on this new dye slip move to
+    // 'in-dyeing'.
+    try {
+      const { onPcRpDyeCreated } = await import('@/lib/pc-reprocess-lifecycle')
+      const lotNos = (entry.lots ?? []).map((l: any) => l.lotNo).filter(Boolean)
+      if (lotNos.length) await onPcRpDyeCreated(lotNos)
+    } catch {}
+
     return NextResponse.json(entry, { status: 201 })
   } catch (err: any) {
     console.error('POST /api/dyeing/batch error:', err)
