@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
+import { buildShadeCategoryMap } from '@/lib/shade-category'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const apiKey = _req.headers.get('x-api-key')
@@ -60,6 +61,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     orderBy: { slipNo: 'desc' },
   })
 
+  const categoryByShadeName = await buildShadeCategoryMap()
   const foldGroups = allocateFpToDyeingSlips(
     fpLots.map((l: any) => ({ id: l.id, lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
     dyeingEntries.map((de: any) => ({
@@ -69,6 +71,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       lots: de.lots,
       foldBatch: de.foldBatch ?? null,
     })),
+    categoryByShadeName,
   )
 
   // Re-shape into the existing fold→quality→slip→lots structure the printer

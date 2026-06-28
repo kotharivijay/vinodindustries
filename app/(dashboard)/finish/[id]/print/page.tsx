@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { buildLotInfoMap } from '@/lib/lot-info'
 import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
 import { summariseCategoriesByLot } from '@/lib/finish-category-summary'
+import { buildShadeCategoryMap } from '@/lib/shade-category'
 import PrintActions from './PrintActions'
 
 export default async function FinishPrintPage({ params }: { params: Promise<{ id: string }> }) {
@@ -75,6 +76,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
   // the allocator falls back to fit-by-than heuristic and produces a
   // completely different distribution than the FP card uses — was the
   // root cause of "data shown on FP doesn't match what gets printed".
+  const categoryByShadeName = await buildShadeCategoryMap()
   const foldGroups: FoldGroup[] = allocateFpToDyeingSlips(
     lots.map((l: any) => ({ id: l.id, lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
     dyeingEntries.map((de: any) => ({
@@ -85,6 +87,7 @@ export default async function FinishPrintPage({ params }: { params: Promise<{ id
       lots: de.lots,
       foldBatch: de.foldBatch ?? null,
     })),
+    categoryByShadeName,
   ).map(fg => ({
     foldNo: fg.foldNo,
     slips: fg.slips.map(s => ({

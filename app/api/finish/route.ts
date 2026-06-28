@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
+import { buildShadeCategoryMap, categoryForShadeName } from '@/lib/shade-category'
 import { normalizeLotNo } from '@/lib/lot-no'
 
 export async function GET() {
@@ -40,7 +41,7 @@ export async function GET() {
   let dyeingByLot = new Map<string, { slipNo: number; shadeName: string | null; shadeDesc: string | null; colorCategory: string | null; foldNo: string | null }>()
   let dyeingAllByLot = new Map<string, any[]>()
 
-  const [lotInfoMap, dyeingEntries] = await Promise.all([
+  const [lotInfoMap, dyeingEntries, categoryByShadeName] = await Promise.all([
     buildLotInfoMap(lotNosArr),
     db2.dyeingEntry.findMany({
       where: {
@@ -64,6 +65,7 @@ export async function GET() {
         },
       },
     }).catch(() => []),
+    buildShadeCategoryMap(),
   ])
 
   // Per-id index so an FEL row with dyeingEntryId can resolve its exact
@@ -77,8 +79,11 @@ export async function GET() {
     // then fold-batch override, then the master. Lets generic recipes
     // (Hitset / APC) carry the real colour per slip.
     const shadeDesc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
-    // Colour category lives only on the live master — gate on a name match.
-    const colorCategory = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
+    // Colour category from the live master, resolved by the slip's actual shade
+    // NAME (the operator-typed truth); fall back to the FK only when its master
+    // name matches. See lib/shade-category.ts.
+    const fkCat = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
+    const colorCategory = categoryForShadeName(categoryByShadeName, shadeName) ?? fkCat
     dyeingById.set(de.id, { slipNo: de.slipNo, shadeName, shadeDesc, colorCategory, foldNo })
   }
 
@@ -92,7 +97,8 @@ export async function GET() {
     // then fold-batch override, then the master. Lets generic recipes
     // (Hitset / APC) carry the real colour per slip.
     const shadeDesc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
-    const colorCategory = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
+    const fkCat = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
+    const colorCategory = categoryForShadeName(categoryByShadeName, shadeName) ?? fkCat
     const dLots = de.lots?.length ? de.lots : []
     for (const lot of dLots) {
       // Normalized key: DyeingEntryLot.lotNo casing can differ from
@@ -164,6 +170,7 @@ export async function GET() {
         lots: de.lots,
         foldBatch: de.foldBatch ?? null,
       })),
+      categoryByShadeName,
     )
 
     return { ...e, lots: enrichedLots, partyName: partyNames.join(', ') || null, fpStatus, allocations }

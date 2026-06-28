@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { buildLotInfoMap } from '@/lib/lot-info'
 import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
 import { summariseCategoriesByLot } from '@/lib/finish-category-summary'
+import { buildShadeCategoryMap } from '@/lib/shade-category'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
 import ColourCategoryLotSummary from './ColourCategoryLotSummary'
@@ -52,6 +53,7 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
   // — the SAME inputs the print page uses. Without them it falls back to the
   // fit-by-than heuristic and produces a different colour-category split than
   // the printed slip (the on-screen vs print mismatch on FP 289).
+  const categoryByShadeName = await buildShadeCategoryMap()
   const allocatedFolds = allocateFpToDyeingSlips(
     lots.map((l: any) => ({ id: l.id, lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
     dyeingEntries.map((de: any) => ({
@@ -62,6 +64,7 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
       lots: de.lots,
       foldBatch: de.foldBatch ?? null,
     })),
+    categoryByShadeName,
   )
 
   // Flat colour-category → lots (with than) — reuses the allocator output above.

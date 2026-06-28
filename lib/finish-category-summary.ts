@@ -10,6 +10,7 @@
 
 import { prisma } from './prisma'
 import { allocateFpToDyeingSlips } from './finish-slip-allocator'
+import { buildShadeCategoryMap } from './shade-category'
 
 // "Dark" is stored on the master; the shop floor calls it "Deep". Order is the
 // print order: Deep → Medium → Light. (Mirrors the print page's CATEGORY_ORDER.)
@@ -94,6 +95,7 @@ export async function resolveFinishCategoryLotSummary(
     distinct: ['id'],
   })
 
+  const categoryByShadeName = await buildShadeCategoryMap()
   const foldGroups = allocateFpToDyeingSlips(
     lots.map(l => ({ id: l.id, lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
     dyeingEntries.map((de: any) => ({
@@ -104,6 +106,7 @@ export async function resolveFinishCategoryLotSummary(
       lots: de.lots,
       foldBatch: de.foldBatch ?? null,
     })),
+    categoryByShadeName,
   )
 
   return summariseCategoriesByLot(foldGroups)

@@ -55,6 +55,11 @@ export interface AllocatedFoldGroup {
 export function allocateFpToDyeingSlips(
   fpLots: { id?: number; lotNo: string; than: number; dyeingEntryId?: number | null }[],
   dyeingEntries: DyeingEntryLike[],
+  // Optional live-master colour-category map (lowercased Shade.name → category).
+  // When supplied, the category is resolved by the slip's actual shade NAME so a
+  // wrong/renamed foldBatch.shade FK can't drop or mis-assign it. See
+  // lib/shade-category.ts. Omitted → legacy FK-name-gated behaviour.
+  categoryByShadeName?: Map<string, string | null>,
 ): AllocatedFoldGroup[] {
   // Lowercase keying so case mismatches don't break the join
   const remaining = new Map<string, number>()
@@ -97,14 +102,18 @@ export function allocateFpToDyeingSlips(
 
   function metaOf(de: DyeingEntryLike) {
     const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
+    // Colour category, preferring a name-based lookup against the live master
+    // (the slip's actual shade name is the truth). Falls back to the FK only
+    // when its master name matches the slip name — both paths stay rename-safe.
+    const nameKey = shadeName ? shadeName.trim().toLowerCase() : null
+    const byName = nameKey && categoryByShadeName ? (categoryByShadeName.get(nameKey) ?? null) : null
+    const fkCat = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
     return {
       foldNo: de.foldBatch?.foldProgram?.foldNo || 'No Fold',
       shadeName,
       // Slip > fold batch > master.
       shadeDesc: de.shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null,
-      // Colour category lives only on the live master — gate on a name match
-      // so a renamed master can't attach its category to an old shade name.
-      shadeColorCategory: de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null,
+      shadeColorCategory: byName ?? fkCat,
     }
   }
 
