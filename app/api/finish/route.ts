@@ -6,6 +6,7 @@ import { authOptions } from '@/lib/auth'
 import { allocateFpToDyeingSlips } from '@/lib/finish-slip-allocator'
 import { buildShadeCategoryMap, categoryForShadeName } from '@/lib/shade-category'
 import { normalizeLotNo } from '@/lib/lot-no'
+import { validateFinishLotThan } from '@/lib/finish-validate'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -215,6 +216,14 @@ export async function POST(req: NextRequest) {
         dyeingEntryId: m.dyeingEntryId != null ? parseInt(m.dyeingEntryId) || null : null,
       }))
     : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: data.meter != null ? parseFloat(data.meter) : null, dyeingEntryId: null }]
+
+  // Reject finish-than that exceeds the source dyeing slip's than for the
+  // same lot. Catches the +1/-1 mis-entry pattern at write time so the
+  // mismatch report no longer accumulates new rows.
+  const overClaims = await validateFinishLotThan(lots, null)
+  if (overClaims) {
+    return NextResponse.json({ error: 'OVER_CLAIM', messages: overClaims }, { status: 400 })
+  }
 
   const chemData = data.chemicals?.length
     ? data.chemicals.map((c: any) => ({

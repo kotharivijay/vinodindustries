@@ -54,6 +54,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Date, Slip No, and at least one lot are required.' }, { status: 400 })
   }
 
+  // Duplicate-slip guard. Mirrors /api/dyeing/route.ts so a PC dyeing form
+  // can't create two rows for the same slipNo (same incident pattern as 1272).
+  const slipNoInt = parseInt(data.slipNo)
+  if (Number.isFinite(slipNoInt)) {
+    const existing = await (prisma as any).dyeingEntry.findFirst({
+      where: { slipNo: slipNoInt },
+      select: { id: true, date: true, lotNo: true, than: true },
+      orderBy: { id: 'asc' },
+    })
+    if (existing) {
+      return NextResponse.json({
+        error: `Dyeing slip ${slipNoInt} already exists (id=${existing.id}, lot ${existing.lotNo}/${existing.than}, ${existing.date.toISOString().slice(0,10)}).`,
+        duplicateOf: existing,
+      }, { status: 409 })
+    }
+  }
+
   const lots = data.lots.map((l: any) => ({
     lotNo: normalizeLotNo(l.lotNo) ?? '',
     than: parseInt(l.than) || 0,

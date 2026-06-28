@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logDelete } from '@/lib/deleteLog'
 import { normalizeLotNo } from '@/lib/lot-no'
+import { validateFinishLotThan } from '@/lib/finish-validate'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -56,6 +57,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         return base
       })
     : [{ id: null, lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) || 0, meter: null }]
+
+  // Same guard as POST — but excludes this entry's own existing FELs from the
+  // "already finished elsewhere" total so an in-place edit doesn't double-count.
+  const validateInput = lots.map((l: any) => ({
+    lotNo: l.lotNo,
+    than: l.than,
+    dyeingEntryId: l.dyeingEntryId ?? null,
+  }))
+  const overClaims = await validateFinishLotThan(validateInput, entryId)
+  if (overClaims) {
+    return NextResponse.json({ error: 'OVER_CLAIM', messages: overClaims }, { status: 400 })
+  }
 
   try {
     await db.finishEntry.update({

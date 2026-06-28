@@ -77,6 +77,24 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Duplicate-slip guard. Mirrors the check in /api/dyeing/route.ts so a
+    // double-click / browser retry on the batch-dyeing form cannot create two
+    // rows for the same slipNo (incident: slip 1272 → ids 1525 + 1526).
+    const slipNoInt = parseInt(data.slipNo)
+    if (Number.isFinite(slipNoInt)) {
+      const existing = await (prisma as any).dyeingEntry.findFirst({
+        where: { slipNo: slipNoInt },
+        select: { id: true, date: true, lotNo: true, than: true },
+        orderBy: { id: 'asc' },
+      })
+      if (existing) {
+        return NextResponse.json({
+          error: `Dyeing slip ${slipNoInt} already exists (id=${existing.id}, lot ${existing.lotNo}/${existing.than}, ${existing.date.toISOString().slice(0,10)}).`,
+          duplicateOf: existing,
+        }, { status: 409 })
+      }
+    }
+
     // Build lots from the batch lots data
     const lots = data.lots?.length
       ? data.lots.map((l: any) => ({ lotNo: normalizeLotNo(l.lotNo) ?? '', than: parseInt(l.than) || 0 }))

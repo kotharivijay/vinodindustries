@@ -305,7 +305,7 @@ model DyeingOperator {
 model DyeingEntry {
   id                Int                  @id @default(autoincrement())
   date              DateTime
-  slipNo            Int
+  slipNo            Int                  @unique
   lotNo             String
   than              Int
   shadeName         String?
@@ -560,6 +560,8 @@ model FinishEntryLot {
   dyeingEntryId   Int?
   dyeingEntry     DyeingEntry?     @relation(fields: [dyeingEntryId], references: [id], onDelete: SetNull)
   foldingReceipts FoldingReceipt[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@index([dyeingEntryId])
 }
