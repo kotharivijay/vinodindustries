@@ -713,7 +713,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${r.pcReprocess?.status === 'merged' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'}`}>{r.pcReprocess?.status}</span>
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Sent <strong>{r.than}</strong> from dye slip <strong>{r.sourceDyeingEntry?.slipNo ?? r.sourceDyeingEntryId}</strong> for PC rework ({r.reason || r.pcReprocess?.reason}) · Quality: {r.pcReprocess?.quality?.name}
+                      Sent <strong>{r.than}</strong> from dye slip <strong>{r.sourceDyeingEntry?.slipNo ?? r.sourceDyeingEntryId}</strong> for PC rework ({r.reason || r.pcReprocess?.reason}) · Quality: {r.pcReprocess?.quality?.name || 'Mixed'}
                     </p>
                   </div>
                 ) : (
@@ -722,7 +722,7 @@ export default async function LotTrackPage({ params }: { params: { lotNo: string
                       <span className="text-sm font-bold text-orange-700 dark:text-orange-400">{r.reproNo}</span>
                       <span className="text-sm font-bold text-emerald-600">{r.totalThan}</span>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{r.party?.name} · {r.quality?.name} · {r.reason} · {r.sources?.length} source slip{r.sources?.length !== 1 ? 's' : ''}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{r.party?.name || 'Mixed party'} · {r.quality?.name || 'Mixed quality'} · {r.reason} · {r.sources?.length} source slip{r.sources?.length !== 1 ? 's' : ''}</p>
                     {r.sources?.map((s: any) => (
                       <p key={s.id} className="text-xs text-gray-500 ml-2">← {s.originalLotNo} ({s.than}T) from dye slip {s.sourceDyeingEntry?.slipNo ?? s.sourceDyeingEntryId}</p>
                     ))}

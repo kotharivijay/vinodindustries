@@ -245,13 +245,13 @@ export async function GET() {
       const folded = foldedMap.get(k) || 0
       const remaining = r.totalThan - despatched - folded
       if (remaining <= 0) continue
-      const partyName = r.party?.name || 'PC Re-Process'
+      const partyName = r.party?.name || 'Mixed PC Re-Process'
       lots.push({
         lotNo: r.reproNo,
         remaining,
         party: partyName,
         partyTag: partyTagMap.get(partyName) || 'Pali PC Job',
-        quality: r.quality?.name || 'Unknown',
+        quality: r.quality?.name || 'Mixed',
         weight: r.weight,
         marka: r.marka,
         grayMtr: r.grayMtr,

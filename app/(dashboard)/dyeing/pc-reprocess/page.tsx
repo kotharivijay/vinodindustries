@@ -42,8 +42,8 @@ interface PcRpRow {
   weight: string | null
   marka: string | null
   createdAt: string
-  party: { name: string }
-  quality: { name: string }
+  party: { name: string } | null
+  quality: { name: string } | null
   sources: {
     id: number
     sourceDyeingEntryId: number
@@ -319,7 +319,7 @@ export default function PcReprocessPage() {
                 <div>
                   <span className="text-sm font-bold text-blue-700 dark:text-blue-400">{r.reproNo}</span>
                   <span className={`ml-2 text-xs px-1.5 py-0.5 rounded font-medium ${STATUS_BADGE[r.status] ?? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>{r.status}</span>
-                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{r.party.name} · {r.quality.name}</span>
+                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{r.party?.name || 'Mixed party'} · {r.quality?.name || 'Mixed quality'}</span>
                 </div>
                 <div className="text-xs text-gray-700 dark:text-gray-300">
                   {r.totalThan} · {r.reason}{r.shadeName ? ` · ${r.shadeName}` : ''}
@@ -463,7 +463,7 @@ function SendToFoldModal({
         <div className="p-3 space-y-3 text-sm">
           {slips.length > 1 && (
             <div className="rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-2 text-xs text-blue-700 dark:text-blue-300">
-              Combining {slips.length} slips into one PC-RP. The API will reject if the slips don&apos;t share the same party + quality.
+              Combining {slips.length} slips into one PC-RP. Mixed party / quality is allowed — the PC-RP will show &quot;Mixed&quot; when sources differ.
             </div>
           )}
 

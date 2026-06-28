@@ -247,21 +247,11 @@ export async function POST(req: NextRequest) {
 
   if (errors.length) return NextResponse.json({ error: 'INVALID_INPUT', messages: errors }, { status: 400 })
 
-  if (inheritedPartyIds.size !== 1) {
-    return NextResponse.json({
-      error: 'MIXED_PARTY',
-      messages: [`PC reprocess sources must all share one party. Found ${inheritedPartyIds.size} distinct parties.`],
-    }, { status: 400 })
-  }
-  if (inheritedQualityIds.size !== 1) {
-    return NextResponse.json({
-      error: 'MIXED_QUALITY',
-      messages: [`PC reprocess sources must all share one quality. Found ${inheritedQualityIds.size} distinct qualities.`],
-    }, { status: 400 })
-  }
-
-  const partyId = [...inheritedPartyIds][0]
-  const qualityId = [...inheritedQualityIds][0]
+  // Mixed party / quality is allowed. When sources disagree, store null on
+  // the PC-RP top level — the per-source rows still carry their own origin
+  // via originalLotNo, so cost attribution and lot history stay accurate.
+  const partyId = inheritedPartyIds.size === 1 ? [...inheritedPartyIds][0] : null
+  const qualityId = inheritedQualityIds.size === 1 ? [...inheritedQualityIds][0] : null
   const inheritedShade = slips.find((s: any) => s.shadeName)?.shadeName || null
   const weight = inheritedWeights.size === 1 ? [...inheritedWeights][0] : (inheritedWeights.size > 1 ? [...inheritedWeights].join(', ') : null)
   const marka = inheritedMarkas.size ? [...inheritedMarkas].join(', ') : null

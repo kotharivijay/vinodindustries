@@ -442,10 +442,13 @@ model ReProcessSource {
 model PcPaliReprocessLot {
   id          Int                       @id @default(autoincrement())
   reproNo     String                    @unique // "PC-RP-1"
-  partyId     Int
-  party       Party                     @relation(fields: [partyId], references: [id])
-  qualityId   Int
-  quality     Quality                   @relation(fields: [qualityId], references: [id])
+  // Nullable because operators may combine sources from different parties
+  // and/or qualities. When null, the PC-RP is "mixed" — the per-source
+  // rows still carry their own origin party/quality via originalLotNo.
+  partyId     Int?
+  party       Party?                    @relation(fields: [partyId], references: [id])
+  qualityId   Int?
+  quality     Quality?                  @relation(fields: [qualityId], references: [id])
   shadeName   String?
   weight      String?
   marka       String?
