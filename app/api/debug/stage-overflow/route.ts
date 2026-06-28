@@ -36,7 +36,14 @@ export async function GET() {
     }),
     prisma.despatchEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } }),
     db.dyeingEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } }),
-    db.foldBatchLot.groupBy({ by: ['lotNo'], _sum: { than: true } }),
+    // Cancelled fold batches inflate the fold sum and trigger false-alarm
+    // overflow alerts (incident: fold 198 batches 14/15 caused 3 lots to
+    // show phantom 44T/12T/8T excess).
+    db.foldBatchLot.groupBy({
+      by: ['lotNo'],
+      where: { foldBatch: { cancelled: false } },
+      _sum: { than: true },
+    }),
     db.finishEntryLot.groupBy({ by: ['lotNo'], _sum: { than: true } }),
     db.packingLot.groupBy({ by: ['lotNo'], _sum: { than: true } }),
   ])
