@@ -137,7 +137,31 @@ export default function PcReprocessPage() {
     return sorted
   }, [baseCandidates, query, sortBy, partyFilter, markaFilter])
 
-  const [picker, setPicker] = useState<StockEntry | null>(null)
+  // Multi-select: operator can combine many bad slips into ONE PC-RP. The
+  // modal opens once, fed with every selected slip, so the rework
+  // workflow doesn't create N separate PC-RPs for N slips.
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  const selectedSlips = useMemo(
+    () => pcCandidateSlips.filter(s => selectedIds.has(s.id)),
+    [pcCandidateSlips, selectedIds],
+  )
+
+  function toggle(id: number) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function selectAll() {
+    setSelectedIds(new Set(pcCandidateSlips.map(s => s.id)))
+  }
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
 
   return (
     <div className="p-4 max-w-5xl mx-auto space-y-6 text-gray-900 dark:text-gray-100">
@@ -214,40 +238,73 @@ export default function PcReprocessPage() {
         </div>
       )}
 
+      {pcCandidateSlips.length > 0 && (
+        <div className="sticky top-0 z-30 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur p-3 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-3 text-xs">
+            <button
+              onClick={selectedIds.size === pcCandidateSlips.length ? clearSelection : selectAll}
+              className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium"
+            >
+              {selectedIds.size === pcCandidateSlips.length ? 'Clear all' : 'Select all'}
+            </button>
+            <span className="text-gray-700 dark:text-gray-300 font-semibold">
+              {selectedIds.size} selected
+            </span>
+          </div>
+          <button
+            onClick={() => setPickerOpen(true)}
+            disabled={selectedIds.size === 0}
+            className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 dark:bg-orange-700 dark:hover:bg-orange-600 text-white text-xs font-semibold disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400"
+          >
+            Send {selectedIds.size > 0 ? selectedIds.size : ''} slip{selectedIds.size === 1 ? '' : 's'} to Fold (one PC-RP)
+          </button>
+        </div>
+      )}
+
       <div className="space-y-2">
-        {pcCandidateSlips.map(s => (
-          <div key={s.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Slip {s.slipNo}</span>
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-semibold">PC Job</span>
-                  {s.shadeName && (
-                    <span className="text-xs text-gray-600 dark:text-gray-400">{s.shadeName}</span>
-                  )}
-                  {s.marka && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">marka {s.marka}</span>
-                  )}
-                  {(s.party || s.lots[0]?.party) && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{s.party || s.lots[0]?.party}</span>
-                  )}
-                  <span className="text-xs text-gray-400 dark:text-gray-500">
-                    {s.machineName ?? '—'} · {s.operatorName ?? '—'}
-                  </span>
-                </div>
-                <div className="text-xs text-gray-700 dark:text-gray-300 mt-1">
-                  {s.lots.map(l => `${l.lotNo} = ${l.than}`).join(' · ')}
+        {pcCandidateSlips.map(s => {
+          const checked = selectedIds.has(s.id)
+          return (
+            <label
+              key={s.id}
+              className={`block rounded-xl border p-3 cursor-pointer transition ${
+                checked
+                  ? 'border-orange-400 dark:border-orange-600 bg-orange-50/60 dark:bg-orange-900/20 ring-1 ring-orange-300 dark:ring-orange-700'
+                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggle(s.id)}
+                  className="mt-1 h-4 w-4 accent-orange-600"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-gray-900 dark:text-gray-100">Slip {s.slipNo}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-semibold">PC Job</span>
+                    {s.shadeName && (
+                      <span className="text-xs text-gray-600 dark:text-gray-400">{s.shadeName}</span>
+                    )}
+                    {s.marka && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium">marka {s.marka}</span>
+                    )}
+                    {(s.party || s.lots[0]?.party) && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{s.party || s.lots[0]?.party}</span>
+                    )}
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      {s.machineName ?? '—'} · {s.operatorName ?? '—'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-700 dark:text-gray-300 mt-1">
+                    {s.lots.map(l => `${l.lotNo} = ${l.than}`).join(' · ')}
+                  </div>
                 </div>
               </div>
-              <button
-                onClick={() => setPicker(s)}
-                className="shrink-0 px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 dark:bg-orange-700 dark:hover:bg-orange-600 text-white text-xs font-semibold"
-              >
-                Send to Fold
-              </button>
-            </div>
-          </div>
-        ))}
+            </label>
+          )
+        })}
       </div>
 
       <section className="mt-8">
@@ -267,18 +324,37 @@ export default function PcReprocessPage() {
                 <div className="text-xs text-gray-700 dark:text-gray-300">
                   {r.totalThan} · {r.reason}{r.shadeName ? ` · ${r.shadeName}` : ''}
                 </div>
-                {r.status === 'pending-approval' && (
-                  <button
-                    className="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-semibold"
-                    onClick={async () => {
-                      const res = await fetch(`/api/dyeing/pc-reprocess/${r.id}/approve`, { method: 'PATCH' })
-                      if (res.ok) mutateList()
-                      else alert((await res.json()).message ?? 'Approve failed')
-                    }}
-                  >
-                    Approve
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {r.status === 'pending-approval' && (
+                    <button
+                      className="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-semibold"
+                      onClick={async () => {
+                        const res = await fetch(`/api/dyeing/pc-reprocess/${r.id}/approve`, { method: 'PATCH' })
+                        if (res.ok) mutateList()
+                        else alert((await res.json()).message ?? 'Approve failed')
+                      }}
+                    >
+                      Approve
+                    </button>
+                  )}
+                  {(r.status === 'pending-approval' || r.status === 'pending') && (
+                    <button
+                      className="text-xs px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600 text-white font-semibold"
+                      onClick={async () => {
+                        if (!confirm(`Cancel ${r.reproNo}? This frees the reclaimed than back to the source dye slip(s).`)) return
+                        const res = await fetch(`/api/dyeing/pc-reprocess/${r.id}`, { method: 'DELETE' })
+                        if (res.ok) {
+                          mutateList()
+                          mutateStock()
+                        } else {
+                          alert((await res.json()).message ?? 'Cancel failed')
+                        }
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {r.sources.map(s => `${s.originalLotNo}=${s.than} (dye slip id ${s.sourceDyeingEntryId})`).join(' · ')}
@@ -289,11 +365,16 @@ export default function PcReprocessPage() {
         </div>
       </section>
 
-      {picker && (
+      {pickerOpen && selectedSlips.length > 0 && (
         <SendToFoldModal
-          slip={picker}
-          onClose={() => setPicker(null)}
-          onSuccess={() => { setPicker(null); mutateStock(); mutateList() }}
+          slips={selectedSlips}
+          onClose={() => setPickerOpen(false)}
+          onSuccess={() => {
+            setPickerOpen(false)
+            clearSelection()
+            mutateStock()
+            mutateList()
+          }}
         />
       )}
     </div>
@@ -301,39 +382,52 @@ export default function PcReprocessPage() {
 }
 
 function SendToFoldModal({
-  slip, onClose, onSuccess,
+  slips, onClose, onSuccess,
 }: {
-  slip: StockEntry
+  slips: StockEntry[]
   onClose: () => void
   onSuccess: () => void
 }) {
   const [reason, setReason] = useState('patchy')
   const [notes, setNotes] = useState('')
+  // Keyed by `${slipId}|${lotNo}` so the same lotNo across slips stays separate.
   const [perLot, setPerLot] = useState<Record<string, number>>(() => {
     const m: Record<string, number> = {}
-    for (const l of slip.lots) m[l.lotNo] = l.than
+    for (const s of slips) {
+      for (const l of s.lots) m[`${s.id}|${l.lotNo}`] = l.than
+    }
     return m
   })
   const [perLotNotes, setPerLotNotes] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const totalReclaim = useMemo(
-    () => slip.lots.reduce((s, l) => s + (Number(perLot[l.lotNo]) || 0), 0),
-    [perLot, slip.lots],
-  )
+  const totalReclaim = useMemo(() => {
+    let total = 0
+    for (const s of slips) {
+      for (const l of s.lots) total += Number(perLot[`${s.id}|${l.lotNo}`]) || 0
+    }
+    return total
+  }, [perLot, slips])
 
   async function submit() {
     setError(null)
-    const sources = slip.lots
-      .map(l => ({
-        sourceDyeingEntryId: slip.id,
-        originalLotNo: l.lotNo,
-        than: Number(perLot[l.lotNo]) || 0,
-        notes: perLotNotes[l.lotNo] || null,
-      }))
-      .filter(s => s.than > 0)
-    if (sources.length === 0) { setError('At least one source row must have than > 0'); return }
+    const sources: any[] = []
+    for (const s of slips) {
+      for (const l of s.lots) {
+        const key = `${s.id}|${l.lotNo}`
+        const than = Number(perLot[key]) || 0
+        if (than > 0) {
+          sources.push({
+            sourceDyeingEntryId: s.id,
+            originalLotNo: l.lotNo,
+            than,
+            notes: perLotNotes[key] || null,
+          })
+        }
+      }
+    }
+    if (sources.length === 0) { setError('At least one lot must have than > 0'); return }
     setSubmitting(true)
     try {
       const res = await fetch('/api/dyeing/pc-reprocess', {
@@ -349,23 +443,29 @@ function SendToFoldModal({
     }
   }
 
+  const slipLabel = slips.length === 1
+    ? `Slip ${slips[0].slipNo}`
+    : `${slips.length} slips combined`
+
   return (
     <>
       <div className="fixed inset-0 bg-black/60 dark:bg-black/70 z-40" onClick={onClose} />
       <div
-        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(560px,calc(100vw-24px))] max-h-[88vh] overflow-y-auto bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-50 text-gray-900 dark:text-gray-100"
+        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(640px,calc(100vw-24px))] max-h-[88vh] overflow-y-auto bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-50 text-gray-900 dark:text-gray-100"
         onClick={e => e.stopPropagation()}
       >
         <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
           <h3 className="text-sm font-bold">
-            Send to Fold (PC Rework) — Slip {slip.slipNo}
+            Send to Fold (PC Rework) — {slipLabel}
           </h3>
           <button onClick={onClose} aria-label="Close" className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-lg leading-none px-2">×</button>
         </div>
         <div className="p-3 space-y-3 text-sm">
-          <div className="rounded bg-gray-50 dark:bg-gray-900/40 p-2 text-xs text-gray-700 dark:text-gray-300">
-            {slip.shadeName ? `${slip.shadeName} · ` : ''}{slip.lots.length} lots
-          </div>
+          {slips.length > 1 && (
+            <div className="rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-2 text-xs text-blue-700 dark:text-blue-300">
+              Combining {slips.length} slips into one PC-RP. The API will reject if the slips don&apos;t share the same party + quality.
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-2">
             <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Reason
@@ -387,33 +487,45 @@ function SendToFoldModal({
             </label>
           </div>
 
-          <div>
-            <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Per-lot reclaim than</div>
-            <div className="space-y-2">
-              {slip.lots.map(l => (
-                <div key={l.lotNo} className="rounded border border-gray-200 dark:border-gray-700 p-2 text-xs">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-mono font-semibold text-gray-800 dark:text-gray-200 break-all" title={l.lotNo}>{l.lotNo}</span>
-                    <span className="text-gray-500 dark:text-gray-400 shrink-0 whitespace-nowrap">avail {l.than}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number" min={0} max={l.than}
-                      className="w-24 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5"
-                      value={perLot[l.lotNo] ?? 0}
-                      onChange={e => setPerLot(prev => ({ ...prev, [l.lotNo]: Math.max(0, Math.min(l.than, parseInt(e.target.value) || 0)) }))}
-                    />
-                    <input
-                      className="flex-1 min-w-0 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5 placeholder-gray-400 dark:placeholder-gray-500"
-                      placeholder="lot notes (optional)"
-                      value={perLotNotes[l.lotNo] || ''}
-                      onChange={e => setPerLotNotes(prev => ({ ...prev, [l.lotNo]: e.target.value }))}
-                    />
-                  </div>
+          <div className="space-y-3">
+            {slips.map(s => (
+              <div key={s.id}>
+                <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2 flex-wrap">
+                  <span>Slip {s.slipNo}</span>
+                  {s.shadeName && <span className="text-gray-500 dark:text-gray-400 font-normal">· {s.shadeName}</span>}
+                  {s.marka && <span className="text-blue-600 dark:text-blue-400 font-normal">· marka {s.marka}</span>}
+                  {(s.party || s.lots[0]?.party) && <span className="text-gray-500 dark:text-gray-400 font-normal">· {s.party || s.lots[0]?.party}</span>}
                 </div>
-              ))}
-            </div>
-            <div className="mt-2 text-xs font-semibold text-gray-800 dark:text-gray-200">Total reclaim: {totalReclaim}</div>
+                <div className="space-y-2">
+                  {s.lots.map(l => {
+                    const key = `${s.id}|${l.lotNo}`
+                    return (
+                      <div key={key} className="rounded border border-gray-200 dark:border-gray-700 p-2 text-xs">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="font-mono font-semibold text-gray-800 dark:text-gray-200 break-all" title={l.lotNo}>{l.lotNo}</span>
+                          <span className="text-gray-500 dark:text-gray-400 shrink-0 whitespace-nowrap">avail {l.than}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number" min={0} max={l.than}
+                            className="w-24 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5"
+                            value={perLot[key] ?? 0}
+                            onChange={e => setPerLot(prev => ({ ...prev, [key]: Math.max(0, Math.min(l.than, parseInt(e.target.value) || 0)) }))}
+                          />
+                          <input
+                            className="flex-1 min-w-0 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5 placeholder-gray-400 dark:placeholder-gray-500"
+                            placeholder="lot notes (optional)"
+                            value={perLotNotes[key] || ''}
+                            onChange={e => setPerLotNotes(prev => ({ ...prev, [key]: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+            <div className="text-xs font-semibold text-gray-800 dark:text-gray-200">Total reclaim: {totalReclaim}</div>
           </div>
 
           {error && (
