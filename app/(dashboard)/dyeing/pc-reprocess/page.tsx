@@ -236,7 +236,7 @@ export default function PcReprocessPage() {
                   </span>
                 </div>
                 <div className="text-xs text-gray-700 dark:text-gray-300 mt-1">
-                  {s.lots.map(l => `${l.lotNo} = ${l.than}T`).join(' · ')}
+                  {s.lots.map(l => `${l.lotNo} = ${l.than}`).join(' · ')}
                 </div>
               </div>
               <button
@@ -265,7 +265,7 @@ export default function PcReprocessPage() {
                   <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{r.party.name} · {r.quality.name}</span>
                 </div>
                 <div className="text-xs text-gray-700 dark:text-gray-300">
-                  {r.totalThan}T · {r.reason}{r.shadeName ? ` · ${r.shadeName}` : ''}
+                  {r.totalThan} · {r.reason}{r.shadeName ? ` · ${r.shadeName}` : ''}
                 </div>
                 {r.status === 'pending-approval' && (
                   <button
@@ -281,7 +281,7 @@ export default function PcReprocessPage() {
                 )}
               </div>
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {r.sources.map(s => `${s.originalLotNo}=${s.than}T (dye slip id ${s.sourceDyeingEntryId})`).join(' · ')}
+                {r.sources.map(s => `${s.originalLotNo}=${s.than} (dye slip id ${s.sourceDyeingEntryId})`).join(' · ')}
               </div>
               {r.notes && <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 italic">{r.notes}</div>}
             </div>
@@ -389,27 +389,31 @@ function SendToFoldModal({
 
           <div>
             <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Per-lot reclaim than</div>
-            <div className="space-y-1">
+            <div className="space-y-2">
               {slip.lots.map(l => (
-                <div key={l.lotNo} className="flex items-center gap-2 text-xs">
-                  <span className="font-mono text-gray-800 dark:text-gray-200 w-44 truncate" title={l.lotNo}>{l.lotNo}</span>
-                  <span className="text-gray-500 dark:text-gray-400 w-16">avail {l.than}T</span>
-                  <input
-                    type="number" min={0} max={l.than}
-                    className="w-20 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5"
-                    value={perLot[l.lotNo] ?? 0}
-                    onChange={e => setPerLot(prev => ({ ...prev, [l.lotNo]: Math.max(0, Math.min(l.than, parseInt(e.target.value) || 0)) }))}
-                  />
-                  <input
-                    className="flex-1 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5 placeholder-gray-400 dark:placeholder-gray-500"
-                    placeholder="lot notes (optional)"
-                    value={perLotNotes[l.lotNo] || ''}
-                    onChange={e => setPerLotNotes(prev => ({ ...prev, [l.lotNo]: e.target.value }))}
-                  />
+                <div key={l.lotNo} className="rounded border border-gray-200 dark:border-gray-700 p-2 text-xs">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-mono font-semibold text-gray-800 dark:text-gray-200 break-all" title={l.lotNo}>{l.lotNo}</span>
+                    <span className="text-gray-500 dark:text-gray-400 shrink-0 whitespace-nowrap">avail {l.than}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min={0} max={l.than}
+                      className="w-24 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5"
+                      value={perLot[l.lotNo] ?? 0}
+                      onChange={e => setPerLot(prev => ({ ...prev, [l.lotNo]: Math.max(0, Math.min(l.than, parseInt(e.target.value) || 0)) }))}
+                    />
+                    <input
+                      className="flex-1 min-w-0 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5 placeholder-gray-400 dark:placeholder-gray-500"
+                      placeholder="lot notes (optional)"
+                      value={perLotNotes[l.lotNo] || ''}
+                      onChange={e => setPerLotNotes(prev => ({ ...prev, [l.lotNo]: e.target.value }))}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
-            <div className="mt-2 text-xs font-semibold text-gray-800 dark:text-gray-200">Total reclaim: {totalReclaim}T</div>
+            <div className="mt-2 text-xs font-semibold text-gray-800 dark:text-gray-200">Total reclaim: {totalReclaim}</div>
           </div>
 
           {error && (
