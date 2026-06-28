@@ -371,6 +371,50 @@ export async function GET() {
     }
   } catch {}
 
+  // Active PC Pali rework lots — same surfacing pattern but grouped under
+  // the inherited Pali party (or "Mixed PC Re-Process" when sources span
+  // parties). Gated on status pending..finished (NOT pending-approval and
+  // NOT merged) so the fold picker only sees approved, in-flight rework.
+  try {
+    const db = prisma as any
+    const pcRepros = await db.pcPaliReprocessLot.findMany({
+      where: { status: { in: ['pending', 'in-fold', 'in-dyeing', 'finished'] } },
+      include: { party: { select: { name: true } }, quality: { select: { name: true } } },
+    })
+    for (const r of pcRepros) {
+      const key = r.reproNo.toLowerCase()
+      const despThan = despatchMapLower.get(key) ?? 0
+      const stock = r.totalThan - despThan
+      if (stock <= 0) continue
+      const foldProgrammed = foldMap.get(key) ?? 0
+      const dyeingUsed = dyeingUsedMap.get(key) ?? 0
+      const reservation = reservationMap.get(key)
+      const manuallyUsed = reservation?.usedThan ?? 0
+      const pipelineCommit = foldProgrammed + dyeingUsed
+      const exitOrCommit = Math.max(despThan, pipelineCommit)
+      const foldAvailable = Math.max(0, r.totalThan - exitOrCommit - manuallyUsed)
+      lotStocks.push({
+        lotNo: r.reproNo,
+        party: r.party?.name || 'Mixed PC Re-Process',
+        partyTag: r.party?.name ? 'Pali PC Job' : null,
+        quality: r.quality?.name || 'Mixed',
+        stock,
+        openingBalance: 0,
+        greyThan: r.totalThan,
+        totalThan: r.totalThan,
+        despatchThan: despThan,
+        foldProgrammed,
+        manuallyUsed,
+        manuallyUsedNote: reservation?.note ?? null,
+        foldAvailable,
+        lrNos: '',
+        markas: r.marka || '',
+        inwardDates: '',
+        stages: stagesFor(key, stock),
+      })
+    }
+  } catch {}
+
   // Group by party
   const partyMap = new Map<string, { party: string; partyTag: string | null; totalStock: number; lotCount: number; lots: LotStock[] }>()
   for (const lot of lotStocks) {
