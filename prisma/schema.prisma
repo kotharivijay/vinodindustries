@@ -27,6 +27,7 @@ model Party {
   finishRecipes    FinishRecipe[]
   finishRecipeTags FinishRecipeTag[]
   processRateContracts ProcessRateContract[]
+  pcPaliReprocessLots PcPaliReprocessLot[]
 }
 
 model Weaver {
@@ -46,6 +47,7 @@ model Quality {
   foldBatchLots    FoldBatchLot[]
   finishRecipes    FinishRecipe[]
   finishRecipeTags FinishRecipeTag[]
+  pcPaliReprocessLots PcPaliReprocessLot[]
 }
 
 model Transport {
@@ -341,6 +343,7 @@ model DyeingEntry {
   lots              DyeingEntryLot[]
   additions         DyeingAddition[]
   finishUses        FinishEntryLot[]     // back-relation for FinishEntryLot.dyeingEntry
+  pcReprocessSources PcPaliReprocessSource[] // when this slip's stock was sent for PC rework
 }
 
 model DyeingEntryLot {
@@ -429,6 +432,49 @@ model ReProcessSource {
   notes         String?
   sourceDyeSlip Int?
   createdAt     DateTime     @default(now())
+}
+
+// ─── PC Pali Reprocess (rework cycle scoped to Pali PC-Job parties) ───────────
+// Separate namespace from ReProcessLot. Created from finish stock when a PC
+// dye slip comes out patchy; routes back through fold → dye → finish, then
+// the than is merged into the original lot identity at finish-entry time.
+
+model PcPaliReprocessLot {
+  id          Int                       @id @default(autoincrement())
+  reproNo     String                    @unique // "PC-RP-1"
+  partyId     Int
+  party       Party                     @relation(fields: [partyId], references: [id])
+  qualityId   Int
+  quality     Quality                   @relation(fields: [qualityId], references: [id])
+  shadeName   String?
+  weight      String?
+  marka       String?
+  grayMtr     Float?
+  totalThan   Int
+  reason      String                    // patchy | daagi | shade_mismatch | customer_reject | other
+  notes       String?
+  status      String                    @default("pending") // pending | in-fold | in-dyeing | finished | merged
+  mergedAt    DateTime?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+  sources     PcPaliReprocessSource[]
+  finishUses  FinishEntryLot[]
+}
+
+model PcPaliReprocessSource {
+  id                 Int                @id @default(autoincrement())
+  pcReprocessId      Int
+  pcReprocess        PcPaliReprocessLot @relation(fields: [pcReprocessId], references: [id], onDelete: Cascade)
+  sourceDyeingEntryId Int
+  sourceDyeingEntry  DyeingEntry        @relation(fields: [sourceDyeingEntryId], references: [id])
+  originalLotNo      String
+  than               Int
+  reason             String?
+  notes              String?
+  createdAt          DateTime           @default(now())
+
+  @@index([sourceDyeingEntryId])
+  @@index([pcReprocessId])
 }
 
 // ─── Chemical Master ───────────────────────────────────────────────────────────
@@ -559,11 +605,16 @@ model FinishEntryLot {
   // applying the lot-level FIFO heuristic. Nullable for legacy rows.
   dyeingEntryId   Int?
   dyeingEntry     DyeingEntry?     @relation(fields: [dyeingEntryId], references: [id], onDelete: SetNull)
+  // When this finish allocation was the merge-back of a PC Pali rework
+  // cycle, this points to the PC-RP lot it consumed.
+  pcReprocessLotId Int?
+  pcReprocessLot   PcPaliReprocessLot? @relation(fields: [pcReprocessLotId], references: [id], onDelete: SetNull)
   foldingReceipts FoldingReceipt[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
   @@index([dyeingEntryId])
+  @@index([pcReprocessLotId])
 }
 
 model FoldingReceipt {
