@@ -130,9 +130,24 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="fixed md:absolute right-2 md:right-0 top-14 md:top-full mt-0 md:mt-2 w-[calc(100vw-16px)] md:w-96 max-h-[70vh] overflow-y-auto bg-white rounded-xl shadow-xl border border-gray-200 z-50">
-          <div className="p-3 border-b border-gray-100">
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-40"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(420px,calc(100vw-24px))] max-h-[80vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 z-50"
+            onClick={(e) => e.stopPropagation()}
+          >
+          <div className="p-3 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-bold text-gray-800">{'\u{1F514}'} Notifications</h3>
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Close"
+              className="text-gray-400 hover:text-gray-700 text-lg leading-none px-2"
+            >
+              {'×'}
+            </button>
           </div>
           {count === 0 ? (
             <div className="p-6 text-center text-gray-500 text-sm">
@@ -223,7 +238,8 @@ export default function NotificationBell() {
               })}
             </div>
           )}
-        </div>
+          </div>
+        </>
       )}
     </div>
   )
