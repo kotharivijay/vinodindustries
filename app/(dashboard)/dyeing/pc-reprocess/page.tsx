@@ -142,6 +142,8 @@ export default function PcReprocessPage() {
   // workflow doesn't create N separate PC-RPs for N slips.
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [pickerOpen, setPickerOpen] = useState(false)
+  // When set, the modal extends the given PC-RP instead of creating a new one.
+  const [extendTarget, setExtendTarget] = useState<PcRpRow | null>(null)
 
   const selectedSlips = useMemo(
     () => pcCandidateSlips.filter(s => selectedIds.has(s.id)),
@@ -338,21 +340,33 @@ export default function PcReprocessPage() {
                     </button>
                   )}
                   {(r.status === 'pending-approval' || r.status === 'pending') && (
-                    <button
-                      className="text-xs px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600 text-white font-semibold"
-                      onClick={async () => {
-                        if (!confirm(`Cancel ${r.reproNo}? This frees the reclaimed than back to the source dye slip(s).`)) return
-                        const res = await fetch(`/api/dyeing/pc-reprocess/${r.id}`, { method: 'DELETE' })
-                        if (res.ok) {
-                          mutateList()
-                          mutateStock()
-                        } else {
-                          alert((await res.json()).message ?? 'Cancel failed')
-                        }
-                      }}
-                    >
-                      Cancel
-                    </button>
+                    <>
+                      <button
+                        className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold"
+                        onClick={() => {
+                          setExtendTarget(r)
+                          setSelectedIds(new Set())
+                          setPickerOpen(true)
+                        }}
+                      >
+                        + Add lots
+                      </button>
+                      <button
+                        className="text-xs px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600 text-white font-semibold"
+                        onClick={async () => {
+                          if (!confirm(`Cancel ${r.reproNo}? This frees the reclaimed than back to the source dye slip(s).`)) return
+                          const res = await fetch(`/api/dyeing/pc-reprocess/${r.id}`, { method: 'DELETE' })
+                          if (res.ok) {
+                            mutateList()
+                            mutateStock()
+                          } else {
+                            alert((await res.json()).message ?? 'Cancel failed')
+                          }
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -365,12 +379,15 @@ export default function PcReprocessPage() {
         </div>
       </section>
 
-      {pickerOpen && selectedSlips.length > 0 && (
+      {pickerOpen && (
         <SendToFoldModal
           slips={selectedSlips}
-          onClose={() => setPickerOpen(false)}
+          candidateSlips={pcCandidateSlips}
+          extendTarget={extendTarget}
+          onClose={() => { setPickerOpen(false); setExtendTarget(null) }}
           onSuccess={() => {
             setPickerOpen(false)
+            setExtendTarget(null)
             clearSelection()
             mutateStock()
             mutateList()
@@ -382,18 +399,26 @@ export default function PcReprocessPage() {
 }
 
 function SendToFoldModal({
-  slips, onClose, onSuccess,
+  slips, candidateSlips, extendTarget, onClose, onSuccess,
 }: {
   slips: StockEntry[]
+  candidateSlips: StockEntry[]
+  extendTarget: PcRpRow | null
   onClose: () => void
   onSuccess: () => void
 }) {
+  const isExtend = extendTarget != null
+  // Extend mode lets the operator pick slips inline (none preselected from
+  // the page-level checkboxes).
+  const [innerPicked, setInnerPicked] = useState<Set<number>>(new Set())
+  const effectiveSlips = isExtend ? candidateSlips.filter(s => innerPicked.has(s.id)) : slips
+
   const [reason, setReason] = useState('patchy')
   const [notes, setNotes] = useState('')
   // Keyed by `${slipId}|${lotNo}` so the same lotNo across slips stays separate.
   const [perLot, setPerLot] = useState<Record<string, number>>(() => {
     const m: Record<string, number> = {}
-    for (const s of slips) {
+    for (const s of effectiveSlips) {
       for (const l of s.lots) m[`${s.id}|${l.lotNo}`] = l.than
     }
     return m
@@ -402,18 +427,47 @@ function SendToFoldModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // When extend mode picks a new slip, default its lots to full remaining.
+  function togglePick(id: number) {
+    setInnerPicked(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+        const s = candidateSlips.find(x => x.id === id)
+        if (s) {
+          setPerLot(p => {
+            const cp = { ...p }
+            for (const l of s.lots) delete cp[`${id}|${l.lotNo}`]
+            return cp
+          })
+        }
+      } else {
+        next.add(id)
+        const s = candidateSlips.find(x => x.id === id)
+        if (s) {
+          setPerLot(p => {
+            const cp = { ...p }
+            for (const l of s.lots) cp[`${id}|${l.lotNo}`] = l.than
+            return cp
+          })
+        }
+      }
+      return next
+    })
+  }
+
   const totalReclaim = useMemo(() => {
     let total = 0
-    for (const s of slips) {
+    for (const s of effectiveSlips) {
       for (const l of s.lots) total += Number(perLot[`${s.id}|${l.lotNo}`]) || 0
     }
     return total
-  }, [perLot, slips])
+  }, [perLot, effectiveSlips])
 
   async function submit() {
     setError(null)
     const sources: any[] = []
-    for (const s of slips) {
+    for (const s of effectiveSlips) {
       for (const l of s.lots) {
         const key = `${s.id}|${l.lotNo}`
         const than = Number(perLot[key]) || 0
@@ -430,22 +484,28 @@ function SendToFoldModal({
     if (sources.length === 0) { setError('At least one lot must have than > 0'); return }
     setSubmitting(true)
     try {
-      const res = await fetch('/api/dyeing/pc-reprocess', {
+      const url = isExtend
+        ? `/api/dyeing/pc-reprocess/${extendTarget!.id}/sources`
+        : '/api/dyeing/pc-reprocess'
+      const body = isExtend
+        ? { sources }
+        : { reason, notes: notes || null, sources }
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason, notes: notes || null, sources }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
-      if (!res.ok) { setError((data.messages?.join('; ')) || data.error || 'Failed'); return }
+      if (!res.ok) { setError((data.messages?.join('; ')) || data.error || data.message || 'Failed'); return }
       onSuccess()
     } finally {
       setSubmitting(false)
     }
   }
 
-  const slipLabel = slips.length === 1
-    ? `Slip ${slips[0].slipNo}`
-    : `${slips.length} slips combined`
+  const slipLabel = isExtend
+    ? `Add lots to ${extendTarget!.reproNo}`
+    : (slips.length === 1 ? `Slip ${slips[0].slipNo}` : `${slips.length} slips combined`)
 
   return (
     <>
@@ -461,34 +521,62 @@ function SendToFoldModal({
           <button onClick={onClose} aria-label="Close" className="text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-lg leading-none px-2">×</button>
         </div>
         <div className="p-3 space-y-3 text-sm">
-          {slips.length > 1 && (
+          {isExtend && (
+            <div className="rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-2 text-xs text-blue-700 dark:text-blue-300">
+              Appending sources to <strong>{extendTarget!.reproNo}</strong>. Reason &amp; PC-RP notes stay as originally set. If the new sources span a different party / quality, the PC-RP flips to &quot;Mixed&quot;.
+            </div>
+          )}
+          {!isExtend && slips.length > 1 && (
             <div className="rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-2 text-xs text-blue-700 dark:text-blue-300">
               Combining {slips.length} slips into one PC-RP. Mixed party / quality is allowed — the PC-RP will show &quot;Mixed&quot; when sources differ.
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-2">
-            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Reason
-              <select
-                className="mt-1 w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-2 py-1 text-sm"
-                value={reason}
-                onChange={e => setReason(e.target.value)}
-              >
-                {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-              </select>
-            </label>
-            <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Notes (optional)
-              <input
-                className="mt-1 w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-500"
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="e.g. shade is too light on 2 rolls"
-              />
-            </label>
-          </div>
+          {isExtend && (
+            <div>
+              <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Pick more slips to add</div>
+              <div className="space-y-1 max-h-40 overflow-y-auto rounded border border-gray-200 dark:border-gray-700 p-2">
+                {candidateSlips.length === 0 && (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">No candidate PC slips available.</div>
+                )}
+                {candidateSlips.map(s => (
+                  <label key={s.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                    <input type="checkbox" checked={innerPicked.has(s.id)} onChange={() => togglePick(s.id)} className="h-3.5 w-3.5 accent-orange-600" />
+                    <span className="font-bold">Slip {s.slipNo}</span>
+                    {s.shadeName && <span className="text-gray-500 dark:text-gray-400">{s.shadeName}</span>}
+                    {s.marka && <span className="text-blue-600 dark:text-blue-400">marka {s.marka}</span>}
+                    {(s.party || s.lots[0]?.party) && <span className="text-gray-500 dark:text-gray-400 truncate">· {s.party || s.lots[0]?.party}</span>}
+                    <span className="text-gray-400 dark:text-gray-500 ml-auto whitespace-nowrap">{s.totalThan} than</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!isExtend && (
+            <div className="grid grid-cols-1 gap-2">
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Reason
+                <select
+                  className="mt-1 w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-2 py-1 text-sm"
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                >
+                  {REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">Notes (optional)
+                <input
+                  className="mt-1 w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-2 py-1 text-sm placeholder-gray-400 dark:placeholder-gray-500"
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  placeholder="e.g. shade is too light on 2 rolls"
+                />
+              </label>
+            </div>
+          )}
 
           <div className="space-y-3">
-            {slips.map(s => (
+            {effectiveSlips.map(s => (
               <div key={s.id}>
                 <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2 flex-wrap">
                   <span>Slip {s.slipNo}</span>
@@ -541,7 +629,7 @@ function SendToFoldModal({
               disabled={submitting || totalReclaim === 0}
               className="px-3 py-1.5 rounded text-xs bg-orange-600 hover:bg-orange-700 dark:bg-orange-700 dark:hover:bg-orange-600 text-white font-semibold disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400"
             >
-              {submitting ? 'Creating…' : 'Create PC-RP'}
+              {submitting ? (isExtend ? 'Adding…' : 'Creating…') : (isExtend ? `Add ${totalReclaim} than` : 'Create PC-RP')}
             </button>
           </div>
         </div>
