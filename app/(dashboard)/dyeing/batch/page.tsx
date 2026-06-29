@@ -293,6 +293,14 @@ export default function BatchDyeingPage() {
     return Array.from(map.values()).sort((a, b) => parseInt(b.foldNo) - parseInt(a.foldNo) || b.foldNo.localeCompare(a.foldNo))
   }, [batches, batchSearch])
 
+  // Pending totals across ALL fold batches not yet turned into a dyeing slip
+  // (includes BM-pending batches). Drives the header summary box.
+  const pendingBatchCount = batches.length
+  const pendingThanTotal = useMemo(
+    () => batches.reduce((s, b) => s + b.totalThan, 0),
+    [batches]
+  )
+
   // ─── Selected batch ─────────────────────────────────────────────────────────
 
   const selectedBatch = useMemo(
@@ -585,6 +593,29 @@ export default function BatchDyeingPage() {
           onSaved={() => { refetchBatches() }}
         />
       )}
+
+      {/* Pending summary box — total fold batches & thans waiting for a dyeing slip */}
+      <div className="bg-gradient-to-br from-purple-600 to-purple-500 rounded-2xl shadow-lg shadow-purple-500/25 px-4 py-4 mb-4">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-100 mb-3">
+          ⏳ Pending for Dyeing
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white/15 border border-white/25 rounded-xl px-4 py-3">
+            <div className="text-[11px] font-medium text-purple-50 mb-1">Pending Batches</div>
+            <div className="text-3xl font-extrabold text-white leading-none">
+              {pendingBatchCount}
+              <span className="ml-1 text-sm font-semibold text-purple-100">batches</span>
+            </div>
+          </div>
+          <div className="bg-white/15 border border-white/25 rounded-xl px-4 py-3">
+            <div className="text-[11px] font-medium text-purple-50 mb-1">Pending Than</div>
+            <div className="text-3xl font-extrabold text-white leading-none">
+              {pendingThanTotal.toLocaleString('en-IN')}
+              <span className="ml-1 text-sm font-semibold text-purple-100">than</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1 mb-4">
