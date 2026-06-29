@@ -43,6 +43,8 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
   // set after the search filter).
   const [selectMode, setSelectMode] = useState(false)
   const [selectedParties, setSelectedParties] = useState<Set<string>>(new Set())
+  // When on, show only stock belonging to "Pali PC Job"-tagged parties.
+  const [paliOnly, setPaliOnly] = useState(false)
 
   // Restore expansion state from sessionStorage
   useEffect(() => {
@@ -93,18 +95,53 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
     } catch {}
   }, [expandedParties, expandedQualities, search, open])
 
+  // PC Pali stock = lots whose party carries the "Pali PC Job" tag.
+  const isPaliPcLot = (l: Lot) => (l.partyTag || '').toLowerCase() === 'pali pc job'
+
   const filtered = useMemo(() => {
     if (!data) return null
     const q = search.toLowerCase().trim()
-    if (!q) return data
-    const parties = data.parties.filter(p => {
-      const partyMatch = p.party.toLowerCase().includes(q)
-      const qualityMatch = p.qualities.some(ql => ql.quality.toLowerCase().includes(q))
-      const lotMatch = p.qualities.some(ql => ql.lots.some(l => l.lotNo.toLowerCase().includes(q)))
-      return partyMatch || qualityMatch || lotMatch
-    })
-    return { ...data, parties }
-  }, [data, search])
+
+    // Step 1: optional Pali-only lot filter — drop non-Pali lots, then prune
+    // empty qualities/parties and recompute totals so header counts stay true.
+    let parties = data.parties
+    if (paliOnly) {
+      parties = data.parties
+        .map(p => {
+          const qualities = p.qualities
+            .map(ql => {
+              const lots = ql.lots.filter(isPaliPcLot)
+              return { ...ql, lots, totalThan: lots.reduce((s, l) => s + l.remaining, 0) }
+            })
+            .filter(ql => ql.lots.length > 0)
+          return {
+            ...p,
+            qualities,
+            totalLots: qualities.reduce((s, ql) => s + ql.lots.length, 0),
+            totalThan: qualities.reduce((s, ql) => s + ql.totalThan, 0),
+          }
+        })
+        .filter(p => p.qualities.length > 0)
+    }
+
+    // Step 2: search filter (party / quality / lot)
+    if (q) {
+      parties = parties.filter(p => {
+        const partyMatch = p.party.toLowerCase().includes(q)
+        const qualityMatch = p.qualities.some(ql => ql.quality.toLowerCase().includes(q))
+        const lotMatch = p.qualities.some(ql => ql.lots.some(l => l.lotNo.toLowerCase().includes(q)))
+        return partyMatch || qualityMatch || lotMatch
+      })
+    }
+
+    if (!q && !paliOnly) return data
+    return {
+      parties,
+      grandTotal: parties.reduce((s, p) => s + p.totalThan, 0),
+      totalLots: parties.reduce((s, p) => s + p.totalLots, 0),
+      totalParties: parties.length,
+    }
+  }, [data, search, paliOnly])
 
   // PDF share — 8-column table per quality block:
   //   Date · Lot No · Challan · Weight · LR · Weaver Name Bill · Marka · Than
@@ -229,6 +266,15 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setPaliOnly(v => !v)}
+              title="Show only stock of parties tagged 'Pali PC Job'"
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
+                paliOnly
+                  ? 'bg-amber-600 text-white border-amber-600'
+                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+              }`}>
+              🏭 PC Pali{paliOnly ? ' ✓' : ''}
+            </button>
             <button onClick={() => { setSelectMode(v => !v); if (selectMode) setSelectedParties(new Set()) }}
               title="Tick specific parties to include only those in the PDF share"
               className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
