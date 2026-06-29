@@ -38,7 +38,7 @@ export async function GET() {
           where: { cancelled: false },
           orderBy: { batchNo: 'asc' },
           include: {
-            lots: true,
+            lots: { include: { party: { select: { name: true } } } },
             shade: {
               include: {
                 recipeItems: {
@@ -78,8 +78,15 @@ export async function GET() {
     // Fetch grey entries for weight + quality data
     const greyEntries = await prisma.greyEntry.findMany({
       where: { lotNo: lotNoIn },
-      select: { lotNo: true, weight: true, grayMtr: true, than: true, quality: { select: { name: true } } },
+      select: { lotNo: true, weight: true, grayMtr: true, than: true, quality: { select: { name: true } }, party: { select: { name: true } } },
     })
+
+    // Fallback party-name lookup for lots whose FoldBatchLot has no partyId.
+    const greyPartyMap = new Map<string, string>()
+    for (const g of greyEntries) {
+      const k = g.lotNo.toUpperCase()
+      if (g.party?.name && !greyPartyMap.has(k)) greyPartyMap.set(k, g.party.name)
+    }
 
     // Build quality map: lotNo → quality name. Keys upper-cased so lookups
     // by FoldBatchLot.lotNo (which may differ in case) always match.
@@ -192,6 +199,7 @@ export async function GET() {
             weightPerThan: Math.round(wpt * 100) / 100,
             quality: qualityMap.get(lotKey) ?? '',
             marka: greyMarkaMap.get(lotKey) ?? null,
+            party: (lot as any).party?.name ?? greyPartyMap.get(lotKey) ?? null,
           }
         })
 

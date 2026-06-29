@@ -14,6 +14,7 @@ interface LotInfo {
   weightPerThan: number
   quality?: string
   marka?: string | null
+  party?: string | null
 }
 
 interface RecipeItem {
@@ -50,6 +51,7 @@ interface FoldGroup {
   allLots: string[]
   totalThan: number
   qualities: string[]
+  parties: string[]
 }
 
 interface ChemicalRow {
@@ -274,13 +276,13 @@ export default function BatchDyeingPage() {
     const q = batchSearch.toLowerCase()
     const filtered = batches.filter(b => {
       if (!q) return true
-      const str = `${b.foldNo} ${b.shadeName} ${b.lots.map(l => `${l.lotNo} ${l.quality ?? ''}`).join(' ')}`.toLowerCase()
+      const str = `${b.foldNo} ${b.shadeName} ${b.lots.map(l => `${l.lotNo} ${l.quality ?? ''} ${l.party ?? ''}`).join(' ')}`.toLowerCase()
       return str.includes(q)
     })
     const map = new Map<string, FoldGroup>()
     for (const b of filtered) {
       if (!map.has(b.foldNo)) {
-        map.set(b.foldNo, { foldNo: b.foldNo, foldDate: b.foldDate ?? '', batches: [], allLots: [], totalThan: 0, qualities: [] })
+        map.set(b.foldNo, { foldNo: b.foldNo, foldDate: b.foldDate ?? '', batches: [], allLots: [], totalThan: 0, qualities: [], parties: [] })
       }
       const g = map.get(b.foldNo)!
       g.batches.push(b)
@@ -288,6 +290,7 @@ export default function BatchDyeingPage() {
         g.allLots.push(l.lotNo)
         g.totalThan += l.than
         if (l.quality && !g.qualities.includes(l.quality)) g.qualities.push(l.quality)
+        if (l.party && !g.parties.includes(l.party)) g.parties.push(l.party)
       }
     }
     return Array.from(map.values()).sort((a, b) => parseInt(b.foldNo) - parseInt(a.foldNo) || b.foldNo.localeCompare(a.foldNo))
@@ -718,7 +721,12 @@ export default function BatchDyeingPage() {
                               </div>
                               <span className="text-gray-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
                             </div>
-                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 truncate">
+                            {fg.parties.length > 0 && (
+                              <p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 mt-1 truncate">
+                                🏢 {fg.parties.join(', ')}
+                              </p>
+                            )}
+                            <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
                               {fg.allLots.join(', ')} · {fg.totalThan} than
                               {fg.qualities.length > 0 && ` · ${fg.qualities.join(', ')}`}
                             </p>
