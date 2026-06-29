@@ -595,23 +595,23 @@ export default function BatchDyeingPage() {
       )}
 
       {/* Pending summary box — total fold batches & thans waiting for a dyeing slip */}
-      <div className="bg-gradient-to-br from-purple-600 to-purple-500 rounded-2xl shadow-lg shadow-purple-500/25 px-4 py-4 mb-4">
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-100 mb-3">
+      <div className="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-2xl shadow-sm px-4 py-4 mb-4">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">
           ⏳ Pending for Dyeing
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-white/15 border border-white/25 rounded-xl px-4 py-3">
-            <div className="text-[11px] font-medium text-purple-50 mb-1">Pending Batches</div>
-            <div className="text-3xl font-extrabold text-white leading-none">
+          <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl px-4 py-3">
+            <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Pending Batches</div>
+            <div className="text-3xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">
               {pendingBatchCount}
-              <span className="ml-1 text-sm font-semibold text-purple-100">batches</span>
+              <span className="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">batches</span>
             </div>
           </div>
-          <div className="bg-white/15 border border-white/25 rounded-xl px-4 py-3">
-            <div className="text-[11px] font-medium text-purple-50 mb-1">Pending Than</div>
-            <div className="text-3xl font-extrabold text-white leading-none">
+          <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl px-4 py-3">
+            <div className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Pending Than</div>
+            <div className="text-3xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">
               {pendingThanTotal.toLocaleString('en-IN')}
-              <span className="ml-1 text-sm font-semibold text-purple-100">than</span>
+              <span className="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">than</span>
             </div>
           </div>
         </div>
