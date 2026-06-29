@@ -82,6 +82,7 @@ export default function PcReprocessPage() {
     { revalidateOnFocus: false, dedupingInterval: 10_000 },
   )
 
+  const [tab, setTab] = useState<'candidates' | 'register'>('candidates')
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState<SortField>('slipNo')
   const [partyFilter, setPartyFilter] = useState<string>('all')
@@ -173,13 +174,40 @@ export default function PcReprocessPage() {
         <div />
       </div>
 
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 dark:border-gray-700">
+        <button
+          onClick={() => setTab('candidates')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition ${
+            tab === 'candidates'
+              ? 'border-orange-600 text-orange-600 dark:text-orange-400 dark:border-orange-500'
+              : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+          }`}
+        >
+          Candidates {pcCandidateSlips.length > 0 && <span className="ml-1 text-xs opacity-70">({pcCandidateSlips.length})</span>}
+        </button>
+        <button
+          onClick={() => setTab('register')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition ${
+            tab === 'register'
+              ? 'border-orange-600 text-orange-600 dark:text-orange-400 dark:border-orange-500'
+              : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
+          }`}
+        >
+          PC-RP register {pcRpList && pcRpList.length > 0 && <span className="ml-1 text-xs opacity-70">({pcRpList.length})</span>}
+        </button>
+      </div>
+
+      {tab === 'candidates' && (
       <section className="rounded-xl border border-orange-200 dark:border-orange-900/60 bg-orange-50 dark:bg-orange-900/20 p-3">
         <h2 className="text-sm font-semibold text-orange-900 dark:text-orange-200">PC dye slips with remaining stock</h2>
         <p className="text-xs text-orange-800 dark:text-orange-300 mt-1">
           Use this when the in-slip re-dye round didn&apos;t fix the patchy/daagi and the rolls need a fresh fold batch.
         </p>
       </section>
+      )}
 
+      {tab === 'candidates' && (<>
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs">
           <label className="flex flex-col gap-1">
@@ -308,28 +336,71 @@ export default function PcReprocessPage() {
           )
         })}
       </div>
+      </>
+      )}
 
-      <section className="mt-8">
-        <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">PC-RP register</h2>
+      {tab === 'register' && (
+      <section className="space-y-3">
         {(!pcRpList || pcRpList.length === 0) && (
-          <div className="text-xs text-gray-500 dark:text-gray-400">No PC-RP lots yet.</div>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+            No PC-RP lots yet. Create one from the Candidates tab.
+          </div>
         )}
-        <div className="space-y-2">
-          {(pcRpList ?? []).map(r => (
-            <div key={r.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <span className="text-sm font-bold text-blue-700 dark:text-blue-400">{r.reproNo}</span>
-                  <span className={`ml-2 text-xs px-1.5 py-0.5 rounded font-medium ${STATUS_BADGE[r.status] ?? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>{r.status}</span>
-                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">{r.party?.name || 'Mixed party'} · {r.quality?.name || 'Mixed quality'}</span>
+        {(pcRpList ?? []).map(r => {
+          // Group sources by dye slip to show one row per source slip
+          const bySlip = new Map<number, { slipNo: number; rows: typeof r.sources }>()
+          for (const s of r.sources) {
+            const k = s.sourceDyeingEntryId
+            if (!bySlip.has(k)) bySlip.set(k, { slipNo: s.sourceDyeingEntryId, rows: [] })
+            bySlip.get(k)!.rows.push(s)
+          }
+          return (
+            <div key={r.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm">
+              {/* Card header */}
+              <div className="flex items-start justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-base font-bold text-blue-700 dark:text-blue-400">{r.reproNo}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${STATUS_BADGE[r.status] ?? 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}`}>{r.status}</span>
+                  </div>
+                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 truncate">
+                    {r.party?.name || 'Mixed party'} · {r.quality?.name || 'Mixed quality'}
+                  </div>
+                  <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                    {r.reason}{r.shadeName ? ` · ${r.shadeName}` : ''}{r.marka ? ` · marka ${r.marka}` : ''}
+                  </div>
                 </div>
-                <div className="text-xs text-gray-700 dark:text-gray-300">
-                  {r.totalThan} · {r.reason}{r.shadeName ? ` · ${r.shadeName}` : ''}
+                <div className="text-right shrink-0">
+                  <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-none">{r.totalThan}</div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">than</div>
                 </div>
-                <div className="flex items-center gap-2">
+              </div>
+
+              {/* Sources grouped by dye slip */}
+              <div className="px-4 py-2 text-xs space-y-1">
+                {[...bySlip.values()].map(g => (
+                  <div key={g.slipNo} className="flex items-start gap-2">
+                    <span className="text-gray-500 dark:text-gray-400 shrink-0 whitespace-nowrap">dye slip {g.slipNo}</span>
+                    <span className="text-gray-700 dark:text-gray-300 flex-1">
+                      {g.rows.map(s => `${s.originalLotNo}=${s.than}`).join(', ')}
+                    </span>
+                  </div>
+                ))}
+                {r.notes && <div className="text-gray-500 dark:text-gray-400 italic pt-1">{r.notes}</div>}
+              </div>
+
+              {/* Actions footer */}
+              {(r.status === 'pending-approval' || r.status === 'pending') && (
+                <div className="flex items-center justify-end gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700">
+                  <button
+                    className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold"
+                    onClick={() => { setExtendTarget(r); setSelectedIds(new Set()); setPickerOpen(true); setTab('register') }}
+                  >
+                    + Add lots
+                  </button>
                   {r.status === 'pending-approval' && (
                     <button
-                      className="text-xs px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-semibold"
+                      className="text-xs px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-semibold"
                       onClick={async () => {
                         const res = await fetch(`/api/dyeing/pc-reprocess/${r.id}/approve`, { method: 'PATCH' })
                         if (res.ok) mutateList()
@@ -339,45 +410,24 @@ export default function PcReprocessPage() {
                       Approve
                     </button>
                   )}
-                  {(r.status === 'pending-approval' || r.status === 'pending') && (
-                    <>
-                      <button
-                        className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold"
-                        onClick={() => {
-                          setExtendTarget(r)
-                          setSelectedIds(new Set())
-                          setPickerOpen(true)
-                        }}
-                      >
-                        + Add lots
-                      </button>
-                      <button
-                        className="text-xs px-2 py-1 rounded bg-rose-600 hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600 text-white font-semibold"
-                        onClick={async () => {
-                          if (!confirm(`Cancel ${r.reproNo}? This frees the reclaimed than back to the source dye slip(s).`)) return
-                          const res = await fetch(`/api/dyeing/pc-reprocess/${r.id}`, { method: 'DELETE' })
-                          if (res.ok) {
-                            mutateList()
-                            mutateStock()
-                          } else {
-                            alert((await res.json()).message ?? 'Cancel failed')
-                          }
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  )}
+                  <button
+                    className="text-xs px-3 py-1.5 rounded bg-rose-600 hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600 text-white font-semibold"
+                    onClick={async () => {
+                      if (!confirm(`Cancel ${r.reproNo}? This frees the reclaimed than back to the source dye slip(s).`)) return
+                      const res = await fetch(`/api/dyeing/pc-reprocess/${r.id}`, { method: 'DELETE' })
+                      if (res.ok) { mutateList(); mutateStock() }
+                      else alert((await res.json()).message ?? 'Cancel failed')
+                    }}
+                  >
+                    Cancel
+                  </button>
                 </div>
-              </div>
-              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {r.sources.map(s => `${s.originalLotNo}=${s.than} (dye slip id ${s.sourceDyeingEntryId})`).join(' · ')}
-              </div>
-              {r.notes && <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 italic">{r.notes}</div>}
+              )}
             </div>
-          ))}
-        </div>
+          )
+        })}
       </section>
+      )}
 
       {pickerOpen && (
         <SendToFoldModal
