@@ -121,10 +121,10 @@ function RecipeEditor({ items, chemicals, onChange }: {
               <div className="flex items-center gap-1 shrink-0">
                 <input
                   type="number"
-                  step="0.01"
+                  step="0.001"
                   min="0"
-                  className="w-20 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  placeholder="Qty"
+                  className="w-24 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="0.000"
                   value={item.quantity}
                   onChange={e => update(i, { quantity: e.target.value })}
                 />
@@ -184,7 +184,9 @@ export default function ShadesPage() {
     setEditRecipe(shade.recipeItems.map(r => ({
       chemicalId: r.chemical.id,
       chemical: r.chemical,
-      quantity: String(r.quantity),
+      // Always 3-decimal so reopening a recipe renders consistently
+      // (existing rows saved as 0.5 surface as 0.500).
+      quantity: Number.isFinite(r.quantity) ? Number(r.quantity).toFixed(3) : '',
     })))
     setError('')
   }
@@ -463,7 +465,7 @@ export default function ShadesPage() {
                       <div key={i} className="flex justify-between text-xs">
                         <span className="text-gray-700 dark:text-gray-300">{r.chemical?.name}</span>
                         <span className="font-medium text-gray-800 dark:text-gray-200">
-                          {r.quantity} {r.chemical?.unit} / 100 kg
+                          {Number(r.quantity).toFixed(3)} {r.chemical?.unit} / 100 kg
                         </span>
                       </div>
                     ))}
