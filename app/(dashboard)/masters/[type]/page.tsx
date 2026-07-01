@@ -376,6 +376,9 @@ export default function MasterPage() {
                     {isParties && <PartyPrefixesEditor item={item}
                       onSaved={(updated) => setItems(prev => prev.map(x => x.id === item.id ? { ...x, lotPrefixes: updated.lotPrefixes } : x))}
                     />}
+                    {isParties && <PartyGstEditor item={item as any}
+                      onSaved={(updated) => setItems(prev => prev.map(x => x.id === item.id ? { ...x, ...updated } : x))}
+                    />}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm text-gray-800 dark:text-gray-200">{item.name}</span>
                       {/* Tag badge */}
@@ -716,6 +719,82 @@ function PartyPrefixesEditor({ item, onSaved }: {
           {prefixes.length === 0 ? '+ add prefix' : '+ add'}
         </button>
       )}
+      {error && <span className="text-[10px] text-rose-500">{error}</span>}
+    </div>
+  )
+}
+
+// GSTIN / address / state editor for a party. Click-to-edit inline pattern
+// with a click-away save. Empty submit clears the field.
+function PartyGstEditor({ item, onSaved }: {
+  item: { id: number; gstin?: string | null; address?: string | null; state?: string | null }
+  onSaved: (updated: { gstin: string | null; address: string | null; state: string | null }) => void
+}) {
+  const [editing, setEditing] = useState<'gstin' | 'address' | 'state' | null>(null)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function commit(field: 'gstin' | 'address' | 'state', value: string) {
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/masters/parties', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, gst: { [field]: value || null } }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || 'Save failed'); return }
+      onSaved({ gstin: data.gstin ?? null, address: data.address ?? null, state: data.state ?? null })
+      setEditing(null); setDraft('')
+    } finally { setSaving(false) }
+  }
+
+  function startEdit(field: 'gstin' | 'address' | 'state') {
+    setEditing(field)
+    setDraft((item as any)[field] || '')
+    setError('')
+  }
+
+  const chip = (label: string, field: 'gstin' | 'address' | 'state', value: string | null | undefined) => {
+    if (editing === field) {
+      return (
+        <span className="inline-flex items-center gap-1">
+          <input value={draft} onChange={e => setDraft(field === 'gstin' ? e.target.value.toUpperCase() : e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); commit(field, draft.trim()) }
+              if (e.key === 'Escape') { setEditing(null); setDraft(''); setError('') }
+            }}
+            placeholder={field === 'gstin' ? '15-char GSTIN' : field === 'state' ? 'Rajasthan' : 'Address line'}
+            maxLength={field === 'gstin' ? 15 : 200} autoFocus
+            className={`text-[10px] px-1.5 py-0.5 border border-emerald-300 dark:border-emerald-700 rounded bg-white dark:bg-gray-700 ${field === 'gstin' ? 'w-40 font-mono' : field === 'address' ? 'w-56' : 'w-28'}`}
+          />
+          <button onClick={() => commit(field, draft.trim())} disabled={saving}
+            className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">Save</button>
+          <button onClick={() => { setEditing(null); setDraft(''); setError('') }}
+            className="text-[10px] text-gray-400">✕</button>
+        </span>
+      )
+    }
+    return (
+      <button
+        onClick={() => startEdit(field)}
+        className={`text-[10px] rounded border px-1.5 py-0.5 hover:opacity-70 ${
+          value
+            ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 font-semibold'
+            : 'bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+        }`}
+      >
+        {value ? `${label}: ${value}` : `+ add ${label.toLowerCase()}`}
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap mb-1">
+      <span className="text-[9px] uppercase tracking-wide text-gray-400">GST</span>
+      {chip('GSTIN', 'gstin', item.gstin)}
+      {chip('State', 'state', item.state)}
+      {chip('Address', 'address', item.address)}
       {error && <span className="text-[10px] text-rose-500">{error}</span>}
     </div>
   )

@@ -19,7 +19,7 @@ interface Challan {
   transport: string | null
   lrNo: string | null
   vehicleNo: string | null
-  party: { name: string; tag: string | null }
+  party: { name: string; tag: string | null; gstin: string | null; address: string | null; state: string | null }
   lines: Line[]
 }
 
@@ -59,11 +59,10 @@ export default function PrintClient({ challan }: { challan: Challan }) {
         <div className="flex justify-between items-start border-b-2 border-gray-800 pb-3">
           <div>
             <div className="text-2xl font-bold">Kothari Synthetic Industries</div>
-            <div className="text-xs text-gray-600 mt-0.5">Jasol Road, Pali, Rajasthan · GSTIN 08AAAAA0000A1Z5</div>
+            <div className="text-xs text-gray-600 mt-0.5">Jasol Road, Pali, Rajasthan · GSTIN 08AABFK2105R1Z8</div>
           </div>
           <div className="text-right">
             <div className="text-lg font-bold uppercase tracking-wide text-emerald-700">Delivery Challan</div>
-            <div className="text-xs text-gray-600 mt-0.5">Job-work · Not for sale</div>
           </div>
         </div>
 
@@ -71,6 +70,13 @@ export default function PrintClient({ challan }: { challan: Challan }) {
           <div>
             <div className="text-xs text-gray-500 uppercase">Delivered to</div>
             <div className="font-semibold">{challan.party.name}</div>
+            {challan.party.address && <div className="text-xs text-gray-600">{challan.party.address}</div>}
+            {(challan.party.state || challan.party.gstin) && (
+              <div className="text-xs text-gray-600">
+                {challan.party.state}{challan.party.state && challan.party.gstin ? ' · ' : ''}
+                {challan.party.gstin && <>GSTIN {challan.party.gstin}</>}
+              </div>
+            )}
             <div className="text-xs text-gray-500 mt-1">
               Source FP{challan.lines[0] ? '-' + challan.lines[0].finishSlipNo : ''} · {fmtDate(challan.date)}
             </div>
@@ -128,11 +134,6 @@ export default function PrintClient({ challan }: { challan: Challan }) {
             </tr>
           </tbody>
         </table>
-
-        <div className="mt-4 text-xs text-gray-700 leading-relaxed">
-          <strong>Declaration:</strong> The above goods are being sent back after job-work (dyeing &amp; finishing)
-          under the GST job-work provisions. No sale involved.
-        </div>
 
         <div className="grid grid-cols-3 gap-6 mt-12 text-xs">
           <div className="text-center"><div className="border-t border-gray-400 pt-1">Prepared by</div></div>

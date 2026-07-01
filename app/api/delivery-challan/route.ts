@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const rows = await db.finishDeliveryChallan.findMany({
     where: status ? { status } : undefined,
     include: {
-      party: { select: { id: true, name: true, tag: true } },
+      party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } },
       lines: { orderBy: { id: 'asc' } },
     },
     orderBy: { challanNo: 'desc' },
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
   try {
     created = await db.finishDeliveryChallan.create({
       data: buildData(initialNo),
-      include: { party: { select: { id: true, name: true, tag: true } }, lines: true },
+      include: { party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } }, lines: true },
     })
   } catch (e: any) {
     // Only retry auto-generated numbers. Manual overrides bubble the
@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
       for (const c of refreshed) refreshedMax = Math.max(refreshedMax, c.challanNo)
       created = await db.finishDeliveryChallan.create({
         data: buildData(refreshedMax + 1),
-        include: { party: { select: { id: true, name: true, tag: true } }, lines: true },
+        include: { party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } }, lines: true },
       })
     } else if (String(e?.code) === 'P2002') {
       return NextResponse.json({

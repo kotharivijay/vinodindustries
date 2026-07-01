@@ -17,7 +17,7 @@ export interface DeliveryChallanForPdf {
   transport: string | null
   lrNo: string | null
   vehicleNo: string | null
-  party: { name: string }
+  party: { name: string; gstin?: string | null; address?: string | null; state?: string | null }
   lines: DeliveryChallanLineForPdf[]
 }
 
@@ -38,16 +38,12 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   doc.text('Kothari Synthetic Industries', marginL, 16)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
-  doc.text('Jasol Road, Pali, Rajasthan  ·  GSTIN 08AAAAA0000A1Z5', marginL, 21)
+  doc.text('Jasol Road, Pali, Rajasthan  ·  GSTIN 08AABFK2105R1Z8', marginL, 21)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(13)
   doc.setTextColor(4, 120, 87) // emerald-700
   doc.text('DELIVERY CHALLAN', pageW - marginR, 16, { align: 'right' })
-  doc.setFontSize(8)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(80, 80, 80)
-  doc.text('Job-work · Not for sale', pageW - marginR, 21, { align: 'right' })
 
   // Divider
   doc.setDrawColor(30, 30, 30)
@@ -64,8 +60,22 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   doc.text(c.party.name, marginL, 36)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
+  let leftCursor = 40
+  if (c.party.address) {
+    doc.text(c.party.address, marginL, leftCursor)
+    leftCursor += 4
+  }
+  const partyMeta = [c.party.state, c.party.gstin ? `GSTIN ${c.party.gstin}` : null].filter(Boolean).join(' · ')
+  if (partyMeta) {
+    doc.text(partyMeta, marginL, leftCursor)
+    leftCursor += 4
+  }
   const firstSlip = c.lines[0]?.finishSlipNo
-  if (firstSlip) doc.text(`Source FP-${firstSlip}  ·  ${fmtDate(c.date)}`, marginL, 41)
+  if (firstSlip) {
+    doc.setTextColor(120, 120, 120)
+    doc.text(`Source FP-${firstSlip}  ·  ${fmtDate(c.date)}`, marginL, leftCursor)
+    doc.setTextColor(30, 30, 30)
+  }
 
   // Right meta
   const rightX = pageW - marginR
@@ -136,16 +146,8 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
 
   const finalY = (doc as any).lastAutoTable.finalY || 100
 
-  // Declaration
-  const decl =
-    'Declaration: The above goods are being sent back after job-work (dyeing & finishing) under the GST job-work provisions. No sale involved.'
-  doc.setFontSize(7.5)
-  doc.setTextColor(60, 60, 60)
-  const wrapped = doc.splitTextToSize(decl, pageW - marginL - marginR)
-  doc.text(wrapped, marginL, finalY + 8)
-
   // Signature slots
-  const sigY = Math.min(finalY + 40, doc.internal.pageSize.getHeight() - 30)
+  const sigY = Math.min(finalY + 25, doc.internal.pageSize.getHeight() - 30)
   const sigW = (pageW - marginL - marginR - 20) / 3
   const sigLabels = ['Prepared by', 'For KSI · Authorised signatory', 'Received by (party)']
   for (let i = 0; i < 3; i++) {

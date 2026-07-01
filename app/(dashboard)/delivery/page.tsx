@@ -49,7 +49,7 @@ interface Challan {
   transport: string | null
   lrNo: string | null
   vehicleNo: string | null
-  party: { id: number; name: string; tag: string | null }
+  party: { id: number; name: string; tag: string | null; gstin: string | null; address: string | null; state: string | null }
   lines: ChallanLine[]
 }
 

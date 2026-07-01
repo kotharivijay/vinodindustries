@@ -9,7 +9,7 @@ export default async function DeliveryChallanPrintPage({ params }: { params: Pro
   const challan = await db.finishDeliveryChallan.findUnique({
     where: { id: parseInt(id) },
     include: {
-      party: { select: { name: true, tag: true } },
+      party: { select: { name: true, tag: true, gstin: true, address: true, state: true } },
       lines: { orderBy: { id: 'asc' } },
     },
   })

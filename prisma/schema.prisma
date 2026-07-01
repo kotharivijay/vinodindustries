@@ -14,6 +14,11 @@ model Party {
   id               Int               @id @default(autoincrement())
   name             String            @unique
   tag              String? // "Pali PC Job", "Local", "Direct", etc.
+  // GST info used by customer-facing documents (delivery challan, folding
+  // despatch print). All optional so legacy parties don't break.
+  gstin            String?
+  address          String?
+  state            String?
   // Lot-no prefixes used by THIS party (e.g. ["PS", "PSRG"] for Prakash
   // Shirting — PSRG is for return-goods variant). Auto-fill on grey-inward
   // suggests the first one but the operator can pick another or override.

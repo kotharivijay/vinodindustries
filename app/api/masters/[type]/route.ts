@@ -139,7 +139,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ty
     return NextResponse.json(updated)
   }
 
-  return NextResponse.json({ error: 'Provide { ids, tag } or { id, lotPrefixes }' }, { status: 400 })
+  // GST info update — gstin / address / state. Sent as { id, gst: { gstin, address, state } }
+  // so consumers set the sub-object atomically. Any of the three fields may
+  // be omitted; passing null / '' clears the stored value.
+  if ('gst' in body) {
+    const id = Number(body.id)
+    if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const g = body.gst as { gstin?: string | null; address?: string | null; state?: string | null }
+    const data: any = {}
+    if ('gstin' in g) {
+      const v = g.gstin == null ? null : String(g.gstin).trim().toUpperCase()
+      if (v && !/^[0-9A-Z]{15}$/.test(v)) {
+        return NextResponse.json({ error: 'GSTIN must be 15 alphanumeric characters' }, { status: 400 })
+      }
+      data.gstin = v || null
+    }
+    if ('address' in g) data.address = g.address == null ? null : String(g.address).trim() || null
+    if ('state' in g)   data.state   = g.state   == null ? null : String(g.state).trim()   || null
+    const updated = await (prisma as any).party.update({
+      where: { id },
+      data,
+      select: { id: true, name: true, tag: true, gstin: true, address: true, state: true, lotPrefixes: true },
+    })
+    return NextResponse.json(updated)
+  }
+
+  return NextResponse.json({ error: 'Provide { ids, tag }, { id, lotPrefixes }, or { id, gst }' }, { status: 400 })
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ type: string }> }) {

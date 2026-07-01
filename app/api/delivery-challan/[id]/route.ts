@@ -14,7 +14,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const row = await db.finishDeliveryChallan.findUnique({
     where: { id: parseInt(id) },
     include: {
-      party: { select: { id: true, name: true, tag: true } },
+      party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } },
       lines: { orderBy: { id: 'asc' } },
     },
   })
