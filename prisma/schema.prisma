@@ -28,6 +28,7 @@ model Party {
   finishRecipeTags FinishRecipeTag[]
   processRateContracts ProcessRateContract[]
   pcPaliReprocessLots PcPaliReprocessLot[]
+  finishDeliveryChallans FinishDeliveryChallan[]
 }
 
 model Weaver {
@@ -613,11 +614,66 @@ model FinishEntryLot {
   pcReprocessLotId Int?
   pcReprocessLot   PcPaliReprocessLot? @relation(fields: [pcReprocessLotId], references: [id], onDelete: SetNull)
   foldingReceipts FoldingReceipt[]
+  // Back-relation: a finished lot ships on at most one finish-delivery-
+  // challan line (enforced as @unique on the line side). Cancelling the line
+  // re-queues this FEL automatically.
+  finishDeliveryChallanLine FinishDeliveryChallanLine?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
   @@index([dyeingEntryId])
   @@index([pcReprocessLotId])
+}
+
+// ─── Finish Delivery Challan (Pali PC Job) ────────────────────────────────────
+// Customer-facing document for sending finished cloth back to the party.
+// Auto-routed by Party.tag: 'Pali PC Job' parties get a job-work Delivery
+// Challan (no meter, no rate); other parties continue using
+// FinishEntry.finishDespSlipNo for the existing Folding Despatch flow.
+//
+// The `Finish` prefix distinguishes this from the inventory-side
+// DeliveryChallan model (which pairs with PurchaseOrder for goods receipt).
+
+model FinishDeliveryChallan {
+  id              Int                         @id @default(autoincrement())
+  challanNo       Int                         @unique
+  date            DateTime
+  partyId         Int
+  party           Party                       @relation(fields: [partyId], references: [id])
+  format          String                      @default("delivery-challan")
+  transport       String?
+  lrNo            String?
+  vehicleNo       String?
+  notes           String?
+  status          String                      @default("issued")
+  cancelledAt     DateTime?
+  cancelledReason String?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+  lines           FinishDeliveryChallanLine[]
+
+  @@index([partyId])
+  @@index([date])
+}
+
+model FinishDeliveryChallanLine {
+  id                Int                   @id @default(autoincrement())
+  challanId         Int
+  challan           FinishDeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  finishEntryLotId  Int                   @unique
+  finishEntryLot    FinishEntryLot        @relation(fields: [finishEntryLotId], references: [id])
+  finishEntryId     Int
+  finishSlipNo      Int
+  lotNo             String
+  qualityName       String?
+  shadeName         String?
+  shadeCategory     String?
+  than              Int
+  meter             Float?
+  createdAt         DateTime              @default(now())
+
+  @@index([challanId])
+  @@index([finishEntryId])
 }
 
 model FoldingReceipt {

@@ -27,6 +27,7 @@ const ksiNavGroups = [
       { href: '/dyeing/pc-reprocess', label: 'PC Pali Reprocess', icon: '🧪' },
       { href: '/dyeing/color-lab', label: 'Color Lab', icon: '🎨' },
       { href: '/finish', label: 'Finish/Center', icon: '✨' },
+      { href: '/delivery', label: 'Delivery Challan', icon: '🚛' },
       { href: '/stock', label: 'Stock Summary', icon: '📊' },
       { href: '/fold', label: 'Fold Program', icon: '🪡' },
       { href: '/camera', label: 'Machine Camera', icon: '📹' },
