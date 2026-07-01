@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo } from 'react'
+import { downloadDeliveryChallanPdf } from '@/lib/delivery-challan-pdf'
 
 interface Line {
   id: number
@@ -139,7 +140,13 @@ export default function PrintClient({ challan }: { challan: Challan }) {
           <div className="text-center"><div className="border-t border-gray-400 pt-1">Received by (party)</div></div>
         </div>
 
-        <div className="mt-8 no-print text-right print:hidden">
+        <div className="mt-8 no-print text-right print:hidden flex justify-end gap-2">
+          <button
+            onClick={() => downloadDeliveryChallanPdf(challan)}
+            className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+          >
+            Download PDF
+          </button>
           <button
             onClick={() => window.print()}
             className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold"

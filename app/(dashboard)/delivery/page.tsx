@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import BackButton from '../BackButton'
+import { downloadDeliveryChallanPdf } from '@/lib/delivery-challan-pdf'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -73,6 +74,44 @@ export default function DeliveryChallanPage() {
   // first challan uses this number and subsequent ones auto-increment from
   // there. Accepts a bare integer.
   const [manualDcNo, setManualDcNo] = useState('')
+
+  // Issued-tab controls
+  const [issuedQuery, setIssuedQuery] = useState('')
+  const [issuedPartyFilter, setIssuedPartyFilter] = useState<'all' | string>('all')
+  const [issuedSort, setIssuedSort] = useState<'challan_desc' | 'challan_asc' | 'date_desc' | 'party' | 'than_desc'>('challan_desc')
+
+  const issuedPartyOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of issued ?? []) if (c.party?.name) set.add(c.party.name)
+    return [...set].sort()
+  }, [issued])
+
+  const filteredIssued = useMemo(() => {
+    const q = issuedQuery.trim().toLowerCase()
+    const filtered = (issued ?? []).filter(c => {
+      if (issuedPartyFilter !== 'all' && c.party?.name !== issuedPartyFilter) return false
+      if (!q) return true
+      if (String(c.challanNo).includes(q)) return true
+      if (c.party?.name?.toLowerCase().includes(q)) return true
+      if (c.lines.some(l => l.lotNo.toLowerCase().includes(q))) return true
+      const totalThan = c.lines.reduce((s, l) => s + l.than, 0)
+      if (String(totalThan) === q) return true
+      return false
+    })
+    const totalThanOf = (c: Challan) => c.lines.reduce((s, l) => s + l.than, 0)
+    const sorted = [...filtered]
+    sorted.sort((a, b) => {
+      switch (issuedSort) {
+        case 'challan_asc':  return a.challanNo - b.challanNo
+        case 'challan_desc': return b.challanNo - a.challanNo
+        case 'date_desc':    return new Date(b.date).getTime() - new Date(a.date).getTime()
+        case 'party':        return (a.party?.name || '').localeCompare(b.party?.name || '')
+        case 'than_desc':    return totalThanOf(b) - totalThanOf(a)
+        default:             return 0
+      }
+    })
+    return sorted
+  }, [issued, issuedQuery, issuedPartyFilter, issuedSort])
 
   const parties = queue?.parties ?? []
   const selectedByParty = useMemo(() => {
@@ -326,12 +365,63 @@ export default function DeliveryChallanPage() {
 
       {tab === 'issued' && (
         <div className="space-y-3">
+          {issued && issued.length > 0 && (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-2 text-xs">
+                <label className="flex flex-col gap-1">
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">Search</span>
+                  <input
+                    value={issuedQuery}
+                    onChange={e => setIssuedQuery(e.target.value)}
+                    placeholder="challan / party / lot / than"
+                    className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-2 py-1 placeholder-gray-400 dark:placeholder-gray-500"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">Party</span>
+                  <select
+                    value={issuedPartyFilter}
+                    onChange={e => setIssuedPartyFilter(e.target.value)}
+                    className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-2 py-1"
+                  >
+                    <option value="all">All</option>
+                    {issuedPartyOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">Sort by</span>
+                  <select
+                    value={issuedSort}
+                    onChange={e => setIssuedSort(e.target.value as any)}
+                    className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-2 py-1"
+                  >
+                    <option value="challan_desc">Challan (newest)</option>
+                    <option value="challan_asc">Challan (oldest)</option>
+                    <option value="date_desc">Date (newest)</option>
+                    <option value="party">Party</option>
+                    <option value="than_desc">Total than (high → low)</option>
+                  </select>
+                </label>
+                <div className="flex items-end text-xs text-gray-500 dark:text-gray-400">
+                  {filteredIssued.length} of {issued.length} challans
+                </div>
+              </div>
+            </div>
+          )}
+
           {(!issued || issued.length === 0) && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 text-center text-gray-500 dark:text-gray-400 text-sm">
               No challans issued yet.
             </div>
           )}
-          {(issued ?? []).map(c => (
+
+          {issued && issued.length > 0 && filteredIssued.length === 0 && (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+              No challans match the current search / filters.
+            </div>
+          )}
+
+          {filteredIssued.map(c => (
             <div key={c.id} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
               <div className="flex items-start justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
                 <div className="min-w-0 flex-1">
@@ -361,10 +451,16 @@ export default function DeliveryChallanPage() {
                 {c.lines.length > 4 && <div className="text-gray-400 dark:text-gray-500">+{c.lines.length - 4} more…</div>}
               </div>
               <div className="flex items-center justify-end gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700">
+                <button
+                  onClick={() => downloadDeliveryChallanPdf(c)}
+                  className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold"
+                >
+                  PDF
+                </button>
                 <Link
                   href={`/delivery/${c.id}/print`}
                   target="_blank"
-                  className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold"
+                  className="text-xs px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white font-semibold"
                 >
                   Print
                 </Link>
