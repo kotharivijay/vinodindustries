@@ -75,7 +75,7 @@ export default function PrintClient({ challan }: { challan: Challan }) {
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs"><span className="text-gray-500">DC No</span> <span className="font-bold">DC-{challan.challanNo}</span></div>
+            <div className="text-xs"><span className="text-gray-500">Challan No</span> <span className="font-bold">{challan.challanNo}</span></div>
             <div className="text-xs"><span className="text-gray-500">Date</span> {fmtDate(challan.date)}</div>
             {challan.transport && <div className="text-xs"><span className="text-gray-500">Transport</span> {challan.transport}</div>}
             {(challan.lrNo || challan.vehicleNo) && (

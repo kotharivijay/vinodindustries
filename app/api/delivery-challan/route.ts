@@ -41,14 +41,14 @@ export async function POST(req: NextRequest) {
   const lrNo = body.lrNo ? String(body.lrNo).trim() : null
   const vehicleNo = body.vehicleNo ? String(body.vehicleNo).trim() : null
   const notes = body.notes ? String(body.notes).trim() : null
-  // Manual challan number override — accepts DC-1, dc-1, or a bare integer.
-  // When null/empty, we auto-generate from max+1.
+  // Manual challan number override — bare positive integer. Any legacy
+  // "DC-" prefix on input is tolerated but stripped.
   let manualChallanNo: number | null = null
   if (body.challanNo !== undefined && body.challanNo !== null && body.challanNo !== '') {
-    const raw = String(body.challanNo).trim().replace(/^DC-/i, '')
+    const raw = String(body.challanNo).trim().replace(/^DC-?/i, '')
     const parsed = parseInt(raw)
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      return NextResponse.json({ error: 'INVALID_INPUT', messages: [`challanNo must be a positive integer or 'DC-N'`] }, { status: 400 })
+      return NextResponse.json({ error: 'INVALID_INPUT', messages: [`challanNo must be a positive integer`] }, { status: 400 })
     }
     manualChallanNo = parsed
   }
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     if (existing) {
       return NextResponse.json({
         error: 'DUPLICATE_CHALLAN_NO',
-        message: `DC-${manualChallanNo} already exists.`,
+        message: `Challan ${manualChallanNo} already exists.`,
       }, { status: 409 })
     }
   }
@@ -186,7 +186,7 @@ export async function POST(req: NextRequest) {
     } else if (String(e?.code) === 'P2002') {
       return NextResponse.json({
         error: 'DUPLICATE_CHALLAN_NO',
-        message: `DC-${manualChallanNo} was taken by another challan in a parallel request. Retry with a different number.`,
+        message: `Challan ${manualChallanNo} was taken by another challan in a parallel request. Retry with a different number.`,
       }, { status: 409 })
     } else throw e
   }

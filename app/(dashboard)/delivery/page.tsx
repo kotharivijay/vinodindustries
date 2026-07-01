@@ -69,9 +69,9 @@ export default function DeliveryChallanPage() {
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Optional manual challan number (e.g. "DC-1"). When set for a multi-party
-  // batch, the first challan uses this number and subsequent ones auto-
-  // increment from there.
+  // Optional manual challan number. When set for a multi-party batch, the
+  // first challan uses this number and subsequent ones auto-increment from
+  // there. Accepts a bare integer.
   const [manualDcNo, setManualDcNo] = useState('')
 
   const parties = queue?.parties ?? []
@@ -122,10 +122,10 @@ export default function DeliveryChallanPage() {
     // Parse manual seed if provided
     let seed: number | null = null
     if (manualDcNo.trim()) {
-      const raw = manualDcNo.trim().replace(/^DC-/i, '')
+      const raw = manualDcNo.trim().replace(/^DC-?/i, '')
       const parsed = parseInt(raw)
       if (!Number.isFinite(parsed) || parsed <= 0) {
-        setError('Manual DC no. must be a positive integer or "DC-N"')
+        setError('Challan no. must be a positive integer')
         setCreating(false)
         return
       }
@@ -160,7 +160,7 @@ export default function DeliveryChallanPage() {
   }
 
   async function cancelChallan(c: Challan) {
-    if (!confirm(`Cancel DC-${c.challanNo}? Its finish-lots return to the queue.`)) return
+    if (!confirm(`Cancel challan ${c.challanNo}? Its finish-lots return to the queue.`)) return
     const res = await fetch(`/api/delivery-challan/${c.id}`, { method: 'DELETE' })
     if (res.ok) { mutateQueue(); mutateIssued() }
     else alert((await res.json()).message ?? 'Cancel failed')
@@ -212,7 +212,7 @@ export default function DeliveryChallanPage() {
             </div>
             <div className="flex items-center gap-2">
               <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                DC no
+                Challan no
                 <input
                   value={manualDcNo}
                   onChange={e => setManualDcNo(e.target.value)}
@@ -336,7 +336,7 @@ export default function DeliveryChallanPage() {
               <div className="flex items-start justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-base font-bold text-emerald-700 dark:text-emerald-400">DC-{c.challanNo}</span>
+                    <span className="text-base font-bold text-emerald-700 dark:text-emerald-400">Challan {c.challanNo}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${c.status === 'issued' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>{c.status}</span>
                   </div>
                   <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
