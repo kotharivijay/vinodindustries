@@ -69,6 +69,10 @@ export default function DeliveryChallanPage() {
   const [picked, setPicked] = useState<Set<number>>(new Set())
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Optional manual challan number (e.g. "DC-1"). When set for a multi-party
+  // batch, the first challan uses this number and subsequent ones auto-
+  // increment from there.
+  const [manualDcNo, setManualDcNo] = useState('')
 
   const parties = queue?.parties ?? []
   const selectedByParty = useMemo(() => {
@@ -115,19 +119,36 @@ export default function DeliveryChallanPage() {
     if (selectedByParty.size === 0) return
     setCreating(true)
     setError(null)
+    // Parse manual seed if provided
+    let seed: number | null = null
+    if (manualDcNo.trim()) {
+      const raw = manualDcNo.trim().replace(/^DC-/i, '')
+      const parsed = parseInt(raw)
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        setError('Manual DC no. must be a positive integer or "DC-N"')
+        setCreating(false)
+        return
+      }
+      seed = parsed
+    }
     try {
+      let offset = 0
       for (const [partyId, felIds] of selectedByParty.entries()) {
+        const body: any = { partyId, finishEntryLotIds: felIds }
+        if (seed != null) body.challanNo = seed + offset
         const res = await fetch('/api/delivery-challan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ partyId, finishEntryLotIds: felIds }),
+          body: JSON.stringify(body),
         })
         if (!res.ok) {
           const err = await res.json()
           throw new Error(err.message || err.error || 'Create failed')
         }
+        offset++
       }
       setPicked(new Set())
+      setManualDcNo('')
       mutateQueue()
       mutateIssued()
       setTab('issued')
@@ -189,13 +210,24 @@ export default function DeliveryChallanPage() {
               <span className="text-gray-700 dark:text-gray-300 font-semibold">{selectedByParty.size}</span>
               <span className="text-gray-500 dark:text-gray-400"> party group(s)</span>
             </div>
-            <button
-              onClick={createChallans}
-              disabled={selectedByParty.size === 0 || creating}
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white text-xs font-semibold disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400"
-            >
-              {creating ? 'Creating…' : `Create ${selectedByParty.size} challan${selectedByParty.size === 1 ? '' : 's'}`}
-            </button>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                DC no
+                <input
+                  value={manualDcNo}
+                  onChange={e => setManualDcNo(e.target.value)}
+                  placeholder="auto"
+                  className="w-24 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-2 py-1 placeholder-gray-400 dark:placeholder-gray-500"
+                />
+              </label>
+              <button
+                onClick={createChallans}
+                disabled={selectedByParty.size === 0 || creating}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white text-xs font-semibold disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400"
+              >
+                {creating ? 'Creating…' : `Create ${selectedByParty.size} challan${selectedByParty.size === 1 ? '' : 's'}`}
+              </button>
+            </div>
           </div>
 
           {error && (

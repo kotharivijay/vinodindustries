@@ -41,11 +41,33 @@ export async function POST(req: NextRequest) {
   const lrNo = body.lrNo ? String(body.lrNo).trim() : null
   const vehicleNo = body.vehicleNo ? String(body.vehicleNo).trim() : null
   const notes = body.notes ? String(body.notes).trim() : null
+  // Manual challan number override — accepts DC-1, dc-1, or a bare integer.
+  // When null/empty, we auto-generate from max+1.
+  let manualChallanNo: number | null = null
+  if (body.challanNo !== undefined && body.challanNo !== null && body.challanNo !== '') {
+    const raw = String(body.challanNo).trim().replace(/^DC-/i, '')
+    const parsed = parseInt(raw)
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return NextResponse.json({ error: 'INVALID_INPUT', messages: [`challanNo must be a positive integer or 'DC-N'`] }, { status: 400 })
+    }
+    manualChallanNo = parsed
+  }
 
   const errors: string[] = []
   if (!Number.isFinite(partyId)) errors.push('partyId required')
   if (felIds.length === 0) errors.push('At least one finish-lot required')
   if (errors.length) return NextResponse.json({ error: 'INVALID_INPUT', messages: errors }, { status: 400 })
+
+  // Guard manual number early so we surface a clear error before touching FELs
+  if (manualChallanNo != null) {
+    const existing = await db.finishDeliveryChallan.findUnique({ where: { challanNo: manualChallanNo }, select: { id: true } })
+    if (existing) {
+      return NextResponse.json({
+        error: 'DUPLICATE_CHALLAN_NO',
+        message: `DC-${manualChallanNo} already exists.`,
+      }, { status: 409 })
+    }
+  }
 
   const party = await prisma.party.findUnique({ where: { id: partyId } })
   if (!party) return NextResponse.json({ error: 'PARTY_NOT_FOUND' }, { status: 404 })
@@ -112,10 +134,12 @@ export async function POST(req: NextRequest) {
     }, { status: 400 })
   }
 
-  // Atomic-ish challan number: max + 1, retry once on unique collision
+  // Auto challan number: max + 1, retry once on unique collision. Manual
+  // overrides skip the max lookup entirely.
   const allChallans = await db.finishDeliveryChallan.findMany({ select: { challanNo: true } })
   let maxNo = 0
   for (const c of allChallans) maxNo = Math.max(maxNo, c.challanNo)
+  const initialNo = manualChallanNo ?? (maxNo + 1)
 
   const buildData = (challanNo: number) => ({
     challanNo,
@@ -145,11 +169,13 @@ export async function POST(req: NextRequest) {
   let created: any
   try {
     created = await db.finishDeliveryChallan.create({
-      data: buildData(maxNo + 1),
+      data: buildData(initialNo),
       include: { party: { select: { id: true, name: true, tag: true } }, lines: true },
     })
   } catch (e: any) {
-    if (String(e?.code) === 'P2002') {
+    // Only retry auto-generated numbers. Manual overrides bubble the
+    // duplicate error up so the operator picks a different number.
+    if (String(e?.code) === 'P2002' && manualChallanNo == null) {
       const refreshed = await db.finishDeliveryChallan.findMany({ select: { challanNo: true } })
       let refreshedMax = 0
       for (const c of refreshed) refreshedMax = Math.max(refreshedMax, c.challanNo)
@@ -157,6 +183,11 @@ export async function POST(req: NextRequest) {
         data: buildData(refreshedMax + 1),
         include: { party: { select: { id: true, name: true, tag: true } }, lines: true },
       })
+    } else if (String(e?.code) === 'P2002') {
+      return NextResponse.json({
+        error: 'DUPLICATE_CHALLAN_NO',
+        message: `DC-${manualChallanNo} was taken by another challan in a parallel request. Retry with a different number.`,
+      }, { status: 409 })
     } else throw e
   }
 
