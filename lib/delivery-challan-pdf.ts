@@ -38,7 +38,7 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   doc.text('Kothari Synthetic Industries', marginL, 16)
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
-  doc.text('Jasol Road, Pali, Rajasthan  ·  GSTIN 08AABFK2105R1Z8', marginL, 21)
+  doc.text('Tilwara Road, Jasol  ·  GSTIN 08AABFK2105R1Z8', marginL, 21)
 
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(13)

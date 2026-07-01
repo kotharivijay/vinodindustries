@@ -59,7 +59,7 @@ export default function PrintClient({ challan }: { challan: Challan }) {
         <div className="flex justify-between items-start border-b-2 border-gray-800 pb-3">
           <div>
             <div className="text-2xl font-bold">Kothari Synthetic Industries</div>
-            <div className="text-xs text-gray-600 mt-0.5">Jasol Road, Pali, Rajasthan · GSTIN 08AABFK2105R1Z8</div>
+            <div className="text-xs text-gray-600 mt-0.5">Tilwara Road, Jasol · GSTIN 08AABFK2105R1Z8</div>
           </div>
           <div className="text-right">
             <div className="text-lg font-bold uppercase tracking-wide text-emerald-700">Delivery Challan</div>
