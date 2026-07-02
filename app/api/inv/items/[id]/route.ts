@@ -123,6 +123,23 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     descLinesUpdated = r.count ?? 0
   }
 
+  // Audit rename — the item name propagates everywhere (challans join the
+  // master row; invoice-line snapshots refreshed above), so keep a trace.
+  if (renaming) {
+    await db.invAuditLog.create({
+      data: {
+        action: 'ITEM_RENAME',
+        entityType: 'InvItem',
+        entityId: id,
+        payload: {
+          from: oldDisplayName,
+          to: updated.displayName,
+          descLinesUpdated,
+        },
+      },
+    })
+  }
+
   // Audit alias remap (rename audit lives outside this block since it can be
   // chained with the remap in a single PATCH).
   if (aliasRemap) {

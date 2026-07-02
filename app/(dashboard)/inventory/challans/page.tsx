@@ -12,6 +12,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 const STATUSES = ['Draft', 'PendingInvoice', 'Invoiced', 'Returned', 'CashPaid', 'Cancelled']
 const TERMINAL_STATUSES = new Set(['Invoiced', 'Returned', 'CashPaid', 'Cancelled'])
 const ACTIONS_PILL_KEY = 'ksi:invChallans:actionsOn'
+const RENAME_PILL_KEY = 'ksi:invChallans:renameOn'
 const SORT_KEY = 'ksi:invChallans:sortBy'
 
 type SortBy =
@@ -101,6 +102,10 @@ export default function ChallansListPage() {
   // Actions pill — when ON, a ⋯ menu appears on each card with Return /
   // Cash Paid / Cancel. OFF by default so the list stays read-friendly.
   const [actionsOn, setActionsOn] = useState(false)
+  // Rename pill — when ON, item names on cards become inline-editable.
+  // A rename edits the master InvItem, so it corrects the spelling on
+  // EVERY challan containing that item at once. OFF by default.
+  const [renameOn, setRenameOn] = useState(false)
   const [sortBy, setSortBy] = useState<SortBy>('challan-desc')
   useEffect(() => {
     try {
@@ -108,6 +113,8 @@ export default function ChallansListPage() {
       if (saved !== null) setHideInvoiced(saved === 'true')
       const savedActions = localStorage.getItem(ACTIONS_PILL_KEY)
       if (savedActions !== null) setActionsOn(savedActions === 'true')
+      const savedRename = localStorage.getItem(RENAME_PILL_KEY)
+      if (savedRename !== null) setRenameOn(savedRename === 'true')
       const savedSort = localStorage.getItem(SORT_KEY)
       if (savedSort && SORT_OPTIONS.some(([k]) => k === savedSort)) setSortBy(savedSort as SortBy)
     } catch {}
@@ -118,6 +125,9 @@ export default function ChallansListPage() {
   useEffect(() => {
     try { localStorage.setItem(ACTIONS_PILL_KEY, String(actionsOn)) } catch {}
   }, [actionsOn])
+  useEffect(() => {
+    try { localStorage.setItem(RENAME_PILL_KEY, String(renameOn)) } catch {}
+  }, [renameOn])
   useEffect(() => {
     try { localStorage.setItem(SORT_KEY, sortBy) } catch {}
   }, [sortBy])
@@ -252,6 +262,17 @@ export default function ChallansListPage() {
           }`}>
           {actionsOn ? '⚙ Actions: ON' : '⚙ Actions'}
         </button>
+        <button onClick={() => setRenameOn(v => !v)}
+          title={renameOn
+            ? 'Click any item name on a card to fix its spelling — the rename applies to every challan with that item'
+            : 'Enable inline item-name spelling correction'}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+            renameOn
+              ? 'bg-teal-100 dark:bg-teal-900/40 border-teal-400 dark:border-teal-700 text-teal-800 dark:text-teal-200'
+              : 'bg-gray-100 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400'
+          }`}>
+          {renameOn ? '✎ Rename Items: ON' : '✎ Rename Items'}
+        </button>
         <input type="search" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search challan, party, item, alias, tag, invoice no…"
           className="flex-1 min-w-[260px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs" />
@@ -295,6 +316,10 @@ export default function ChallansListPage() {
                 mutate(prev => prev?.map(p => p.id === updated.id ? { ...p, ...updated } : p), { revalidate: false })
               }}
               actionsOn={actionsOn}
+              renameOn={renameOn}
+              countChallansWithItem={itemId =>
+                challans.filter(ch => ch.lines.some(l => l.item.id === itemId)).length}
+              onItemRenamed={() => mutate()}
               onAfterStatusChange={() => mutate()}
             />
           ))}
@@ -554,9 +579,12 @@ function ChallanCard(props: {
   selectableForParty: boolean
   onChange: (updated: Challan) => void
   actionsOn: boolean
+  renameOn: boolean
+  countChallansWithItem: (itemId: number) => number
+  onItemRenamed: () => void
   onAfterStatusChange: () => void
 }) {
-  const { challan, expanded, onToggleExpand, selected, onToggleSelect, selectableForParty, onChange, actionsOn, onAfterStatusChange } = props
+  const { challan, expanded, onToggleExpand, selected, onToggleSelect, selectableForParty, onChange, actionsOn, renameOn, countChallansWithItem, onItemRenamed, onAfterStatusChange } = props
   const c = challan
   const linked = c.status === 'Invoiced' || !!c.invoiceLink
   const isTerminal = TERMINAL_STATUSES.has(c.status)
@@ -718,7 +746,13 @@ function ChallanCard(props: {
               {c.lines.map(l => (
                 <li key={l.id} className="flex items-baseline justify-between gap-2 text-xs">
                   <span className="flex-1 min-w-0 break-words text-gray-700 dark:text-gray-300">
-                    {l.item.displayName}
+                    {renameOn ? (
+                      <ItemNameEditor
+                        item={l.item}
+                        countChallansWithItem={countChallansWithItem}
+                        onRenamed={onItemRenamed}
+                      />
+                    ) : l.item.displayName}
                   </span>
                   <span className="shrink-0 font-medium text-gray-600 dark:text-gray-300">
                     {Number(l.qty)} <span className="text-gray-400 dark:text-gray-500">{l.unit}</span>
@@ -756,7 +790,8 @@ function ChallanCard(props: {
 
           <div className="space-y-3">
             {c.lines.map(l => (
-              <LineCard key={l.id} line={l} disabled={lineDisabled} onSave={patch => patchLine(l.id, patch)} onDelete={() => deleteLine(l.id)} />
+              <LineCard key={l.id} line={l} disabled={lineDisabled} onSave={patch => patchLine(l.id, patch)} onDelete={() => deleteLine(l.id)}
+                renameOn={renameOn} countChallansWithItem={countChallansWithItem} onItemRenamed={onItemRenamed} />
             ))}
           </div>
 
@@ -1505,11 +1540,14 @@ function CancelChallanModal({ challan, onClose, onDone }: {
   )
 }
 
-function LineCard({ line, disabled, onSave, onDelete }: {
+function LineCard({ line, disabled, onSave, onDelete, renameOn, countChallansWithItem, onItemRenamed }: {
   line: Line
   disabled: boolean
   onSave: (patch: Record<string, any>) => void | Promise<void>
   onDelete?: () => void | Promise<void>
+  renameOn?: boolean
+  countChallansWithItem?: (itemId: number) => number
+  onItemRenamed?: () => void
 }) {
   // Discount display: percent if discountType=PCT, else flat amount.
   // The input accepts both formats: "5" → flat ₹5, "5%" → 5 percent.
@@ -1593,10 +1631,20 @@ function LineCard({ line, disabled, onSave, onDelete }: {
       <div>
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <button type="button" onClick={() => setHistoryOpen(true)}
-              className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:underline leading-tight text-left">
-              {line.item.displayName}
-            </button>
+            {renameOn && countChallansWithItem && onItemRenamed ? (
+              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100 leading-tight">
+                <ItemNameEditor
+                  item={line.item}
+                  countChallansWithItem={countChallansWithItem}
+                  onRenamed={onItemRenamed}
+                />
+              </span>
+            ) : (
+              <button type="button" onClick={() => setHistoryOpen(true)}
+                className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:underline leading-tight text-left">
+                {line.item.displayName}
+              </button>
+            )}
             {Number(line.returnedQty ?? 0) > 0 && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 shrink-0">
                 {Number(line.returnedQty) >= Number(line.qty) ? 'Returned' : `${Number(line.returnedQty)} returned`}
@@ -1678,6 +1726,97 @@ function LineCard({ line, disabled, onSave, onDelete }: {
         </div>
       </div>
     </div>
+  )
+}
+
+// Inline spelling-correction editor for an item's master displayName.
+// Renaming the master InvItem fixes the name on EVERY challan / PO / invoice
+// line that references it (challan lines join the master row; the API also
+// refreshes snapshotted invoice-line descriptions). Enter = save (after a
+// confirm), Esc or blur = cancel. 409 (duplicate name) shows the server's
+// "use Merge instead" message inline.
+function ItemNameEditor({ item, countChallansWithItem, onRenamed }: {
+  item: Item
+  countChallansWithItem: (itemId: number) => number
+  onRenamed: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(item.displayName)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  // Guards onBlur-cancel while window.confirm() / fetch steal focus mid-save.
+  const [committing, setCommitting] = useState(false)
+
+  function open() {
+    setValue(item.displayName)
+    setError('')
+    setEditing(true)
+  }
+
+  function cancel() {
+    if (committing) return
+    setEditing(false)
+    setError('')
+  }
+
+  async function save() {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === item.displayName) { setEditing(false); return }
+    setCommitting(true)
+    try {
+      const n = countChallansWithItem(item.id)
+      const ok = confirm(
+        `Rename item everywhere?\n\n"${item.displayName}"\n→ "${trimmed}"\n\n` +
+        `This fixes the spelling on ${n} challan${n === 1 ? '' : 's'} in this list ` +
+        `and everywhere else this item is used.`
+      )
+      if (!ok) { setCommitting(false); return }
+      setSaving(true); setError('')
+      const res = await fetch(`/api/inv/items/${item.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: trimmed }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setError(d.error || `Rename failed (${res.status})`)
+        return
+      }
+      setEditing(false)
+      onRenamed()
+    } finally {
+      setSaving(false)
+      setCommitting(false)
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button type="button" onClick={open}
+        title="Fix spelling — renames this item on every challan"
+        className="text-left break-words underline decoration-dotted decoration-teal-500 underline-offset-2 hover:text-teal-600 dark:hover:text-teal-300 cursor-text">
+        {item.displayName} <span className="text-teal-500 text-[10px]">✎</span>
+      </button>
+    )
+  }
+
+  return (
+    <span className="inline-flex flex-col gap-0.5 w-full max-w-full">
+      <input
+        autoFocus
+        type="text"
+        value={value}
+        disabled={saving}
+        onChange={e => setValue(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); save() }
+          if (e.key === 'Escape') { e.preventDefault(); cancel() }
+        }}
+        onBlur={cancel}
+        className="w-full px-1.5 py-0.5 rounded border border-teal-400 dark:border-teal-600 bg-white dark:bg-gray-700 text-xs disabled:opacity-60"
+      />
+      <span className="text-[9px] text-gray-400">Enter = save · Esc = cancel</span>
+      {error && <span className="text-[10px] text-rose-600 dark:text-rose-400">{error}</span>}
+    </span>
   )
 }
 
