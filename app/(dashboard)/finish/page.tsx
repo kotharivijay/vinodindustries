@@ -528,6 +528,30 @@ export default function FinishStockPage() {
     setLotUpdating(null)
   }
 
+  const [bulkDoneFpId, setBulkDoneFpId] = useState<number | null>(null)
+  async function markAllLotsDone(entry: FinishSlipEntry) {
+    const pending = (entry.lots || []).filter((l: any) => l.status !== 'done')
+    if (pending.length === 0) return
+    const msg = `Mark all ${pending.length} lot${pending.length === 1 ? '' : 's'} of FP-${entry.slipNo} as Done?`
+    if (!confirm(msg)) return
+    setBulkDoneFpId(entry.id)
+    try {
+      // Run in parallel — /api/finish/lot-status is per-lot.
+      await Promise.all(
+        pending.map((l: any) =>
+          fetch('/api/finish/lot-status', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lotId: l.id, status: 'done' }),
+          }),
+        ),
+      )
+      mutateSlips()
+      mutatePacking()
+    } catch {}
+    setBulkDoneFpId(null)
+  }
+
   const startEdit = useCallback(async (entry: FinishSlipEntry) => {
     setEditingSlipId(entry.id)
     setEditDate(new Date(entry.date).toISOString().split('T')[0])
@@ -2338,6 +2362,18 @@ export default function FinishStockPage() {
                               <button onClick={() => setDeleteConfirmId(entry.id)}
                                 className="text-xs text-red-400 hover:text-red-600 font-medium">Delete</button>
                             ))}
+                            {/* Bulk "Done all" — shows only when at least one lot on this FP
+                                isn't already done. Confirms before firing to avoid accidental
+                                mass status flips. */}
+                            {(entry.lots || []).some((l: any) => l.status !== 'done') && (
+                              <button
+                                onClick={() => markAllLotsDone(entry)}
+                                disabled={bulkDoneFpId === entry.id}
+                                className="text-xs bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-2 py-0.5 rounded font-semibold"
+                              >
+                                {bulkDoneFpId === entry.id ? 'Marking…' : '✅ Done all'}
+                              </button>
+                            )}
                             {entry.notes && <span className="text-[10px] text-gray-400 dark:text-gray-500 italic ml-auto">{entry.notes}</span>}
                           </div>
 
