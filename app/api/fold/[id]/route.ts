@@ -113,23 +113,35 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       where: { foldProgramId: id, cancelled: false },
       select: {
         id: true,
+        batchNo: true,
         dyeingEntries: { select: { id: true } },
         batchMakingSlipBatches: { where: { slipStatus: 'confirmed' }, select: { id: true } },
       },
     })
-    const protectedIds = new Set<number>(
-      currentBatches
-        .filter((b: any) => b.dyeingEntries.length > 0 || b.batchMakingSlipBatches.length > 0)
-        .map((b: any) => b.id),
+    const protectedBatches = currentBatches.filter(
+      (b: any) => b.dyeingEntries.length > 0 || b.batchMakingSlipBatches.length > 0,
     )
+    const protectedIds = new Set<number>(protectedBatches.map((b: any) => b.id))
+    const protectedBatchNos = new Set<number>(protectedBatches.map((b: any) => b.batchNo))
     const freeIds = currentBatches
       .filter((b: any) => !protectedIds.has(b.id))
       .map((b: any) => b.id)
 
-    // Create only payload batches that aren't an existing protected batch
-    // (those keep their DB rows). New batches have no id; free existing ones
-    // are deleted below and recreated from the payload.
-    const batchesToCreate = batches.filter((b: any) => !(b.id != null && protectedIds.has(b.id)))
+    // Create only payload batches that aren't an existing protected batch.
+    // Two filters:
+    //   1) skip if the payload row carries an id already in protectedIds
+    //      (that DB row keeps its state)
+    //   2) skip if the payload row has NO id but its batchNo already exists
+    //      on a protected batch — otherwise the additive create would produce
+    //      a duplicate batch with the same batchNo (fold 218 batch 50 incident:
+    //      an active BMS-backed batch #50 already existed, so a UI edit that
+    //      dropped the id produced a phantom second row).
+    const batchesToCreate = batches.filter((b: any) => {
+      if (b.id != null && protectedIds.has(b.id)) return false
+      const bn = typeof b.batchNo === 'number' ? b.batchNo : parseInt(b.batchNo)
+      if (b.id == null && Number.isFinite(bn) && protectedBatchNos.has(bn)) return false
+      return true
+    })
 
     const program = await (prisma as any).$transaction(async (tx: any) => {
       if (freeIds.length > 0) {
