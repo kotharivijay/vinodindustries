@@ -24,6 +24,18 @@ input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+/* Exception: the wages/payroll module keeps its steppers — day/attendance
+   counts there are nudged ±1, so the arrows earn their space. Applied via
+   the .keep-spinners wrapper in app/(dashboard)/payroll/layout.tsx. */
+.keep-spinners input[type='number']::-webkit-outer-spin-button,
+.keep-spinners input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: auto;
+  margin: initial;
+}
+.keep-spinners input[type='number'] {
+  -moz-appearance: auto;
+  appearance: auto;
+}
 
 /* ── Centralized Theme Variables ─────────────────────────────────── */
 
