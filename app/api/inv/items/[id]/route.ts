@@ -33,10 +33,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const trimmed = String(body.displayName).trim()
     if (trimmed !== oldDisplayName) {
       // Block rename to a name already in use — operator should use Merge instead.
-      const conflict = await db.invItem.findUnique({ where: { displayName: trimmed }, select: { id: true } })
+      // Return the conflicting item so the UI can offer a one-click merge.
+      const conflict = await db.invItem.findUnique({
+        where: { displayName: trimmed },
+        select: { id: true, displayName: true, active: true },
+      })
       if (conflict && conflict.id !== id) {
         return NextResponse.json({
           error: `Another item already uses the name "${trimmed}". Use Merge to combine them.`,
+          code: 'NAME_TAKEN',
+          details: { conflictItemId: conflict.id, conflictDisplayName: conflict.displayName, conflictActive: conflict.active },
         }, { status: 409 })
       }
       data.displayName = trimmed

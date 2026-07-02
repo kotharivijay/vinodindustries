@@ -1744,12 +1744,17 @@ function ItemNameEditor({ item, countChallansWithItem, onRenamed }: {
   const [value, setValue] = useState(item.displayName)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  // Set when rename hit NAME_TAKEN — the item that already owns the name.
+  // Renders a "Merge into it" button that repoints every reference of THIS
+  // item to the existing one (this item is then retired).
+  const [conflict, setConflict] = useState<{ id: number; name: string } | null>(null)
   // Guards onBlur-cancel while window.confirm() / fetch steal focus mid-save.
   const [committing, setCommitting] = useState(false)
 
   function open() {
     setValue(item.displayName)
     setError('')
+    setConflict(null)
     setEditing(true)
   }
 
@@ -1757,6 +1762,7 @@ function ItemNameEditor({ item, countChallansWithItem, onRenamed }: {
     if (committing) return
     setEditing(false)
     setError('')
+    setConflict(null)
   }
 
   async function save() {
@@ -1771,17 +1777,53 @@ function ItemNameEditor({ item, countChallansWithItem, onRenamed }: {
         `and everywhere else this item is used.`
       )
       if (!ok) { setCommitting(false); return }
-      setSaving(true); setError('')
+      setSaving(true); setError(''); setConflict(null)
       const res = await fetch(`/api/inv/items/${item.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ displayName: trimmed }),
       })
       if (!res.ok) {
         const d = await res.json().catch(() => ({}))
-        setError(d.error || `Rename failed (${res.status})`)
+        if (d.code === 'NAME_TAKEN' && d.details?.conflictItemId) {
+          setConflict({ id: d.details.conflictItemId, name: d.details.conflictDisplayName })
+          setError(`"${d.details.conflictDisplayName}" already exists as a separate item.`)
+        } else {
+          setError(d.error || `Rename failed (${res.status})`)
+        }
         return
       }
       setEditing(false)
+      onRenamed()
+    } finally {
+      setSaving(false)
+      setCommitting(false)
+    }
+  }
+
+  async function mergeIntoConflict() {
+    if (!conflict) return
+    setCommitting(true)
+    try {
+      const n = countChallansWithItem(item.id)
+      const ok = confirm(
+        `Merge duplicate item?\n\n"${item.displayName}" will be merged into "${conflict.name}".\n\n` +
+        `All ${n} challan${n === 1 ? '' : 's'} in this list (plus POs, invoices and stock records) ` +
+        `now showing "${item.displayName}" will switch to "${conflict.name}", ` +
+        `and "${item.displayName}" will be retired from the catalog.`
+      )
+      if (!ok) { setCommitting(false); return }
+      setSaving(true); setError('')
+      const res = await fetch(`/api/inv/items/${item.id}/merge`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: conflict.id }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setError(d.error || `Merge failed (${res.status})`)
+        return
+      }
+      setEditing(false)
+      setConflict(null)
       onRenamed()
     } finally {
       setSaving(false)
@@ -1816,6 +1858,24 @@ function ItemNameEditor({ item, countChallansWithItem, onRenamed }: {
       />
       <span className="text-[9px] text-gray-400">Enter = save · Esc = cancel</span>
       {error && <span className="text-[10px] text-rose-600 dark:text-rose-400">{error}</span>}
+      {conflict && (
+        <span className="flex items-center gap-1.5 flex-wrap">
+          {/* onMouseDown preventDefault: keep the input's blur (= cancel) from
+              killing this button before the click lands */}
+          <button type="button" disabled={saving}
+            onMouseDown={e => e.preventDefault()}
+            onClick={mergeIntoConflict}
+            className="text-[10px] font-semibold px-2 py-0.5 rounded bg-teal-600 hover:bg-teal-700 text-white disabled:opacity-50">
+            {saving ? 'Merging…' : `⇄ Merge into "${conflict.name}"`}
+          </button>
+          <button type="button" disabled={saving}
+            onMouseDown={e => e.preventDefault()}
+            onClick={cancel}
+            className="text-[10px] px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400">
+            Keep both
+          </button>
+        </span>
+      )}
     </span>
   )
 }
