@@ -90,12 +90,19 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
     doc.text(line, rightX, 31 + i * 4, { align: 'right' })
   })
 
-  // Group lines by shade category
-  const byCat = new Map<string, DeliveryChallanLineForPdf[]>()
+  // Group lines by shade category AND merge duplicate (lot, quality) rows
+  // within each category so the printed challan shows one row per unique
+  // lot-quality combo instead of every underlying FinishEntryLot slice.
+  type Merged = { lotNo: string; qualityName: string | null; than: number; sliceCount: number }
+  const byCat = new Map<string, Map<string, Merged>>()
   for (const l of c.lines) {
-    const k = l.shadeCategory || 'Uncategorised'
-    if (!byCat.has(k)) byCat.set(k, [])
-    byCat.get(k)!.push(l)
+    const catKey = l.shadeCategory || 'Uncategorised'
+    if (!byCat.has(catKey)) byCat.set(catKey, new Map())
+    const bucket = byCat.get(catKey)!
+    const key = `${l.lotNo}||${l.qualityName ?? ''}`
+    const cur = bucket.get(key)
+    if (cur) { cur.than += l.than; cur.sliceCount++ }
+    else bucket.set(key, { lotNo: l.lotNo, qualityName: l.qualityName ?? null, than: l.than, sliceCount: 1 })
   }
   const cats = [...byCat.keys()].sort()
 
@@ -103,9 +110,9 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   let idx = 1
   let grandThan = 0
   for (const cat of cats) {
-    const rows = byCat.get(cat)!
+    const rows = [...byCat.get(cat)!.values()].sort((a, b) => a.lotNo.localeCompare(b.lotNo))
     body.push([
-      { content: `▸ ${cat}`, colSpan: 4, styles: { fillColor: [245, 245, 245], fontStyle: 'bold', textColor: [30, 30, 30] } },
+      { content: `> ${cat}`, colSpan: 4, styles: { fillColor: [245, 245, 245], fontStyle: 'bold', textColor: [30, 30, 30] } },
     ])
     let subTotal = 0
     for (const r of rows) {

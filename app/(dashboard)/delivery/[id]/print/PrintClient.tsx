@@ -31,16 +31,24 @@ export default function PrintClient({ challan }: { challan: Challan }) {
     return () => clearTimeout(t)
   }, [])
 
-  // Group lines by shade category so the printed challan matches the
-  // mockup's Dark / Light / Medium sub-totals layout.
+  // Group lines by shade category AND merge duplicate (lot, quality) rows
+  // so the printed challan shows one row per unique lot-quality within a
+  // category, summing than across all underlying FinishEntryLot slices.
+  type MergedRow = { lotNo: string; qualityName: string | null; than: number; sliceCount: number }
   const groups = useMemo(() => {
-    const m = new Map<string, Line[]>()
+    const m = new Map<string, Map<string, MergedRow>>()
     for (const l of challan.lines) {
-      const k = l.shadeCategory || 'Uncategorised'
-      if (!m.has(k)) m.set(k, [])
-      m.get(k)!.push(l)
+      const catKey = l.shadeCategory || 'Uncategorised'
+      if (!m.has(catKey)) m.set(catKey, new Map())
+      const bucket = m.get(catKey)!
+      const key = `${l.lotNo}||${l.qualityName ?? ''}`
+      const cur = bucket.get(key)
+      if (cur) { cur.than += l.than; cur.sliceCount++ }
+      else bucket.set(key, { lotNo: l.lotNo, qualityName: l.qualityName ?? null, than: l.than, sliceCount: 1 })
     }
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b))
+    return [...m.entries()].map(
+      ([cat, bucket]) => [cat, [...bucket.values()].sort((a, b) => a.lotNo.localeCompare(b.lotNo))] as const,
+    ).sort(([a], [b]) => a.localeCompare(b))
   }, [challan.lines])
 
   const grandThan = challan.lines.reduce((s, l) => s + l.than, 0)
@@ -103,31 +111,38 @@ export default function PrintClient({ challan }: { challan: Challan }) {
             </tr>
           </thead>
           <tbody>
-            {groups.map(([cat, rows], gi) => {
-              const startIdx = challan.lines.findIndex(l => l.id === rows[0].id) + 1
-              const subTotal = rows.reduce((s, r) => s + r.than, 0)
-              return (
-                <>
-                  <tr key={`cat-${gi}`} className="bg-gray-50">
-                    <td className="border border-gray-300 px-2 py-1 font-semibold" colSpan={4}>
-                      ▸ {cat}
-                    </td>
-                  </tr>
-                  {rows.map((r, i) => (
-                    <tr key={r.id}>
-                      <td className="border border-gray-300 px-2 py-1">{startIdx + i}</td>
-                      <td className="border border-gray-300 px-2 py-1 font-mono">{r.lotNo}</td>
-                      <td className="border border-gray-300 px-2 py-1">{r.qualityName ?? '-'}</td>
-                      <td className="border border-gray-300 px-2 py-1 text-right">{r.than}</td>
+            {(() => {
+              // Running row counter across all category groups so numbering
+              // stays sequential even after de-duplication.
+              let runningIdx = 0
+              return groups.map(([cat, rows], gi) => {
+                const subTotal = rows.reduce((s, r) => s + r.than, 0)
+                return (
+                  <>
+                    <tr key={`cat-${gi}`} className="bg-gray-50">
+                      <td className="border border-gray-300 px-2 py-1 font-semibold" colSpan={4}>
+                        {cat}
+                      </td>
                     </tr>
-                  ))}
-                  <tr key={`sub-${gi}`} className="font-semibold bg-gray-50">
-                    <td className="border border-gray-300 px-2 py-1" colSpan={3}>{cat} sub-total</td>
-                    <td className="border border-gray-300 px-2 py-1 text-right">{subTotal}</td>
-                  </tr>
-                </>
-              )
-            })}
+                    {rows.map(r => {
+                      runningIdx++
+                      return (
+                        <tr key={`${cat}-${r.lotNo}-${r.qualityName ?? ''}`}>
+                          <td className="border border-gray-300 px-2 py-1">{runningIdx}</td>
+                          <td className="border border-gray-300 px-2 py-1 font-mono">{r.lotNo}</td>
+                          <td className="border border-gray-300 px-2 py-1">{r.qualityName ?? '-'}</td>
+                          <td className="border border-gray-300 px-2 py-1 text-right">{r.than}</td>
+                        </tr>
+                      )
+                    })}
+                    <tr key={`sub-${gi}`} className="font-semibold bg-gray-50">
+                      <td className="border border-gray-300 px-2 py-1" colSpan={3}>{cat} sub-total</td>
+                      <td className="border border-gray-300 px-2 py-1 text-right">{subTotal}</td>
+                    </tr>
+                  </>
+                )
+              })
+            })()}
             <tr className="font-bold bg-gray-100">
               <td className="border border-gray-300 px-2 py-1" colSpan={3}>Grand Total</td>
               <td className="border border-gray-300 px-2 py-1 text-right">{grandThan}</td>
