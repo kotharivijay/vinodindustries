@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
+import { useRole } from '../../RoleContext'
+import { downloadShadeRecipesPdf } from '@/lib/shade-recipe-pdf'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -151,9 +153,21 @@ export default function ShadesPage() {
   const { data: shades, isLoading, mutate } = useSWR<Shade[]>('/api/shades', fetcher)
   const { data: chemicals } = useSWR<Chemical[]>('/api/chemicals', fetcher)
 
+  const role = useRole()
+  const isAdmin = role === 'admin'
+
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('')
   const [sortMode, setSortMode] = useState<'prefix' | 'name' | 'recent'>('prefix')
+  // Multi-select for PDF export. Only accessible when role === 'admin'.
+  const [pickerOn, setPickerOn] = useState(false)
+  const [pickedIds, setPickedIds] = useState<Set<number>>(new Set())
+  const togglePick = (id: number) => setPickedIds(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
   const [selected, setSelected] = useState<Shade | null>(null)
   const [isNew, setIsNew] = useState(false)
 
@@ -288,8 +302,58 @@ export default function ShadesPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Shade Master</h1>
-          <p className="text-sm text-gray-500">{shades?.length ?? 0} shades</p>
+          <p className="text-sm text-gray-500">{shades?.length ?? 0} shades{pickerOn && pickedIds.size > 0 && ` · ${pickedIds.size} selected`}</p>
         </div>
+        {isAdmin && (
+          <>
+            <button
+              onClick={() => {
+                if (pickerOn) setPickedIds(new Set())
+                setPickerOn(v => !v)
+              }}
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition ${pickerOn ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+            >
+              {pickerOn ? 'Cancel select' : 'Multi-select'}
+            </button>
+            {pickerOn && (
+              <button
+                onClick={() => {
+                  if (!filtered.length) return
+                  setPickedIds(prev => {
+                    const next = new Set(prev)
+                    const allIn = filtered.every(s => next.has(s.id))
+                    if (allIn) filtered.forEach(s => next.delete(s.id))
+                    else filtered.forEach(s => next.add(s.id))
+                    return next
+                  })
+                }}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
+              >
+                {filtered.every(s => pickedIds.has(s.id)) && filtered.length > 0 ? 'Deselect visible' : 'Select visible'}
+              </button>
+            )}
+            {pickerOn && pickedIds.size > 0 && (
+              <button
+                onClick={() => {
+                  const chosen = (shades ?? []).filter(s => pickedIds.has(s.id))
+                  downloadShadeRecipesPdf(chosen.map(s => ({
+                    name: s.name,
+                    description: s.description ?? null,
+                    colorCategory: s.colorCategory ?? null,
+                    recipeItems: s.recipeItems.map(r => ({
+                      chemicalName: r.chemical?.name ?? '',
+                      unit: r.chemical?.unit ?? '',
+                      quantity: r.quantity,
+                    })),
+                  })))
+                }}
+                className="px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition"
+              >
+                Share PDF ({pickedIds.size})
+              </button>
+            )}
+          </>
+        )}
         <button
           onClick={openNew}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
@@ -351,36 +415,52 @@ export default function ShadesPage() {
             <div className="text-center text-gray-400 py-12 text-sm">No shades found</div>
           ) : (
             <div className="overflow-y-auto space-y-1 flex-1">
-              {filtered.map(shade => (
-                <button
-                  key={shade.id}
-                  onClick={() => openEdit(shade)}
-                  className={`w-full text-left rounded-xl border px-4 py-3 transition ${
-                    selected?.id === shade.id
-                      ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30'
-                      : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-200 dark:hover:border-indigo-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{shade.name}</span>
-                    <span className="flex items-center gap-1 shrink-0">
-                      {shade.colorCategory && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${categoryBadge[shade.colorCategory] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {shade.colorCategory}
-                        </span>
-                      )}
-                      {shade.recipeItems.length > 0 && (
-                        <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full font-medium">
-                          {shade.recipeItems.length} chem
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  {shade.description && (
-                    <p className="text-xs text-gray-400 mt-0.5 truncate">{shade.description}</p>
-                  )}
-                </button>
-              ))}
+              {filtered.map(shade => {
+                const isPicked = pickedIds.has(shade.id)
+                return (
+                  <button
+                    key={shade.id}
+                    onClick={() => (pickerOn ? togglePick(shade.id) : openEdit(shade))}
+                    className={`w-full text-left rounded-xl border px-4 py-3 transition ${
+                      pickerOn && isPicked
+                        ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30'
+                        : selected?.id === shade.id
+                          ? 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30'
+                          : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-indigo-200 dark:hover:border-indigo-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        {pickerOn && (
+                          <input
+                            type="checkbox"
+                            checked={isPicked}
+                            onChange={() => togglePick(shade.id)}
+                            onClick={e => e.stopPropagation()}
+                            className="h-3.5 w-3.5 accent-emerald-600 cursor-pointer"
+                          />
+                        )}
+                        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{shade.name}</span>
+                      </span>
+                      <span className="flex items-center gap-1 shrink-0">
+                        {shade.colorCategory && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${categoryBadge[shade.colorCategory] ?? 'bg-gray-100 text-gray-600'}`}>
+                            {shade.colorCategory}
+                          </span>
+                        )}
+                        {shade.recipeItems.length > 0 && (
+                          <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full font-medium">
+                            {shade.recipeItems.length} chem
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {shade.description && (
+                      <p className="text-xs text-gray-400 mt-0.5 truncate">{shade.description}</p>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
