@@ -316,42 +316,26 @@ export default function ShadesPage() {
               {pickerOn ? 'Cancel select' : 'Multi-select'}
             </button>
             {pickerOn && (
-              <>
-                <button
-                  onClick={() => {
-                    if (!filtered.length) return
-                    setPickedIds(prev => {
-                      const next = new Set(prev)
-                      const allIn = filtered.every(s => next.has(s.id))
-                      if (allIn) filtered.forEach(s => next.delete(s.id))
-                      else filtered.forEach(s => next.add(s.id))
-                      return next
-                    })
-                  }}
-                  className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
-                >
-                  {filtered.every(s => pickedIds.has(s.id)) && filtered.length > 0 ? 'Deselect visible' : 'Select visible'}
-                </button>
-                {/* Select all — ignores search + filters and picks every
-                    shade the user has access to. Toggles to Clear all when
-                    everything is already picked. */}
-                <button
-                  onClick={() => {
-                    const all = shades ?? []
-                    if (!all.length) return
-                    setPickedIds(prev => {
-                      const allIn = all.every(s => prev.has(s.id))
-                      if (allIn) return new Set()
-                      return new Set(all.map(s => s.id))
-                    })
-                  }}
-                  className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
-                >
-                  {(shades ?? []).length > 0 && (shades ?? []).every(s => pickedIds.has(s.id))
-                    ? `Clear all (${(shades ?? []).length})`
-                    : `Select all (${(shades ?? []).length})`}
-                </button>
-              </>
+              // Select all — scoped to the currently filtered list so the
+              // user's search / colour / prefix filters decide the pool.
+              // Toggles to "Clear all" once every filtered row is picked.
+              <button
+                onClick={() => {
+                  if (!filtered.length) return
+                  setPickedIds(prev => {
+                    const next = new Set(prev)
+                    const allIn = filtered.every(s => next.has(s.id))
+                    if (allIn) filtered.forEach(s => next.delete(s.id))
+                    else filtered.forEach(s => next.add(s.id))
+                    return next
+                  })
+                }}
+                className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
+              >
+                {filtered.length > 0 && filtered.every(s => pickedIds.has(s.id))
+                  ? `Clear all (${filtered.length})`
+                  : `Select all (${filtered.length})`}
+              </button>
             )}
             {pickerOn && pickedIds.size > 0 && (
               <button
