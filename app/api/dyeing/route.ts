@@ -115,6 +115,7 @@ export async function POST(req: NextRequest) {
   const db = prisma as any
 
   // Create ONE entry per slip. Use first lot for backward compat fields.
+  const normalisedShadeDesc: string | null = data.shadeDescription?.trim() || null
   const entry = await db.dyeingEntry.create({
     data: {
       date: new Date(data.date),
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
       lotNo: lots[0].lotNo,
       than: lots[0].than,
       shadeName: data.shadeName?.trim() || null,
-      shadeDescription: data.shadeDescription?.trim() || null,
+      shadeDescription: normalisedShadeDesc,
       notes: data.notes || null,
       machineId: data.machineId ? parseInt(data.machineId) : null,
       operatorId: data.operatorId ? parseInt(data.operatorId) : null,
@@ -134,6 +135,18 @@ export async function POST(req: NextRequest) {
       lots: true,
     },
   })
+
+  // Mirror shadeDescription onto the linked fold batch at create time so the
+  // slip and batch start in sync. Only touches the field when the operator
+  // supplied one (empty payload keeps whatever the batch-maker had set).
+  if (normalisedShadeDesc != null && entry.foldBatchId != null) {
+    try {
+      await db.foldBatch.update({
+        where: { id: entry.foldBatchId },
+        data: { shadeDescription: normalisedShadeDesc },
+      })
+    } catch {}
+  }
 
   // ── Learn aliases: save OCR name → master chemical mapping ──
   if (data.chemicals?.length && data.ocrNames?.length) {

@@ -64,7 +64,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     : [{ lotNo: normalizeLotNo(data.lotNo) ?? '', than: parseInt(data.than) }]
 
   // Update main entry (backward compat: first lot's values)
-  await db.dyeingEntry.update({
+  // Normalise the incoming shadeDescription (if provided) once so we can
+  // both write it to the slip AND mirror it to the fold batch.
+  const shadeDescProvided = Object.prototype.hasOwnProperty.call(data, 'shadeDescription')
+  const normalisedShadeDesc: string | null | undefined = shadeDescProvided
+    ? (data.shadeDescription?.trim() || null)
+    : undefined
+
+  const updatedSlip = await db.dyeingEntry.update({
     where: { id: entryId },
     data: {
       date: new Date(data.date),
@@ -72,16 +79,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       lotNo: lots[0].lotNo,
       than: lots[0].than,
       shadeName: data.shadeName?.trim() || null,
-      // Only touch shadeDescription when the client supplied it — preserves
-      // an existing value when the edit form predates this field.
-      ...(Object.prototype.hasOwnProperty.call(data, 'shadeDescription')
-        ? { shadeDescription: data.shadeDescription?.trim() || null }
-        : {}),
+      ...(shadeDescProvided ? { shadeDescription: normalisedShadeDesc } : {}),
       notes: data.notes || null,
       machineId: data.machineId !== undefined ? (data.machineId ? parseInt(data.machineId) : null) : undefined,
       operatorId: data.operatorId !== undefined ? (data.operatorId ? parseInt(data.operatorId) : null) : undefined,
     },
+    select: { foldBatchId: true },
   })
+
+  // Mirror shadeDescription to the linked fold batch so slip and batch stay
+  // in lock-step. Both records surface the same value regardless of which
+  // read path (slip print, batch print, delivery challan) consumes it.
+  if (shadeDescProvided && updatedSlip?.foldBatchId != null) {
+    await db.foldBatch.update({
+      where: { id: updatedSlip.foldBatchId },
+      data: { shadeDescription: normalisedShadeDesc },
+    })
+  }
 
   // Update lots: delete old, create new
   await db.dyeingEntryLot.deleteMany({ where: { entryId } })

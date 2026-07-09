@@ -76,5 +76,18 @@ export async function PATCH(req: NextRequest) {
     data,
   })
 
+  // Mirror shadeDescription onto every DyeingEntry linked to this fold
+  // batch so both records stay in lock-step (per operator request:
+  // editing either side must update the other). Only fires when the
+  // client explicitly sent shadeDescription in the payload.
+  if (Object.prototype.hasOwnProperty.call(body, 'shadeDescription')) {
+    try {
+      await (prisma as any).dyeingEntry.updateMany({
+        where: { foldBatchId: batchId },
+        data: { shadeDescription: shadeDescription ?? null },
+      })
+    } catch {}
+  }
+
   return NextResponse.json(batch)
 }
