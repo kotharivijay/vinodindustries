@@ -16,7 +16,16 @@ type Period = 'today' | 'yesterday' | 'week' | 'month' | 'custom'
 function getDateRange(period: Period, offset: number): { from: string; to: string; label: string } {
   const now = new Date()
   now.setDate(now.getDate() + offset)
-  const fmt = (d: Date) => d.toISOString().split('T')[0]
+  // Local YYYY-MM-DD — .toISOString() converts to UTC first, which shifts
+  // IST midnight back by 5h30m and pulls the previous day into the range
+  // (e.g. "This Month" for June was sending from=2026-05-31 to=2026-06-29,
+  // leaking May 31 into the report and dropping June 30 out of it).
+  const fmt = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
 
   switch (period) {
     case 'today':

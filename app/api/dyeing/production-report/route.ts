@@ -13,9 +13,13 @@ export async function GET(req: NextRequest) {
 
   if (!dateFrom || !dateTo) return NextResponse.json({ error: 'from and to required' }, { status: 400 })
 
+  // Parse YYYY-MM-DD as UTC midnight and set 'to' end-of-day in UTC so the
+  // range is timezone-independent — DyeingEntry.date is stored as UTC
+  // midnight of the operator's date pick, so a UTC range hits exactly the
+  // intended calendar days.
   const from = new Date(dateFrom)
   const to = new Date(dateTo)
-  to.setHours(23, 59, 59, 999)
+  to.setUTCHours(23, 59, 59, 999)
 
   const db = prisma as any
 
