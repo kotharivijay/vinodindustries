@@ -763,10 +763,10 @@ export default function BatchDyeingPage() {
                     <button
                       type="button"
                       onClick={() => setPartyMenuOpen(o => !o)}
-                      title="Change or clear party filter"
-                      className="shrink-0 max-w-[220px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 ring-1 ring-purple-300 dark:ring-purple-700"
+                      title={`Party filter: ${selectedParty}`}
+                      className="shrink-0 min-w-0 max-w-[160px] sm:max-w-[240px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 ring-1 ring-purple-300 dark:ring-purple-700"
                     >
-                      <span>🎯</span>
+                      <span className="hidden xs:inline">🎯</span>
                       <span className="truncate">{selectedParty}</span>
                       <span
                         onClick={e => { e.stopPropagation(); setSelectedParty(null) }}
@@ -796,18 +796,20 @@ export default function BatchDyeingPage() {
                         className="fixed inset-0 z-30"
                         onClick={() => setPartyMenuOpen(false)}
                       />
-                      <div className="absolute right-0 top-full mt-1 z-40 w-[380px] max-w-[calc(100vw-16px)] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl">
+                      <div className="absolute right-0 top-full mt-1 z-40 w-[380px] max-w-[calc(100vw-24px)] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl">
                         <div className="p-2 border-b border-gray-100 dark:border-gray-700">
                           <input
-                            autoFocus
                             type="text"
                             placeholder="Filter parties..."
+                            /* autoFocus intentionally omitted — on mobile it pops
+                               the on-screen keyboard, covering half the list.
+                               Operator can tap the input if they want to type. */
                             className="w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-500"
                             value={partyMenuSearch}
                             onChange={e => setPartyMenuSearch(e.target.value)}
                           />
                         </div>
-                        <div className="max-h-80 overflow-y-auto py-1 text-sm">
+                        <div className="max-h-[min(60vh,20rem)] overflow-y-auto py-1 text-sm">
                           <button
                             type="button"
                             onClick={() => { setSelectedParty(null); setPartyMenuOpen(false) }}
