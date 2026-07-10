@@ -796,7 +796,12 @@ export default function BatchDyeingPage() {
                         className="fixed inset-0 z-30"
                         onClick={() => setPartyMenuOpen(false)}
                       />
-                      <div className="absolute right-0 top-full mt-1 z-40 w-[380px] max-w-[calc(100vw-24px)] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl">
+                      {/* Popover — on mobile the parent flex row can be
+                          narrower than the popover, so we stretch the
+                          popover across the parent width (left-0 right-0
+                          gives width via inset). From sm+ we release the
+                          left inset and pin to right-0 with a fixed 380px. */}
+                      <div className="absolute left-0 right-0 sm:left-auto sm:w-[380px] top-full mt-1 z-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl">
                         <div className="p-2 border-b border-gray-100 dark:border-gray-700">
                           <input
                             type="text"
@@ -816,8 +821,8 @@ export default function BatchDyeingPage() {
                             className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20"
                           >
                             <span className={`font-medium ${!selectedParty ? 'text-purple-700 dark:text-purple-300' : 'text-gray-700 dark:text-gray-200'}`}>All parties</span>
-                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                              {batches.length} · {batches.reduce((s, b) => s + b.totalThan, 0).toLocaleString('en-IN')}T
+                            <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                              {batches.length} · {batches.reduce((s, b) => s + b.totalThan, 0).toLocaleString('en-IN')}
                             </span>
                           </button>
                           <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
@@ -836,7 +841,7 @@ export default function BatchDyeingPage() {
                                 }`}
                               >
                                 <span className={`truncate ${isSel ? 'font-semibold text-purple-800 dark:text-purple-200' : 'text-gray-800 dark:text-gray-100'}`}>{p.name}</span>
-                                <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">{p.batches} · {p.than.toLocaleString('en-IN')}T</span>
+                                <span className="shrink-0 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{p.batches} · {p.than.toLocaleString('en-IN')}</span>
                               </button>
                             )
                           })}
