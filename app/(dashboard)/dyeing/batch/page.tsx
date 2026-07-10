@@ -296,12 +296,22 @@ export default function BatchDyeingPage() {
     return Array.from(map.values()).sort((a, b) => parseInt(b.foldNo) - parseInt(a.foldNo) || b.foldNo.localeCompare(a.foldNo))
   }, [batches, batchSearch])
 
-  // Pending totals across ALL fold batches not yet turned into a dyeing slip
-  // (includes BM-pending batches). Drives the header summary box.
-  const pendingBatchCount = batches.length
+  // Pending totals — when the operator has typed a search (party / lot /
+  // fold / shade / quality), the header follows the same filter used by
+  // foldGroups so the counts reflect exactly what they're looking at.
+  // Empty search falls through to totals across every pending batch.
+  const filteredBatches = useMemo(() => {
+    const q = batchSearch.toLowerCase()
+    if (!q) return batches
+    return batches.filter(b => {
+      const str = `${b.foldNo} ${b.shadeName} ${b.lots.map(l => `${l.lotNo} ${l.quality ?? ''} ${l.party ?? ''}`).join(' ')}`.toLowerCase()
+      return str.includes(q)
+    })
+  }, [batches, batchSearch])
+  const pendingBatchCount = filteredBatches.length
   const pendingThanTotal = useMemo(
-    () => batches.reduce((s, b) => s + b.totalThan, 0),
-    [batches]
+    () => filteredBatches.reduce((s, b) => s + b.totalThan, 0),
+    [filteredBatches]
   )
 
   // ─── Selected batch ─────────────────────────────────────────────────────────
@@ -597,10 +607,16 @@ export default function BatchDyeingPage() {
         />
       )}
 
-      {/* Pending summary box — total fold batches & thans waiting for a dyeing slip */}
+      {/* Pending summary box — total fold batches & thans waiting for a dyeing slip.
+          Follows the batch-search filter so the header always matches the list below. */}
       <div className="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-2xl shadow-sm px-4 py-4 mb-4">
         <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">
           ⏳ Pending for Dyeing
+          {batchSearch.trim() && (
+            <span className="ml-2 normal-case tracking-normal text-[10px] font-medium text-gray-500 dark:text-gray-400">
+              (filtered by &quot;{batchSearch}&quot;)
+            </span>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl px-4 py-3">
@@ -687,7 +703,7 @@ export default function BatchDyeingPage() {
               <>
                 <input
                   type="text"
-                  placeholder="Search fold no, shade, lot, quality..."
+                  placeholder="Search fold no, shade, lot, quality, party..."
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
                   value={batchSearch}
                   onChange={e => setBatchSearch(e.target.value)}
