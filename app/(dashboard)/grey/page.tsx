@@ -387,22 +387,14 @@ export default function GreyListPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={handleCarryForwardImport}
-            disabled={cfImporting}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-          >
-            {cfImporting ? 'Importing...' : 'Import Carry-Forward'}
-          </button>
-          <button onClick={() => setShowImport(true)} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700">
-            Import from Sheet
-          </button>
+          {/* Import Carry-Forward, Import from Sheet, Update Weights — hidden
+              per operator request: no longer used since the current-year
+              flow doesn't touch last-year opening balances or bulk weight
+              sheets. Handlers + modals stay wired so the buttons can be
+              re-enabled by uncommenting if needed. */}
           <button onClick={() => setShowUnallocated(true)} className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700">
             📊 Unallocated Stock
           </button>
-          <Link href="/grey/weights" className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-700">
-            &#x2696;&#xFE0F; Update Weights
-          </Link>
           <button onClick={() => setShowChecking(true)} className="flex items-center gap-2 bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-teal-700">
             🔍 Grey Checking
           </button>
