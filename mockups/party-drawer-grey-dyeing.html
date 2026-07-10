@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Party picker — separate window (Grey + Dyeing)</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+  </script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .phone {
+      width: 380px; max-width: 100%;
+      border: 12px solid #1f2937;
+      border-radius: 32px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+      position: relative;
+    }
+    .phone-notch { background: #1f2937; height: 22px; display: flex; align-items: center; justify-content: center; }
+    .phone-notch::after { content:''; width: 90px; height: 6px; background: #111; border-radius: 4px; }
+    .phone-backdrop { position: absolute; inset: 22px 0 0 0; background: rgba(0,0,0,0.45); pointer-events: none; }
+    .desk-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.35); border-radius: 12px; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="max-w-6xl mx-auto p-6 space-y-14">
+
+  <header class="space-y-1">
+    <h1 class="text-xl font-bold">Party picker — opens as a separate window</h1>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      Not a dropdown attached to the button. Clicking 🎯&nbsp;Party dims the page and opens a full modal
+      (centred card on desktop, bottom-sheet on mobile). Backdrop click, ESC key, and the × button close it.
+    </p>
+    <nav class="flex flex-wrap gap-2 text-xs pt-1">
+      <a href="#grey" class="text-emerald-600 dark:text-emerald-400 underline">1 · Grey Inward</a>
+      <a href="#dye"  class="text-purple-600 dark:text-purple-400 underline">2 · Dyeing Slip</a>
+      <a href="#compare"  class="text-gray-600 dark:text-gray-300 underline">3 · Old vs new</a>
+    </nav>
+  </header>
+
+  <!-- SECTION 1 — Grey Inward -->
+  <section id="grey" class="space-y-4">
+    <h2 class="text-lg font-bold">1 · Grey Inward — desktop modal &amp; mobile sheet</h2>
+
+    <div class="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6 items-start">
+
+      <!-- DESKTOP -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Desktop — centred modal</div>
+        <div class="relative bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+          <div class="p-3 opacity-95">
+            <div class="flex items-center gap-2 mb-2">
+              <input class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-3 py-2 text-sm" placeholder="Search party, lot, LR..." disabled />
+              <button class="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white flex items-center gap-1.5 ring-2 ring-emerald-300 dark:ring-emerald-800">🎯 Party</button>
+            </div>
+            <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 h-40 flex items-center justify-center text-xs text-gray-400">grey entries table</div>
+          </div>
+          <div class="desk-backdrop"></div>
+          <div class="absolute inset-0 flex items-start justify-center p-6">
+            <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <h3 class="text-sm font-bold">Filter by party</h3>
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400">18 parties</span>
+                </div>
+                <button class="w-7 h-7 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 flex items-center justify-center text-lg">×</button>
+              </div>
+
+              <div class="p-3 border-b border-gray-100 dark:border-gray-700 space-y-2">
+                <input class="w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded-md px-2.5 py-2" placeholder="Type to filter parties..." />
+                <div class="flex items-center gap-1 text-[10px] font-medium text-gray-500 dark:text-gray-400 flex-wrap">
+                  <span class="uppercase tracking-wide mr-1">Sort:</span>
+                  <button class="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700">Party A→Z</button>
+                  <button class="px-2 py-1 rounded-md bg-emerald-600 text-white ring-1 ring-emerald-400">Inward ↓</button>
+                  <button class="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700">Despatched ↓</button>
+                  <button class="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700">Stock ↓</button>
+                </div>
+              </div>
+
+              <div class="max-h-72 overflow-y-auto text-sm">
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                  <span class="text-emerald-700 dark:text-emerald-300 font-medium">All parties</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-emerald-600 font-semibold">6,842</span>
+                    <span class="text-rose-600 font-semibold">4,201</span>
+                  </span>
+                </button>
+                <div class="border-t border-gray-100 dark:border-gray-700"></div>
+                <button class="w-full flex items-center justify-between px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20">
+                  <span class="font-semibold text-emerald-800 dark:text-emerald-200">Shri Sachchiyay Mata Texofin</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-emerald-600 font-semibold">1,248</span>
+                    <span class="text-rose-600 font-semibold">892</span>
+                  </span>
+                </button>
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                  <span>Shankeshwer Cottan Mills</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-emerald-600 font-semibold">918</span>
+                    <span class="text-rose-600 font-semibold">640</span>
+                  </span>
+                </button>
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                  <span>Narayanji Mills</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-emerald-600 font-semibold">726</span>
+                    <span class="text-rose-600 font-semibold">508</span>
+                  </span>
+                </button>
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                  <span>M.Milan Industries</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-emerald-600 font-semibold">642</span>
+                    <span class="text-rose-600 font-semibold">400</span>
+                  </span>
+                </button>
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                  <span>Shri Shantinath Textile</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-emerald-600 font-semibold">560</span>
+                    <span class="text-rose-600 font-semibold">332</span>
+                  </span>
+                </button>
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">
+                  <span>Marudhra Fab Tex</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-emerald-600 font-semibold">440</span>
+                    <span class="text-rose-600 font-semibold">278</span>
+                  </span>
+                </button>
+              </div>
+
+              <div class="px-4 py-2 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400">
+                <span class="flex items-center gap-2">
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>inward</span>
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span>despatched</span>
+                </span>
+                <button class="text-emerald-700 dark:text-emerald-400 font-semibold">Clear filter</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MOBILE -->
+      <div class="space-y-2 justify-self-center">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 text-center">Mobile — bottom sheet</div>
+        <div class="phone bg-gray-50 dark:bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="p-3 space-y-2 opacity-90">
+            <div class="flex items-center gap-2">
+              <input class="flex-1 text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-md px-2 py-1.5" placeholder="Search..." disabled />
+              <button class="shrink-0 px-2 py-1.5 rounded-md text-xs font-semibold bg-emerald-600 text-white flex items-center gap-1">🎯 Party</button>
+            </div>
+            <div class="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 h-52 flex items-center justify-center text-[10px] text-gray-400">grey entries table</div>
+          </div>
+          <div class="phone-backdrop"></div>
+          <div class="absolute left-0 right-0 bottom-0 bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl border-t border-gray-200 dark:border-gray-700 max-h-[80%] flex flex-col">
+            <div class="flex justify-center py-1.5"><div class="w-10 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></div></div>
+            <div class="flex items-center justify-between px-3 pb-2 border-b border-gray-100 dark:border-gray-700">
+              <div class="flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <h3 class="text-xs font-bold">Filter by party</h3>
+                <span class="text-[9px] text-gray-500">18</span>
+              </div>
+              <button class="w-6 h-6 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 flex items-center justify-center">×</button>
+            </div>
+            <div class="p-2 border-b border-gray-100 dark:border-gray-700 space-y-1.5">
+              <input class="w-full text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1.5" placeholder="Filter parties..." />
+              <div class="flex items-center gap-1 text-[9px] font-medium overflow-x-auto">
+                <span class="uppercase text-gray-500 shrink-0">Sort:</span>
+                <button class="shrink-0 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700">A→Z</button>
+                <button class="shrink-0 px-1.5 py-0.5 rounded bg-emerald-600 text-white">Inward ↓</button>
+                <button class="shrink-0 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700">Desp ↓</button>
+                <button class="shrink-0 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700">Stock ↓</button>
+              </div>
+            </div>
+            <div class="overflow-y-auto text-xs">
+              <button class="w-full flex items-center justify-between px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20">
+                <span class="font-semibold text-emerald-800 dark:text-emerald-200 truncate">Sachchiyay Mata</span>
+                <span class="shrink-0 flex gap-1.5"><span class="text-emerald-600 font-semibold">1248</span><span class="text-rose-600 font-semibold">892</span></span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>Shankeshwer Cottan</span>
+                <span class="shrink-0 flex gap-1.5"><span class="text-emerald-600 font-semibold">918</span><span class="text-rose-600 font-semibold">640</span></span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>Narayanji Mills</span>
+                <span class="shrink-0 flex gap-1.5"><span class="text-emerald-600 font-semibold">726</span><span class="text-rose-600 font-semibold">508</span></span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>M.Milan Industries</span>
+                <span class="shrink-0 flex gap-1.5"><span class="text-emerald-600 font-semibold">642</span><span class="text-rose-600 font-semibold">400</span></span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>Shantinath Textile</span>
+                <span class="shrink-0 flex gap-1.5"><span class="text-emerald-600 font-semibold">560</span><span class="text-rose-600 font-semibold">332</span></span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>Marudhra Fab Tex</span>
+                <span class="shrink-0 flex gap-1.5"><span class="text-emerald-600 font-semibold">440</span><span class="text-rose-600 font-semibold">278</span></span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>Rathi Textiles</span>
+                <span class="shrink-0 flex gap-1.5"><span class="text-emerald-600 font-semibold">380</span><span class="text-rose-600 font-semibold">220</span></span>
+              </button>
+            </div>
+            <div class="px-3 py-2 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between text-[9px] text-gray-500">
+              <span class="flex gap-1.5">
+                <span class="flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>in</span>
+                <span class="flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>out</span>
+              </span>
+              <button class="text-emerald-600 font-semibold">Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 2 — Dyeing Slip -->
+  <section id="dye" class="space-y-4">
+    <h2 class="text-lg font-bold">2 · Dyeing Slip — desktop modal &amp; mobile sheet</h2>
+
+    <div class="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6 items-start">
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Desktop — centred modal</div>
+        <div class="relative bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+          <div class="p-3 opacity-95">
+            <div class="flex items-center gap-2 mb-2">
+              <input class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-3 py-2 text-sm" placeholder="Search slip, shade, lot..." disabled />
+              <button class="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold bg-purple-600 text-white flex items-center gap-1.5 ring-2 ring-purple-300 dark:ring-purple-800">🎯 Party</button>
+            </div>
+            <div class="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 h-40 flex items-center justify-center text-xs text-gray-400">dyeing slip list</div>
+          </div>
+          <div class="desk-backdrop"></div>
+          <div class="absolute inset-0 flex items-start justify-center p-6">
+            <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                  <h3 class="text-sm font-bold">Filter by party</h3>
+                  <span class="text-[10px] text-gray-500 dark:text-gray-400">13 parties · 86 pending</span>
+                </div>
+                <button class="w-7 h-7 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 flex items-center justify-center text-lg">×</button>
+              </div>
+
+              <div class="p-3 border-b border-gray-100 dark:border-gray-700 space-y-2">
+                <input class="w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded-md px-2.5 py-2" placeholder="Type to filter parties..." />
+                <div class="flex items-center gap-1 text-[10px] font-medium text-gray-500 dark:text-gray-400 flex-wrap">
+                  <span class="uppercase tracking-wide mr-1">Sort:</span>
+                  <button class="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700">Party A→Z</button>
+                  <button class="px-2 py-1 rounded-md bg-purple-600 text-white ring-1 ring-purple-400">Pending Than ↓</button>
+                  <button class="px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700">Pending Slips ↓</button>
+                </div>
+              </div>
+
+              <div class="max-h-72 overflow-y-auto text-sm">
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                  <span class="text-purple-700 dark:text-purple-300 font-medium">All parties</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-purple-600 dark:text-purple-300 font-semibold">86 slips</span>
+                    <span class="text-emerald-600 font-semibold">1,720</span>
+                  </span>
+                </button>
+                <div class="border-t border-gray-100 dark:border-gray-700"></div>
+                <button class="w-full flex items-center justify-between px-4 py-2 bg-purple-50 dark:bg-purple-900/20">
+                  <span class="font-semibold text-purple-800 dark:text-purple-200">Shankeshwer Cottan Mills</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-purple-600 dark:text-purple-300 font-semibold">27</span>
+                    <span class="text-emerald-600 font-semibold">540</span>
+                  </span>
+                </button>
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                  <span>Shri Sachchiyay Mata Texofin</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-purple-600 dark:text-purple-300 font-semibold">18</span>
+                    <span class="text-emerald-600 font-semibold">356</span>
+                  </span>
+                </button>
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                  <span>Shri Shantinath Textile</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-purple-600 dark:text-purple-300 font-semibold">14</span>
+                    <span class="text-emerald-600 font-semibold">280</span>
+                  </span>
+                </button>
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                  <span>M.Milan Industries</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-purple-600 dark:text-purple-300 font-semibold">12</span>
+                    <span class="text-emerald-600 font-semibold">240</span>
+                  </span>
+                </button>
+                <button class="w-full flex items-center justify-between px-4 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                  <span>Narayanji Mills</span>
+                  <span class="text-[11px] flex gap-2">
+                    <span class="text-purple-600 dark:text-purple-300 font-semibold">10</span>
+                    <span class="text-emerald-600 font-semibold">200</span>
+                  </span>
+                </button>
+              </div>
+
+              <div class="px-4 py-2 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400">
+                <span class="flex items-center gap-2">
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-500"></span>slips</span>
+                  <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>than</span>
+                </span>
+                <button class="text-purple-700 dark:text-purple-400 font-semibold">Clear filter</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-2 justify-self-center">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 text-center">Mobile — bottom sheet</div>
+        <div class="phone bg-gray-50 dark:bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="p-3 space-y-2 opacity-90">
+            <div class="flex items-center gap-2">
+              <input class="flex-1 text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-md px-2 py-1.5" placeholder="Search..." disabled />
+              <button class="shrink-0 px-2 py-1.5 rounded-md text-xs font-semibold bg-purple-600 text-white flex items-center gap-1">🎯 Party</button>
+            </div>
+            <div class="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 h-52 flex items-center justify-center text-[10px] text-gray-400">dyeing slip list</div>
+          </div>
+          <div class="phone-backdrop"></div>
+          <div class="absolute left-0 right-0 bottom-0 bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl border-t border-gray-200 dark:border-gray-700 max-h-[80%] flex flex-col">
+            <div class="flex justify-center py-1.5"><div class="w-10 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></div></div>
+            <div class="flex items-center justify-between px-3 pb-2 border-b border-gray-100 dark:border-gray-700">
+              <div class="flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
+                <h3 class="text-xs font-bold">Filter by party</h3>
+                <span class="text-[9px] text-gray-500">13 · 86 pending</span>
+              </div>
+              <button class="w-6 h-6 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 flex items-center justify-center">×</button>
+            </div>
+            <div class="p-2 border-b border-gray-100 dark:border-gray-700 space-y-1.5">
+              <input class="w-full text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1.5" placeholder="Filter parties..." />
+              <div class="flex items-center gap-1 text-[9px] font-medium overflow-x-auto">
+                <span class="uppercase text-gray-500 shrink-0">Sort:</span>
+                <button class="shrink-0 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700">A→Z</button>
+                <button class="shrink-0 px-1.5 py-0.5 rounded bg-purple-600 text-white">Than ↓</button>
+                <button class="shrink-0 px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700">Slips ↓</button>
+              </div>
+            </div>
+            <div class="overflow-y-auto text-xs">
+              <button class="w-full flex items-center justify-between px-3 py-2 bg-purple-50 dark:bg-purple-900/20">
+                <span class="font-semibold text-purple-800 dark:text-purple-200 truncate">Shankeshwer Cottan</span>
+                <span class="shrink-0 flex gap-1.5">
+                  <span class="text-purple-600 dark:text-purple-300 font-semibold">27</span>
+                  <span class="text-emerald-600 font-semibold">540</span>
+                </span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>Sachchiyay Mata</span>
+                <span class="shrink-0 flex gap-1.5">
+                  <span class="text-purple-600 dark:text-purple-300 font-semibold">18</span>
+                  <span class="text-emerald-600 font-semibold">356</span>
+                </span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>Shantinath Textile</span>
+                <span class="shrink-0 flex gap-1.5">
+                  <span class="text-purple-600 dark:text-purple-300 font-semibold">14</span>
+                  <span class="text-emerald-600 font-semibold">280</span>
+                </span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>M.Milan Industries</span>
+                <span class="shrink-0 flex gap-1.5">
+                  <span class="text-purple-600 dark:text-purple-300 font-semibold">12</span>
+                  <span class="text-emerald-600 font-semibold">240</span>
+                </span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>Narayanji Mills</span>
+                <span class="shrink-0 flex gap-1.5">
+                  <span class="text-purple-600 dark:text-purple-300 font-semibold">10</span>
+                  <span class="text-emerald-600 font-semibold">200</span>
+                </span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2">
+                <span>Rathi Textiles</span>
+                <span class="shrink-0 flex gap-1.5">
+                  <span class="text-purple-600 dark:text-purple-300 font-semibold">9</span>
+                  <span class="text-emerald-600 font-semibold">176</span>
+                </span>
+              </button>
+            </div>
+            <div class="px-3 py-2 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between text-[9px] text-gray-500">
+              <span class="flex gap-1.5">
+                <span class="flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>slips</span>
+                <span class="flex items-center gap-0.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>than</span>
+              </span>
+              <button class="text-purple-600 font-semibold">Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Compare -->
+  <section id="compare" class="space-y-4">
+    <h2 class="text-lg font-bold">3 · What changed vs the earlier version</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Old — dropdown popover</div>
+        <ul class="text-xs list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400">
+          <li>Attached to the 🎯 Party button</li>
+          <li>Small width, opens downward, sensitive to viewport edges</li>
+          <li>Page underneath fully visible &amp; interactive (accidental clicks possible)</li>
+          <li>Mobile: overlays the input awkwardly</li>
+        </ul>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-xl border border-emerald-300 dark:border-emerald-700 p-4 space-y-2 ring-2 ring-emerald-100 dark:ring-emerald-900">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">New — separate window</div>
+        <ul class="text-xs list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400">
+          <li>Own modal centred on screen (desktop) / bottom sheet (mobile)</li>
+          <li>Dim backdrop — page behind is greyed out so the picker is the only thing you can touch</li>
+          <li>× close button, ESC key, backdrop click all dismiss</li>
+          <li>Wider — party names never truncate; despatched + inward numbers fit comfortably</li>
+          <li>Body scroll is locked while open (no accidental page scroll)</li>
+          <li>Same layout on both modules — only colours + row content differ</li>
+        </ul>
+      </div>
+    </div>
+    <p class="text-xs text-gray-500 dark:text-gray-400 pt-1">
+      Say <span class="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">build both</span>,
+      <span class="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">build grey</span> or
+      <span class="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">build dyeing</span> and I'll ship it into the live pages.
+    </p>
+  </section>
+
+  <footer class="text-[11px] text-gray-500 dark:text-gray-400 pt-4 border-t border-gray-200 dark:border-gray-700">
+    Mockup: <code>mockups/party-drawer-grey-dyeing.html</code>
+  </footer>
+</div>
+</body>
+</html>

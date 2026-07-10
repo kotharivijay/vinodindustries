@@ -375,6 +375,51 @@ export default function GreyListPage() {
     filters.party || filters.quality || filters.lotNo || filters.lrNo || filters.baleNo,
   )
 
+  // ── Party picker modal (button opens a centred modal / bottom sheet) ──
+  // Aggregates every party found on the entries list into a single row with
+  // inward / despatched / stock than counts. Operator taps a row and the
+  // party filter narrows the table below.
+  type PartyStat = { name: string; entries: number; inward: number; despatched: number; stock: number }
+  const partyStats = useMemo<PartyStat[]>(() => {
+    const map = new Map<string, PartyStat>()
+    for (const e of entries) {
+      const name = e.party?.name
+      if (!name) continue
+      const p = map.get(name) ?? { name, entries: 0, inward: 0, despatched: 0, stock: 0 }
+      p.entries += 1
+      p.inward += e.than || 0
+      p.despatched += e.tDesp || 0
+      p.stock += e.stock || 0
+      map.set(name, p)
+    }
+    return Array.from(map.values())
+  }, [entries])
+  const [showPartyModal, setShowPartyModal] = useState(false)
+  const [partyModalSearch, setPartyModalSearch] = useState('')
+  type PartySort = 'name' | 'inward' | 'despatched' | 'stock'
+  const [partySort, setPartySort] = useState<PartySort>('inward')
+  const partyRows = useMemo(() => {
+    const q = partyModalSearch.trim().toLowerCase()
+    const rows = q ? partyStats.filter(p => p.name.toLowerCase().includes(q)) : partyStats.slice()
+    rows.sort((a, b) => {
+      if (partySort === 'name') return a.name.localeCompare(b.name)
+      if (partySort === 'inward') return b.inward - a.inward
+      if (partySort === 'despatched') return b.despatched - a.despatched
+      return b.stock - a.stock
+    })
+    return rows
+  }, [partyStats, partyModalSearch, partySort])
+  // ESC + body-scroll-lock while modal is open.
+  useEffect(() => {
+    if (!showPartyModal) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowPartyModal(false) }
+    window.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prevOverflow }
+  }, [showPartyModal])
+  const activePartyFilter = filters.party
+
   return (
     <div className="p-4 md:p-8">
       {/* Header */}
@@ -714,14 +759,25 @@ export default function GreyListPage() {
       {/* ── ALL ENTRIES TAB ── */}
       {tab === 'entries' && (
         <>
-          <div className="mb-4 flex items-center gap-3">
+          <div className="mb-4 flex items-center gap-2 sm:gap-3 flex-wrap">
             <input
               type="text"
               placeholder="Search by party, quality, lot no, LR no, bale no, challan, SN..."
-              className="w-full max-w-md border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              className="flex-1 min-w-0 sm:max-w-md border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
               value={search}
               onChange={(e) => { setSearchRaw(e.target.value); setDebouncedSearch(e.target.value) }}
             />
+            <button
+              type="button"
+              onClick={() => setShowPartyModal(true)}
+              className={`shrink-0 px-3 py-2 rounded-lg text-sm font-semibold text-white flex items-center gap-1.5 ${activePartyFilter ? 'bg-emerald-700 ring-2 ring-emerald-300 dark:ring-emerald-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+              title={activePartyFilter ? `Party: ${activePartyFilter}` : 'Filter by party'}
+            >
+              🎯 <span className="hidden xs:inline">Party</span>
+              {activePartyFilter && (
+                <span className="max-w-[110px] sm:max-w-[160px] truncate text-[11px] font-semibold bg-white/20 rounded px-1.5 py-0.5">{activePartyFilter}</span>
+              )}
+            </button>
             {(search || filters.party || filters.quality || filters.lotNo || filters.lrNo || filters.baleNo) && (
               <button onClick={() => { setSearchRaw(''); setDebouncedSearch(''); setFilters({ party: '', quality: '', lotNo: '', lrNo: '', baleNo: '' }) }} className="text-xs text-gray-400 hover:text-red-500">
                 Clear filters
@@ -887,6 +943,116 @@ export default function GreyListPage() {
             )}
           </div>
         </>
+      )}
+
+      {showPartyModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-start sm:justify-center bg-black/45 backdrop-blur-[1px]"
+          onClick={() => setShowPartyModal(false)}
+        >
+          <div
+            className="w-full sm:w-[440px] sm:max-w-[calc(100vw-24px)] sm:mt-16 bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Mobile grabber */}
+            <div className="sm:hidden flex justify-center py-1.5">
+              <div className="w-10 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full"></div>
+            </div>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">Filter by party</h3>
+                <span className="text-[10px] text-gray-500 dark:text-gray-400 shrink-0">{partyStats.length} parties</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPartyModal(false)}
+                className="w-7 h-7 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 flex items-center justify-center text-lg leading-none"
+                aria-label="Close"
+              >×</button>
+            </div>
+            {/* Filter + sort */}
+            <div className="p-3 border-b border-gray-100 dark:border-gray-700 space-y-2">
+              <input
+                type="text"
+                value={partyModalSearch}
+                onChange={(e) => setPartyModalSearch(e.target.value)}
+                placeholder="Type to filter parties..."
+                className="w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+              />
+              <div className="flex items-center gap-1 text-[10px] font-medium text-gray-500 dark:text-gray-400 flex-wrap">
+                <span className="uppercase tracking-wide mr-1">Sort:</span>
+                {([
+                  { key: 'name' as PartySort, label: 'Party A→Z' },
+                  { key: 'inward' as PartySort, label: 'Inward ↓' },
+                  { key: 'despatched' as PartySort, label: 'Despatched ↓' },
+                  { key: 'stock' as PartySort, label: 'Stock ↓' },
+                ]).map(o => {
+                  const active = partySort === o.key
+                  return (
+                    <button
+                      key={o.key}
+                      type="button"
+                      onClick={() => setPartySort(o.key)}
+                      className={`px-2 py-1 rounded-md ${active ? 'bg-emerald-600 text-white ring-1 ring-emerald-400' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200'}`}
+                    >{o.label}</button>
+                  )
+                })}
+              </div>
+            </div>
+            {/* Rows */}
+            <div className="flex-1 overflow-y-auto text-sm divide-y divide-gray-100 dark:divide-gray-700">
+              <button
+                type="button"
+                onClick={() => { setFilter('party', ''); setShowPartyModal(false) }}
+                className="w-full flex items-center justify-between gap-2 px-4 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+              >
+                <span className={`font-medium ${!activePartyFilter ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-700 dark:text-gray-200'}`}>All parties</span>
+                <span className="shrink-0 text-[11px] flex items-center gap-2">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{partyStats.reduce((s, p) => s + p.inward, 0).toLocaleString('en-IN')}</span>
+                  <span className="text-rose-600 dark:text-rose-400 font-semibold">{partyStats.reduce((s, p) => s + p.despatched, 0).toLocaleString('en-IN')}</span>
+                  <span className="text-blue-600 dark:text-blue-400 font-semibold">{partyStats.reduce((s, p) => s + p.stock, 0).toLocaleString('en-IN')}</span>
+                </span>
+              </button>
+              {partyRows.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs text-gray-400">No parties match "{partyModalSearch}"</div>
+              ) : partyRows.map(p => {
+                const selected = activePartyFilter && p.name.toLowerCase() === activePartyFilter.toLowerCase()
+                return (
+                  <button
+                    key={p.name}
+                    type="button"
+                    onClick={() => { setFilter('party', p.name); setShowPartyModal(false) }}
+                    className={`w-full flex items-center justify-between gap-2 px-4 py-2 ${selected ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                  >
+                    <span className={`text-left truncate ${selected ? 'font-semibold text-emerald-800 dark:text-emerald-200' : 'text-gray-700 dark:text-gray-200'}`}>{p.name}</span>
+                    <span className="shrink-0 text-[11px] flex items-center gap-2 tabular-nums">
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{p.inward.toLocaleString('en-IN')}</span>
+                      <span className="text-rose-600 dark:text-rose-400 font-semibold">{p.despatched.toLocaleString('en-IN')}</span>
+                      <span className="text-blue-600 dark:text-blue-400 font-semibold">{p.stock.toLocaleString('en-IN')}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            {/* Footer */}
+            <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400">
+              <span className="flex items-center gap-2">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span>inward</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500"></span>despatched</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span>stock</span>
+              </span>
+              {activePartyFilter && (
+                <button
+                  type="button"
+                  onClick={() => { setFilter('party', ''); setShowPartyModal(false) }}
+                  className="text-emerald-700 dark:text-emerald-400 font-semibold hover:underline"
+                >Clear filter</button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {showImport && (

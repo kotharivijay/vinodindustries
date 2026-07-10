@@ -617,6 +617,49 @@ export default function DyeingListPage() {
   const doneCount = useMemo(() => entries.filter(e => e.dyeingDoneAt).length, [entries])
 
   const totalThan = useMemo(() => entries.reduce((s, e) => s + e.than, 0), [entries])
+
+  // ── Party picker modal ──
+  // Aggregates pending (not yet dyed) entries by party. partyName may be a
+  // comma-separated string when a slip spans multiple parties; each listed
+  // party then gets credit for the slip and its than.
+  type DyePartyStat = { name: string; slips: number; than: number }
+  const dyePartyStats = useMemo<DyePartyStat[]>(() => {
+    const map = new Map<string, DyePartyStat>()
+    for (const e of entries) {
+      if (e.dyeingDoneAt) continue
+      const names = (e.partyName ?? '').split(',').map(s => s.trim()).filter(Boolean)
+      if (names.length === 0) continue
+      for (const name of new Set(names)) {
+        const p = map.get(name) ?? { name, slips: 0, than: 0 }
+        p.slips += 1
+        p.than += e.than || 0
+        map.set(name, p)
+      }
+    }
+    return Array.from(map.values())
+  }, [entries])
+  const [showPartyModal, setShowPartyModal] = useState(false)
+  const [partyModalSearch, setPartyModalSearch] = useState('')
+  type DyePartySort = 'name' | 'than' | 'slips'
+  const [partySort, setPartySort] = useState<DyePartySort>('than')
+  const dyePartyRows = useMemo(() => {
+    const q = partyModalSearch.trim().toLowerCase()
+    const rows = q ? dyePartyStats.filter(p => p.name.toLowerCase().includes(q)) : dyePartyStats.slice()
+    rows.sort((a, b) => {
+      if (partySort === 'name') return a.name.localeCompare(b.name)
+      if (partySort === 'slips') return b.slips - a.slips
+      return b.than - a.than
+    })
+    return rows
+  }, [dyePartyStats, partyModalSearch, partySort])
+  useEffect(() => {
+    if (!showPartyModal) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowPartyModal(false) }
+    window.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prevOverflow }
+  }, [showPartyModal])
   const fi = 'w-full bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500 mt-1'
 
   function SortTh({ field, label, right }: { field: SortField; label: string; right?: boolean }) {
@@ -800,6 +843,17 @@ export default function DyeingListPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowPartyModal(true)}
+                className={`text-xs px-2.5 py-1 rounded-full font-semibold flex items-center gap-1 ${filterParty ? 'bg-purple-500 text-white ring-1 ring-purple-300' : 'bg-purple-600 text-white hover:bg-purple-700'}`}
+                title={filterParty ? `Party: ${filterParty}` : 'Filter by party'}
+              >
+                \ud83c\udfaf Party
+                {filterParty && (
+                  <span className="max-w-[110px] sm:max-w-[160px] truncate bg-white/20 rounded px-1 py-0.5 text-[10px]">{filterParty}</span>
+                )}
+              </button>
               <span className="text-[10px] text-gray-500">Sort:</span>
               {([['date', 'Date'], ['slipNo', 'Slip'], ['lotNo', 'Lot'], ['party', 'Party'], ['fold', 'Fold'], ['than', 'Than']] as [SortField, string][]).map(([f, label]) => (
                 <button key={f} onClick={() => toggleSort(f)}
@@ -1517,6 +1571,111 @@ export default function DyeingListPage() {
                 className="w-full bg-red-600 text-white font-semibold rounded-lg px-4 py-3 text-sm hover:bg-red-700 disabled:opacity-50 transition">
                 {reDyeSaving ? 'Saving...' : 'Save & Print Re-Dye Slip'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPartyModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-start sm:justify-center bg-black/50 backdrop-blur-[1px]"
+          onClick={() => setShowPartyModal(false)}
+        >
+          <div
+            className="w-full sm:w-[440px] sm:max-w-[calc(100vw-24px)] sm:mt-16 bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-2xl border-t sm:border border-gray-700 overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sm:hidden flex justify-center py-1.5">
+              <div className="w-10 h-1.5 bg-gray-600 rounded-full"></div>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-purple-500 shrink-0"></span>
+                <h3 className="text-sm font-bold text-gray-100 truncate">Filter by party</h3>
+                <span className="text-[10px] text-gray-400 shrink-0">
+                  {dyePartyStats.length} parties · {dyePartyStats.reduce((s, p) => s + p.slips, 0)} pending
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPartyModal(false)}
+                className="w-7 h-7 rounded-full hover:bg-gray-700 text-gray-400 flex items-center justify-center text-lg leading-none"
+                aria-label="Close"
+              >×</button>
+            </div>
+            <div className="p-3 border-b border-gray-700 space-y-2">
+              <input
+                type="text"
+                value={partyModalSearch}
+                onChange={(e) => setPartyModalSearch(e.target.value)}
+                placeholder="Type to filter parties..."
+                className="w-full text-sm bg-gray-800 border border-gray-600 text-gray-100 placeholder-gray-500 rounded-md px-2.5 py-2 focus:outline-none focus:ring-1 focus:ring-purple-400"
+              />
+              <div className="flex items-center gap-1 text-[10px] font-medium text-gray-400 flex-wrap">
+                <span className="uppercase tracking-wide mr-1">Sort:</span>
+                {([
+                  { key: 'name' as DyePartySort, label: 'Party A→Z' },
+                  { key: 'than' as DyePartySort, label: 'Pending Than ↓' },
+                  { key: 'slips' as DyePartySort, label: 'Pending Slips ↓' },
+                ]).map(o => {
+                  const active = partySort === o.key
+                  return (
+                    <button
+                      key={o.key}
+                      type="button"
+                      onClick={() => setPartySort(o.key)}
+                      className={`px-2 py-1 rounded-md ${active ? 'bg-purple-600 text-white ring-1 ring-purple-400' : 'bg-gray-800 hover:bg-gray-700 text-gray-300'}`}
+                    >{o.label}</button>
+                  )
+                })}
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto text-sm divide-y divide-gray-800">
+              <button
+                type="button"
+                onClick={() => { setFilterParty(''); setDebouncedFilterParty(''); setShowPartyModal(false) }}
+                className="w-full flex items-center justify-between gap-2 px-4 py-2 hover:bg-purple-900/20"
+              >
+                <span className={`font-medium ${!filterParty ? 'text-purple-300' : 'text-gray-200'}`}>All parties</span>
+                <span className="shrink-0 text-[11px] flex items-center gap-2">
+                  <span className="text-purple-400 font-semibold">{dyePartyStats.reduce((s, p) => s + p.slips, 0)} slips</span>
+                  <span className="text-emerald-400 font-semibold">{dyePartyStats.reduce((s, p) => s + p.than, 0).toLocaleString('en-IN')}</span>
+                </span>
+              </button>
+              {dyePartyRows.length === 0 ? (
+                <div className="px-4 py-6 text-center text-xs text-gray-500">
+                  {dyePartyStats.length === 0 ? 'No pending dyeing slips.' : `No parties match "${partyModalSearch}"`}
+                </div>
+              ) : dyePartyRows.map(p => {
+                const selected = filterParty && p.name.toLowerCase() === filterParty.toLowerCase()
+                return (
+                  <button
+                    key={p.name}
+                    type="button"
+                    onClick={() => { setFilterParty(p.name); setDebouncedFilterParty(p.name); setShowPartyModal(false) }}
+                    className={`w-full flex items-center justify-between gap-2 px-4 py-2 ${selected ? 'bg-purple-900/30' : 'hover:bg-purple-900/20'}`}
+                  >
+                    <span className={`text-left truncate ${selected ? 'font-semibold text-purple-200' : 'text-gray-200'}`}>{p.name}</span>
+                    <span className="shrink-0 text-[11px] flex items-center gap-2 tabular-nums">
+                      <span className="text-purple-400 font-semibold">{p.slips}</span>
+                      <span className="text-emerald-400 font-semibold">{p.than.toLocaleString('en-IN')}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="px-4 py-2 border-t border-gray-700 flex items-center justify-between text-[10px] text-gray-400">
+              <span className="flex items-center gap-2">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-500"></span>slips</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span>than</span>
+              </span>
+              {filterParty && (
+                <button
+                  type="button"
+                  onClick={() => { setFilterParty(''); setDebouncedFilterParty(''); setShowPartyModal(false) }}
+                  className="text-purple-400 font-semibold hover:underline"
+                >Clear filter</button>
+              )}
             </div>
           </div>
         </div>
