@@ -359,6 +359,22 @@ export default function GreyListPage() {
   const totalStock = useMemo(() => stockSummary.reduce((s, r) => s + r.stock, 0), [stockSummary])
   const lotsInStock = useMemo(() => stockSummary.filter(r => r.stock > 0).length, [stockSummary])
 
+  // Filtered totals for the summary strip below the action buttons.
+  // Follows whatever the operator has narrowed the entries table to
+  // (free-text search + column filters), so the numbers always mirror
+  // exactly what's in view.
+  const filteredTotals = useMemo(() => {
+    const totalThan = filtered.reduce((s, e) => s + (e.than || 0), 0)
+    const despatchedThan = filtered.reduce((s, e) => s + (e.tDesp || 0), 0)
+    const stockThan = filtered.reduce((s, e) => s + (e.stock || 0), 0)
+    const parties = [...new Set(filtered.map(e => e.party?.name).filter(Boolean) as string[])]
+    return { totalThan, despatchedThan, stockThan, parties, count: filtered.length }
+  }, [filtered])
+  const filterIsActive = Boolean(
+    debouncedSearch.trim() ||
+    filters.party || filters.quality || filters.lotNo || filters.lrNo || filters.baleNo,
+  )
+
   return (
     <div className="p-4 md:p-8">
       {/* Header */}
@@ -395,6 +411,47 @@ export default function GreyListPage() {
           </Link>
         </div>
       </div>
+
+      {/* Filtered totals — follows the search + column filters below.
+          Only appears when a filter is active AND on the entries tab so it
+          doesn't compete with the tab-level tallies. */}
+      {tab === 'entries' && filterIsActive && (
+        <div className="mb-4 rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-gray-800 px-4 py-3 shadow-sm">
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+              📊 Filtered totals
+              <span className="ml-2 normal-case tracking-normal text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                {filteredTotals.parties.length === 0
+                  ? '(no matches)'
+                  : filteredTotals.parties.length === 1
+                    ? <>party: <strong className="text-gray-700 dark:text-gray-200">{filteredTotals.parties[0]}</strong></>
+                    : <>{filteredTotals.parties.length} parties</>}
+                {' '}· {filteredTotals.count} entries
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl px-3 py-2">
+              <div className="text-[10px] font-medium text-gray-500 dark:text-gray-400">Total Than</div>
+              <div className="text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 leading-none">
+                {filteredTotals.totalThan.toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-100 dark:border-rose-800 rounded-xl px-3 py-2">
+              <div className="text-[10px] font-medium text-gray-500 dark:text-gray-400">Despatched</div>
+              <div className="text-2xl font-extrabold text-rose-700 dark:text-rose-300 leading-none">
+                {filteredTotals.despatchedThan.toLocaleString('en-IN')}
+              </div>
+            </div>
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl px-3 py-2">
+              <div className="text-[10px] font-medium text-gray-500 dark:text-gray-400">In Stock</div>
+              <div className="text-2xl font-extrabold text-blue-700 dark:text-blue-300 leading-none">
+                {filteredTotals.stockThan.toLocaleString('en-IN')}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Carry-forward import result */}
       {cfResult && (
