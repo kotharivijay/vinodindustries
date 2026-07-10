@@ -126,6 +126,11 @@ export default function BatchDyeingPage() {
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null)
   const [batchSearch, setBatchSearch] = useState('')
   const [expandedFold, setExpandedFold] = useState<string | null>(null)
+  // Party quick-filter: independent of the free-text search — pressing a
+  // party from the popover pins it, and the free-text box narrows further.
+  const [selectedParty, setSelectedParty] = useState<string | null>(null)
+  const [partyMenuOpen, setPartyMenuOpen] = useState(false)
+  const [partyMenuSearch, setPartyMenuSearch] = useState('')
 
   // Chemical rows (editable)
   const [chemicals, setChemicals] = useState<ChemicalRow[]>([])
@@ -252,6 +257,15 @@ export default function BatchDyeingPage() {
     }).catch(() => setLoading(false))
   }, [])
 
+  // Close the party popover on ESC. Backdrop click is handled by an
+  // overlay div in JSX (no ref-based outside-click needed).
+  useEffect(() => {
+    if (!partyMenuOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPartyMenuOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [partyMenuOpen])
+
   // Auto-generate next slip number from ALL dyeing entries (shared series)
   useEffect(() => {
     if (!slipNo) {
@@ -271,14 +285,25 @@ export default function BatchDyeingPage() {
     }
   }, [savedEntries]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Shared filter predicate — respects both the free-text search and any
+  // pinned party from the popover. AND semantics: text query narrows the
+  // party-scoped set (or the full set when no party is pinned).
+  const matchesBatchFilter = (b: (typeof batches)[number]) => {
+    if (selectedParty) {
+      const parties = new Set(
+        (b.lots || []).map((l: (typeof b.lots)[number]) => l.party).filter(Boolean) as string[],
+      )
+      if (!parties.has(selectedParty)) return false
+    }
+    const q = batchSearch.toLowerCase()
+    if (!q) return true
+    const str = `${b.foldNo} ${b.shadeName} ${b.lots.map((l: (typeof b.lots)[number]) => `${l.lotNo} ${l.quality ?? ''} ${l.party ?? ''}`).join(' ')}`.toLowerCase()
+    return str.includes(q)
+  }
+
   // Group batches by fold number
   const foldGroups = useMemo(() => {
-    const q = batchSearch.toLowerCase()
-    const filtered = batches.filter(b => {
-      if (!q) return true
-      const str = `${b.foldNo} ${b.shadeName} ${b.lots.map(l => `${l.lotNo} ${l.quality ?? ''} ${l.party ?? ''}`).join(' ')}`.toLowerCase()
-      return str.includes(q)
-    })
+    const filtered = batches.filter(matchesBatchFilter)
     const map = new Map<string, FoldGroup>()
     for (const b of filtered) {
       if (!map.has(b.foldNo)) {
@@ -294,20 +319,41 @@ export default function BatchDyeingPage() {
       }
     }
     return Array.from(map.values()).sort((a, b) => parseInt(b.foldNo) - parseInt(a.foldNo) || b.foldNo.localeCompare(a.foldNo))
-  }, [batches, batchSearch])
+  }, [batches, batchSearch, selectedParty])
 
-  // Pending totals — when the operator has typed a search (party / lot /
-  // fold / shade / quality), the header follows the same filter used by
-  // foldGroups so the counts reflect exactly what they're looking at.
-  // Empty search falls through to totals across every pending batch.
-  const filteredBatches = useMemo(() => {
-    const q = batchSearch.toLowerCase()
-    if (!q) return batches
-    return batches.filter(b => {
-      const str = `${b.foldNo} ${b.shadeName} ${b.lots.map(l => `${l.lotNo} ${l.quality ?? ''} ${l.party ?? ''}`).join(' ')}`.toLowerCase()
-      return str.includes(q)
-    })
-  }, [batches, batchSearch])
+  // Pending totals — follows both the free-text search and the pinned party
+  // so the header always mirrors what's in the visible list.
+  const filteredBatches = useMemo(
+    () => batches.filter(matchesBatchFilter),
+    [batches, batchSearch, selectedParty],
+  )
+
+  // Party options for the popover — one row per party that has pending
+  // batches, sorted by pending than desc so the biggest volume sits at
+  // the top (single tap for the operator's likely intent).
+  const partyOptions = useMemo(() => {
+    const map = new Map<string, { batches: number; than: number; batchIds: Set<number> }>()
+    for (const b of batches) {
+      const uniqueParties = [...new Set((b.lots || []).map(l => l.party).filter(Boolean) as string[])]
+      for (const party of uniqueParties) {
+        const info = map.get(party) ?? { batches: 0, than: 0, batchIds: new Set<number>() }
+        if (!info.batchIds.has(b.batchId)) {
+          info.batches += 1
+          info.than += b.totalThan
+          info.batchIds.add(b.batchId)
+        }
+        map.set(party, info)
+      }
+    }
+    return [...map.entries()]
+      .map(([name, v]) => ({ name, batches: v.batches, than: v.than }))
+      .sort((a, b) => b.than - a.than)
+  }, [batches])
+  const partyMenuMatches = useMemo(() => {
+    const q = partyMenuSearch.trim().toLowerCase()
+    if (!q) return partyOptions
+    return partyOptions.filter(p => p.name.toLowerCase().includes(q))
+  }, [partyOptions, partyMenuSearch])
   const pendingBatchCount = filteredBatches.length
   const pendingThanTotal = useMemo(
     () => filteredBatches.reduce((s, b) => s + b.totalThan, 0),
@@ -612,9 +658,12 @@ export default function BatchDyeingPage() {
       <div className="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-2xl shadow-sm px-4 py-4 mb-4">
         <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">
           ⏳ Pending for Dyeing
-          {batchSearch.trim() && (
+          {(batchSearch.trim() || selectedParty) && (
             <span className="ml-2 normal-case tracking-normal text-[10px] font-medium text-gray-500 dark:text-gray-400">
-              (filtered by &quot;{batchSearch}&quot;)
+              (filtered
+              {selectedParty && <> · party: <strong className="text-purple-700 dark:text-purple-300">{selectedParty}</strong></>}
+              {batchSearch.trim() && <> · &quot;{batchSearch}&quot;</>}
+              )
             </span>
           )}
         </div>
@@ -701,13 +750,103 @@ export default function BatchDyeingPage() {
             {/* Fold cards (hidden when batch selected) */}
             {!selectedBatch && (
               <>
-                <input
-                  type="text"
-                  placeholder="Search fold no, shade, lot, quality, party..."
-                  className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  value={batchSearch}
-                  onChange={e => setBatchSearch(e.target.value)}
-                />
+                <div className="relative flex items-center gap-2 mb-3">
+                  <input
+                    type="text"
+                    placeholder="Search fold no, shade, lot, quality, party..."
+                    className="flex-1 min-w-0 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={batchSearch}
+                    onChange={e => setBatchSearch(e.target.value)}
+                  />
+                  {/* Party quick-picker — popover mounted right of the search input. */}
+                  {selectedParty ? (
+                    <button
+                      type="button"
+                      onClick={() => setPartyMenuOpen(o => !o)}
+                      title="Change or clear party filter"
+                      className="shrink-0 max-w-[220px] flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 ring-1 ring-purple-300 dark:ring-purple-700"
+                    >
+                      <span>🎯</span>
+                      <span className="truncate">{selectedParty}</span>
+                      <span
+                        onClick={e => { e.stopPropagation(); setSelectedParty(null) }}
+                        className="text-[13px] leading-none text-purple-700 dark:text-purple-200 pl-1"
+                        title="Clear filter"
+                      >×</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setPartyMenuOpen(o => !o); setPartyMenuSearch('') }}
+                      className={`shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold ${
+                        partyMenuOpen
+                          ? 'bg-purple-600 text-white ring-2 ring-purple-300 dark:ring-purple-800'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      <span>🎯</span>
+                      Party
+                      <span className="text-[10px]">{partyMenuOpen ? '▴' : '▾'}</span>
+                    </button>
+                  )}
+
+                  {partyMenuOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-30"
+                        onClick={() => setPartyMenuOpen(false)}
+                      />
+                      <div className="absolute right-0 top-full mt-1 z-40 w-[380px] max-w-[calc(100vw-16px)] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl">
+                        <div className="p-2 border-b border-gray-100 dark:border-gray-700">
+                          <input
+                            autoFocus
+                            type="text"
+                            placeholder="Filter parties..."
+                            className="w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                            value={partyMenuSearch}
+                            onChange={e => setPartyMenuSearch(e.target.value)}
+                          />
+                        </div>
+                        <div className="max-h-80 overflow-y-auto py-1 text-sm">
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedParty(null); setPartyMenuOpen(false) }}
+                            className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                          >
+                            <span className={`font-medium ${!selectedParty ? 'text-purple-700 dark:text-purple-300' : 'text-gray-700 dark:text-gray-200'}`}>All parties</span>
+                            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                              {batches.length} · {batches.reduce((s, b) => s + b.totalThan, 0).toLocaleString('en-IN')}T
+                            </span>
+                          </button>
+                          <div className="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                          {partyMenuMatches.length === 0 && (
+                            <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 italic">No parties match.</div>
+                          )}
+                          {partyMenuMatches.map(p => {
+                            const isSel = selectedParty === p.name
+                            return (
+                              <button
+                                key={p.name}
+                                type="button"
+                                onClick={() => { setSelectedParty(p.name); setPartyMenuOpen(false) }}
+                                className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left ${
+                                  isSel ? 'bg-purple-100 dark:bg-purple-900/40' : 'hover:bg-purple-50 dark:hover:bg-purple-900/20'
+                                }`}
+                              >
+                                <span className={`truncate ${isSel ? 'font-semibold text-purple-800 dark:text-purple-200' : 'text-gray-800 dark:text-gray-100'}`}>{p.name}</span>
+                                <span className="shrink-0 text-[11px] text-gray-500 dark:text-gray-400">{p.batches} · {p.than.toLocaleString('en-IN')}T</span>
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <div className="p-2 border-t border-gray-100 dark:border-gray-700 text-[10px] text-gray-500 dark:text-gray-400 flex items-center justify-between">
+                          <span>{partyOptions.length} parties · by pending than</span>
+                          <span>ESC to close</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 {foldGroups.length === 0 ? (
                   <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
