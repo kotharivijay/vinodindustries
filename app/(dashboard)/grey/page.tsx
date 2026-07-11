@@ -1016,7 +1016,7 @@ export default function GreyListPage() {
                 </span>
               </button>
               {partyRows.length === 0 ? (
-                <div className="px-4 py-6 text-center text-xs text-gray-400">No parties match "{partyModalSearch}"</div>
+                <div className="px-4 py-6 text-center text-xs text-gray-400">No parties match &ldquo;{partyModalSearch}&rdquo;</div>
               ) : partyRows.map(p => {
                 const selected = activePartyFilter && p.name.toLowerCase() === activePartyFilter.toLowerCase()
                 return (
