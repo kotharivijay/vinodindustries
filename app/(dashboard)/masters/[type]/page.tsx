@@ -379,6 +379,9 @@ export default function MasterPage() {
                     {isParties && <PartyGstEditor item={item as any}
                       onSaved={(updated) => setItems(prev => prev.map(x => x.id === item.id ? { ...x, ...updated } : x))}
                     />}
+                    {isParties && <PartyDcChargesToggle item={item as any}
+                      onSaved={(updated) => setItems(prev => prev.map(x => x.id === item.id ? { ...x, ...updated } : x))}
+                    />}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm text-gray-800 dark:text-gray-200">{item.name}</span>
                       {/* Tag badge */}
@@ -795,6 +798,50 @@ function PartyGstEditor({ item, onSaved }: {
       {chip('GSTIN', 'gstin', item.gstin)}
       {chip('State', 'state', item.state)}
       {chip('Address', 'address', item.address)}
+      {error && <span className="text-[10px] text-rose-500">{error}</span>}
+    </div>
+  )
+}
+
+// Delivery-challan "bill extra charges" default toggle. Click to flip;
+// green when on, gray when off. Seeds FinishDeliveryChallan.showExtraCharges
+// on new challans — the operator can still override per challan.
+function PartyDcChargesToggle({ item, onSaved }: {
+  item: { id: number; billExtraChargesDefault?: boolean | null }
+  onSaved: (updated: { billExtraChargesDefault: boolean }) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const on = !!item.billExtraChargesDefault
+  async function toggle() {
+    if (saving) return
+    setSaving(true); setError('')
+    try {
+      const res = await fetch('/api/masters/parties', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, billExtraChargesDefault: !on }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || 'Save failed'); return }
+      onSaved({ billExtraChargesDefault: !!data.billExtraChargesDefault })
+    } finally { setSaving(false) }
+  }
+  return (
+    <div className="flex items-center gap-1 flex-wrap mb-1">
+      <span className="text-[9px] uppercase tracking-wide text-gray-400">DC</span>
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={saving}
+        title="Toggle Freight + Checking charges default for new delivery challans"
+        className={`text-[10px] rounded border px-1.5 py-0.5 font-semibold ${
+          on
+            ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+            : 'bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+        }`}
+      >
+        Extra charges: {on ? 'ON' : 'OFF'}
+      </button>
       {error && <span className="text-[10px] text-rose-500">{error}</span>}
     </div>
   )

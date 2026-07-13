@@ -159,12 +159,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ty
     const updated = await (prisma as any).party.update({
       where: { id },
       data,
-      select: { id: true, name: true, tag: true, gstin: true, address: true, state: true, lotPrefixes: true },
+      select: { id: true, name: true, tag: true, gstin: true, address: true, state: true, lotPrefixes: true, billExtraChargesDefault: true },
     })
     return NextResponse.json(updated)
   }
 
-  return NextResponse.json({ error: 'Provide { ids, tag }, { id, lotPrefixes }, or { id, gst }' }, { status: 400 })
+  // Delivery-challan "bill extra charges" default flag. Sent as
+  // { id, billExtraChargesDefault: boolean }.
+  if ('billExtraChargesDefault' in body) {
+    const id = Number(body.id)
+    if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const updated = await (prisma as any).party.update({
+      where: { id },
+      data: { billExtraChargesDefault: Boolean(body.billExtraChargesDefault) },
+      select: { id: true, name: true, tag: true, gstin: true, address: true, state: true, lotPrefixes: true, billExtraChargesDefault: true },
+    })
+    return NextResponse.json(updated)
+  }
+
+  return NextResponse.json({ error: 'Provide { ids, tag }, { id, lotPrefixes }, { id, gst }, or { id, billExtraChargesDefault }' }, { status: 400 })
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ type: string }> }) {

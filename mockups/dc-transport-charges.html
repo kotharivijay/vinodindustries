@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Delivery Challan — Transport &amp; Extra Charges (toggle)</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+  </script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .paper {
+      background: #fff;
+      color: #111;
+      padding: 20px 22px;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+    }
+    .paper table { width: 100%; border-collapse: collapse; }
+    .paper th, .paper td { border: 1px solid #e5e7eb; padding: 6px 8px; font-size: 12px; }
+    .paper th { background: #f9fafb; font-weight: 600; text-align: left; color: #374151; }
+    .paper td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .sub { background: #f3f4f6; font-weight: 600; }
+    .grand { background: #eef2ff; font-weight: 700; }
+    .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; line-height: 1.4; }
+    .chip-freight { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .chip-checking { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+    .chip-none { color: #9ca3af; font-size: 10px; font-weight: 400; }
+    .tp-name { font-weight: 600; color: #111; font-size: 11px; }
+    .lr-line { color: #6b7280; font-size: 10px; font-family: ui-monospace, monospace; }
+    .switch {
+      width: 40px; height: 22px; border-radius: 999px;
+      background: #d1d5db; position: relative; cursor: pointer;
+      transition: background .15s;
+      flex-shrink: 0;
+    }
+    .switch::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 18px; height: 18px; border-radius: 999px;
+      background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      transition: left .15s;
+    }
+    .switch.on { background: #10b981; }
+    .switch.on::after { left: 20px; }
+  </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="max-w-6xl mx-auto p-6 space-y-8">
+
+  <header class="space-y-1">
+    <h1 class="text-xl font-bold">Delivery Challan — Extra-Charges toggle (per challan)</h1>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      One switch decides whether the Extra Charges column + summary shows or hides — for <strong>both</strong> the on-screen challan view and the printed PDF.
+      Transport / LR column stays either way (it's delivery info, not billing).
+      A party-level default sets the switch's initial position when the challan is first opened.
+    </p>
+  </header>
+
+  <!-- View screen with toggle -->
+  <section class="space-y-3">
+    <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">1 · Challan header — the toggle</div>
+    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm p-4">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-extrabold text-lg">Challan 212</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">M.Milan Industries · Source FP-332 · 12/7/2026</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 flex-wrap">
+          <!-- Toggle -->
+          <div class="inline-flex items-center gap-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2">
+            <div class="switch on" title="Toggle extra charges"></div>
+            <div class="leading-tight">
+              <div class="text-[11px] font-semibold text-emerald-800 dark:text-emerald-200">Show Extra Charges</div>
+              <div class="text-[10px] text-emerald-600 dark:text-emerald-400">Freight + Checking chips + summary</div>
+            </div>
+          </div>
+          <button class="px-3 py-2 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600">Print</button>
+          <button class="px-3 py-2 text-xs rounded-lg bg-emerald-600 text-white font-semibold">Share PDF</button>
+        </div>
+      </div>
+      <div class="mt-2 text-[11px] text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-2">
+        Default from party master:
+        <span class="inline-block bg-gray-100 dark:bg-gray-700 rounded px-1.5 py-0.5 font-mono text-[10px]">M.Milan Industries → charges ON</span>
+        · flip anytime — the switch state saves with the challan so the print copy matches what you see.
+      </div>
+    </div>
+  </section>
+
+  <!-- Side-by-side ON vs OFF -->
+  <section class="space-y-3">
+    <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">2 · Same challan, both toggle positions</div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+      <!-- ON -->
+      <div class="space-y-2">
+        <div class="flex items-center gap-2">
+          <div class="switch on"></div>
+          <div class="font-semibold text-sm text-emerald-700 dark:text-emerald-400">Charges ON</div>
+          <div class="text-[10px] text-gray-500">— for chargeable parties (default for M.Milan)</div>
+        </div>
+        <div class="paper">
+          <div class="flex items-start justify-between border-b-2 border-gray-800 pb-2 mb-2">
+            <div>
+              <div class="text-[14px] font-extrabold">Kothari Synthetic Industries</div>
+              <div class="text-[9px] text-gray-500">Tilwara Road, Jasol · GSTIN 08AABFK2105R1Z8</div>
+            </div>
+            <div class="text-emerald-700 font-bold tracking-wide text-[11px]">DELIVERY CHALLAN</div>
+          </div>
+          <div class="flex items-start justify-between text-[10px] mb-2">
+            <div>
+              <div class="text-[9px] uppercase text-gray-500">Delivered To</div>
+              <div class="font-bold text-[12px]">M.Milan Industries</div>
+              <div class="text-[9px] text-gray-500">Source FP-332 · 12/7/2026</div>
+            </div>
+            <div class="text-right text-[9px]">
+              <div>Challan No: <strong>212</strong></div>
+              <div>Date: 12/7/2026</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width:22px">#</th>
+                <th>Lot No</th>
+                <th>Quality</th>
+                <th style="width:130px">Transport / LR</th>
+                <th class="num" style="width:44px">Than</th>
+                <th style="width:130px">Extra Charges</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="sub"><td colspan="6">&gt; Dark</td></tr>
+              <tr>
+                <td>1</td><td><strong>MMI-359-MANAN</strong></td><td>PC 44</td>
+                <td><div class="tp-name">Maya Lok India Trans</div><div class="lr-line">LR 107266</div></td>
+                <td class="num">4</td>
+                <td><span class="chip chip-freight">Freight</span> <span class="chip chip-checking">Checking</span></td>
+              </tr>
+              <tr>
+                <td>2</td><td><strong>MMI-372-MANAN</strong></td><td>PC 44</td>
+                <td><div class="tp-name">Maya Lok India Trans</div><div class="lr-line">LR 107266</div></td>
+                <td class="num">49</td>
+                <td><span class="chip chip-freight">Freight</span> <span class="chip chip-checking">Checking</span></td>
+              </tr>
+              <tr>
+                <td>3</td><td><strong>MMI-431-DON</strong></td><td>PC 36</td>
+                <td><div class="tp-name">By Truck</div><div class="lr-line">LR Open</div></td>
+                <td class="num">34</td>
+                <td><span class="chip-none">—</span></td>
+              </tr>
+              <tr>
+                <td>4</td><td><strong>MMI-462-DON</strong></td><td>62*50 34</td>
+                <td><div class="tp-name">Open</div><div class="lr-line">LR 982-990</div></td>
+                <td class="num">68</td>
+                <td><span class="chip chip-checking">Checking</span></td>
+              </tr>
+              <tr>
+                <td>5</td><td><strong>MMI-470-DON</strong></td><td>62*50 34</td>
+                <td><div class="tp-name">SRT Transport</div><div class="lr-line">LR Open</div></td>
+                <td class="num">34</td>
+                <td><span class="chip chip-freight">Freight</span></td>
+              </tr>
+              <tr class="sub"><td colspan="4">Dark sub-total</td><td class="num">189</td><td></td></tr>
+              <tr class="grand">
+                <td colspan="4">Grand Total</td>
+                <td class="num">189</td>
+                <td><span class="chip chip-freight">F×3</span> <span class="chip chip-checking">C×3</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="mt-2 text-[10px] text-gray-600">
+            <strong>Extra Charges applicable:</strong> Freight on 3 rows · Checking on 3 rows
+          </div>
+        </div>
+      </div>
+
+      <!-- OFF -->
+      <div class="space-y-2">
+        <div class="flex items-center gap-2">
+          <div class="switch"></div>
+          <div class="font-semibold text-sm text-gray-500 dark:text-gray-400">Charges OFF</div>
+          <div class="text-[10px] text-gray-500">— for parties where extras aren't billed</div>
+        </div>
+        <div class="paper">
+          <div class="flex items-start justify-between border-b-2 border-gray-800 pb-2 mb-2">
+            <div>
+              <div class="text-[14px] font-extrabold">Kothari Synthetic Industries</div>
+              <div class="text-[9px] text-gray-500">Tilwara Road, Jasol · GSTIN 08AABFK2105R1Z8</div>
+            </div>
+            <div class="text-emerald-700 font-bold tracking-wide text-[11px]">DELIVERY CHALLAN</div>
+          </div>
+          <div class="flex items-start justify-between text-[10px] mb-2">
+            <div>
+              <div class="text-[9px] uppercase text-gray-500">Delivered To</div>
+              <div class="font-bold text-[12px]">M.Milan Industries</div>
+              <div class="text-[9px] text-gray-500">Source FP-332 · 12/7/2026</div>
+            </div>
+            <div class="text-right text-[9px]">
+              <div>Challan No: <strong>212</strong></div>
+              <div>Date: 12/7/2026</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width:22px">#</th>
+                <th>Lot No</th>
+                <th>Quality</th>
+                <th style="width:140px">Transport / LR</th>
+                <th class="num" style="width:44px">Than</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="sub"><td colspan="5">&gt; Dark</td></tr>
+              <tr>
+                <td>1</td><td><strong>MMI-359-MANAN</strong></td><td>PC 44</td>
+                <td><div class="tp-name">Maya Lok India Trans</div><div class="lr-line">LR 107266</div></td>
+                <td class="num">4</td>
+              </tr>
+              <tr>
+                <td>2</td><td><strong>MMI-372-MANAN</strong></td><td>PC 44</td>
+                <td><div class="tp-name">Maya Lok India Trans</div><div class="lr-line">LR 107266</div></td>
+                <td class="num">49</td>
+              </tr>
+              <tr>
+                <td>3</td><td><strong>MMI-431-DON</strong></td><td>PC 36</td>
+                <td><div class="tp-name">By Truck</div><div class="lr-line">LR Open</div></td>
+                <td class="num">34</td>
+              </tr>
+              <tr>
+                <td>4</td><td><strong>MMI-462-DON</strong></td><td>62*50 34</td>
+                <td><div class="tp-name">Open</div><div class="lr-line">LR 982-990</div></td>
+                <td class="num">68</td>
+              </tr>
+              <tr>
+                <td>5</td><td><strong>MMI-470-DON</strong></td><td>62*50 34</td>
+                <td><div class="tp-name">SRT Transport</div><div class="lr-line">LR Open</div></td>
+                <td class="num">34</td>
+              </tr>
+              <tr class="sub"><td colspan="4">Dark sub-total</td><td class="num">189</td></tr>
+              <tr class="grand"><td colspan="4">Grand Total</td><td class="num">189</td></tr>
+            </tbody>
+          </table>
+          <div class="mt-2 text-[10px] text-gray-400 italic">Extra Charges column hidden — no chips, no summary line, no chip totals in the footer.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Party master + persistence notes -->
+  <section class="space-y-3">
+    <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">3 · Where the default lives + how it persists</div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-xs space-y-2">
+        <div class="font-bold text-gray-800 dark:text-gray-100">Party master field</div>
+        <p class="text-gray-600 dark:text-gray-400">A new checkbox on the party edit form: <em>“Bill extra charges (freight / checking) on delivery challans.”</em> Off means no chips, no summary — even if the operator forgets to toggle.</p>
+        <div class="mt-2 bg-gray-50 dark:bg-gray-900 rounded p-2 border border-dashed border-gray-300 dark:border-gray-700">
+          <div class="text-[10px] uppercase text-gray-500">Party: M.Milan Industries</div>
+          <div class="mt-1 flex items-center gap-2"><input type="checkbox" checked /> <span class="text-[11px]">Bill extra charges on DC</span></div>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-xs space-y-2">
+        <div class="font-bold text-gray-800 dark:text-gray-100">Per-challan override</div>
+        <p class="text-gray-600 dark:text-gray-400">The switch at the top of the challan starts at the party default but can be flipped for a single challan (e.g. friendly delivery). The chosen state is saved on the challan row (<code>showExtraCharges</code> boolean).</p>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-xs space-y-2">
+        <div class="font-bold text-gray-800 dark:text-gray-100">Print &amp; PDF follow</div>
+        <p class="text-gray-600 dark:text-gray-400">Print &amp; Share PDF both read <code>challan.showExtraCharges</code>. Off → drop the Extra Charges column, remove the F×N / C×N chips from the grand-total row, and skip the "Extra Charges applicable" summary line. Same helper decides both.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Data flow -->
+  <section class="space-y-3">
+    <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">4 · Data flow</div>
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-xs">
+      <pre class="whitespace-pre-wrap font-mono text-[11px] text-gray-700 dark:text-gray-300">
+Party master
+  ┌ billExtraChargesDefault: bool   (checkbox in party edit)
+
+Delivery Challan  (row)
+  ├ showExtraCharges: bool          (defaults to party's flag on create)
+  └ ...existing fields
+
+Renderers (view / print / PDF share ONE helper)
+  if (!challan.showExtraCharges) {
+    // hide chips per row
+    // drop Extra Charges column
+    // skip "Freight × N · Checking × N" grand-total badge
+    // skip "Extra Charges applicable" summary line
+  }
+      </pre>
+    </div>
+  </section>
+
+  <footer class="text-[11px] text-gray-500 dark:text-gray-400 pt-4 border-t border-gray-200 dark:border-gray-700">
+    Mockup: <code>mockups/dc-transport-charges.html</code> · say <span class="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">build</span> to ship this into the app.
+  </footer>
+</div>
+</body>
+</html>

@@ -49,6 +49,7 @@ interface Challan {
   transport: string | null
   lrNo: string | null
   vehicleNo: string | null
+  showExtraCharges: boolean
   party: { id: number; name: string; tag: string | null; gstin: string | null; address: string | null; state: string | null }
   lines: ChallanLine[]
 }
@@ -203,6 +204,26 @@ export default function DeliveryChallanPage() {
     const res = await fetch(`/api/delivery-challan/${c.id}`, { method: 'DELETE' })
     if (res.ok) { mutateQueue(); mutateIssued() }
     else alert((await res.json()).message ?? 'Cancel failed')
+  }
+
+  // Flip the per-challan "Show Extra Charges" switch. Optimistic update so
+  // the toggle feels instant; rolls back on API failure.
+  async function toggleExtraCharges(c: Challan) {
+    const next = !c.showExtraCharges
+    mutateIssued(
+      (prev) => (prev ?? []).map(x => x.id === c.id ? { ...x, showExtraCharges: next } : x),
+      { revalidate: false },
+    )
+    const res = await fetch(`/api/delivery-challan/${c.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ showExtraCharges: next }),
+    })
+    if (!res.ok) {
+      mutateIssued()
+      alert('Toggle failed')
+    } else {
+      mutateIssued()
+    }
   }
 
   return (
@@ -451,6 +472,17 @@ export default function DeliveryChallanPage() {
                 {c.lines.length > 4 && <div className="text-gray-400 dark:text-gray-500">+{c.lines.length - 4} more…</div>}
               </div>
               <div className="flex items-center justify-end gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700">
+                <button
+                  onClick={() => toggleExtraCharges(c)}
+                  title={c.showExtraCharges ? 'Extra charges (Freight + Checking) visible on print + PDF — click to hide' : 'Extra charges hidden on print + PDF — click to show'}
+                  className={`text-xs px-2.5 py-1.5 rounded font-semibold border ${
+                    c.showExtraCharges
+                      ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+                  }`}
+                >
+                  {c.showExtraCharges ? '✓ Extras ON' : 'Extras OFF'}
+                </button>
                 <button
                   onClick={() => downloadDeliveryChallanPdf(c)}
                   className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold"

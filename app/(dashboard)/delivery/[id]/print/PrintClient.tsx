@@ -19,8 +19,24 @@ interface Challan {
   transport: string | null
   lrNo: string | null
   vehicleNo: string | null
+  showExtraCharges: boolean
   party: { name: string; tag: string | null; gstin: string | null; address: string | null; state: string | null }
   lines: Line[]
+}
+
+// Freight = transport name is anything other than "Open" / "By Truck"
+// Checking = LR No is anything other than "Open"
+// Both case-insensitive, whitespace-trimmed. Blank counts as no-charge so a
+// missing value never accidentally triggers a charge.
+function transportTriggersFreight(t: string | null | undefined): boolean {
+  const s = (t ?? '').trim().toLowerCase()
+  if (!s) return false
+  return s !== 'open' && s !== 'by truck'
+}
+function lrTriggersChecking(l: string | null | undefined): boolean {
+  const s = (l ?? '').trim().toLowerCase()
+  if (!s) return false
+  return s !== 'open'
 }
 
 export default function PrintClient({ challan }: { challan: Challan }) {
@@ -53,6 +69,13 @@ export default function PrintClient({ challan }: { challan: Challan }) {
 
   const grandThan = challan.lines.reduce((s, l) => s + l.than, 0)
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-IN')
+
+  const transportLabel = challan.transport?.trim() || '-'
+  const lrLabel = challan.lrNo?.trim() || (challan.transport?.trim() ? 'Open' : '-')
+  const hasFreight = transportTriggersFreight(challan.transport)
+  const hasChecking = lrTriggersChecking(challan.lrNo)
+  const showCharges = challan.showExtraCharges
+  const colSpanForSub = showCharges ? 4 : 3
 
   return (
     <div className="min-h-screen bg-white text-gray-900 p-6 print:p-3">
@@ -107,7 +130,11 @@ export default function PrintClient({ challan }: { challan: Challan }) {
               <th className="border border-gray-300 px-2 py-1 text-left">#</th>
               <th className="border border-gray-300 px-2 py-1 text-left">Lot No</th>
               <th className="border border-gray-300 px-2 py-1 text-left">Quality</th>
+              <th className="border border-gray-300 px-2 py-1 text-left">Transport / LR</th>
               <th className="border border-gray-300 px-2 py-1 text-right">Than</th>
+              {showCharges && (
+                <th className="border border-gray-300 px-2 py-1 text-left">Extra Charges</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -115,12 +142,27 @@ export default function PrintClient({ challan }: { challan: Challan }) {
               // Running row counter across all category groups so numbering
               // stays sequential even after de-duplication.
               let runningIdx = 0
+              // The Transport / LR + chip cells repeat the same challan-level
+              // values on every data row (that's the current DC data model).
+              // If the model ever grows per-line transport, the layout still
+              // fits without shape changes.
+              const chipCell = (
+                <>
+                  {hasFreight && (
+                    <span className="inline-block mr-1 mb-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-300">Freight</span>
+                  )}
+                  {hasChecking && (
+                    <span className="inline-block mr-1 mb-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-300">Checking</span>
+                  )}
+                  {!hasFreight && !hasChecking && <span className="text-gray-400">—</span>}
+                </>
+              )
               return groups.map(([cat, rows], gi) => {
                 const subTotal = rows.reduce((s, r) => s + r.than, 0)
                 return (
                   <>
                     <tr key={`cat-${gi}`} className="bg-gray-50">
-                      <td className="border border-gray-300 px-2 py-1 font-semibold" colSpan={4}>
+                      <td className="border border-gray-300 px-2 py-1 font-semibold" colSpan={showCharges ? 6 : 5}>
                         {cat}
                       </td>
                     </tr>
@@ -131,24 +173,45 @@ export default function PrintClient({ challan }: { challan: Challan }) {
                           <td className="border border-gray-300 px-2 py-1">{runningIdx}</td>
                           <td className="border border-gray-300 px-2 py-1 font-mono">{r.lotNo}</td>
                           <td className="border border-gray-300 px-2 py-1">{r.qualityName ?? '-'}</td>
+                          <td className="border border-gray-300 px-2 py-1">
+                            <div className="font-semibold">{transportLabel}</div>
+                            <div className="text-[10px] text-gray-500 font-mono">LR {lrLabel}</div>
+                          </td>
                           <td className="border border-gray-300 px-2 py-1 text-right">{r.than}</td>
+                          {showCharges && (
+                            <td className="border border-gray-300 px-2 py-1">{chipCell}</td>
+                          )}
                         </tr>
                       )
                     })}
                     <tr key={`sub-${gi}`} className="font-semibold bg-gray-50">
-                      <td className="border border-gray-300 px-2 py-1" colSpan={3}>{cat} sub-total</td>
+                      <td className="border border-gray-300 px-2 py-1" colSpan={colSpanForSub}>{cat} sub-total</td>
                       <td className="border border-gray-300 px-2 py-1 text-right">{subTotal}</td>
+                      {showCharges && <td className="border border-gray-300 px-2 py-1" />}
                     </tr>
                   </>
                 )
               })
             })()}
             <tr className="font-bold bg-gray-100">
-              <td className="border border-gray-300 px-2 py-1" colSpan={3}>Grand Total</td>
+              <td className="border border-gray-300 px-2 py-1" colSpan={colSpanForSub}>Grand Total</td>
               <td className="border border-gray-300 px-2 py-1 text-right">{grandThan}</td>
+              {showCharges && (
+                <td className="border border-gray-300 px-2 py-1 text-[10px]">
+                  {hasFreight && <span className="mr-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300">Freight</span>}
+                  {hasChecking && <span className="mr-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-300">Checking</span>}
+                </td>
+              )}
             </tr>
           </tbody>
         </table>
+
+        {showCharges && (hasFreight || hasChecking) && (
+          <div className="mt-2 text-[11px] text-gray-700">
+            <strong>Extra Charges applicable:</strong>{' '}
+            {[hasFreight && 'Freight', hasChecking && 'Checking'].filter(Boolean).join(' · ')} — billed separately.
+          </div>
+        )}
 
         <div className="grid grid-cols-3 gap-6 mt-12 text-xs">
           <div className="text-center"><div className="border-t border-gray-400 pt-1">Prepared by</div></div>

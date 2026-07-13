@@ -17,8 +17,23 @@ export interface DeliveryChallanForPdf {
   transport: string | null
   lrNo: string | null
   vehicleNo: string | null
+  showExtraCharges?: boolean
   party: { name: string; gstin?: string | null; address?: string | null; state?: string | null }
   lines: DeliveryChallanLineForPdf[]
+}
+
+// Freight when transport is anything other than "Open" / "By Truck".
+// Checking when LR No is anything other than "Open". Both trimmed +
+// lower-cased. Blank never triggers a charge (safe default for legacy DCs).
+function transportTriggersFreight(t: string | null | undefined): boolean {
+  const s = (t ?? '').trim().toLowerCase()
+  if (!s) return false
+  return s !== 'open' && s !== 'by truck'
+}
+function lrTriggersChecking(l: string | null | undefined): boolean {
+  const s = (l ?? '').trim().toLowerCase()
+  if (!s) return false
+  return s !== 'open'
 }
 
 // Generates an A4 delivery-challan PDF that mirrors the print page layout —
@@ -106,50 +121,93 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   }
   const cats = [...byCat.keys()].sort()
 
+  const showCharges = !!c.showExtraCharges
+  const hasFreight = transportTriggersFreight(c.transport)
+  const hasChecking = lrTriggersChecking(c.lrNo)
+  const transportLabel = (c.transport ?? '').trim() || '-'
+  const lrLabel = (c.lrNo ?? '').trim() || (c.transport?.trim() ? 'Open' : '-')
+  const transportCellText = `${transportLabel}\nLR ${lrLabel}`
+  const chipsText = [hasFreight && 'Freight', hasChecking && 'Checking'].filter(Boolean).join(' + ') || '—'
+  const dataColSpan = showCharges ? 6 : 5    // # + Lot + Quality + Transport + Than + (Charges)
+  const subColSpan = showCharges ? 4 : 3     // colSpan on sub-total label
+
   const body: any[] = []
   let idx = 1
   let grandThan = 0
   for (const cat of cats) {
     const rows = [...byCat.get(cat)!.values()].sort((a, b) => a.lotNo.localeCompare(b.lotNo))
     body.push([
-      { content: `> ${cat}`, colSpan: 4, styles: { fillColor: [245, 245, 245], fontStyle: 'bold', textColor: [30, 30, 30] } },
+      { content: `> ${cat}`, colSpan: dataColSpan, styles: { fillColor: [245, 245, 245], fontStyle: 'bold', textColor: [30, 30, 30] } },
     ])
     let subTotal = 0
     for (const r of rows) {
       grandThan += r.than
       subTotal += r.than
-      body.push([
+      const row: any[] = [
         String(idx++),
         r.lotNo,
         r.qualityName ?? '-',
+        { content: transportCellText, styles: { fontSize: 7 } },
         { content: String(r.than), styles: { halign: 'right' } },
-      ])
+      ]
+      if (showCharges) row.push({ content: chipsText, styles: { fontSize: 7, textColor: hasFreight || hasChecking ? [146, 64, 14] : [140, 140, 140] } })
+      body.push(row)
     }
-    body.push([
-      { content: `${cat} sub-total`, colSpan: 3, styles: { fillColor: [245, 245, 245], fontStyle: 'bold' } },
+    const subRow: any[] = [
+      { content: `${cat} sub-total`, colSpan: subColSpan, styles: { fillColor: [245, 245, 245], fontStyle: 'bold' } },
       { content: String(subTotal), styles: { halign: 'right', fillColor: [245, 245, 245], fontStyle: 'bold' } },
-    ])
+    ]
+    if (showCharges) subRow.push({ content: '', styles: { fillColor: [245, 245, 245] } })
+    body.push(subRow)
   }
-  body.push([
-    { content: 'Grand Total', colSpan: 3, styles: { fillColor: [230, 230, 230], fontStyle: 'bold' } },
+  const grandRow: any[] = [
+    { content: 'Grand Total', colSpan: subColSpan, styles: { fillColor: [230, 230, 230], fontStyle: 'bold' } },
     { content: String(grandThan), styles: { halign: 'right', fillColor: [230, 230, 230], fontStyle: 'bold' } },
-  ])
+  ]
+  if (showCharges) grandRow.push({ content: chipsText, styles: { fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 7 } })
+  body.push(grandRow)
+
+  const head: any[] = ['#', 'Lot No', 'Quality', 'Transport / LR', 'Than']
+  if (showCharges) head.push('Extra Charges')
 
   autoTable(doc, {
     startY: 55,
-    head: [['#', 'Lot No', 'Quality', 'Than']],
+    head: [head],
     body,
     margin: { left: marginL, right: marginR },
     theme: 'grid',
     styles: { fontSize: 8, cellPadding: 1.6, textColor: [30, 30, 30], lineColor: [200, 200, 200] },
     headStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontStyle: 'bold' },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 55, fontStyle: 'bold' },
-      2: { cellWidth: 35 },
-      3: { halign: 'right' },
-    },
+    columnStyles: showCharges
+      ? {
+          0: { cellWidth: 8, halign: 'center' },
+          1: { cellWidth: 42, fontStyle: 'bold' },
+          2: { cellWidth: 24 },
+          3: { cellWidth: 40 },
+          4: { cellWidth: 14, halign: 'right' },
+          5: { cellWidth: 30 },
+        }
+      : {
+          0: { cellWidth: 10, halign: 'center' },
+          1: { cellWidth: 48, fontStyle: 'bold' },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 50 },
+          4: { halign: 'right' },
+        },
   })
+
+  if (showCharges && (hasFreight || hasChecking)) {
+    const y = ((doc as any).lastAutoTable?.finalY || 100) + 4
+    doc.setFontSize(8)
+    doc.setTextColor(60, 60, 60)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Extra Charges applicable:', marginL, y)
+    doc.setFont('helvetica', 'normal')
+    doc.text(
+      `${[hasFreight && 'Freight', hasChecking && 'Checking'].filter(Boolean).join(' · ')} — billed separately.`,
+      marginL + 42, y,
+    )
+  }
 
   const finalY = (doc as any).lastAutoTable.finalY || 100
 

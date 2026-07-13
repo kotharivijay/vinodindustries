@@ -19,6 +19,11 @@ model Party {
   gstin            String?
   address          String?
   state            String?
+  // Default state for the delivery-challan "Show Extra Charges" switch. When
+  // true, new DCs for this party start with freight + checking chips visible;
+  // when false, the DC hides the whole Extra Charges column and its summary.
+  // Per-challan override still lives on FinishDeliveryChallan.showExtraCharges.
+  billExtraChargesDefault Boolean    @default(false)
   // Lot-no prefixes used by THIS party (e.g. ["PS", "PSRG"] for Prakash
   // Shirting — PSRG is for return-goods variant). Auto-fill on grey-inward
   // suggests the first one but the operator can pick another or override.
@@ -651,6 +656,10 @@ model FinishDeliveryChallan {
   vehicleNo       String?
   notes           String?
   status          String                      @default("issued")
+  // Show / hide the Freight + Checking chips + summary on this challan's
+  // view, print and PDF. Seeded from Party.billExtraChargesDefault at create
+  // time; operator can flip per-challan without affecting the party default.
+  showExtraCharges Boolean                    @default(false)
   cancelledAt     DateTime?
   cancelledReason String?
   createdAt       DateTime                    @default(now())

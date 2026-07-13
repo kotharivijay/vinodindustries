@@ -151,6 +151,9 @@ export async function POST(req: NextRequest) {
     vehicleNo,
     notes,
     status: 'issued' as const,
+    // Seed the per-challan visibility from the party master's default. The
+    // operator can flip this on the challan card without touching the party.
+    showExtraCharges: !!(party as any).billExtraChargesDefault,
     lines: {
       create: fels.map((f: any) => ({
         finishEntryLotId: f.id,
