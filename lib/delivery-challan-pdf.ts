@@ -9,6 +9,8 @@ export interface DeliveryChallanLineForPdf {
   shadeCategory: string | null
   than: number
   finishSlipNo: number
+  transportName?: string | null
+  transportLrNo?: string | null
 }
 
 export interface DeliveryChallanForPdf {
@@ -108,7 +110,8 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   // Group lines by shade category AND merge duplicate (lot, quality) rows
   // within each category so the printed challan shows one row per unique
   // lot-quality combo instead of every underlying FinishEntryLot slice.
-  type Merged = { lotNo: string; qualityName: string | null; than: number; sliceCount: number }
+  // Transport + LR from the first slice of each merged row wins.
+  type Merged = { lotNo: string; qualityName: string | null; than: number; sliceCount: number; transportName: string | null; transportLrNo: string | null }
   const byCat = new Map<string, Map<string, Merged>>()
   for (const l of c.lines) {
     const catKey = l.shadeCategory || 'Uncategorised'
@@ -117,17 +120,21 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
     const key = `${l.lotNo}||${l.qualityName ?? ''}`
     const cur = bucket.get(key)
     if (cur) { cur.than += l.than; cur.sliceCount++ }
-    else bucket.set(key, { lotNo: l.lotNo, qualityName: l.qualityName ?? null, than: l.than, sliceCount: 1 })
+    else bucket.set(key, {
+      lotNo: l.lotNo, qualityName: l.qualityName ?? null, than: l.than, sliceCount: 1,
+      transportName: l.transportName ?? null, transportLrNo: l.transportLrNo ?? null,
+    })
   }
   const cats = [...byCat.keys()].sort()
 
   const showCharges = !!c.showExtraCharges
-  const hasFreight = transportTriggersFreight(c.transport)
-  const hasChecking = lrTriggersChecking(c.lrNo)
-  const transportLabel = (c.transport ?? '').trim() || '-'
-  const lrLabel = (c.lrNo ?? '').trim() || (c.transport?.trim() ? 'Open' : '-')
-  const transportCellText = `${transportLabel}\nLR ${lrLabel}`
-  const chipsText = [hasFreight && 'Freight', hasChecking && 'Checking'].filter(Boolean).join(' + ') || '—'
+  // Roll-up flags for the grand-total row + caption. Each merged row's
+  // transport comes from its FIRST slice — later slices for the same lot
+  // are same-transport by construction, so testing the merged row is fine.
+  const allRowsFlat: Merged[] = cats.flatMap(cat => [...byCat.get(cat)!.values()])
+  const anyFreight = allRowsFlat.some(r => transportTriggersFreight(r.transportName ?? c.transport))
+  const anyChecking = allRowsFlat.some(r => lrTriggersChecking(r.transportLrNo ?? c.lrNo))
+  const grandChipsText = [anyFreight && 'Freight', anyChecking && 'Checking'].filter(Boolean).join(' + ') || '—'
   const dataColSpan = showCharges ? 6 : 5    // # + Lot + Quality + Transport + Than + (Charges)
   const subColSpan = showCharges ? 4 : 3     // colSpan on sub-total label
 
@@ -143,14 +150,21 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
     for (const r of rows) {
       grandThan += r.than
       subTotal += r.than
+      const rowTransport = r.transportName ?? c.transport
+      const rowLr = r.transportLrNo ?? c.lrNo
+      const tLabel = (rowTransport ?? '').trim() || '-'
+      const lrLabel = (rowLr ?? '').trim() || (rowTransport?.trim() ? 'Open' : '-')
+      const rowFreight = transportTriggersFreight(rowTransport)
+      const rowChecking = lrTriggersChecking(rowLr)
+      const rowChipsText = [rowFreight && 'Freight', rowChecking && 'Checking'].filter(Boolean).join(' + ') || '—'
       const row: any[] = [
         String(idx++),
         r.lotNo,
         r.qualityName ?? '-',
-        { content: transportCellText, styles: { fontSize: 7 } },
+        { content: `${tLabel}\nLR ${lrLabel}`, styles: { fontSize: 7 } },
         { content: String(r.than), styles: { halign: 'right' } },
       ]
-      if (showCharges) row.push({ content: chipsText, styles: { fontSize: 7, textColor: hasFreight || hasChecking ? [146, 64, 14] : [140, 140, 140] } })
+      if (showCharges) row.push({ content: rowChipsText, styles: { fontSize: 7, textColor: rowFreight || rowChecking ? [146, 64, 14] : [140, 140, 140] } })
       body.push(row)
     }
     const subRow: any[] = [
@@ -164,7 +178,7 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
     { content: 'Grand Total', colSpan: subColSpan, styles: { fillColor: [230, 230, 230], fontStyle: 'bold' } },
     { content: String(grandThan), styles: { halign: 'right', fillColor: [230, 230, 230], fontStyle: 'bold' } },
   ]
-  if (showCharges) grandRow.push({ content: chipsText, styles: { fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 7 } })
+  if (showCharges) grandRow.push({ content: grandChipsText, styles: { fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 7 } })
   body.push(grandRow)
 
   const head: any[] = ['#', 'Lot No', 'Quality', 'Transport / LR', 'Than']
@@ -196,7 +210,7 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
         },
   })
 
-  if (showCharges && (hasFreight || hasChecking)) {
+  if (showCharges && (anyFreight || anyChecking)) {
     const y = ((doc as any).lastAutoTable?.finalY || 100) + 4
     doc.setFontSize(8)
     doc.setTextColor(60, 60, 60)
@@ -204,7 +218,7 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
     doc.text('Extra Charges applicable:', marginL, y)
     doc.setFont('helvetica', 'normal')
     doc.text(
-      `${[hasFreight && 'Freight', hasChecking && 'Checking'].filter(Boolean).join(' · ')} — billed separately.`,
+      `${[anyFreight && 'Freight', anyChecking && 'Checking'].filter(Boolean).join(' · ')} — billed separately.`,
       marginL + 42, y,
     )
   }

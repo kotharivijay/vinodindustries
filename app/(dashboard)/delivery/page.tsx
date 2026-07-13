@@ -40,6 +40,8 @@ interface ChallanLine {
   shadeCategory: string | null
   than: number
   finishSlipNo: number
+  transportName: string | null
+  transportLrNo: string | null
 }
 interface Challan {
   id: number

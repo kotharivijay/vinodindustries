@@ -112,11 +112,25 @@ export async function POST(req: NextRequest) {
   const lotNos: string[] = [...new Set((fels as any[]).map((f: any) => f.lotNo as string))]
   const greys = await db.greyEntry.findMany({
     where: { lotNo: { in: lotNos, mode: 'insensitive' }, partyId },
-    select: { lotNo: true, quality: { select: { name: true } } },
+    select: {
+      lotNo: true, transportLrNo: true, date: true, id: true,
+      quality: { select: { name: true } },
+      transport: { select: { name: true } },
+    },
+    orderBy: [{ date: 'desc' }, { id: 'desc' }],
   })
   const qualityByLot = new Map<string, string | null>(
     (greys as any[]).map((g: any) => [g.lotNo.toLowerCase().trim(), g.quality?.name ?? null]),
   )
+  // Snapshot transport + LR per lot (most recent grey row wins — orderBy
+  // above sorts newest first, so the first entry we see is the one to keep).
+  const transportByLot = new Map<string, { name: string | null; lrNo: string | null }>()
+  for (const g of greys as any[]) {
+    const key = g.lotNo.toLowerCase().trim()
+    if (!transportByLot.has(key)) {
+      transportByLot.set(key, { name: g.transport?.name ?? null, lrNo: g.transportLrNo ?? null })
+    }
+  }
   const missingLots: string[] = lotNos.filter((l: string) => !qualityByLot.has(l.toLowerCase().trim()))
   if (missingLots.length) {
     // Try OB as a fallback
@@ -155,17 +169,23 @@ export async function POST(req: NextRequest) {
     // operator can flip this on the challan card without touching the party.
     showExtraCharges: !!(party as any).billExtraChargesDefault,
     lines: {
-      create: fels.map((f: any) => ({
-        finishEntryLotId: f.id,
-        finishEntryId: f.entry.id,
-        finishSlipNo: f.entry.slipNo,
-        lotNo: f.lotNo,
-        qualityName: qualityByLot.get(f.lotNo.toLowerCase().trim()) ?? null,
-        shadeName: f.dyeingEntry?.shadeName || f.dyeingEntry?.foldBatch?.shade?.name || null,
-        shadeCategory: f.dyeingEntry?.foldBatch?.shade?.colorCategory || null,
-        than: f.status === 'done' ? f.than : f.doneThan,
-        meter: null, // PC Job challans don't carry meter
-      })),
+      create: fels.map((f: any) => {
+        const key = f.lotNo.toLowerCase().trim()
+        const tp = transportByLot.get(key)
+        return {
+          finishEntryLotId: f.id,
+          finishEntryId: f.entry.id,
+          finishSlipNo: f.entry.slipNo,
+          lotNo: f.lotNo,
+          qualityName: qualityByLot.get(key) ?? null,
+          shadeName: f.dyeingEntry?.shadeName || f.dyeingEntry?.foldBatch?.shade?.name || null,
+          shadeCategory: f.dyeingEntry?.foldBatch?.shade?.colorCategory || null,
+          than: f.status === 'done' ? f.than : f.doneThan,
+          meter: null, // PC Job challans don't carry meter
+          transportName: tp?.name ?? null,
+          transportLrNo: tp?.lrNo ?? null,
+        }
+      }),
     },
   })
 

@@ -11,6 +11,8 @@ interface Line {
   shadeCategory: string | null
   than: number
   finishSlipNo: number
+  transportName: string | null
+  transportLrNo: string | null
 }
 interface Challan {
   id: number
@@ -50,7 +52,9 @@ export default function PrintClient({ challan }: { challan: Challan }) {
   // Group lines by shade category AND merge duplicate (lot, quality) rows
   // so the printed challan shows one row per unique lot-quality within a
   // category, summing than across all underlying FinishEntryLot slices.
-  type MergedRow = { lotNo: string; qualityName: string | null; than: number; sliceCount: number }
+  // Transport + LR from the first slice of each merged row wins — all slices
+  // of a lot share the same source grey so it's stable.
+  type MergedRow = { lotNo: string; qualityName: string | null; than: number; sliceCount: number; transportName: string | null; transportLrNo: string | null }
   const groups = useMemo(() => {
     const m = new Map<string, Map<string, MergedRow>>()
     for (const l of challan.lines) {
@@ -60,7 +64,7 @@ export default function PrintClient({ challan }: { challan: Challan }) {
       const key = `${l.lotNo}||${l.qualityName ?? ''}`
       const cur = bucket.get(key)
       if (cur) { cur.than += l.than; cur.sliceCount++ }
-      else bucket.set(key, { lotNo: l.lotNo, qualityName: l.qualityName ?? null, than: l.than, sliceCount: 1 })
+      else bucket.set(key, { lotNo: l.lotNo, qualityName: l.qualityName ?? null, than: l.than, sliceCount: 1, transportName: l.transportName, transportLrNo: l.transportLrNo })
     }
     return [...m.entries()].map(
       ([cat, bucket]) => [cat, [...bucket.values()].sort((a, b) => a.lotNo.localeCompare(b.lotNo))] as const,
@@ -70,12 +74,13 @@ export default function PrintClient({ challan }: { challan: Challan }) {
   const grandThan = challan.lines.reduce((s, l) => s + l.than, 0)
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-IN')
 
-  const transportLabel = challan.transport?.trim() || '-'
-  const lrLabel = challan.lrNo?.trim() || (challan.transport?.trim() ? 'Open' : '-')
-  const hasFreight = transportTriggersFreight(challan.transport)
-  const hasChecking = lrTriggersChecking(challan.lrNo)
   const showCharges = challan.showExtraCharges
   const colSpanForSub = showCharges ? 4 : 3
+  // Roll-up summary chip counts from all rows for the grand-total row + the
+  // "Extra Charges applicable" caption. Uses the underlying (unmerged) lines
+  // so lots that split into two rows still count once each.
+  const anyFreight = challan.lines.some(l => transportTriggersFreight(l.transportName ?? challan.transport))
+  const anyChecking = challan.lines.some(l => lrTriggersChecking(l.transportLrNo ?? challan.lrNo))
 
   return (
     <div className="min-h-screen bg-white text-gray-900 p-6 print:p-3">
@@ -142,21 +147,6 @@ export default function PrintClient({ challan }: { challan: Challan }) {
               // Running row counter across all category groups so numbering
               // stays sequential even after de-duplication.
               let runningIdx = 0
-              // The Transport / LR + chip cells repeat the same challan-level
-              // values on every data row (that's the current DC data model).
-              // If the model ever grows per-line transport, the layout still
-              // fits without shape changes.
-              const chipCell = (
-                <>
-                  {hasFreight && (
-                    <span className="inline-block mr-1 mb-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-300">Freight</span>
-                  )}
-                  {hasChecking && (
-                    <span className="inline-block mr-1 mb-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-300">Checking</span>
-                  )}
-                  {!hasFreight && !hasChecking && <span className="text-gray-400">—</span>}
-                </>
-              )
               return groups.map(([cat, rows], gi) => {
                 const subTotal = rows.reduce((s, r) => s + r.than, 0)
                 return (
@@ -168,18 +158,32 @@ export default function PrintClient({ challan }: { challan: Challan }) {
                     </tr>
                     {rows.map(r => {
                       runningIdx++
+                      const tName = r.transportName ?? challan.transport
+                      const tLr = r.transportLrNo ?? challan.lrNo
+                      const tLabel = tName?.trim() || '-'
+                      const lrLabel = tLr?.trim() || (tName?.trim() ? 'Open' : '-')
+                      const rowFreight = transportTriggersFreight(tName)
+                      const rowChecking = lrTriggersChecking(tLr)
                       return (
                         <tr key={`${cat}-${r.lotNo}-${r.qualityName ?? ''}`}>
                           <td className="border border-gray-300 px-2 py-1">{runningIdx}</td>
                           <td className="border border-gray-300 px-2 py-1 font-mono">{r.lotNo}</td>
                           <td className="border border-gray-300 px-2 py-1">{r.qualityName ?? '-'}</td>
                           <td className="border border-gray-300 px-2 py-1">
-                            <div className="font-semibold">{transportLabel}</div>
+                            <div className="font-semibold">{tLabel}</div>
                             <div className="text-[10px] text-gray-500 font-mono">LR {lrLabel}</div>
                           </td>
                           <td className="border border-gray-300 px-2 py-1 text-right">{r.than}</td>
                           {showCharges && (
-                            <td className="border border-gray-300 px-2 py-1">{chipCell}</td>
+                            <td className="border border-gray-300 px-2 py-1">
+                              {rowFreight && (
+                                <span className="inline-block mr-1 mb-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-300">Freight</span>
+                              )}
+                              {rowChecking && (
+                                <span className="inline-block mr-1 mb-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-800 border border-blue-300">Checking</span>
+                              )}
+                              {!rowFreight && !rowChecking && <span className="text-gray-400">—</span>}
+                            </td>
                           )}
                         </tr>
                       )
@@ -198,18 +202,18 @@ export default function PrintClient({ challan }: { challan: Challan }) {
               <td className="border border-gray-300 px-2 py-1 text-right">{grandThan}</td>
               {showCharges && (
                 <td className="border border-gray-300 px-2 py-1 text-[10px]">
-                  {hasFreight && <span className="mr-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300">Freight</span>}
-                  {hasChecking && <span className="mr-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-300">Checking</span>}
+                  {anyFreight && <span className="mr-1 px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-300">Freight</span>}
+                  {anyChecking && <span className="mr-1 px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-300">Checking</span>}
                 </td>
               )}
             </tr>
           </tbody>
         </table>
 
-        {showCharges && (hasFreight || hasChecking) && (
+        {showCharges && (anyFreight || anyChecking) && (
           <div className="mt-2 text-[11px] text-gray-700">
             <strong>Extra Charges applicable:</strong>{' '}
-            {[hasFreight && 'Freight', hasChecking && 'Checking'].filter(Boolean).join(' · ')} — billed separately.
+            {[anyFreight && 'Freight', anyChecking && 'Checking'].filter(Boolean).join(' · ')} — billed separately.
           </div>
         )}
 

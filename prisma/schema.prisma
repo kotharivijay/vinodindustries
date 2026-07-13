@@ -684,6 +684,12 @@ model FinishDeliveryChallanLine {
   shadeCategory     String?
   than              Int
   meter             Float?
+  // Snapshot of the source GreyEntry's transport + LR at the time the
+  // challan was created. Denormalised so the printed challan stays stable
+  // even if the grey row is later edited. Drives the Transport/LR column
+  // and the Freight/Checking triggers on the DC print + PDF.
+  transportName     String?
+  transportLrNo     String?
   createdAt         DateTime              @default(now())
 
   @@index([challanId])
