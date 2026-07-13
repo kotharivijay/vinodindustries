@@ -11,7 +11,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id } = await params
-  const row = await db.finishDeliveryChallan.findUnique({
+  let row = await db.finishDeliveryChallan.findUnique({
     where: { id: parseInt(id) },
     include: {
       party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } },
@@ -19,6 +19,51 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     },
   })
   if (!row) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+
+  // Self-heal: any line missing its transport snapshot (older challans, or
+  // ones created during a deploy race before POST learned to write it) gets
+  // filled from the most recent GreyEntry for its lot. Idempotent, cheap on
+  // the happy path (no work when every line already has it). One shot per
+  // read means a stale challan's first print request corrects itself.
+  const missing = row.lines.filter((l: any) => !l.transportName && !l.transportLrNo)
+  if (missing.length) {
+    const missingLots: string[] = Array.from(new Set(missing.map((l: any) => l.lotNo as string)))
+    const greys = await db.greyEntry.findMany({
+      where: { lotNo: { in: missingLots, mode: 'insensitive' } },
+      select: {
+        lotNo: true, transportLrNo: true, date: true, id: true,
+        transport: { select: { name: true } },
+      },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    })
+    const winner = new Map<string, { name: string | null; lrNo: string | null }>()
+    for (const g of greys as any[]) {
+      const k = String(g.lotNo).toLowerCase().trim()
+      if (!winner.has(k)) winner.set(k, { name: g.transport?.name ?? null, lrNo: g.transportLrNo ?? null })
+    }
+    const updates: any[] = []
+    for (const l of missing) {
+      const w = winner.get(String(l.lotNo).toLowerCase().trim())
+      if (!w || (!w.name && !w.lrNo)) continue
+      updates.push(
+        db.finishDeliveryChallanLine.update({
+          where: { id: l.id },
+          data: { transportName: w.name, transportLrNo: w.lrNo },
+        }),
+      )
+    }
+    if (updates.length) {
+      await Promise.all(updates)
+      row = await db.finishDeliveryChallan.findUnique({
+        where: { id: parseInt(id) },
+        include: {
+          party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } },
+          lines: { orderBy: { id: 'asc' } },
+        },
+      })
+    }
+  }
+
   return NextResponse.json(row)
 }
 

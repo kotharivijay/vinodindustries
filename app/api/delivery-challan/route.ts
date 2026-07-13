@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const status = req.nextUrl.searchParams.get('status')
-  const rows = await db.finishDeliveryChallan.findMany({
+  let rows = await db.finishDeliveryChallan.findMany({
     where: status ? { status } : undefined,
     include: {
       party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } },
@@ -20,6 +20,49 @@ export async function GET(req: NextRequest) {
     },
     orderBy: { challanNo: 'desc' },
   })
+
+  // Self-heal transport snapshots across the whole list in one shot. Batches
+  // one grey lookup per unique lot instead of per line — cheap on the happy
+  // path (no lots need filling → no query). Same rule as the [id] GET.
+  const missingLines: any[] = []
+  for (const c of rows) for (const l of c.lines) if (!l.transportName && !l.transportLrNo) missingLines.push(l)
+  if (missingLines.length) {
+    const missingLots: string[] = Array.from(new Set(missingLines.map((l: any) => l.lotNo as string)))
+    const greys = await db.greyEntry.findMany({
+      where: { lotNo: { in: missingLots, mode: 'insensitive' } },
+      select: {
+        lotNo: true, transportLrNo: true, date: true, id: true,
+        transport: { select: { name: true } },
+      },
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+    })
+    const winner = new Map<string, { name: string | null; lrNo: string | null }>()
+    for (const g of greys as any[]) {
+      const k = String(g.lotNo).toLowerCase().trim()
+      if (!winner.has(k)) winner.set(k, { name: g.transport?.name ?? null, lrNo: g.transportLrNo ?? null })
+    }
+    const updates: any[] = []
+    for (const l of missingLines) {
+      const w = winner.get(String(l.lotNo).toLowerCase().trim())
+      if (!w || (!w.name && !w.lrNo)) continue
+      updates.push(db.finishDeliveryChallanLine.update({
+        where: { id: l.id },
+        data: { transportName: w.name, transportLrNo: w.lrNo },
+      }))
+    }
+    if (updates.length) {
+      await Promise.all(updates)
+      rows = await db.finishDeliveryChallan.findMany({
+        where: status ? { status } : undefined,
+        include: {
+          party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } },
+          lines: { orderBy: { id: 'asc' } },
+        },
+        orderBy: { challanNo: 'desc' },
+      })
+    }
+  }
+
   return NextResponse.json(rows)
 }
 
