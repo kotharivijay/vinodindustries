@@ -146,9 +146,12 @@ export function computeWageRow(opts: {
   if (opts.actualSalary != null && opts.actualSalary > 0) {
     // Register days drive the wage. Actual days drive the (informational)
     // target salary only — they do NOT recompute register days here.
+    // Actual days are NOT capped at monthDays: night/extra duty can push
+    // them past the calendar (e.g. 28 day + 13 night = 41 → target
+    // actualSalary/30 × 41). Only snap to 0.5 and floor at 0.
     const daysWorked = snapDays(opts.daysWorked, opts.monthDays)
     const actDaysWorked = opts.actualDaysWorked != null
-      ? snapDays(opts.actualDaysWorked, opts.monthDays)
+      ? Math.max(0, Math.round(opts.actualDaysWorked * 2) / 2)
       : opts.monthDays
     const calculatedWage = dailyRate * daysWorked
     const netPayable = Math.max(0, calculatedWage - (opts.staffAdvance || 0))

@@ -331,8 +331,10 @@ export default function WagesClient() {
         // Actual days = secondary editable input → target salary (informational only).
         // No auto-derivation between them.
         const regDays = snapDays(patch.daysWorked ?? r.daysWorked ?? 0, monthDays)
+        // Actual days: snap to 0.5 but NO monthDays cap — night/extra duty
+        // can exceed the calendar (28 day + 13 night = 41).
         const actDays = patch.actualDaysWorked !== undefined
-          ? snapDays(patch.actualDaysWorked, monthDays)
+          ? Math.max(0, Math.round(patch.actualDaysWorked * 2) / 2)
           : (r.actualDaysWorked ?? monthDays)
         const calculatedWage = liveRate * regDays
         return {
@@ -1649,7 +1651,7 @@ function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected,
               type="number"
               step="0.5"
               min={0}
-              max={liveMonthDays}
+              max={isActual ? undefined : liveMonthDays}
               ref={isActual ? actDaysRef : daysRef}
               value={isActual ? actDaysStr : daysStr}
               onChange={(e) => (isActual ? setActDaysStr(e.target.value) : setDaysStr(e.target.value))}
@@ -1660,7 +1662,8 @@ function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected,
             <button
               onClick={() => {
                 if (isActual) {
-                  const v = Math.min(liveMonthDays, actDays + 0.5)
+                  // Actual days may exceed the calendar (night/extra duty)
+                  const v = actDays + 0.5
                   setActDaysStr(String(v))
                   onChange({ actualDaysWorked: v })
                 } else {
@@ -2083,13 +2086,13 @@ function StandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onTog
           {isActual && (
             <div className="flex items-center gap-1 text-[10px] text-gray-500">
               <span>Act</span>
-              <input type="number" step="0.5" min={0} max={liveMonthDays}
+              <input type="number" step="0.5" min={0}
                 ref={actDaysRef} value={actDaysStr}
                 onChange={(e) => setActDaysStr(e.target.value)}
                 onFocus={(e) => e.target.select()}
                 onBlur={commitActDays}
                 onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                title="Actual days worked — drives the Target salary below (informational)"
+                title="Actual days worked — can exceed the calendar month (night/extra duty). Drives the Target salary."
                 className="w-12 px-1 py-0 border border-gray-300 dark:border-gray-600 rounded text-center text-[10px] bg-white dark:bg-gray-800" />
               <span>d</span>
             </div>
