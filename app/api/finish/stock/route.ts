@@ -83,6 +83,23 @@ export async function GET() {
     directMap.set(dk, (directMap.get(dk) || 0) + r.than)
   }
 
+  // A slip can carry multiple DyeingEntryLot rows with the SAME lotNo (e.g.
+  // split fold allocations). All maps here key by (slipId, lotKey), so those
+  // rows must be merged first — otherwise a direct deduction is applied once
+  // per duplicate row and the last row's remaining overwrites the others,
+  // hiding the slip from stock.
+  const mergedLots = (d: any): { lotNo: string; than: number }[] => {
+    const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
+    const byKey = new Map<string, { lotNo: string; than: number }>()
+    for (const l of lots) {
+      const key = l.lotNo.toLowerCase().trim()
+      const existing = byKey.get(key)
+      if (existing) existing.than += l.than
+      else byKey.set(key, { lotNo: l.lotNo, than: l.than })
+    }
+    return Array.from(byKey.values())
+  }
+
   // Pre-compute remaining-than for each (slipId, lotKey) in two passes.
   // Pass 2 runs in oldest-first order so the FIFO heuristic credits older
   // dye slips first — newest slips stay visible until their consumption is
@@ -96,7 +113,7 @@ export async function GET() {
     return a.id - b.id
   })
   for (const d of slipsAsc) {
-    const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
+    const lots = mergedLots(d)
     for (const l of lots) {
       const key = l.lotNo.toLowerCase().trim()
       // Pass 1 — exact deduction from this slip
@@ -118,7 +135,7 @@ export async function GET() {
   // Now build display list in the original desc order using precomputed remaining.
   const stock: any[] = []
   for (const d of doneSlips) {
-    const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
+    const lots = mergedLots(d)
     const lotInfo = lotInfoMap.get((lots[0]?.lotNo || d.lotNo).toLowerCase().trim())
     const shadeName = d.shadeName || d.foldBatch?.shade?.name || null
     // Priority: slip > fold batch > master. Slip-level descriptor (typed in
