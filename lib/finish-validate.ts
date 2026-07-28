@@ -42,9 +42,16 @@ export async function validateFinishLotThan(
       continue
     }
 
-    const srcLot =
-      source.lots.find((l: { lotNo: string; than: number }) => l.lotNo.toLowerCase().trim() === lotKey)
-      ?? (source.lotNo && source.lotNo.toLowerCase().trim() === lotKey
+    // A slip can carry multiple DyeingEntryLot rows with the SAME lotNo
+    // (split fold allocations). The stock route merges them before showing
+    // remaining-than, so the validator must sum them too — matching only the
+    // first row under-counts the source and rejects a legitimate claim.
+    const matchingRows = source.lots.filter(
+      (l: { lotNo: string; than: number }) => l.lotNo.toLowerCase().trim() === lotKey,
+    )
+    const srcLot = matchingRows.length
+      ? { lotNo: matchingRows[0].lotNo, than: matchingRows.reduce((s: number, l: { than: number }) => s + l.than, 0) }
+      : (source.lotNo && source.lotNo.toLowerCase().trim() === lotKey
             ? { lotNo: source.lotNo, than: source.than }
             : null)
     if (!srcLot) {
