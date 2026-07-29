@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Shade-wise Cost — clickable slips popup</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+  </script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .screen { scroll-margin-top: 16px; }
+    /* Fake mobile frame */
+    .phone {
+      width: 380px;
+      max-width: 100%;
+      border: 12px solid #1f2937;
+      border-radius: 32px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    }
+    .phone-notch {
+      background: #1f2937;
+      height: 22px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .phone-notch::after {
+      content: '';
+      width: 90px; height: 6px;
+      background: #111; border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="max-w-5xl mx-auto p-6 space-y-14">
+
+  <header class="space-y-1">
+    <h1 class="text-xl font-bold">Shade-wise Cost — slip drill-down popup</h1>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      Click the <b>“3 slips”</b> chip (or the whole row) → popup lists the dyeing slips behind that shade.
+      Each slip is clickable: expand inline for chemicals + cost, or open the full slip page.
+      Two variants below — try them live.
+    </p>
+    <nav class="flex flex-wrap gap-2 text-xs pt-1">
+      <a href="#v1" class="text-blue-600 dark:text-blue-400 underline">A · Slip list + expand</a>
+      <a href="#v2" class="text-blue-600 dark:text-blue-400 underline">B · Chemical compare matrix</a>
+      <a href="#mobile" class="text-blue-600 dark:text-blue-400 underline">Mobile view</a>
+      <a href="#pick" class="text-blue-600 dark:text-blue-400 underline">Recommendation</a>
+    </nav>
+  </header>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- The shade-wise list (as today, chips now clickable) -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section class="screen space-y-3">
+    <h2 class="text-lg font-bold">Shade-wise Cost <span class="text-xs font-normal text-gray-400">(chip now a button — hover it)</span></h2>
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+      <div class="divide-y divide-gray-50 dark:divide-gray-700">
+
+        <button onclick="openModal('A')" class="w-full px-4 py-2.5 flex items-center justify-between hover:bg-purple-50/60 dark:hover:bg-purple-900/10 transition text-left group">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-200">T-214 — Maharani</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-gray-800 dark:bg-gray-900 text-gray-100">Dark</span>
+            <span class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium group-hover:bg-purple-200 dark:group-hover:bg-purple-800/60 transition">3 slips ▸</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-gray-500">77 · ₹9,786</span>
+            <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 ml-2">₹127.1/T</span>
+          </div>
+        </button>
+
+        <button onclick="openModal('B')" class="w-full px-4 py-2.5 flex items-center justify-between hover:bg-purple-50/60 dark:hover:bg-purple-900/10 transition text-left group">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-200">T-187 — R maroon</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-gray-800 dark:bg-gray-900 text-gray-100">Dark</span>
+            <span class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium group-hover:bg-purple-200 dark:group-hover:bg-purple-800/60 transition">2 slips ▸</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-gray-500">55 · ₹6,904</span>
+            <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 ml-2">₹125.52/T</span>
+          </div>
+        </button>
+
+        <div class="px-4 py-2.5 flex items-center justify-between opacity-60">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-200">P-59 — Nimbu</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400">Light</span>
+            <span class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">3 slips ▸</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-gray-500">63 · ₹6,816</span>
+            <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 ml-2">₹108.2/T</span>
+          </div>
+        </div>
+        <div class="px-4 py-2.5 flex items-center justify-between opacity-60">
+          <div class="flex items-center gap-1.5">
+            <span class="text-xs font-medium text-gray-700 dark:text-gray-200">T-8 — D c green</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-gray-800 dark:bg-gray-900 text-gray-100">Dark</span>
+            <span class="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">3 slips ▸</span>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-gray-500">59 · ₹6,721</span>
+            <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400 ml-2">₹113.92/T</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="text-[11px] text-gray-400">Rows T-214 and T-187 are live in this mockup — T-214 opens Variant A, T-187 opens Variant B.</p>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant A modal — slip list with inline expand -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v1" class="screen space-y-2">
+    <h2 class="text-lg font-bold">A · Popup: slip list, tap a slip to expand chemicals</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">Same drill-down pattern as the Fold-wise section, but scoped to one shade. Slip number links to <code>/dyeing/[id]</code> in a new tab.</p>
+  </section>
+
+  <div id="modalA" class="fixed inset-0 z-50 hidden items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6" onclick="if(event.target===this)closeModal('A')">
+    <div class="bg-white dark:bg-gray-800 w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col">
+      <!-- header -->
+      <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-bold text-gray-800 dark:text-gray-100">T-214 — Maharani</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-gray-800 dark:bg-gray-900 text-gray-100">Dark</span>
+          </div>
+          <p class="text-[10px] text-gray-400">3 slips · 77 than · ₹9,786 · avg ₹127.1/T</p>
+        </div>
+        <button onclick="closeModal('A')" class="w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 text-lg leading-none">✕</button>
+      </div>
+
+      <!-- slip list -->
+      <div class="overflow-y-auto divide-y divide-gray-50 dark:divide-gray-700">
+
+        <!-- slip 1644 (collapsed) -->
+        <div>
+          <button onclick="toggleSlip('s1644')" class="w-full px-4 py-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+            <div class="text-left">
+              <div class="flex items-center gap-2">
+                <a href="#" onclick="event.stopPropagation();return false" class="text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline">Slip 1644 ↗</a>
+                <span class="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">Fold 214 · B12</span>
+                <span class="text-[10px] text-gray-400">04/07/2026</span>
+              </div>
+              <p class="text-[10px] text-gray-400">MMI-390-DON ×14T, MMI-402-NEEL ×12T</p>
+            </div>
+            <div class="text-right flex items-center gap-2">
+              <div>
+                <p class="text-xs text-gray-600 dark:text-gray-300">26 · ₹3,302</p>
+                <p class="text-xs font-bold text-indigo-600 dark:text-indigo-400">₹127.0/T</p>
+              </div>
+              <span id="s1644-chev" class="text-gray-400 text-[10px] transition-transform">▶</span>
+            </div>
+          </button>
+          <div id="s1644" class="hidden px-4 pb-3 space-y-2">
+            <div class="flex gap-2 text-[10px]">
+              <span class="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded font-medium">Dyes: ₹2,410</span>
+              <span class="bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded font-medium">Auxiliary: ₹892</span>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold text-purple-600 dark:text-purple-400 mb-1">Dyes</p>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Yellow ME4GL</span><span class="text-gray-500">0.820 kg · ₹574</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Red ME4BL</span><span class="text-gray-500">1.240 kg · ₹998</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Navy Blue WB</span><span class="text-gray-500">0.960 kg · ₹838</span></div>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold text-teal-600 dark:text-teal-400 mb-1">Auxiliary</p>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Glauber Salt</span><span class="text-gray-500">28.000 kg · ₹392</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Soda Ash</span><span class="text-gray-500">9.000 kg · ₹315</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Levelling Agent</span><span class="text-gray-500">0.700 kg · ₹185</span></div>
+            </div>
+            <a href="#" onclick="return false" class="inline-block text-[10px] font-semibold text-purple-600 dark:text-purple-400 hover:underline pt-1">Open full slip →</a>
+          </div>
+        </div>
+
+        <!-- slip 1723 (starts expanded to show the state) -->
+        <div>
+          <button onclick="toggleSlip('s1723')" class="w-full px-4 py-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+            <div class="text-left">
+              <div class="flex items-center gap-2">
+                <a href="#" onclick="event.stopPropagation();return false" class="text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline">Slip 1723 ↗</a>
+                <span class="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">Fold 221 · B4</span>
+                <span class="text-[10px] text-gray-400">09/07/2026</span>
+              </div>
+              <p class="text-[10px] text-gray-400">MMI-412-USHA ×13T, MMI-415-DON ×12T</p>
+            </div>
+            <div class="text-right flex items-center gap-2">
+              <div>
+                <p class="text-xs text-gray-600 dark:text-gray-300">25 · ₹3,175</p>
+                <p class="text-xs font-bold text-indigo-600 dark:text-indigo-400">₹127.0/T</p>
+              </div>
+              <span id="s1723-chev" class="text-gray-400 text-[10px] transition-transform rotate-90">▶</span>
+            </div>
+          </button>
+          <div id="s1723" class="px-4 pb-3 space-y-2">
+            <div class="flex gap-2 text-[10px]">
+              <span class="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded font-medium">Dyes: ₹2,318</span>
+              <span class="bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded font-medium">Auxiliary: ₹857</span>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold text-purple-600 dark:text-purple-400 mb-1">Dyes</p>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Yellow ME4GL</span><span class="text-gray-500">0.790 kg · ₹553</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Red ME4BL</span><span class="text-gray-500">1.190 kg · ₹958</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Navy Blue WB</span><span class="text-gray-500">0.925 kg · ₹807</span></div>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold text-teal-600 dark:text-teal-400 mb-1">Auxiliary</p>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Glauber Salt</span><span class="text-gray-500">27.000 kg · ₹378</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Soda Ash</span><span class="text-gray-500">8.600 kg · ₹301</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Levelling Agent</span><span class="text-gray-500">0.675 kg · ₹178</span></div>
+            </div>
+            <a href="#" onclick="return false" class="inline-block text-[10px] font-semibold text-purple-600 dark:text-purple-400 hover:underline pt-1">Open full slip →</a>
+          </div>
+        </div>
+
+        <!-- slip 1810 (collapsed, slightly costlier — analysis target) -->
+        <div>
+          <button onclick="toggleSlip('s1810')" class="w-full px-4 py-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+            <div class="text-left">
+              <div class="flex items-center gap-2">
+                <a href="#" onclick="event.stopPropagation();return false" class="text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline">Slip 1810 ↗</a>
+                <span class="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">Fold 234 · B24</span>
+                <span class="text-[10px] text-gray-400">15/07/2026</span>
+              </div>
+              <p class="text-[10px] text-gray-400">MMI-430-UMANG ×2T, MMI-461-NEEL ×9T, MMI-428-DON ×8T, +1</p>
+            </div>
+            <div class="text-right flex items-center gap-2">
+              <div>
+                <p class="text-xs text-gray-600 dark:text-gray-300">26 · ₹3,309</p>
+                <p class="text-xs font-bold text-red-500">₹127.3/T ▲</p>
+              </div>
+              <span id="s1810-chev" class="text-gray-400 text-[10px] transition-transform">▶</span>
+            </div>
+          </button>
+          <div id="s1810" class="hidden px-4 pb-3 space-y-2">
+            <div class="flex gap-2 text-[10px]">
+              <span class="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded font-medium">Dyes: ₹2,442</span>
+              <span class="bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded font-medium">Auxiliary: ₹867</span>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold text-purple-600 dark:text-purple-400 mb-1">Dyes</p>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Yellow ME4GL</span><span class="text-gray-500">0.830 kg · ₹581</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Red ME4BL</span><span class="text-gray-500">1.265 kg · ₹1,018</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Navy Blue WB</span><span class="text-gray-500">0.965 kg · ₹843</span></div>
+            </div>
+            <div>
+              <p class="text-[10px] font-bold text-teal-600 dark:text-teal-400 mb-1">Auxiliary</p>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Glauber Salt</span><span class="text-gray-500">28.000 kg · ₹392</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Soda Ash</span><span class="text-gray-500">9.000 kg · ₹315</span></div>
+              <div class="flex items-center justify-between text-[10px] py-0.5"><span class="text-gray-700 dark:text-gray-300">Levelling Agent</span><span class="text-gray-500">0.605 kg · ₹160</span></div>
+            </div>
+            <a href="#" onclick="return false" class="inline-block text-[10px] font-semibold text-purple-600 dark:text-purple-400 hover:underline pt-1">Open full slip →</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- footer -->
+      <div class="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-between rounded-b-2xl">
+        <span class="text-xs font-semibold text-gray-600 dark:text-gray-400">Shade Total</span>
+        <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">77 · ₹9,786 · ₹127.1/T</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant B modal — chemical compare matrix     -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v2" class="screen space-y-2">
+    <h2 class="text-lg font-bold">B · Popup: chemical compare matrix across slips</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">One table — chemicals as rows, slips as columns. Instantly shows which slip used more dye / cost more. Slip numbers in the column headers are the links.</p>
+  </section>
+
+  <div id="modalB" class="fixed inset-0 z-50 hidden items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6" onclick="if(event.target===this)closeModal('B')">
+    <div class="bg-white dark:bg-gray-800 w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-bold text-gray-800 dark:text-gray-100">T-187 — R maroon</span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-gray-800 dark:bg-gray-900 text-gray-100">Dark</span>
+          </div>
+          <p class="text-[10px] text-gray-400">2 slips · 55 than · ₹6,904 · avg ₹125.52/T</p>
+        </div>
+        <button onclick="closeModal('B')" class="w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 text-lg leading-none">✕</button>
+      </div>
+
+      <div class="overflow-auto p-4">
+        <table class="w-full text-[11px] border-collapse min-w-[460px]">
+          <thead>
+            <tr class="text-left text-gray-400">
+              <th class="py-1.5 pr-3 font-medium">Chemical</th>
+              <th class="py-1.5 px-3 text-right font-medium">
+                <a href="#" onclick="return false" class="text-purple-600 dark:text-purple-400 font-semibold hover:underline">Slip 1691 ↗</a>
+                <div class="text-[9px] font-normal">Fold 218 · 28T · 08/07</div>
+              </th>
+              <th class="py-1.5 px-3 text-right font-medium">
+                <a href="#" onclick="return false" class="text-purple-600 dark:text-purple-400 font-semibold hover:underline">Slip 1795 ↗</a>
+                <div class="text-[9px] font-normal">Fold 229 · 27T · 14/07</div>
+              </th>
+              <th class="py-1.5 pl-3 text-right font-medium">Δ /T</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50 dark:divide-gray-700">
+            <tr class="bg-purple-50/40 dark:bg-purple-900/10"><td colspan="4" class="py-1 pr-3 text-[10px] font-bold text-purple-600 dark:text-purple-400">Dyes</td></tr>
+            <tr>
+              <td class="py-1.5 pr-3 text-gray-700 dark:text-gray-300">Red ME4BL</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">1.410 kg · ₹1,135</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">1.395 kg · ₹1,123</td>
+              <td class="py-1.5 pl-3 text-right text-gray-400">≈</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 pr-3 text-gray-700 dark:text-gray-300">Yellow ME4GL</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">0.560 kg · ₹392</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">0.610 kg · ₹427</td>
+              <td class="py-1.5 pl-3 text-right text-red-500 font-medium">+₹1.5</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 pr-3 text-gray-700 dark:text-gray-300">Navy Blue WB</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">0.845 kg · ₹738</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">0.815 kg · ₹712</td>
+              <td class="py-1.5 pl-3 text-right text-emerald-600 font-medium">−₹0.7</td>
+            </tr>
+            <tr class="bg-teal-50/40 dark:bg-teal-900/10"><td colspan="4" class="py-1 pr-3 text-[10px] font-bold text-teal-600 dark:text-teal-400">Auxiliary</td></tr>
+            <tr>
+              <td class="py-1.5 pr-3 text-gray-700 dark:text-gray-300">Glauber Salt</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">30.000 kg · ₹420</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">29.000 kg · ₹406</td>
+              <td class="py-1.5 pl-3 text-right text-gray-400">≈</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 pr-3 text-gray-700 dark:text-gray-300">Soda Ash</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">9.700 kg · ₹340</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">9.400 kg · ₹329</td>
+              <td class="py-1.5 pl-3 text-right text-gray-400">≈</td>
+            </tr>
+            <tr>
+              <td class="py-1.5 pr-3 text-gray-700 dark:text-gray-300">Levelling Agent</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">0.760 kg · ₹201</td>
+              <td class="py-1.5 px-3 text-right text-gray-500">0.740 kg · ₹196</td>
+              <td class="py-1.5 pl-3 text-right text-gray-400">≈</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="border-t-2 border-gray-200 dark:border-gray-600">
+              <td class="py-2 pr-3 font-bold text-gray-700 dark:text-gray-200">Total</td>
+              <td class="py-2 px-3 text-right font-bold text-gray-700 dark:text-gray-200">₹3,226<div class="text-[9px] font-medium text-indigo-600 dark:text-indigo-400">₹115.2/T</div></td>
+              <td class="py-2 px-3 text-right font-bold text-gray-700 dark:text-gray-200">₹3,193<div class="text-[9px] font-medium text-indigo-600 dark:text-indigo-400">₹118.3/T</div></td>
+              <td class="py-2 pl-3 text-right font-bold text-red-500">+₹3.1</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-between rounded-b-2xl">
+        <span class="text-xs font-semibold text-gray-600 dark:text-gray-400">Shade Total</span>
+        <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">55 · ₹6,904 · ₹125.52/T</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Mobile view — bottom sheet on a phone frame  -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="mobile" class="screen space-y-3">
+    <h2 class="text-lg font-bold">Mobile view — popup becomes a bottom sheet</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">On small screens the same popup slides up from the bottom (same pattern as the fold/new-lot sheet). Drag handle + ✕ to dismiss. Slip rows expand inline; slip number opens the full slip page.</p>
+
+    <div class="flex flex-wrap gap-8 items-start">
+
+      <!-- Phone 1: shade list, sheet closed -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">1 · Shade list (tap the chip)</div>
+        <div class="phone bg-gray-50 dark:bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="p-3 space-y-2 h-[430px] overflow-hidden">
+            <p class="text-sm font-bold text-gray-800 dark:text-gray-100">Shade-wise Cost</p>
+            <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm divide-y divide-gray-50 dark:divide-gray-700">
+              <div class="px-3 py-2.5">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-200">T-214 — Maharani</span>
+                  <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">₹127.1/T</span>
+                </div>
+                <div class="flex items-center justify-between mt-1">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium ring-2 ring-purple-300 dark:ring-purple-700">3 slips ▸</span>
+                  <span class="text-[10px] text-gray-400">77 · ₹9,786</span>
+                </div>
+              </div>
+              <div class="px-3 py-2.5 opacity-60">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-200">T-187 — R maroon</span>
+                  <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">₹125.52/T</span>
+                </div>
+                <div class="flex items-center justify-between mt-1">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">2 slips ▸</span>
+                  <span class="text-[10px] text-gray-400">55 · ₹6,904</span>
+                </div>
+              </div>
+              <div class="px-3 py-2.5 opacity-60">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-200">P-59 — Nimbu</span>
+                  <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">₹108.2/T</span>
+                </div>
+                <div class="flex items-center justify-between mt-1">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">3 slips ▸</span>
+                  <span class="text-[10px] text-gray-400">63 · ₹6,816</span>
+                </div>
+              </div>
+              <div class="px-3 py-2.5 opacity-60">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-200">T-8 — D c green</span>
+                  <span class="text-xs font-bold text-indigo-600 dark:text-indigo-400">₹113.92/T</span>
+                </div>
+                <div class="flex items-center justify-between mt-1">
+                  <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium">3 slips ▸</span>
+                  <span class="text-[10px] text-gray-400">59 · ₹6,721</span>
+                </div>
+              </div>
+            </div>
+            <p class="text-[9px] text-gray-400 text-center pt-1">shade rows stack the numbers on a second line — no horizontal squeeze</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone 2: bottom sheet open, one slip expanded -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">2 · Bottom sheet with slips (one expanded)</div>
+        <div class="phone bg-gray-50 dark:bg-gray-900 relative">
+          <div class="phone-notch"></div>
+          <div class="h-[430px] relative overflow-hidden">
+            <!-- dimmed page behind -->
+            <div class="p-3 space-y-2 opacity-30">
+              <p class="text-sm font-bold text-gray-800 dark:text-gray-100">Shade-wise Cost</p>
+              <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 h-40"></div>
+            </div>
+            <div class="absolute inset-0 bg-black/40"></div>
+            <!-- sheet -->
+            <div class="absolute bottom-0 left-0 right-0 bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl max-h-[92%] flex flex-col">
+              <div class="pt-2 flex justify-center"><div class="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600"></div></div>
+              <div class="px-3 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+                <div>
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs font-bold text-gray-800 dark:text-gray-100">T-214 — Maharani</span>
+                    <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-gray-800 dark:bg-gray-900 text-gray-100">Dark</span>
+                  </div>
+                  <p class="text-[9px] text-gray-400">3 slips · 77T · ₹9,786 · avg ₹127.1/T</p>
+                </div>
+                <span class="w-7 h-7 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-400 flex items-center justify-center text-sm">✕</span>
+              </div>
+              <div class="overflow-y-auto divide-y divide-gray-50 dark:divide-gray-700">
+                <!-- collapsed slip -->
+                <div class="px-3 py-2 flex items-center justify-between">
+                  <div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-semibold text-purple-600 dark:text-purple-400 underline">Slip 1644 ↗</span>
+                      <span class="text-[9px] text-gray-400 bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded">F214·B12</span>
+                    </div>
+                    <p class="text-[9px] text-gray-400">04/07 · 26T</p>
+                  </div>
+                  <div class="text-right flex items-center gap-1.5">
+                    <div>
+                      <p class="text-[10px] text-gray-500">₹3,302</p>
+                      <p class="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">₹127.0/T</p>
+                    </div>
+                    <span class="text-gray-400 text-[9px]">▶</span>
+                  </div>
+                </div>
+                <!-- expanded slip -->
+                <div>
+                  <div class="px-3 py-2 flex items-center justify-between bg-purple-50/50 dark:bg-purple-900/10">
+                    <div>
+                      <div class="flex items-center gap-1.5">
+                        <span class="text-xs font-semibold text-purple-600 dark:text-purple-400 underline">Slip 1723 ↗</span>
+                        <span class="text-[9px] text-gray-400 bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded">F221·B4</span>
+                      </div>
+                      <p class="text-[9px] text-gray-400">09/07 · 25T</p>
+                    </div>
+                    <div class="text-right flex items-center gap-1.5">
+                      <div>
+                        <p class="text-[10px] text-gray-500">₹3,175</p>
+                        <p class="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">₹127.0/T</p>
+                      </div>
+                      <span class="text-gray-400 text-[9px] rotate-90 inline-block">▶</span>
+                    </div>
+                  </div>
+                  <div class="px-3 pb-2.5 pt-1 space-y-1.5">
+                    <div class="flex gap-1.5 text-[9px]">
+                      <span class="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded font-medium">Dyes ₹2,318</span>
+                      <span class="bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded font-medium">Aux ₹857</span>
+                    </div>
+                    <div class="flex items-center justify-between text-[9px]"><span class="text-gray-700 dark:text-gray-300">Yellow ME4GL</span><span class="text-gray-500">0.790 kg · ₹553</span></div>
+                    <div class="flex items-center justify-between text-[9px]"><span class="text-gray-700 dark:text-gray-300">Red ME4BL</span><span class="text-gray-500">1.190 kg · ₹958</span></div>
+                    <div class="flex items-center justify-between text-[9px]"><span class="text-gray-700 dark:text-gray-300">Navy Blue WB</span><span class="text-gray-500">0.925 kg · ₹807</span></div>
+                    <div class="flex items-center justify-between text-[9px]"><span class="text-gray-700 dark:text-gray-300">Glauber Salt</span><span class="text-gray-500">27.000 kg · ₹378</span></div>
+                    <div class="flex items-center justify-between text-[9px]"><span class="text-gray-700 dark:text-gray-300">Soda Ash + Levelling</span><span class="text-gray-500">₹479</span></div>
+                    <span class="inline-block text-[9px] font-semibold text-purple-600 dark:text-purple-400 underline">Open full slip →</span>
+                  </div>
+                </div>
+                <!-- collapsed slip -->
+                <div class="px-3 py-2 flex items-center justify-between">
+                  <div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-semibold text-purple-600 dark:text-purple-400 underline">Slip 1810 ↗</span>
+                      <span class="text-[9px] text-gray-400 bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded">F234·B24</span>
+                    </div>
+                    <p class="text-[9px] text-gray-400">15/07 · 26T</p>
+                  </div>
+                  <div class="text-right flex items-center gap-1.5">
+                    <div>
+                      <p class="text-[10px] text-gray-500">₹3,309</p>
+                      <p class="text-[10px] font-bold text-red-500">₹127.3/T ▲</p>
+                    </div>
+                    <span class="text-gray-400 text-[9px]">▶</span>
+                  </div>
+                </div>
+              </div>
+              <div class="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-between">
+                <span class="text-[10px] font-semibold text-gray-600 dark:text-gray-400">Shade Total</span>
+                <span class="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">77 · ₹9,786 · ₹127.1/T</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Recommendation                               -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="pick" class="screen space-y-2">
+    <h2 class="text-lg font-bold">Recommendation</h2>
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-xs text-gray-600 dark:text-gray-300 space-y-2">
+      <p><b>Variant A</b> reuses the exact expand pattern already in the Fold-wise section — zero new UI language, works on mobile (bottom-sheet on small screens), and each slip links to its full page. Best default.</p>
+      <p><b>Variant B</b> is the stronger <i>analysis</i> tool — same-shade slips side by side with a Δ/T column highlighting which chemical made one slip costlier. Best with 2–4 slips; needs horizontal scroll beyond that.</p>
+      <p class="text-gray-400">Suggested: ship A as the popup, with a small “Compare” toggle inside it that switches to B's matrix when 2+ slips are selected.</p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  function openModal(v) {
+    const el = document.getElementById('modal' + v)
+    el.classList.remove('hidden'); el.classList.add('flex')
+  }
+  function closeModal(v) {
+    const el = document.getElementById('modal' + v)
+    el.classList.add('hidden'); el.classList.remove('flex')
+  }
+  function toggleSlip(id) {
+    const body = document.getElementById(id)
+    const chev = document.getElementById(id + '-chev')
+    body.classList.toggle('hidden')
+    chev.classList.toggle('rotate-90')
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeModal('A'); closeModal('B') }
+  })
+</script>
+</body>
+</html>

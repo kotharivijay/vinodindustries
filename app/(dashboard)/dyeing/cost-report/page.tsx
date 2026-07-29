@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, Fragment } from 'react'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
 
@@ -91,6 +91,11 @@ export default function DyeingCostReportPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [expandedFolds, setExpandedFolds] = useState<Set<string>>(new Set())
   const [expandedBatches, setExpandedBatches] = useState<Set<string>>(new Set())
+  // Shade drill-down popup: which shade label is open, list vs compare view,
+  // and which slips are expanded inside the list view.
+  const [shadeModal, setShadeModal] = useState<string | null>(null)
+  const [compareMode, setCompareMode] = useState(false)
+  const [modalExpanded, setModalExpanded] = useState<Set<number>>(new Set())
   const dropRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown on outside click
@@ -120,6 +125,71 @@ export default function DyeingCostReportPage() {
     fetcher,
     { revalidateOnFocus: false }
   )
+
+  // Close the shade popup on Escape
+  useEffect(() => {
+    if (!shadeModal) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShadeModal(null) }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [shadeModal])
+
+  // All batches of the open shade, across folds, with foldNo attached
+  const modalBatches = useMemo(() => {
+    if (!report || !shadeModal) return []
+    return report.folds
+      .flatMap(f => f.batches.filter(b => b.shade === shadeModal).map(b => ({ ...b, foldNo: f.foldNo })))
+      .sort((a, b) => a.slipNo - b.slipNo)
+  }, [report, shadeModal])
+
+  const modalShade = report?.shades.find(s => s.shade === shadeModal) ?? null
+
+  // Compare matrix: union of chemical names (dyes first, in order of first
+  // appearance), with per-slip qty/cost per row
+  const compareRows = useMemo(() => {
+    const rows: { name: string; kind: 'dye' | 'aux'; cells: ({ quantity: number | null; unit: string; cost: number } | null)[] }[] = []
+    const idx = new Map<string, number>()
+    const add = (kind: 'dye' | 'aux', c: ChemItem, bi: number) => {
+      const key = `${kind}|${c.name}`
+      let i = idx.get(key)
+      if (i == null) {
+        i = rows.length
+        idx.set(key, i)
+        rows.push({ name: c.name, kind, cells: modalBatches.map(() => null) })
+      }
+      const cell = rows[i].cells[bi]
+      // A slip can list the same chemical twice (e.g. addition rounds) — sum it
+      rows[i].cells[bi] = cell
+        ? { quantity: (cell.quantity ?? 0) + (c.quantity ?? 0), unit: c.unit, cost: cell.cost + c.cost }
+        : { quantity: c.quantity, unit: c.unit, cost: c.cost }
+    }
+    modalBatches.forEach((b, bi) => {
+      b.dyes.forEach(c => add('dye', c, bi))
+      b.auxiliary.forEach(c => add('aux', c, bi))
+    })
+    return [...rows.filter(r => r.kind === 'dye'), ...rows.filter(r => r.kind === 'aux')]
+  }, [modalBatches])
+
+  function openShadeModal(shade: string) {
+    setShadeModal(shade)
+    setCompareMode(false)
+    setModalExpanded(new Set())
+  }
+
+  function toggleModalSlip(id: number) {
+    setModalExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  // Δ/T across slips for one compare row: spread between cheapest and
+  // costliest per-than cost of that chemical
+  function rowDelta(cells: ({ cost: number } | null)[]): number {
+    const perT = cells.map((c, i) => (c && modalBatches[i].than > 0 ? c.cost / modalBatches[i].than : 0))
+    return Math.max(...perT) - Math.min(...perT)
+  }
 
   function toggleFold(foldNo: string) {
     setExpandedFolds(prev => {
@@ -328,17 +398,21 @@ export default function DyeingCostReportPage() {
               <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
                 <div className="divide-y divide-gray-50 dark:divide-gray-700">
                   {report.shades.map((s, i) => (
-                    <div key={i} className="px-4 py-2.5 flex items-center justify-between">
+                    <button
+                      key={i}
+                      onClick={() => openShadeModal(s.shade)}
+                      className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-purple-50/60 dark:hover:bg-purple-900/10 transition text-left group"
+                    >
                       <div className="flex items-center gap-1.5">
                         <span className="text-xs font-medium text-gray-700 dark:text-gray-200">{s.shade}</span>
                         <ShadeCategoryBadge category={s.colorCategory} />
-                        <span className="text-[10px] text-gray-400 ml-1">{s.count} slips</span>
+                        <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-medium group-hover:bg-purple-200 dark:group-hover:bg-purple-800/60 transition">{s.count} slips ▸</span>
                       </div>
                       <div className="text-right">
                         <span className="text-xs text-gray-500">{s.than} · {fmtINR(s.cost)}</span>
                         <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 ml-2">{fmtINR(s.avgPerThan)}/T</span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -366,6 +440,207 @@ export default function DyeingCostReportPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Shade slip drill-down popup — bottom sheet on mobile, modal on desktop */}
+      {shadeModal && modalShade && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6"
+          onClick={e => { if (e.target === e.currentTarget) setShadeModal(null) }}
+        >
+          <div className={`bg-white dark:bg-gray-800 w-full ${compareMode ? 'sm:max-w-3xl' : 'sm:max-w-lg'} rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col`}>
+            {/* drag handle (mobile) */}
+            <div className="pt-2 flex justify-center sm:hidden"><div className="w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600" /></div>
+
+            {/* header */}
+            <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{modalShade.shade}</span>
+                  <ShadeCategoryBadge category={modalShade.colorCategory} />
+                </div>
+                <p className="text-[10px] text-gray-400">
+                  {modalShade.count} slips · {modalShade.than} than · {fmtINR(modalShade.cost)} · avg {fmtINR(modalShade.avgPerThan)}/T
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {modalBatches.length >= 2 && (
+                  <button
+                    onClick={() => setCompareMode(!compareMode)}
+                    className={`text-[10px] font-semibold px-2.5 py-1 rounded-full transition ${compareMode
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800/60'}`}
+                  >
+                    Compare
+                  </button>
+                )}
+                <button
+                  onClick={() => setShadeModal(null)}
+                  className="w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 text-lg leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            {/* list view */}
+            {!compareMode && (
+              <div className="overflow-y-auto divide-y divide-gray-50 dark:divide-gray-700">
+                {modalBatches.map(b => {
+                  const open = modalExpanded.has(b.id)
+                  const costly = modalBatches.length > 1 && b.costPerThan > modalShade.avgPerThan * 1.02
+                  return (
+                    <div key={b.id}>
+                      <button
+                        onClick={() => toggleModalSlip(b.id)}
+                        className="w-full px-4 py-2.5 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
+                      >
+                        <div className="text-left">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <a
+                              href={`/dyeing/${b.id}`}
+                              target="_blank"
+                              onClick={e => e.stopPropagation()}
+                              className="text-xs font-semibold text-purple-600 dark:text-purple-400 hover:underline"
+                            >
+                              Slip {b.slipNo} ↗
+                            </a>
+                            <span className="text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded">
+                              Fold {b.foldNo}{b.batchNo ? ` · B${b.batchNo}` : ''}
+                            </span>
+                            <span className="text-[10px] text-gray-400">{new Date(b.date).toLocaleDateString('en-IN')}</span>
+                          </div>
+                        </div>
+                        <div className="text-right flex items-center gap-2">
+                          <div>
+                            <p className="text-xs text-gray-600 dark:text-gray-300">{b.than} · {fmtINR(b.cost)}</p>
+                            <p className={`text-xs font-bold ${costly ? 'text-red-500' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                              {fmtINR(b.costPerThan)}/T{costly ? ' ▲' : ''}
+                            </p>
+                          </div>
+                          <span className={`text-gray-400 text-[10px] transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+                        </div>
+                      </button>
+
+                      {open && (
+                        <div className="px-4 pb-3 space-y-2">
+                          <div className="flex gap-2 text-[10px]">
+                            <span className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded font-medium">Dyes: {fmtINR(b.dyeCost)}</span>
+                            <span className="bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded font-medium">Auxiliary: {fmtINR(b.auxCost)}</span>
+                          </div>
+                          {b.dyes.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold text-purple-600 dark:text-purple-400 mb-1">Dyes</p>
+                              {b.dyes.map((c, ci) => (
+                                <div key={ci} className="flex items-center justify-between text-[10px] py-0.5">
+                                  <span className="text-gray-700 dark:text-gray-300">{c.name}</span>
+                                  <span className="text-gray-500">{c.quantity != null ? Number(c.quantity).toFixed(3) : '-'} {c.unit} · {fmtINR(c.cost)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {b.auxiliary.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold text-teal-600 dark:text-teal-400 mb-1">Auxiliary</p>
+                              {b.auxiliary.map((c, ci) => (
+                                <div key={ci} className="flex items-center justify-between text-[10px] py-0.5">
+                                  <span className="text-gray-700 dark:text-gray-300">{c.name}</span>
+                                  <span className="text-gray-500">{c.quantity != null ? Number(c.quantity).toFixed(3) : '-'} {c.unit} · {fmtINR(c.cost)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <a href={`/dyeing/${b.id}`} target="_blank" className="inline-block text-[10px] font-semibold text-purple-600 dark:text-purple-400 hover:underline pt-1">
+                            Open full slip →
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* compare matrix view */}
+            {compareMode && (
+              <div className="overflow-auto p-4">
+                <table className="w-full text-[11px] border-collapse" style={{ minWidth: 200 + modalBatches.length * 130 }}>
+                  <thead>
+                    <tr className="text-left text-gray-400">
+                      <th className="py-1.5 pr-3 font-medium">Chemical</th>
+                      {modalBatches.map(b => (
+                        <th key={b.id} className="py-1.5 px-3 text-right font-medium">
+                          <a href={`/dyeing/${b.id}`} target="_blank" className="text-purple-600 dark:text-purple-400 font-semibold hover:underline">
+                            Slip {b.slipNo} ↗
+                          </a>
+                          <div className="text-[9px] font-normal">
+                            Fold {b.foldNo} · {b.than}T · {new Date(b.date).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit' })}
+                          </div>
+                        </th>
+                      ))}
+                      <th className="py-1.5 pl-3 text-right font-medium">Δ/T</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
+                    {['dye', 'aux'].map(kind => {
+                      const rows = compareRows.filter(r => r.kind === kind)
+                      if (rows.length === 0) return null
+                      return (
+                        <Fragment key={kind}>
+                          <tr className={kind === 'dye' ? 'bg-purple-50/40 dark:bg-purple-900/10' : 'bg-teal-50/40 dark:bg-teal-900/10'}>
+                            <td colSpan={modalBatches.length + 2} className={`py-1 pr-3 text-[10px] font-bold ${kind === 'dye' ? 'text-purple-600 dark:text-purple-400' : 'text-teal-600 dark:text-teal-400'}`}>
+                              {kind === 'dye' ? 'Dyes' : 'Auxiliary'}
+                            </td>
+                          </tr>
+                          {rows.map(r => {
+                            const delta = rowDelta(r.cells)
+                            return (
+                              <tr key={`${kind}-${r.name}`}>
+                                <td className="py-1.5 pr-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{r.name}</td>
+                                {r.cells.map((c, ci) => (
+                                  <td key={ci} className="py-1.5 px-3 text-right text-gray-500 whitespace-nowrap">
+                                    {c ? <>{c.quantity != null ? Number(c.quantity).toFixed(3) : '-'} {c.unit} · {fmtINR(Math.round(c.cost))}</> : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                                  </td>
+                                ))}
+                                <td className={`py-1.5 pl-3 text-right font-medium whitespace-nowrap ${delta >= 0.5 ? 'text-red-500' : 'text-gray-400'}`}>
+                                  {delta >= 0.5 ? `+₹${delta.toFixed(1)}` : '≈'}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-200 dark:border-gray-600">
+                      <td className="py-2 pr-3 font-bold text-gray-700 dark:text-gray-200">Total</td>
+                      {modalBatches.map(b => (
+                        <td key={b.id} className="py-2 px-3 text-right font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap">
+                          {fmtINR(b.cost)}
+                          <div className="text-[9px] font-medium text-indigo-600 dark:text-indigo-400">{fmtINR(b.costPerThan)}/T</div>
+                        </td>
+                      ))}
+                      <td className="py-2 pl-3 text-right font-bold whitespace-nowrap">
+                        {(() => {
+                          const perT = modalBatches.map(b => b.costPerThan)
+                          const d = Math.max(...perT) - Math.min(...perT)
+                          return <span className={d >= 0.5 ? 'text-red-500' : 'text-gray-400'}>{d >= 0.5 ? `+₹${d.toFixed(1)}` : '≈'}</span>
+                        })()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            {/* footer */}
+            <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-between rounded-b-none sm:rounded-b-2xl">
+              <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Shade Total</span>
+              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400">{modalShade.than} · {fmtINR(modalShade.cost)} · {fmtINR(modalShade.avgPerThan)}/T</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
