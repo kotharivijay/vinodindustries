@@ -51,6 +51,7 @@ interface DespatchEntry {
   transport: { name: string } | null
   narration: string | null
   despatchLots?: DespatchLot[]
+  transportPayment?: { id: number; date: string; paidTo: string; amount: string | null; mode: string | null } | null
   isLastYear?: boolean
   financialYear?: string
 }
@@ -136,6 +137,60 @@ export default function DespatchListPage() {
   }, [hideOB])
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const toggleExpand = (id: number) => setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+
+  // Transport-payment (freight) marking
+  const [freightFilter, setFreightFilter] = useState<'all' | 'paid' | 'unpaid'>('all')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [showPayModal, setShowPayModal] = useState(false)
+  const [paying, setPaying] = useState(false)
+  const [payError, setPayError] = useState('')
+  const [payForm, setPayForm] = useState({
+    paidTo: '', date: new Date().toISOString().split('T')[0], amount: '', mode: '', notes: '',
+  })
+  const toggleSelect = (id: number) => setSelectedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+
+  async function handleMarkPaid() {
+    if (!payForm.paidTo.trim()) { setPayError('Paid-to name is required.'); return }
+    setPaying(true)
+    setPayError('')
+    const res = await fetch('/api/despatch/transport-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payForm, entryIds: Array.from(selectedIds) }),
+    })
+    const data = await res.json()
+    setPaying(false)
+    if (!res.ok) { setPayError(data.error ?? 'Failed'); return }
+    setShowPayModal(false)
+    setSelectedIds(new Set())
+    setPayForm(f => ({ ...f, amount: '', notes: '' }))
+    mutate()
+  }
+
+  async function handleUnmarkPaid(e: DespatchEntry) {
+    if (!e.transportPayment) return
+    if (!confirm(`Remove Ch ${e.challanNo} from transport payment to ${e.transportPayment.paidTo}?`)) return
+    await fetch(`/api/despatch/transport-payment/${e.transportPayment.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ removeEntryIds: [e.id] }),
+    })
+    mutate()
+  }
+
+  function PaidChip({ e }: { e: DespatchEntry }) {
+    const tp = e.transportPayment
+    if (!tp) return <span className="text-[10px] text-gray-400 dark:text-gray-500">Unpaid</span>
+    return (
+      <button
+        onClick={() => handleUnmarkPaid(e)}
+        title={`Paid to ${tp.paidTo} on ${new Date(tp.date).toLocaleDateString('en-IN')}${tp.amount ? ` · ₹${Number(tp.amount).toLocaleString('en-IN')}` : ''}${tp.mode ? ` · ${tp.mode}` : ''} — click to unmark`}
+        className="inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 text-[10px] font-semibold px-1.5 py-0.5 rounded-full hover:bg-green-200 dark:hover:bg-green-900/60"
+      >
+        ✓ {tp.paidTo}
+      </button>
+    )
+  }
 
   async function handleDelete(id: number) {
     if (!confirm('Delete this despatch entry? This cannot be undone.')) return
@@ -228,7 +283,8 @@ export default function DespatchListPage() {
         const matchQuality = !filters.quality || e.quality.name.toLowerCase().includes(filters.quality.toLowerCase())
         const matchLot = !filters.lotNo || e.lotNo.toLowerCase().includes(filters.lotNo.toLowerCase())
         const matchLr = !filters.lrNo || (e.lrNo ?? '').toLowerCase().includes(filters.lrNo.toLowerCase())
-        return matchSearch && matchParty && matchQuality && matchLot && matchLr
+        const matchFreight = freightFilter === 'all' || (freightFilter === 'paid' ? !!e.transportPayment : !e.transportPayment)
+        return matchSearch && matchParty && matchQuality && matchLot && matchLr && matchFreight
       })
       .sort((a, b) => {
         const av = getValue(a, sortField)
@@ -236,7 +292,14 @@ export default function DespatchListPage() {
         const cmp = av < bv ? -1 : av > bv ? 1 : 0
         return sortDir === 'asc' ? cmp : -cmp
       }),
-  [entries, debouncedSearch, filters, sortField, sortDir, hideOB])
+  [entries, debouncedSearch, filters, sortField, sortDir, hideOB, freightFilter])
+
+  const selectableFiltered = useMemo(() => filtered.filter(e => !e.isLastYear && !e.transportPayment), [filtered])
+  const allSelected = selectableFiltered.length > 0 && selectableFiltered.every(e => selectedIds.has(e.id))
+  const toggleSelectAll = () => {
+    if (allSelected) setSelectedIds(new Set())
+    else setSelectedIds(new Set(selectableFiltered.map(e => e.id)))
+  }
 
   function SortTh({ field, label, right }: { field: SortField; label: string; right?: boolean }) {
     const active = sortField === field
@@ -419,6 +482,26 @@ export default function DespatchListPage() {
                 Clear filters
               </button>
             )}
+            <div className="flex items-center rounded-full border border-gray-200 dark:border-gray-600 overflow-hidden text-xs">
+              {(['all', 'unpaid', 'paid'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFreightFilter(f)}
+                  className={`px-2.5 py-1 font-medium capitalize ${freightFilter === f ? 'bg-green-600 text-white' : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}
+                  title="Filter by transport payment status"
+                >
+                  {f === 'all' ? 'Freight: All' : f}
+                </button>
+              ))}
+            </div>
+            {selectedIds.size > 0 && (
+              <button
+                onClick={() => setShowPayModal(true)}
+                className="flex items-center gap-1.5 bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-green-700 whitespace-nowrap"
+              >
+                💰 Mark Transport Paid ({selectedIds.size})
+              </button>
+            )}
             <span className="text-xs text-gray-400 ml-auto">{filtered.length} of {entries.length}</span>
           </div>
 
@@ -457,9 +540,18 @@ export default function DespatchListPage() {
                     <div key={e.id} className={`p-4 ${isDup(e) ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
                       <div className="flex items-start justify-between mb-1.5">
                         <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          {!e.isLastYear && !e.transportPayment && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(e.id)}
+                              onChange={() => toggleSelect(e.id)}
+                              className="accent-green-600"
+                            />
+                          )}
                           <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                           <span className="text-gray-300 dark:text-gray-600">·</span>
                           <Link href={`/despatch/${e.id}`} className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">Ch {e.challanNo}</Link>
+                          {!e.isLastYear && e.transportPayment && <PaidChip e={e} />}
                           {isDup(e) && <span className="bg-red-100 text-red-600 text-[10px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide" title={getDupReason(e)}>Dup: {getDupReason(e)}</span>}
                         </div>
                         <div className="flex gap-3 shrink-0">
@@ -536,6 +628,15 @@ export default function DespatchListPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 dark:bg-gray-700/50 border-b dark:border-gray-700">
                       <tr>
+                        <th className="px-3 py-3">
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            onChange={toggleSelectAll}
+                            title="Select all unpaid in view"
+                            className="accent-green-600 cursor-pointer"
+                          />
+                        </th>
                         <SortTh field="date" label="Date" />
                         <SortTh field="challanNo" label="Challan" />
                         <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('party')}>
@@ -561,6 +662,7 @@ export default function DespatchListPage() {
                           <input className={fi} placeholder="filter..." value={filters.lrNo} onChange={e=>{e.stopPropagation();setFilter('lrNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
                         </th>
                         <PlainTh label="Transport" />
+                        <PlainTh label="Freight" />
                         <PlainTh label="Bale" right />
                         <PlainTh label="" />
                       </tr>
@@ -569,7 +671,17 @@ export default function DespatchListPage() {
                       {filtered.map((e) => {
                         const lots = e.despatchLots && e.despatchLots.length > 0 ? e.despatchLots : null
                         return (
-                        <tr key={e.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition ${isDup(e) ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
+                        <tr key={e.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700/50 transition ${isDup(e) ? 'bg-red-50 dark:bg-red-900/20' : selectedIds.has(e.id) ? 'bg-green-50 dark:bg-green-900/10' : ''}`}>
+                          <td className="px-3 py-2.5">
+                            {!e.isLastYear && !e.transportPayment && (
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(e.id)}
+                                onChange={() => toggleSelect(e.id)}
+                                className="accent-green-600 cursor-pointer"
+                              />
+                            )}
+                          </td>
                           <td className="px-3 py-2.5 whitespace-nowrap">{new Date(e.date).toLocaleDateString('en-IN')}</td>
                           <td className="px-3 py-2.5">
                             <Link href={`/despatch/${e.id}`} className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">{e.challanNo}</Link>
@@ -614,6 +726,7 @@ export default function DespatchListPage() {
                           </td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.lrNo || '—'}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.transport?.name ?? '—'}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">{!e.isLastYear && <PaidChip e={e} />}</td>
                           <td className="px-3 py-2.5 text-right text-gray-500 dark:text-gray-400">{e.bale ?? '—'}</td>
                           <td className="px-3 py-2.5 whitespace-nowrap">
                             <button onClick={() => router.push(`/despatch/${e.id}/edit`)} className="text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 text-xs font-medium mr-3">Edit</button>
@@ -630,6 +743,93 @@ export default function DespatchListPage() {
             )}
           </div>
         </>
+      )}
+
+      {showPayModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-5">
+            <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-1">Mark Transport Paid</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              {selectedIds.size} challan{selectedIds.size > 1 ? 's' : ''} selected ·{' '}
+              {entries.filter(e => selectedIds.has(e.id)).reduce((s, e) => s + e.than, 0)} than
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Paid To *</label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                  placeholder="e.g. Sakar"
+                  value={payForm.paidTo}
+                  onChange={e => setPayForm(f => ({ ...f, paidTo: e.target.value }))}
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Payment Date *</label>
+                  <input
+                    type="date"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm"
+                    value={payForm.date}
+                    onChange={e => setPayForm(f => ({ ...f, date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Amount (₹)</label>
+                  <input
+                    type="number"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm"
+                    placeholder="optional"
+                    value={payForm.amount}
+                    onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Mode</label>
+                  <select
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm"
+                    value={payForm.mode}
+                    onChange={e => setPayForm(f => ({ ...f, mode: e.target.value }))}
+                  >
+                    <option value="">—</option>
+                    <option value="cash">Cash</option>
+                    <option value="upi">UPI</option>
+                    <option value="bank">Bank</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
+                  <input
+                    type="text"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 px-3 py-2 text-sm"
+                    placeholder="optional"
+                    value={payForm.notes}
+                    onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))}
+                  />
+                </div>
+              </div>
+              {payError && <p className="text-xs text-red-500">{payError}</p>}
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                onClick={() => { setShowPayModal(false); setPayError('') }}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleMarkPaid}
+                disabled={paying}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+              >
+                {paying ? 'Saving...' : `✓ Mark Paid (${selectedIds.size})`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showImport && (

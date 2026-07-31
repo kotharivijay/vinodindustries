@@ -764,10 +764,30 @@ model DespatchEntry {
   transport    Transport?          @relation(fields: [transportId], references: [id])
   bale         Int?
   narration    String? // descriptive text from despatch sheet quality column
+  // Freight settlement: one TransportPayment voucher covers many challans.
+  // Null = freight not yet paid for this challan.
+  transportPaymentId Int?
+  transportPayment   TransportPayment? @relation(fields: [transportPaymentId], references: [id], onDelete: SetNull)
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   changeLogs   DespatchChangeLog[]
   despatchLots DespatchEntryLot[]
+
+  @@index([transportPaymentId])
+}
+
+// ─── Transport Payment (freight settled with transporter / agent) ─────────────
+// One payment voucher groups the despatch challans it covered, so "paid Sakar
+// for these 8 challans" stays queryable per payee and per challan.
+model TransportPayment {
+  id        Int             @id @default(autoincrement())
+  date      DateTime
+  paidTo    String // transporter / agent name, e.g. "Sakar"
+  amount    Decimal?        @db.Decimal(16, 2)
+  mode      String? // cash | UPI | bank
+  notes     String?
+  entries   DespatchEntry[]
+  createdAt DateTime        @default(now())
 }
 
 model DespatchEntryLot {

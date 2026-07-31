@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Delivery Challan — KSI mockup</title>
+  <!-- Tailwind v4 browser CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <!-- v4 uses CSS-first config; this enables the .dark class strategy -->
+  <script type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+  </script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .screen { scroll-margin-top: 16px; }
+    @media print { .no-print { display: none !important } }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="max-w-6xl mx-auto p-6 space-y-12">
+
+  <!-- ============ HEADER ============ -->
+  <header class="space-y-2">
+    <h1 class="text-2xl font-bold">Delivery Challan module — design mockup</h1>
+    <p class="text-sm text-gray-600 dark:text-gray-400">
+      Routes finished cloth to the right customer-facing document depending on the party tag.
+      Pali PC Job parties → <strong>Delivery Challan</strong> (job-work, no rate). All others →
+      <strong>Folding Despatch</strong> (full despatch with rate).
+    </p>
+    <nav class="flex gap-3 text-sm">
+      <a href="#flow" class="text-blue-600 dark:text-blue-400 underline">Flow</a>
+      <a href="#sidebar" class="text-blue-600 dark:text-blue-400 underline">Sidebar</a>
+      <a href="#queue" class="text-blue-600 dark:text-blue-400 underline">Queue page</a>
+      <a href="#dc" class="text-blue-600 dark:text-blue-400 underline">Delivery Challan</a>
+      <a href="#fd" class="text-blue-600 dark:text-blue-400 underline">Folding Despatch</a>
+      <a href="#schema" class="text-blue-600 dark:text-blue-400 underline">Schema</a>
+    </nav>
+  </header>
+
+  <!-- ============ FLOW DIAGRAM ============ -->
+  <section id="flow" class="screen space-y-3">
+    <h2 class="text-lg font-bold">1 · End-to-end flow</h2>
+    <pre class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-xs leading-relaxed overflow-x-auto">
+Finish/Center program (status=done) ──► auto-queued in Delivery module
+                                              │
+                                              ▼
+                                     party.tag = 'Pali PC Job'?
+                                       │              │
+                                      YES             NO
+                                       │              │
+                                       ▼              ▼
+                              ┌─────────────┐  ┌─────────────────┐
+                              │ DELIVERY    │  │ FOLDING         │
+                              │ CHALLAN     │  │ DESPATCH        │
+                              │ (job-work)  │  │ (regular sale)  │
+                              └─────────────┘  └─────────────────┘
+                                  no rate /         rate + amount
+                                  no GST            + GST hook
+                                  sent to party     uses existing
+                                  for free          DespatchEntry
+                                                    flow
+    </pre>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      One queue, one entry point, two output formats — the route is decided by the party tag,
+      not by the operator. The "issued" list is shared so the operator sees both formats together
+      in the Issued tab.
+    </p>
+  </section>
+
+  <!-- ============ SIDEBAR PLACEMENT ============ -->
+  <section id="sidebar" class="screen space-y-3">
+    <h2 class="text-lg font-bold">2 · Sidebar placement</h2>
+    <div class="flex">
+      <aside class="w-56 bg-gray-900 text-gray-200 rounded-xl p-3 text-xs space-y-0.5">
+        <div class="px-2 py-1">📦 Grey Inward</div>
+        <div class="px-2 py-1">🪡 Fold Program</div>
+        <div class="px-2 py-1">🎨 Dyeing Slip</div>
+        <div class="px-2 py-1">🧫 Dyeing (Batch)</div>
+        <div class="px-2 py-1">🔄 Re-Process</div>
+        <div class="px-2 py-1">🧪 PC Pali Reprocess</div>
+        <div class="px-2 py-1">✨ Finish/Center</div>
+        <div class="px-2 py-1 bg-emerald-700 text-white font-bold rounded">🚛 Delivery Challan <span class="ml-1 text-[10px] opacity-80">NEW</span></div>
+        <div class="px-2 py-1">📊 Stock Summary</div>
+        <div class="px-2 py-1">🚚 Despatch (legacy)</div>
+      </aside>
+    </div>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      Sits directly under Finish/Center so operators flow naturally from "cloth finished" to
+      "cloth being delivered". Legacy Despatch stays for now — Delivery Challan can replace
+      it once the workflow is stable.
+    </p>
+  </section>
+
+  <!-- ============ QUEUE PAGE ============ -->
+  <section id="queue" class="screen space-y-3">
+    <h2 class="text-lg font-bold">3 · Queue page (/delivery)</h2>
+    <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden">
+      <!-- Tabs -->
+      <div class="flex border-b border-gray-200 dark:border-gray-700">
+        <button class="px-4 py-2 text-sm font-semibold border-b-2 border-emerald-600 text-emerald-600 dark:text-emerald-400">Queue <span class="ml-1 text-xs opacity-70">(7)</span></button>
+        <button class="px-4 py-2 text-sm font-semibold border-b-2 border-transparent text-gray-500 dark:text-gray-400">Issued Challans <span class="ml-1 text-xs opacity-70">(124)</span></button>
+      </div>
+
+      <!-- Filters -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-2 p-3 text-xs">
+        <label class="flex flex-col gap-1">
+          <span class="font-semibold text-gray-700 dark:text-gray-300">Search</span>
+          <input class="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 rounded px-2 py-1" placeholder="lot / FP / party" />
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="font-semibold text-gray-700 dark:text-gray-300">Party tag</span>
+          <select class="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 rounded px-2 py-1">
+            <option>All</option><option>Pali PC Job</option><option>Direct</option><option>Local</option>
+          </select>
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="font-semibold text-gray-700 dark:text-gray-300">Group by</span>
+          <select class="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 rounded px-2 py-1">
+            <option>Party</option><option>Quality</option><option>Finish slip</option>
+          </select>
+        </label>
+        <div class="flex items-end justify-end">
+          <button class="px-3 py-1.5 rounded bg-emerald-600 text-white text-xs font-semibold">Create challan(s) from selection</button>
+        </div>
+      </div>
+
+      <!-- Hierarchy explainer for shade-category grouping -->
+      <div class="border-t border-gray-200 dark:border-gray-700 bg-blue-50 dark:bg-blue-900/20 px-4 py-2 text-[11px] text-blue-800 dark:text-blue-300">
+        <strong>FP-296 (25/6/2026)</strong> for M.Milan Industries — finished cloth carries <strong>3 shade categories</strong> (Dark / Light / Medium). The Delivery Challan groups lots by category so the customer sees a clean shade-wise report. Blank meter cells mean meter was not recorded for that lot row.
+      </div>
+
+      <!-- Party group — M.Milan Industries (from FP-296), grouped by shade category -->
+      <div class="border-t border-gray-200 dark:border-gray-700">
+        <div class="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 flex items-center justify-between">
+          <div class="text-sm font-bold flex items-center gap-2">
+            M.Milan Industries
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-semibold">Pali PC Job → Delivery Challan</span>
+          </div>
+          <div class="text-xs text-gray-600 dark:text-gray-300">393 than across 1 finish program</div>
+        </div>
+        <div class="border-t border-gray-200 dark:border-gray-700 p-3">
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 overflow-hidden">
+            <div class="px-3 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <input type="checkbox" class="accent-emerald-600" checked />
+                <span class="text-sm font-bold text-gray-900 dark:text-gray-100">FP-296</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">25/6/2026</span>
+                <span class="text-[10px] text-gray-400 dark:text-gray-500">3 categories · 17 distinct shades</span>
+              </div>
+              <div class="text-xs text-gray-600 dark:text-gray-300">393 than</div>
+            </div>
+
+            <!-- Category: Dark -->
+            <div class="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-[11px] font-semibold text-gray-700 dark:text-gray-200">Dark · 271 than</div>
+            <div class="text-xs divide-y divide-gray-100 dark:divide-gray-800">
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-360-NAVIN</span><span class="ml-auto">66 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-358-DEEP</span><span class="ml-auto">110 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-361-BABA</span><span class="ml-auto">13 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-326-DON</span><span class="ml-auto">12 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-322-NEEL</span><span class="ml-auto">10 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-324-MAHI</span><span class="ml-auto">30 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-323-UMANG</span><span class="ml-auto">30 than</span></div>
+            </div>
+
+            <!-- Category: Light -->
+            <div class="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-[11px] font-semibold text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-700">Light · 62 than</div>
+            <div class="text-xs divide-y divide-gray-100 dark:divide-gray-800">
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-360-NAVIN</span><span class="ml-auto">12 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-358-DEEP</span><span class="ml-auto">20 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-361-BABA</span><span class="ml-auto">3 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-326-DON</span><span class="ml-auto">6 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-322-NEEL</span><span class="ml-auto">5 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-324-MAHI</span><span class="ml-auto">8 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-323-UMANG</span><span class="ml-auto">8 than</span></div>
+            </div>
+
+            <!-- Category: Medium -->
+            <div class="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-[11px] font-semibold text-gray-700 dark:text-gray-200 border-t border-gray-200 dark:border-gray-700">Medium · 60 than</div>
+            <div class="text-xs divide-y divide-gray-100 dark:divide-gray-800">
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-360-NAVIN</span><span class="ml-auto">18 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-358-DEEP</span><span class="ml-auto">30 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-361-BABA</span><span class="ml-auto">3 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-324-MAHI</span><span class="ml-auto">6 than</span></div>
+              <div class="flex items-center gap-3 px-3 py-1.5"><span class="font-mono w-40">MMI-323-UMANG</span><span class="ml-auto">3 than</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Party group: Direct -->
+      <div class="border-t border-gray-200 dark:border-gray-700">
+        <div class="px-4 py-2 bg-blue-50 dark:bg-blue-900/20 flex items-center justify-between">
+          <div class="text-sm font-bold flex items-center gap-2">
+            Krishna Textiles
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-semibold">Direct → Folding Despatch</span>
+          </div>
+          <div class="text-xs text-gray-600 dark:text-gray-300">110 than across 1 finish program</div>
+        </div>
+
+        <!-- Finish Program card -->
+        <div class="p-3">
+          <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 overflow-hidden">
+            <div class="px-3 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <input type="checkbox" class="accent-emerald-600" />
+                <span class="text-sm font-bold text-gray-900 dark:text-gray-100">FP-292</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">21/6/2026</span>
+              </div>
+              <div class="text-xs text-gray-600 dark:text-gray-300">110 than · 47,300 mtr</div>
+            </div>
+            <div class="text-xs divide-y divide-gray-100 dark:divide-gray-800">
+              <div class="flex items-center gap-3 px-3 py-1.5">
+                <span class="font-mono text-gray-800 dark:text-gray-200">KT-2024-BLUE</span>
+                <span class="text-gray-500 dark:text-gray-400">PC 36" · Royal Blue</span>
+                <span class="ml-auto text-gray-700 dark:text-gray-300">110 than · 47,300 mtr</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DELIVERY CHALLAN (PC PALI) ============ -->
+  <section id="dc" class="screen space-y-3">
+    <h2 class="text-lg font-bold">4 · Delivery Challan format (Pali PC Job — FP-296 with shade categories)</h2>
+    <p class="text-xs text-gray-600 dark:text-gray-400">
+      M.Milan Industries' FP-296 carries cloth in <strong>3 shade categories (Dark / Light / Medium)</strong>. The challan
+      groups lots under each category so the customer sees a shade-wise summary. <strong>Meter is intentionally
+      omitted on PC Job party challans</strong> — the party will weigh / count on receipt; KSI only certifies than count.
+    </p>
+
+    <!-- Challan (FP-296) -->
+    <div class="bg-white text-gray-900 border border-gray-300 rounded-lg shadow-sm p-6 max-w-4xl mx-auto">
+      <!-- Header -->
+      <div class="flex justify-between items-start border-b-2 border-gray-800 pb-3">
+        <div>
+          <div class="text-2xl font-bold">Kothari Synthetic Industries</div>
+          <div class="text-xs text-gray-600 mt-0.5">Jasol Road, Pali, Rajasthan · GSTIN 08AAAAA0000A1Z5</div>
+        </div>
+        <div class="text-right">
+          <div class="text-lg font-bold uppercase tracking-wide text-emerald-700">Delivery Challan</div>
+          <div class="text-xs text-gray-600 mt-0.5">Job-work · Not for sale</div>
+        </div>
+      </div>
+
+      <!-- Meta -->
+      <div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+        <div>
+          <div class="text-xs text-gray-500 uppercase">Delivered to</div>
+          <div class="font-semibold">M.Milan Industries</div>
+          <div class="text-xs text-gray-600">Pali Marwar · Rajasthan</div>
+          <div class="text-xs text-gray-500 mt-1">Source FP-296 · 25/6/2026</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs"><span class="text-gray-500">DC No</span> <span class="font-bold">DC-2026-060</span></div>
+          <div class="text-xs"><span class="text-gray-500">Date</span> 30/6/2026</div>
+          <div class="text-xs"><span class="text-gray-500">Transport</span> Self / Mukesh Travels</div>
+          <div class="text-xs"><span class="text-gray-500">LR / Vehicle</span> RJ-26-AB-1234</div>
+        </div>
+      </div>
+
+      <!-- Lots table grouped by shade category — FP-296 (no meter column for PC Job parties) -->
+      <table class="w-full mt-4 border-collapse text-xs">
+        <thead class="bg-gray-100 text-gray-700">
+          <tr>
+            <th class="border border-gray-300 px-2 py-1 text-left">#</th>
+            <th class="border border-gray-300 px-2 py-1 text-left">Lot No</th>
+            <th class="border border-gray-300 px-2 py-1 text-left">Quality</th>
+            <th class="border border-gray-300 px-2 py-1 text-right">Than</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Dark -->
+          <tr class="bg-gray-50"><td class="border border-gray-300 px-2 py-1 font-semibold" colspan="4">▸ Dark (Hitset / T-91 / T-94 / T-97 / T-99 / T-104 / T-110 / T-113 / T-183 / T-184 / T-187 / T-188 / T-200)</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">1</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-360-NAVIN</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">66</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">2</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-358-DEEP</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">110</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">3</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-361-BABA</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">13</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">4</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-326-DON</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">12</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">5</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-322-NEEL</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">10</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">6</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-324-MAHI</td><td class="border border-gray-300 px-2 py-1">PC 44</td><td class="border border-gray-300 px-2 py-1 text-right">30</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">7</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-323-UMANG</td><td class="border border-gray-300 px-2 py-1">PC 44</td><td class="border border-gray-300 px-2 py-1 text-right">30</td></tr>
+          <tr class="font-semibold bg-gray-50"><td class="border border-gray-300 px-2 py-1" colspan="3">Dark sub-total</td><td class="border border-gray-300 px-2 py-1 text-right">271</td></tr>
+
+          <!-- Light -->
+          <tr class="bg-gray-50"><td class="border border-gray-300 px-2 py-1 font-semibold" colspan="4">▸ Light (T-11 / T-98 / T-295)</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">8</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-360-NAVIN</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">12</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">9</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-358-DEEP</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">20</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">10</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-361-BABA</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">3</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">11</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-326-DON</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">6</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">12</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-322-NEEL</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">5</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">13</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-324-MAHI</td><td class="border border-gray-300 px-2 py-1">PC 44</td><td class="border border-gray-300 px-2 py-1 text-right">8</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">14</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-323-UMANG</td><td class="border border-gray-300 px-2 py-1">PC 44</td><td class="border border-gray-300 px-2 py-1 text-right">8</td></tr>
+          <tr class="font-semibold bg-gray-50"><td class="border border-gray-300 px-2 py-1" colspan="3">Light sub-total</td><td class="border border-gray-300 px-2 py-1 text-right">62</td></tr>
+
+          <!-- Medium -->
+          <tr class="bg-gray-50"><td class="border border-gray-300 px-2 py-1 font-semibold" colspan="4">▸ Medium (T-11 / T-100 / T-120)</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">15</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-360-NAVIN</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">18</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">16</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-358-DEEP</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">30</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">17</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-361-BABA</td><td class="border border-gray-300 px-2 py-1">PC 36</td><td class="border border-gray-300 px-2 py-1 text-right">3</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">18</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-324-MAHI</td><td class="border border-gray-300 px-2 py-1">PC 44</td><td class="border border-gray-300 px-2 py-1 text-right">6</td></tr>
+          <tr><td class="border border-gray-300 px-2 py-1">19</td><td class="border border-gray-300 px-2 py-1 font-mono">MMI-323-UMANG</td><td class="border border-gray-300 px-2 py-1">PC 44</td><td class="border border-gray-300 px-2 py-1 text-right">3</td></tr>
+          <tr class="font-semibold bg-gray-50"><td class="border border-gray-300 px-2 py-1" colspan="3">Medium sub-total</td><td class="border border-gray-300 px-2 py-1 text-right">60</td></tr>
+
+          <!-- Grand -->
+          <tr class="font-bold bg-gray-100"><td class="border border-gray-300 px-2 py-1" colspan="3">Grand Total</td><td class="border border-gray-300 px-2 py-1 text-right">393</td></tr>
+        </tbody>
+      </table>
+
+      <!-- Notes / job declaration -->
+      <div class="mt-4 text-xs text-gray-700 leading-relaxed">
+        <strong>Declaration:</strong> The above goods are being sent back after job-work (dyeing & finishing) under
+        the GST job-work provisions. No sale involved. Original challan reference: party-supplied grey lot.
+      </div>
+
+      <!-- Signatures -->
+      <div class="grid grid-cols-3 gap-6 mt-12 text-xs">
+        <div class="text-center"><div class="border-t border-gray-400 pt-1">Prepared by</div></div>
+        <div class="text-center"><div class="border-t border-gray-400 pt-1">For KSI · Authorised signatory</div></div>
+        <div class="text-center"><div class="border-t border-gray-400 pt-1">Received by (party)</div></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============ FOLDING DESPATCH (REGULAR) ============ -->
+  <section id="fd" class="screen space-y-3">
+    <h2 class="text-lg font-bold">5 · Folding Despatch format (regular sale)</h2>
+    <div class="bg-white text-gray-900 border border-gray-300 rounded-lg shadow-sm p-6 max-w-4xl mx-auto">
+      <!-- Header -->
+      <div class="flex justify-between items-start border-b-2 border-gray-800 pb-3">
+        <div>
+          <div class="text-2xl font-bold">Kothari Synthetic Industries</div>
+          <div class="text-xs text-gray-600 mt-0.5">Jasol Road, Pali, Rajasthan · GSTIN 08AAAAA0000A1Z5</div>
+        </div>
+        <div class="text-right">
+          <div class="text-lg font-bold uppercase tracking-wide text-blue-700">Folding Despatch</div>
+          <div class="text-xs text-gray-600 mt-0.5">Sale — billed separately</div>
+        </div>
+      </div>
+
+      <!-- Meta -->
+      <div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+        <div>
+          <div class="text-xs text-gray-500 uppercase">Bill to / Ship to</div>
+          <div class="font-semibold">Krishna Textiles</div>
+          <div class="text-xs text-gray-600">Bhiwandi, Maharashtra · GSTIN 27XXXXX0000X1Z2</div>
+        </div>
+        <div class="text-right">
+          <div class="text-xs"><span class="text-gray-500">FD No</span> <span class="font-bold">FD-2026-201</span></div>
+          <div class="text-xs"><span class="text-gray-500">Date</span> 29/6/2026</div>
+          <div class="text-xs"><span class="text-gray-500">Transport</span> ANG Logistics</div>
+          <div class="text-xs"><span class="text-gray-500">LR / Vehicle</span> ANG-44290 / MH-04-DT-3712</div>
+        </div>
+      </div>
+
+      <!-- Lots table with rate -->
+      <table class="w-full mt-4 border-collapse text-xs">
+        <thead class="bg-gray-100 text-gray-700">
+          <tr>
+            <th class="border border-gray-300 px-2 py-1 text-left">#</th>
+            <th class="border border-gray-300 px-2 py-1 text-left">Lot No</th>
+            <th class="border border-gray-300 px-2 py-1 text-left">Quality / Shade</th>
+            <th class="border border-gray-300 px-2 py-1 text-right">Than</th>
+            <th class="border border-gray-300 px-2 py-1 text-right">Meter</th>
+            <th class="border border-gray-300 px-2 py-1 text-right">Rate / mtr</th>
+            <th class="border border-gray-300 px-2 py-1 text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="border border-gray-300 px-2 py-1">1</td>
+            <td class="border border-gray-300 px-2 py-1 font-mono">KT-2024-BLUE</td>
+            <td class="border border-gray-300 px-2 py-1">PC 36" · Royal Blue</td>
+            <td class="border border-gray-300 px-2 py-1 text-right">110</td>
+            <td class="border border-gray-300 px-2 py-1 text-right">47,300</td>
+            <td class="border border-gray-300 px-2 py-1 text-right">42.00</td>
+            <td class="border border-gray-300 px-2 py-1 text-right">19,86,600</td>
+          </tr>
+          <tr class="font-semibold bg-gray-50">
+            <td class="border border-gray-300 px-2 py-1" colspan="6">Sub-total</td>
+            <td class="border border-gray-300 px-2 py-1 text-right">19,86,600</td>
+          </tr>
+          <tr>
+            <td class="border border-gray-300 px-2 py-1" colspan="6">CGST 2.5% + SGST 2.5% (intra-state)</td>
+            <td class="border border-gray-300 px-2 py-1 text-right">99,330</td>
+          </tr>
+          <tr class="font-bold bg-gray-100">
+            <td class="border border-gray-300 px-2 py-1" colspan="6">Grand total</td>
+            <td class="border border-gray-300 px-2 py-1 text-right">20,85,930</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Signatures -->
+      <div class="grid grid-cols-3 gap-6 mt-12 text-xs">
+        <div class="text-center"><div class="border-t border-gray-400 pt-1">Prepared by</div></div>
+        <div class="text-center"><div class="border-t border-gray-400 pt-1">For KSI · Authorised signatory</div></div>
+        <div class="text-center"><div class="border-t border-gray-400 pt-1">Received by (consignee)</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCHEMA SKETCH ============ -->
+  <section id="schema" class="screen space-y-3">
+    <h2 class="text-lg font-bold">6 · Schema sketch (one table, two formats)</h2>
+    <pre class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 text-xs leading-relaxed overflow-x-auto">
+model DeliveryChallan {
+  id              Int      @id @default(autoincrement())
+  challanNo       Int      @unique          // DC-YYYY-NNN auto + manual override
+  date            DateTime
+  format          String                    // 'delivery-challan' | 'folding-despatch'
+  partyId         Int
+  party           Party    @relation(...)
+  transportId     Int?
+  lrNo            String?
+  vehicleNo       String?
+
+  // Routing source — every line item points to a FinishEntryLot so the
+  // finished-but-not-yet-delivered queue knows what's already on a challan.
+  lines           DeliveryChallanLine[]
+
+  // Billing-side fields (null for 'delivery-challan' format)
+  subTotal        Decimal? @db.Numeric(16,2)
+  cgst            Decimal? @db.Numeric(16,2)
+  sgst            Decimal? @db.Numeric(16,2)
+  igst            Decimal? @db.Numeric(16,2)
+  grandTotal      Decimal? @db.Numeric(16,2)
+
+  notes           String?
+  status          String   @default('issued')   // issued | cancelled | billed
+  cancelledAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model DeliveryChallanLine {
+  id                Int             @id @default(autoincrement())
+  challanId         Int
+  challan           DeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
+  finishEntryLotId  Int             @unique    // each FEL ships only once
+  finishEntryLot    FinishEntryLot  @relation(fields: [finishEntryLotId], references: [id])
+  lotNo             String                     // snapshot
+  qualityName       String?
+  shadeName         String?
+  than              Int
+  meter             Float?
+  marka             String?
+  // For folding-despatch only
+  rate              Decimal?  @db.Numeric(10,2)
+  amount            Decimal?  @db.Numeric(16,2)
+}
+    </pre>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      Key design rule: <strong>each FinishEntryLot can appear on at most ONE challan</strong>
+      (<code>@unique</code> on <code>finishEntryLotId</code>). That single rule keeps the
+      queue self-cleaning — once a FEL is on a challan it disappears from the queue;
+      cancelling the challan re-queues it automatically.
+    </p>
+  </section>
+
+  <!-- ============ DESIGN QUESTIONS ============ -->
+  <section class="space-y-3">
+    <h2 class="text-lg font-bold">7 · Open design questions (need your call)</h2>
+    <ol class="list-decimal pl-6 text-sm space-y-2">
+      <li>
+        <strong>Existing legacy Despatch</strong> — keep both for a transition, or migrate
+        everything to the new module? Migration is straightforward but means changes to
+        existing despatch consumers (Tally push, reports).
+      </li>
+      <li>
+        <strong>Auto-create vs operator-create</strong> — should the queue auto-create
+        challans (one per party per day) or always wait for operator action? Auto would
+        save clicks but loses combine/split flexibility.
+      </li>
+      <li>
+        <strong>Multi-day combine</strong> — should a single challan be allowed to ship
+        FELs from different finish-program dates? (Most likely yes, but worth confirming.)
+      </li>
+      <li>
+        <strong>GST treatment on regular flow</strong> — pull from existing party GSTIN
+        (intra-state vs inter-state) like the inventory module already does? Should reuse
+        the same logic, not duplicate it.
+      </li>
+      <li>
+        <strong>Tally push</strong> — Delivery Challan format does NOT push to Tally
+        (job-work, no sale). Folding Despatch can optionally push a Sales voucher. Confirm
+        whether that push is needed now or later.
+      </li>
+      <li>
+        <strong>Pali signing copy vs internal copy</strong> — need both printed at once?
+        Currently inventory module prints two copies; same here?
+      </li>
+    </ol>
+  </section>
+
+  <footer class="text-xs text-gray-500 dark:text-gray-400 pt-8 border-t border-gray-200 dark:border-gray-700">
+    Mockup only — open in any browser to preview. Once you confirm the flow + answer the
+    open questions, I'll wire schema + APIs + UI in real code.
+  </footer>
+</div>
+</body>
+</html>

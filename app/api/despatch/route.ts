@@ -12,7 +12,13 @@ export async function GET() {
 
   const db = prisma as any
   const entries = await db.despatchEntry.findMany({
-    include: { party: true, quality: true, transport: true, despatchLots: { include: { quality: true } } },
+    include: {
+      party: true,
+      quality: true,
+      transport: true,
+      despatchLots: { include: { quality: true } },
+      transportPayment: { select: { id: true, date: true, paidTo: true, amount: true, mode: true } },
+    },
     orderBy: { date: 'desc' },
   })
 
