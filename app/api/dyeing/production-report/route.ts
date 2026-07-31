@@ -143,6 +143,23 @@ export async function GET(req: NextRequest) {
     byOperator[o].cost += e.totalCost
   }
 
+  // By Party — attributed per lot (an entry can mix parties), so each
+  // party gets its own lots' than; entry cost is prorated by than share.
+  const byParty: Record<string, { batches: number; than: number; cost: number }> = {}
+  for (const e of visible) {
+    const thanByParty = new Map<string, number>()
+    for (const l of e.lots as { party: string | null; than: number }[]) {
+      const p = l.party || 'Unknown'
+      thanByParty.set(p, (thanByParty.get(p) || 0) + l.than)
+    }
+    for (const [p, t] of thanByParty) {
+      if (!byParty[p]) byParty[p] = { batches: 0, than: 0, cost: 0 }
+      byParty[p].batches++
+      byParty[p].than += t
+      byParty[p].cost += e.than > 0 ? e.totalCost * (t / e.than) : 0
+    }
+  }
+
   // By Quality
   const byQuality: Record<string, { batches: number; than: number; cost: number }> = {}
   for (const e of visible) {
@@ -167,6 +184,7 @@ export async function GET(req: NextRequest) {
     summary: { totalBatches, totalThan, totalCost, doneCount, patchyCount, reDyeCount },
     byMachine: Object.entries(byMachine).map(([name, d]) => ({ name, ...d })).sort((a, b) => b.batches - a.batches),
     byOperator: Object.entries(byOperator).map(([name, d]) => ({ name, ...d })).sort((a, b) => b.batches - a.batches),
+    byParty: Object.entries(byParty).map(([name, d]) => ({ name, ...d, cost: Math.round(d.cost) })).sort((a, b) => b.than - a.than),
     byQuality: Object.entries(byQuality).map(([name, d]) => ({ name, ...d })).sort((a, b) => b.than - a.than),
     byDate: Object.entries(byDate).map(([date, d]) => ({ date, ...d })).sort((a, b) => a.date.localeCompare(b.date)),
     entries: visible,

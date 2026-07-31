@@ -427,12 +427,17 @@ export default function FoldListPage() {
     }
   }
 
-  const filtered = (programs ?? []).filter(p =>
-    p.foldNo.toLowerCase().includes(search.toLowerCase()) ||
-    p.batches.some(b =>
-      b.lots.some(l => l.lotNo.toLowerCase().includes(search.toLowerCase()))
-    )
-  ).sort((a, b) => {
+  const filtered = (programs ?? []).filter(p => {
+    const q = search.toLowerCase().trim()
+    if (!q) return true
+    // Token-based AND search across fold no + lot nos + party names, so
+    // "milan 62" narrows to M.Milan folds whose lot/fold contains 62.
+    const hay = [
+      p.foldNo,
+      ...p.batches.flatMap(b => b.lots.flatMap(l => [l.lotNo, l.party?.name ?? ''])),
+    ].join(' ').toLowerCase()
+    return q.split(/\s+/).every(tok => hay.includes(tok))
+  }).sort((a, b) => {
     switch (sortBy) {
       case 'fold-asc': {
         const na = parseInt(a.foldNo.replace(/\D/g, '')) || 0
@@ -488,7 +493,7 @@ export default function FoldListPage() {
       {/* Search */}
       <input
         type="text"
-        placeholder="Search fold no, lot no..."
+        placeholder="Search fold no, lot no, party..."
         className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded-lg px-4 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-400"
         value={search}
         onChange={e => setSearch(e.target.value)}

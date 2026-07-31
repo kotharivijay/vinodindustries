@@ -10,7 +10,7 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 const fmtINR = (n: number) => '₹' + n.toLocaleString('en-IN')
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
 
-type View = 'jet' | 'operator' | 'quality' | 'daily' | 'entries'
+type View = 'jet' | 'operator' | 'party' | 'quality' | 'daily' | 'entries'
 type Period = 'today' | 'yesterday' | 'week' | 'month' | 'custom'
 
 function getDateRange(period: Period, offset: number): { from: string; to: string; label: string } {
@@ -60,6 +60,7 @@ export default function ProductionReportPage() {
   const [view, setView] = useState<View>('entries')
   const [expandedEntries, setExpandedEntries] = useState<Set<number>>(new Set())
   const [expandedOperators, setExpandedOperators] = useState<Set<string>>(new Set())
+  const [expandedParties, setExpandedParties] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
 
   const range = useMemo(() => {
@@ -80,6 +81,10 @@ export default function ProductionReportPage() {
     setExpandedOperators(prev => { const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name); return n })
   }
 
+  function toggleParty(name: string) {
+    setExpandedParties(prev => { const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name); return n })
+  }
+
   // Lookup of slips per operator — built once per data load so each expanded
   // operator row reads its slips in O(1). Falls back to '_unknown' so the
   // 'Unknown' bucket in byOperator stays expandable too.
@@ -89,6 +94,27 @@ export default function ProductionReportPage() {
       const key = (e.operator || 'Unknown')
       if (!m.has(key)) m.set(key, [])
       m.get(key)!.push(e)
+    }
+    for (const arr of m.values()) {
+      arr.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.slipNo - a.slipNo)
+    }
+    return m
+  }, [data])
+
+  // Lookup of slips per party — an entry spanning multiple parties appears
+  // under each of them, with that party's own lots' than (partyThan).
+  const slipsByParty = useMemo(() => {
+    const m = new Map<string, any[]>()
+    for (const e of (data?.entries ?? [])) {
+      const thanByParty = new Map<string, number>()
+      for (const l of (e.lots ?? [])) {
+        const key = l.party || 'Unknown'
+        thanByParty.set(key, (thanByParty.get(key) || 0) + (l.than || 0))
+      }
+      for (const [key, partyThan] of thanByParty) {
+        if (!m.has(key)) m.set(key, [])
+        m.get(key)!.push({ ...e, partyThan })
+      }
     }
     for (const arr of m.values()) {
       arr.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.slipNo - a.slipNo)
@@ -269,7 +295,7 @@ export default function ProductionReportPage() {
 
           {/* View tabs */}
           <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-            {([['entries', 'All Entries'], ['jet', 'Jet (Machine)'], ['operator', 'Operator'], ['quality', 'Quality'], ['daily', 'Daily']] as [View, string][]).map(([k, label]) => (
+            {([['entries', 'All Entries'], ['jet', 'Jet (Machine)'], ['operator', 'Operator'], ['party', 'Party'], ['quality', 'Quality'], ['daily', 'Daily']] as [View, string][]).map(([k, label]) => (
               <button key={k} onClick={() => setView(k)}
                 className={`px-4 py-2 text-xs font-medium border-b-2 transition -mb-px whitespace-nowrap ${view === k
                   ? 'border-purple-600 text-purple-600 dark:text-purple-400'
@@ -399,6 +425,68 @@ export default function ProductionReportPage() {
                   </div>
                 )
               })}
+            </div>
+          )}
+
+          {/* Party view */}
+          {view === 'party' && (
+            <div className="space-y-2">
+              {(data.byParty ?? []).map((p: any) => {
+                const isOpen = expandedParties.has(p.name)
+                const slips = slipsByParty.get(p.name) ?? []
+                return (
+                  <div key={p.name} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
+                    <button onClick={() => toggleParty(p.name)} className="w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition">
+                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2 min-w-0 text-left">
+                        <span className={`text-gray-400 text-[10px] transition-transform shrink-0 ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                        <span className="truncate">{p.name}</span>
+                      </span>
+                      <div className="text-right shrink-0">
+                        <span className="text-xs text-gray-500">{p.batches} batches · {p.than}</span>
+                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(p.cost)}</span>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 px-4 py-2">
+                        {slips.length === 0 ? (
+                          <div className="py-2 text-xs text-gray-400">No slips found for this party in the selected range.</div>
+                        ) : (
+                          <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                            {slips.map((e: any) => (
+                              <div key={e.id} className="py-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                  <Link href={`/dyeing/${e.id}`} className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline whitespace-nowrap">Slip {e.slipNo}</Link>
+                                  {e.batchNo && <span className="text-[10px] bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-500">B{e.batchNo}</span>}
+                                  {e.foldNo && <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">F{e.foldNo}</span>}
+                                  {e.shade && <span className="text-[10px] text-purple-500 truncate max-w-[140px]">{e.shade}</span>}
+                                  <span className="text-[10px] text-gray-400 whitespace-nowrap">{fmtDate(e.date)}</span>
+                                  {e.isReDyed && <span className="text-[9px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded whitespace-nowrap">Re-Dye ×{e.totalRounds}</span>}
+                                  {e.status === 'patchy' && <span className="text-[9px] text-red-500 font-bold whitespace-nowrap">Patchy</span>}
+                                </div>
+                                <div className="text-right whitespace-nowrap ml-auto">
+                                  <span className="text-xs font-bold text-gray-800 dark:text-gray-100">
+                                    {e.partyThan} than{e.partyThan !== e.than ? <span className="text-[9px] font-medium text-gray-400"> / {e.than}</span> : null}
+                                  </span>
+                                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 ml-2">{fmtINR(e.totalCost)}</span>
+                                </div>
+                              </div>
+                            ))}
+                            <div className="mt-1 px-2 py-1 flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded text-[11px] font-semibold">
+                              <span className="text-gray-600 dark:text-gray-300">Total: {p.batches} batches · {p.than} than</span>
+                              <span className="text-emerald-700 dark:text-emerald-400">{fmtINR(p.cost)}</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              {(data.byParty ?? []).length === 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-8 text-center text-gray-400 text-sm">
+                  No entries in the selected range.
+                </div>
+              )}
             </div>
           )}
 
