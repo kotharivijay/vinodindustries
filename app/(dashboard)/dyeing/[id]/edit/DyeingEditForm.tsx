@@ -123,8 +123,13 @@ export default function DyeingEditForm({ id }: { id: string }) {
     const lotNos = lots.map(l => l.lotNo).filter(Boolean).join(',')
     fetch(`/api/grey/lot-weight?lots=${encodeURIComponent(lotNos)}`)
       .then(r => r.json())
-      .then((weights: any[]) => {
-        if (!Array.isArray(weights)) throw new Error('lot-weight returned non-array')
+      .then((data: any) => {
+        // /api/grey/lot-weight wraps the rows: { lots: [...] }. This caller
+        // used to treat the response as a bare array, so weights.find threw
+        // on every shade change and the old silent fallback stored unscaled
+        // per-100kg quantities (slip 2109).
+        const weights: any[] = Array.isArray(data) ? data : data?.lots
+        if (!Array.isArray(weights)) throw new Error('lot-weight returned unexpected shape')
         let batchWeight = 0
         for (const l of lots) {
           const w = weights.find((wt: any) => wt.lotNo.toLowerCase() === l.lotNo.toLowerCase())
