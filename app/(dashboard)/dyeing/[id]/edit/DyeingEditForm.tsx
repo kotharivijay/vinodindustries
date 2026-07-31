@@ -124,6 +124,7 @@ export default function DyeingEditForm({ id }: { id: string }) {
     fetch(`/api/grey/lot-weight?lots=${encodeURIComponent(lotNos)}`)
       .then(r => r.json())
       .then((weights: any[]) => {
+        if (!Array.isArray(weights)) throw new Error('lot-weight returned non-array')
         let batchWeight = 0
         for (const l of lots) {
           const w = weights.find((wt: any) => wt.lotNo.toLowerCase() === l.lotNo.toLowerCase())
@@ -159,28 +160,11 @@ export default function DyeingEditForm({ id }: { id: string }) {
         setShadeSearch('')
       })
       .catch(() => {
-        // Fallback: just set chemicals without weight calc
-        const newChems: ChemicalRow[] = (shade.recipeItems || []).map((item: any) => ({
-          name: item.chemical?.name || '',
-          chemicalId: item.chemicalId,
-          quantity: String(item.quantity || 0),
-          unit: item.chemical?.unit || 'kg',
-          rate: '',
-          cost: null,
-          matched: true,
-          processTag: 'shade',
-        }))
-        setChemicals(newChems)
-        // Write name and description into their own fields rather than
-        // gluing them into shadeName. Previously this stored "T-6 — Green"
-        // as the slip-level shadeName snapshot and left shadeDescription
-        // null, which made the cost report / detail view double up the
-        // description ("T-6 — Green — Green") and broke any logic that
-        // expected just the shade-code in shadeName.
-        setShadeName(shade.name)
-        setShadeDescription(shade.description || '')
-        setShowShadePicker(false)
-        setShadeSearch('')
+        // Weight lookup failed. Do NOT fall back to raw per-100kg recipe
+        // quantities — that silently stores unscaled dye amounts with no
+        // rate/cost (bit us on slip 2109). Abort the shade change entirely
+        // so the slip keeps its previous chemicals, and let the user retry.
+        alert('Could not load lot weights — shade NOT applied. Check the lots exist in the Grey register and try again.')
       })
   }
 
