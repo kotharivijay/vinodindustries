@@ -226,12 +226,23 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   // Check if any batch has dyeing entries
   const batches = await db.foldBatch.findMany({
     where: { foldProgramId: id },
-    include: { dyeingEntries: { select: { id: true, slipNo: true, status: true } } },
+    include: {
+      dyeingEntries: { select: { id: true, slipNo: true, status: true } },
+      batchMakingSlipBatches: { select: { id: true, slipStatus: true, slip: { select: { slipNo: true } } } },
+    },
   })
   const dyedBatches = batches.filter((b: any) => b.dyeingEntries.length > 0)
   if (dyedBatches.length > 0) {
     const details = dyedBatches.map((b: any) => `B${b.batchNo} (Slip ${b.dyeingEntries.map((d: any) => d.slipNo).join(',')})`).join(', ')
     return NextResponse.json({ error: `Cannot delete — ${dyedBatches.length} batch(es) have dyeing entries: ${details}` }, { status: 400 })
+  }
+
+  // Confirmed Batch Making Slips lock the fold the same way they lock edits —
+  // the batch snapshot on the printed slip must stay backed by a real batch.
+  const confirmedBm = batches.flatMap((b: any) => b.batchMakingSlipBatches.filter((x: any) => x.slipStatus === 'confirmed'))
+  if (confirmedBm.length > 0) {
+    const slipNos = [...new Set(confirmedBm.map((x: any) => x.slip?.slipNo).filter(Boolean))].join(', ')
+    return NextResponse.json({ error: `Cannot delete — batches are on confirmed Batch Making Slip(s): ${slipNos}. Cancel those slips first.` }, { status: 400 })
   }
 
   const fp = await db.foldProgram.findUnique({
@@ -247,6 +258,13 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
     than: totalThan || null, recordId: id,
     details: { batches: fp?.batches ?? null },
   })
-  await db.foldProgram.delete({ where: { id } })
+  // Cancelled BM slips leave link rows holding a hard FK on foldBatchId
+  // (no cascade) — clear them first or the cascade delete of batches throws
+  // P2003 (hit on fold 290: BM-318/BM-323 cancelled rows blocked deletion).
+  const cancelledBmIds = batches.flatMap((b: any) => b.batchMakingSlipBatches.map((x: any) => x.id))
+  await db.$transaction([
+    ...(cancelledBmIds.length ? [db.batchMakingSlipBatch.deleteMany({ where: { id: { in: cancelledBmIds } } })] : []),
+    db.foldProgram.delete({ where: { id } }),
+  ])
   return NextResponse.json({ ok: true })
 }
