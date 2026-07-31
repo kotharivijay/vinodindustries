@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Party quick-filter — Dyeing (Batch)</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+  </script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .screen { scroll-margin-top: 16px; }
+    /* Fake mobile frame */
+    .phone {
+      width: 380px;
+      max-width: 100%;
+      border: 12px solid #1f2937;
+      border-radius: 32px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    }
+    .phone-notch {
+      background: #1f2937;
+      height: 22px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .phone-notch::after {
+      content: '';
+      width: 90px; height: 6px;
+      background: #111; border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="max-w-6xl mx-auto p-6 space-y-14">
+
+  <header class="space-y-1">
+    <h1 class="text-xl font-bold">Party quick-filter — three design variants</h1>
+    <p class="text-xs text-gray-500 dark:text-gray-400">Original popover · pill-row (always visible) · bottom-sheet drawer. Each shown for desktop and mobile so the ergonomics are honest.</p>
+    <nav class="flex flex-wrap gap-2 text-xs pt-1">
+      <a href="#v1" class="text-blue-600 dark:text-blue-400 underline">A · Popover</a>
+      <a href="#v2" class="text-blue-600 dark:text-blue-400 underline">B · Pill row</a>
+      <a href="#v3" class="text-blue-600 dark:text-blue-400 underline">C · Bottom sheet</a>
+      <a href="#pick" class="text-blue-600 dark:text-blue-400 underline">Recommendation</a>
+    </nav>
+  </header>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant A — Popover                          -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v1" class="screen space-y-3">
+    <h2 class="text-lg font-bold">A · Popover next to the search button</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">Compact right-aligned card. Header stays visible under it so the operator can watch counts update while browsing.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-[1fr_380px] gap-6 items-start">
+
+      <!-- Desktop -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Desktop</div>
+        <div class="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-2xl shadow-sm px-4 py-4">
+          <div class="text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">⏳ Pending for Dyeing</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl px-4 py-3">
+              <div class="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Pending Batches</div>
+              <div class="text-3xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">128 <span class="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">batches</span></div>
+            </div>
+            <div class="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl px-4 py-3">
+              <div class="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Pending Than</div>
+              <div class="text-3xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">2,506 <span class="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">than</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="relative">
+          <div class="flex items-center gap-2">
+            <input type="text" placeholder="Search fold no, shade, lot, quality, party..."
+              class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-3 py-2 text-sm" />
+            <button class="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold bg-purple-600 text-white flex items-center gap-1.5 ring-2 ring-purple-300 dark:ring-purple-800">
+              <span>🎯</span> Party <span class="text-[10px]">▴</span>
+            </button>
+          </div>
+
+          <div class="absolute right-0 top-full mt-1 w-[380px] max-w-[calc(100vw-16px)] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl z-20">
+            <div class="p-2 border-b border-gray-100 dark:border-gray-700">
+              <input type="text" placeholder="Filter parties..." class="w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-md px-2 py-1.5" />
+            </div>
+            <div class="max-h-72 overflow-y-auto py-1 text-sm">
+              <button class="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                <span class="text-purple-700 dark:text-purple-300 font-medium">All parties</span>
+                <span class="text-[11px] text-gray-500 dark:text-gray-400">128 · 2,506T</span>
+              </button>
+              <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+              <button class="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Shankeshwer Cottan Mills</span><span class="text-[11px] text-gray-500 dark:text-gray-400">33 · 660T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Shri Sachchiyay Mata Texofin</span><span class="text-[11px] text-gray-500 dark:text-gray-400">18 · 356T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Shri Shantinath Textile</span><span class="text-[11px] text-gray-500 dark:text-gray-400">14 · 280T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>M.Milan Industries</span><span class="text-[11px] text-gray-500 dark:text-gray-400">12 · 240T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Narayanji Mills</span><span class="text-[11px] text-gray-500 dark:text-gray-400">10 · 200T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Rathi Textiles</span><span class="text-[11px] text-gray-500 dark:text-gray-400">9 · 176T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-1.5 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Marudhra Fab Tex</span><span class="text-[11px] text-gray-500 dark:text-gray-400">8 · 158T</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mobile phone -->
+      <div class="space-y-2 justify-self-center">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 text-center">Mobile</div>
+        <div class="phone bg-gray-50 dark:bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="p-3 space-y-2">
+            <div class="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-xl px-3 py-3">
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-2">⏳ Pending</div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg px-2 py-2">
+                  <div class="text-[9px] text-gray-500 dark:text-gray-400">Batches</div>
+                  <div class="text-xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">128</div>
+                </div>
+                <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg px-2 py-2">
+                  <div class="text-[9px] text-gray-500 dark:text-gray-400">Than</div>
+                  <div class="text-xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">2,506</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <input type="text" placeholder="Search..." class="flex-1 text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-md px-2 py-1.5" />
+              <button class="shrink-0 px-2 py-1.5 rounded-md text-xs font-semibold bg-purple-600 text-white flex items-center gap-1">🎯 Party</button>
+            </div>
+
+            <!-- Popover -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl text-xs">
+              <div class="p-1.5 border-b border-gray-100 dark:border-gray-700">
+                <input type="text" placeholder="Filter parties..." class="w-full text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1" />
+              </div>
+              <div class="py-1 divide-y divide-gray-50 dark:divide-gray-700/60 max-h-64 overflow-y-auto">
+                <button class="w-full flex items-center justify-between px-2.5 py-1.5"><span class="text-purple-700 font-medium">All</span><span class="text-[10px] text-gray-500">128 · 2506T</span></button>
+                <button class="w-full flex items-center justify-between px-2.5 py-1.5"><span>Shankeshwer Cottan Mills</span><span class="text-[10px] text-gray-500">33 · 660T</span></button>
+                <button class="w-full flex items-center justify-between px-2.5 py-1.5"><span>Shri Sachchiyay Mata</span><span class="text-[10px] text-gray-500">18 · 356T</span></button>
+                <button class="w-full flex items-center justify-between px-2.5 py-1.5"><span>Shri Shantinath Textile</span><span class="text-[10px] text-gray-500">14 · 280T</span></button>
+                <button class="w-full flex items-center justify-between px-2.5 py-1.5"><span>M.Milan Industries</span><span class="text-[10px] text-gray-500">12 · 240T</span></button>
+              </div>
+            </div>
+
+            <div class="text-[9px] text-gray-500 dark:text-gray-400 italic px-1">On phone the popover eats most of the screen. See variant C for a phone-native alternative.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant B — Pill row                          -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v2" class="screen space-y-3">
+    <h2 class="text-lg font-bold">B · Party pills always visible under the search</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">Every party sits inline as a scrollable pill. Each pill carries the party name plus <em>batches · than</em>. One tap sets the filter — no popover, no drawer, no click-hunt. Best when you have ≤ ~20 active parties.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-[1fr_380px] gap-6 items-start">
+      <!-- Desktop -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Desktop</div>
+        <div class="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-2xl shadow-sm px-4 py-4">
+          <div class="text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-3">⏳ Pending for Dyeing</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl px-4 py-3">
+              <div class="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Pending Batches</div>
+              <div class="text-3xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">33 <span class="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">batches</span></div>
+            </div>
+            <div class="bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl px-4 py-3">
+              <div class="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">Pending Than</div>
+              <div class="text-3xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">660 <span class="ml-1 text-sm font-semibold text-gray-400 dark:text-gray-500">than</span></div>
+            </div>
+          </div>
+        </div>
+        <input type="text" placeholder="Search fold no, shade, lot, quality, party..."
+          class="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg px-3 py-2 text-sm" />
+
+        <!-- Pill row -->
+        <div class="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          <button class="shrink-0 px-3 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/60 text-xs flex items-center gap-2">
+            <span class="font-semibold">All</span>
+            <span class="text-[10px] text-gray-500 dark:text-gray-400 border-l border-gray-300 dark:border-gray-600 pl-2">128 · 2,506T</span>
+          </button>
+          <button class="shrink-0 px-3 py-2 rounded-full border-2 border-purple-500 bg-purple-100 dark:bg-purple-900/40 text-xs flex items-center gap-2 shadow-sm">
+            <span class="font-bold text-purple-800 dark:text-purple-200">Shankeshwer Cottan Mills</span>
+            <span class="text-[10px] text-purple-600 dark:text-purple-300 border-l border-purple-300 dark:border-purple-700 pl-2 font-semibold">33 · 660T</span>
+            <span class="text-purple-700 dark:text-purple-200 text-[13px] leading-none">×</span>
+          </button>
+          <button class="shrink-0 px-3 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs flex items-center gap-2">
+            <span>Shri Sachchiyay Mata Texofin</span>
+            <span class="text-[10px] text-gray-500 dark:text-gray-400 border-l border-gray-300 dark:border-gray-600 pl-2">18 · 356T</span>
+          </button>
+          <button class="shrink-0 px-3 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs flex items-center gap-2">
+            <span>Shri Shantinath Textile</span>
+            <span class="text-[10px] text-gray-500 dark:text-gray-400 border-l border-gray-300 dark:border-gray-600 pl-2">14 · 280T</span>
+          </button>
+          <button class="shrink-0 px-3 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs flex items-center gap-2">
+            <span>M.Milan Industries</span>
+            <span class="text-[10px] text-gray-500 dark:text-gray-400 border-l border-gray-300 dark:border-gray-600 pl-2">12 · 240T</span>
+          </button>
+          <button class="shrink-0 px-3 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs flex items-center gap-2">
+            <span>Narayanji Mills</span>
+            <span class="text-[10px] text-gray-500 dark:text-gray-400 border-l border-gray-300 dark:border-gray-600 pl-2">10 · 200T</span>
+          </button>
+          <button class="shrink-0 px-3 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs flex items-center gap-2">
+            <span>Rathi Textiles</span>
+            <span class="text-[10px] text-gray-500 dark:text-gray-400 border-l border-gray-300 dark:border-gray-600 pl-2">9 · 176T</span>
+          </button>
+          <button class="shrink-0 px-3 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs flex items-center gap-2">
+            <span>Marudhra Fab Tex</span>
+            <span class="text-[10px] text-gray-500 dark:text-gray-400 border-l border-gray-300 dark:border-gray-600 pl-2">8 · 158T</span>
+          </button>
+          <button class="shrink-0 px-3 py-2 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs flex items-center gap-2">
+            <span>Krishna Textiles</span>
+            <span class="text-[10px] text-gray-500 dark:text-gray-400 border-l border-gray-300 dark:border-gray-600 pl-2">7 · 140T</span>
+          </button>
+        </div>
+        <div class="text-[10px] text-gray-500 dark:text-gray-400 italic px-1">Row scrolls horizontally when it overflows. Sorted by pending than descending — biggest volume first.</div>
+      </div>
+
+      <!-- Mobile -->
+      <div class="space-y-2 justify-self-center">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 text-center">Mobile</div>
+        <div class="phone bg-gray-50 dark:bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="p-3 space-y-2">
+            <div class="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-xl px-3 py-3">
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-2">⏳ Pending · Shankeshwer</div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg px-2 py-2">
+                  <div class="text-[9px] text-gray-500">Batches</div>
+                  <div class="text-xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">33</div>
+                </div>
+                <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg px-2 py-2">
+                  <div class="text-[9px] text-gray-500">Than</div>
+                  <div class="text-xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">660</div>
+                </div>
+              </div>
+            </div>
+
+            <input type="text" placeholder="Search..." class="w-full text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-md px-2 py-1.5" />
+
+            <div class="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+              <button class="shrink-0 px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-[10px] flex items-center gap-1"><span class="font-semibold">All</span><span class="text-[8px] text-gray-500">128 · 2506T</span></button>
+              <button class="shrink-0 px-2 py-1 rounded-full border-2 border-purple-500 bg-purple-100 dark:bg-purple-900/40 text-[10px] flex items-center gap-1 font-semibold"><span class="text-purple-800 dark:text-purple-200">Shankeshwer</span><span class="text-[8px] text-purple-600 border-l border-purple-300 pl-1">33 · 660T</span><span class="text-purple-700 text-[11px]">×</span></button>
+              <button class="shrink-0 px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] flex items-center gap-1"><span>Sachchiyay Mata</span><span class="text-[8px] text-gray-500">18</span></button>
+              <button class="shrink-0 px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] flex items-center gap-1"><span>Shantinath</span><span class="text-[8px] text-gray-500">14</span></button>
+              <button class="shrink-0 px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] flex items-center gap-1"><span>M.Milan</span><span class="text-[8px] text-gray-500">12</span></button>
+              <button class="shrink-0 px-2 py-1 rounded-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-[10px] flex items-center gap-1"><span>Narayanji</span><span class="text-[8px] text-gray-500">10</span></button>
+            </div>
+
+            <div class="text-[9px] text-gray-500 dark:text-gray-400 italic px-1">Swipe pills horizontally. Smaller pills drop the "T" and show a short party name.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant C — Bottom sheet drawer               -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v3" class="screen space-y-3">
+    <h2 class="text-lg font-bold">C · Bottom-sheet drawer (mobile-native feel)</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">Tap the Party button — a sheet slides up from the bottom on mobile (opens as a right-side drawer on desktop). Thumbs comfortable, backdrop closes it, works well with 30+ parties.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-[1fr_380px] gap-6 items-start">
+      <!-- Desktop = right drawer -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Desktop — right-side drawer</div>
+        <div class="relative min-h-[520px] rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+          <div class="p-4 space-y-2">
+            <div class="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-xl px-4 py-3">
+              <div class="text-[11px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-2">⏳ Pending for Dyeing</div>
+              <div class="grid grid-cols-2 gap-3">
+                <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg px-3 py-2">
+                  <div class="text-[10px] text-gray-500">Batches</div>
+                  <div class="text-2xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">128</div>
+                </div>
+                <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg px-3 py-2">
+                  <div class="text-[10px] text-gray-500">Than</div>
+                  <div class="text-2xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">2,506</div>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <input type="text" placeholder="Search..." class="flex-1 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-3 py-2 text-sm" />
+              <button class="shrink-0 px-3 py-2 rounded-lg text-sm font-semibold bg-purple-600 text-white flex items-center gap-1.5">🎯 Party</button>
+            </div>
+          </div>
+          <!-- Backdrop -->
+          <div class="absolute inset-0 bg-black/40"></div>
+          <!-- Drawer -->
+          <aside class="absolute right-0 top-0 bottom-0 w-80 bg-white dark:bg-gray-800 shadow-2xl flex flex-col border-l border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between px-3 py-2.5 border-b border-gray-100 dark:border-gray-700">
+              <div class="font-bold text-sm">Filter by Party</div>
+              <button class="text-lg leading-none text-gray-400">×</button>
+            </div>
+            <div class="p-2 border-b border-gray-100 dark:border-gray-700">
+              <input type="text" placeholder="Type to find a party..." class="w-full text-sm border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded-md px-2 py-1.5" />
+            </div>
+            <div class="flex-1 overflow-y-auto text-sm divide-y divide-gray-50 dark:divide-gray-700/60">
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20">
+                <span class="text-purple-700 dark:text-purple-300 font-medium">All parties</span>
+                <span class="text-[11px] text-gray-500 dark:text-gray-400">128 batches · 2,506 than</span>
+              </button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Shankeshwer Cottan Mills</span><span class="text-[11px] text-gray-500">33 · 660T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Shri Sachchiyay Mata Texofin</span><span class="text-[11px] text-gray-500">18 · 356T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Shri Shantinath Textile</span><span class="text-[11px] text-gray-500">14 · 280T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>M.Milan Industries</span><span class="text-[11px] text-gray-500">12 · 240T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Narayanji Mills</span><span class="text-[11px] text-gray-500">10 · 200T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Rathi Textiles</span><span class="text-[11px] text-gray-500">9 · 176T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Marudhra Fab Tex</span><span class="text-[11px] text-gray-500">8 · 158T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Krishna Textiles</span><span class="text-[11px] text-gray-500">7 · 140T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Vir Sain Jain</span><span class="text-[11px] text-gray-500">6 · 120T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Rajlaxmi Dyeing</span><span class="text-[11px] text-gray-500">5 · 100T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Devik Industries</span><span class="text-[11px] text-gray-500">3 · 60T</span></button>
+              <button class="w-full flex items-center justify-between px-3 py-2 hover:bg-purple-50 dark:hover:bg-purple-900/20"><span>Shri Balkrishna Process</span><span class="text-[11px] text-gray-500">2 · 40T</span></button>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <!-- Mobile phone -->
+      <div class="space-y-2 justify-self-center">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 text-center">Mobile — bottom sheet</div>
+        <div class="phone bg-gray-50 dark:bg-gray-900 relative">
+          <div class="phone-notch"></div>
+          <div class="p-3 space-y-2">
+            <div class="bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-800 rounded-xl px-3 py-3 opacity-40">
+              <div class="text-[10px] font-semibold uppercase tracking-wide text-purple-600 dark:text-purple-400 mb-2">⏳ Pending</div>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg px-2 py-2">
+                  <div class="text-[9px] text-gray-500">Batches</div>
+                  <div class="text-xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">128</div>
+                </div>
+                <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg px-2 py-2">
+                  <div class="text-[9px] text-gray-500">Than</div>
+                  <div class="text-xl font-extrabold text-purple-700 dark:text-purple-300 leading-none">2,506</div>
+                </div>
+              </div>
+            </div>
+            <div class="opacity-40 flex items-center gap-2">
+              <input type="text" placeholder="Search..." class="flex-1 text-xs border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded-md px-2 py-1.5" />
+              <button class="shrink-0 px-2 py-1.5 rounded-md text-xs font-semibold bg-purple-600 text-white flex items-center gap-1">🎯 Party</button>
+            </div>
+          </div>
+
+          <!-- Backdrop over phone body -->
+          <div class="absolute inset-0 pointer-events-none">
+            <div class="absolute inset-0 bg-black/50"></div>
+            <!-- Bottom sheet -->
+            <div class="absolute inset-x-0 bottom-0 bg-white dark:bg-gray-800 rounded-t-2xl shadow-2xl">
+              <div class="pt-1 flex items-center justify-center">
+                <div class="h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-600"></div>
+              </div>
+              <div class="px-3 py-2 flex items-center justify-between border-b border-gray-100 dark:border-gray-700">
+                <div class="text-sm font-bold">Filter by Party</div>
+                <button class="text-lg leading-none text-gray-400">×</button>
+              </div>
+              <div class="p-2 border-b border-gray-100 dark:border-gray-700">
+                <input type="text" placeholder="Type to find..." class="w-full text-xs border border-gray-200 dark:border-gray-600 dark:bg-gray-700 rounded px-2 py-1.5" />
+              </div>
+              <div class="max-h-[60vh] overflow-y-auto text-xs divide-y divide-gray-50 dark:divide-gray-700/60">
+                <button class="w-full flex items-center justify-between px-3 py-2.5"><span class="text-purple-700 font-medium">All parties</span><span class="text-[10px] text-gray-500">128 · 2506T</span></button>
+                <button class="w-full flex items-center justify-between px-3 py-2.5"><span>Shankeshwer Cottan Mills</span><span class="text-[10px] text-gray-500">33 · 660T</span></button>
+                <button class="w-full flex items-center justify-between px-3 py-2.5"><span>Shri Sachchiyay Mata</span><span class="text-[10px] text-gray-500">18 · 356T</span></button>
+                <button class="w-full flex items-center justify-between px-3 py-2.5"><span>Shri Shantinath Textile</span><span class="text-[10px] text-gray-500">14 · 280T</span></button>
+                <button class="w-full flex items-center justify-between px-3 py-2.5"><span>M.Milan Industries</span><span class="text-[10px] text-gray-500">12 · 240T</span></button>
+                <button class="w-full flex items-center justify-between px-3 py-2.5"><span>Narayanji Mills</span><span class="text-[10px] text-gray-500">10 · 200T</span></button>
+                <button class="w-full flex items-center justify-between px-3 py-2.5"><span>Rathi Textiles</span><span class="text-[10px] text-gray-500">9 · 176T</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Recommendation -->
+  <section id="pick" class="screen space-y-3">
+    <h2 class="text-lg font-bold">Which to build?</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+      <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-1">
+        <div class="font-bold text-gray-800 dark:text-gray-100">A · Popover</div>
+        <p class="text-gray-600 dark:text-gray-400">Compact. Doesn't hide the header. Awkward on phone screens (covers most of the viewport).</p>
+        <div class="pt-1 text-gray-500 dark:text-gray-500">Best for: desktop-heavy use.</div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-xl border border-purple-200 dark:border-purple-700 p-3 space-y-1 ring-1 ring-purple-100 dark:ring-purple-900">
+        <div class="font-bold text-purple-700 dark:text-purple-300">B · Pill row <span class="text-[10px] font-medium">(recommended)</span></div>
+        <p class="text-gray-600 dark:text-gray-400">Zero clicks to see options. Swipeable on phone, single tap sets the filter, chip counts double as info at a glance. Batches × than baked into every pill.</p>
+        <div class="pt-1 text-gray-500 dark:text-gray-500">Best for: ≤ ~20 parties (your current count).</div>
+      </div>
+      <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-1">
+        <div class="font-bold text-gray-800 dark:text-gray-100">C · Bottom sheet</div>
+        <p class="text-gray-600 dark:text-gray-400">Feels native on phone (thumb reach, familiar gesture). More clicks (button → sheet → pick) but scales past 30 parties.</p>
+        <div class="pt-1 text-gray-500 dark:text-gray-500">Best for: mobile-heavy use or 30+ parties.</div>
+      </div>
+    </div>
+    <p class="text-xs text-gray-500 dark:text-gray-400 pt-1">
+      Say "build B" (or A / C) and I'll wire it into <code>/dyeing/batch</code> — the underlying filter logic is already in place, only the picker UI needs adding.
+    </p>
+  </section>
+
+  <footer class="text-[11px] text-gray-500 dark:text-gray-400 pt-4 border-t border-gray-200 dark:border-gray-700">
+    Mockup file: <code>mockups/party-quick-filter.html</code>
+  </footer>
+</div>
+</body>
+</html>
