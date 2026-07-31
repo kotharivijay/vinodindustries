@@ -19,6 +19,7 @@ interface GreyEntry {
   lotNo: string; than: number; bale: number | null; baleNo: string | null
   weight: string | null; grayMtr: number | null; transportLrNo: string | null
   lrNo: string | null; viverNameBill: string | null; echBaleThan: number | null
+  marka: string | null
   party: { name: string }; quality: { name: string }
   transport: { name: string }; weaver: { name: string }
   stock: number; tDesp: number; openingBalance?: number
@@ -157,7 +158,6 @@ export default function GreyListPage() {
   const [filters, setFilters] = useState<{ party: string; quality: string; lotNo: string; lrNo: string; baleNo: string }>(
     () => initial.filters ?? { party: '', quality: '', lotNo: '', lrNo: '', baleNo: '' }
   )
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set())
   const [cfImporting, setCfImporting] = useState(false)
   const [cfResult, setCfResult] = useState<{ imported: number; totalThan: number } | null>(null)
   const [togglingLot, setTogglingLot] = useState<string | null>(null)
@@ -178,7 +178,6 @@ export default function GreyListPage() {
       setTogglingLot(null)
     }
   }
-  const toggleExpand = (id: number) => setExpandedIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
 
   // Persist filter/search state on every change so back-nav from /lot/[id]
   // restores the operator's view. The keys here mirror the useState
@@ -317,6 +316,7 @@ export default function GreyListPage() {
           e.party.name.toLowerCase().includes(q) ||
           e.quality.name.toLowerCase().includes(q) ||
           e.lotNo.toLowerCase().includes(q) ||
+          (e.marka ?? '').toLowerCase().includes(q) ||
           (e.transportLrNo ?? '').toLowerCase().includes(q) ||
           (e.baleNo ?? '').toLowerCase().includes(q) ||
           String(e.challanNo).includes(q) ||
@@ -836,27 +836,24 @@ export default function GreyListPage() {
                         <LotLink lotNo={e.lotNo} storageKey={GREY_VIEW_KEY} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-indigo-100 active:bg-indigo-200">
                           🔖 {e.lotNo}
                         </LotLink>
+                        {e.marka && <span className="text-xs font-medium text-indigo-500 dark:text-indigo-400">{e.marka}</span>}
                         <span className="text-xs text-gray-600">Than: <strong>{e.than}</strong></span>
                         <span className={`text-xs font-semibold ${e.stock > 0 ? 'text-green-600' : e.stock < 0 ? 'text-red-600' : 'text-gray-400'}`}>
                           Stock: {e.stock}
                         </span>
                       </div>
-                      <button onClick={() => toggleExpand(e.id)} className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">
-                        {expandedIds.has(e.id) ? '▲ Less' : '▼ More details'}
-                      </button>
-                      {expandedIds.has(e.id) && (
-                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
-                          <span>Weight: {e.weight ?? '—'}</span>
-                          <span>Gray Mtr: {e.grayMtr ?? '—'}</span>
-                          <span>Transport: {e.transport.name}</span>
-                          <span>LR No: {e.transportLrNo ?? '—'}</span>
-                          <span>Bale: {e.bale ?? '—'}</span>
-                          <span>Bale No: {e.baleNo ?? '—'}</span>
-                          <span>Ech Bale: {e.echBaleThan ?? '—'}</span>
-                          <span className="col-span-2">Weaver: {e.weaver?.name ?? '—'}</span>
-                          <span>T_DESP: {e.tDesp}</span>
-                        </div>
-                      )}
+                      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
+                        <span>Weight: {e.weight ?? '—'}</span>
+                        <span>Gray Mtr: {e.grayMtr ?? '—'}</span>
+                        <span>Transport: {e.transport.name}</span>
+                        <span>LR No: {e.transportLrNo ?? '—'}</span>
+                        <span>Bale: {e.bale ?? '—'}</span>
+                        <span>Bale No: {e.baleNo ?? '—'}</span>
+                        <span>Ech Bale: {e.echBaleThan ?? '—'}</span>
+                        <span>Marka: {e.marka ?? '—'}</span>
+                        <span className="col-span-2">Weaver: {e.weaver?.name ?? '—'}</span>
+                        <span>T_DESP: {e.tDesp}</span>
+                      </div>
                     </div>
                   ))}
                   </div>
@@ -885,6 +882,7 @@ export default function GreyListPage() {
                           <span className="flex items-center gap-1">Lot No <span className={sortField==='lotNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lotNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
                           <input className={fi} placeholder="filter..." value={filters.lotNo} onChange={e=>{e.stopPropagation();setFilter('lotNo',e.target.value)}} onClick={e=>e.stopPropagation()} />
                         </th>
+                        <PlainTh label="Marka" />
                         <PlainTh label="Transport" />
                         <th className="px-3 py-1 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap cursor-pointer select-none hover:text-indigo-600" onClick={() => toggleSort('lrNo')}>
                           <span className="flex items-center gap-1">LR No <span className={sortField==='lrNo'?'text-indigo-600':'text-gray-300'}>{sortField==='lrNo'?(sortDir==='asc'?'↑':'↓'):'↕'}</span></span>
@@ -916,6 +914,7 @@ export default function GreyListPage() {
                           <td className="px-3 py-2.5 font-medium text-indigo-700 dark:text-indigo-400">
                             <LotLink lotNo={e.lotNo} storageKey={GREY_VIEW_KEY} className="hover:underline">{e.lotNo}</LotLink>
                           </td>
+                          <td className="px-3 py-2.5 text-indigo-500 dark:text-indigo-400 whitespace-nowrap">{e.marka ?? '—'}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400 whitespace-nowrap">{e.transport.name}</td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-gray-400">{e.transportLrNo ?? '—'}</td>
                           <td className="px-3 py-2.5 dark:text-gray-300">{e.bale ?? '—'}</td>
