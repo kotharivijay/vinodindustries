@@ -608,7 +608,6 @@ export default function FoldListPage() {
               allLots.map(l => l.party?.name || (l.lotNo?.toUpperCase().startsWith('RE-PRO-') ? 'Re-Process' : null))
                 .filter(Boolean) as string[]
             )]
-            const qualityNames = [...new Set(allLots.map(l => l.quality?.name).filter(Boolean) as string[])]
             // Dyeing progress per batch: done = slip marked dyeing-done,
             // on jet = slip exists but not done, not started = no slip.
             // Cancelled batches are out of the pipeline — excluded.
@@ -670,14 +669,9 @@ export default function FoldListPage() {
               {/* Party + quality on a dedicated last row — full width, wraps on
                   long names instead of truncating, never collides with the
                   total-than column on the right. */}
-              {(partyNames.length > 0 || qualityNames.length > 0) && (
+              {partyNames.length > 0 && (
                 <div className="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
-                  {partyNames.length > 0 && <span>👤 {partyNames.join(', ')}</span>}
-                  {qualityNames.length > 0 && (
-                    <span className="text-gray-500 dark:text-gray-400 font-normal">
-                      {partyNames.length > 0 ? ' · ' : ''}{qualityNames.join(', ')}
-                    </span>
-                  )}
+                  <span>👤 {partyNames.join(', ')}</span>
                 </div>
               )}
 
