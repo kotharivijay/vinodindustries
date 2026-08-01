@@ -537,8 +537,13 @@ export default function FoldListPage() {
             const dyeDone = activeBatches.filter(b => b.dyeingEntries?.some(d => d.dyeingDoneAt)).length
             const dyeOnJet = activeBatches.filter(b => (b.dyeingEntries?.length ?? 0) > 0 && !b.dyeingEntries!.some(d => d.dyeingDoneAt)).length
             const dyeNotStarted = activeBatches.length - dyeDone - dyeOnJet
+            const fullyDyed = activeBatches.length > 0 && dyeDone === activeBatches.length
             return (
-            <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div key={p.id} className={`bg-white dark:bg-gray-800 rounded-xl shadow-sm border overflow-hidden ${
+              fullyDyed
+                ? 'border-green-400 dark:border-green-600 ring-1 ring-green-200 dark:ring-green-900/40'
+                : 'border-gray-100 dark:border-gray-700'
+            }`}>
               <div className="px-4 py-3 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
