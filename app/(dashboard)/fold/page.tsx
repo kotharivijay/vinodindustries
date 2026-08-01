@@ -415,7 +415,30 @@ export default function FoldListPage() {
     })
   }
 
+  // Hide fully-dyed folds — ON by default so the list shows only folds that
+  // still need work; remembered across visits like the marka toggle.
+  const [hideCompleted, setHideCompleted] = useState(true)
+  useEffect(() => {
+    if (localStorage.getItem('foldListHideCompleted') === '0') setHideCompleted(false)
+  }, [])
+  function toggleHideCompleted() {
+    setHideCompleted(prev => {
+      localStorage.setItem('foldListHideCompleted', prev ? '0' : '1')
+      return !prev
+    })
+  }
+
+  // Fully dyed = every active (non-cancelled) batch has a dyeing slip
+  // marked dyeing-done. Same rule as the card's green border.
+  const isFullyDyed = (p: FoldProgram) => {
+    const active = p.batches.filter(b => !b.cancelled)
+    return active.length > 0 && active.every(b => b.dyeingEntries?.some(d => d.dyeingDoneAt))
+  }
+
+  const hiddenDoneCount = hideCompleted ? (programs ?? []).filter(isFullyDyed).length : 0
+
   const filtered = (programs ?? []).filter(p => {
+    if (hideCompleted && isFullyDyed(p)) return false
     const q = search.toLowerCase().trim()
     if (!q) return true
     // Token-based AND search across fold no + lot nos + party names, so
@@ -510,7 +533,20 @@ export default function FoldListPage() {
         >
           🏷 Marka
         </button>
-        <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">{filtered.length} folds</span>
+        <button
+          onClick={toggleHideCompleted}
+          className={`text-xs px-3 py-1.5 rounded-full border transition ${
+            hideCompleted
+              ? 'bg-green-600 text-white border-green-600'
+              : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+          }`}
+          title={hideCompleted ? 'Fully-dyed folds are hidden — click to show' : 'Click to hide fully-dyed folds'}
+        >
+          {hideCompleted ? '🙈 Hiding done' : '👁 Show all'}
+        </button>
+        <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+          {filtered.length} folds{hiddenDoneCount > 0 ? ` · ${hiddenDoneCount} done hidden` : ''}
+        </span>
       </div>
 
       {filtered.length === 0 ? (
