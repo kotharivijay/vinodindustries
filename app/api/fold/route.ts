@@ -27,7 +27,41 @@ export async function GET() {
       },
     },
   })
-  return NextResponse.json(programs)
+
+  // Marka lives on grey entries (and OB carry-forward rows), not on
+  // FoldBatchLot — attach it per lot for the card's marka toggle.
+  const db = prisma as any
+  const markaMap = new Map<string, string>()
+  const greyMarkas = await prisma.greyEntry.findMany({
+    where: { marka: { not: null } },
+    select: { lotNo: true, marka: true },
+  })
+  for (const g of greyMarkas) {
+    const k = g.lotNo.toLowerCase().trim()
+    if (g.marka && !markaMap.has(k)) markaMap.set(k, g.marka)
+  }
+  try {
+    const obMarkas = await db.lotOpeningBalance.findMany({
+      where: { marka: { not: null } },
+      select: { lotNo: true, marka: true },
+    })
+    for (const o of obMarkas) {
+      const k = o.lotNo.toLowerCase().trim()
+      if (o.marka && !markaMap.has(k)) markaMap.set(k, o.marka)
+    }
+  } catch {}
+
+  const enriched = programs.map((p: any) => ({
+    ...p,
+    batches: p.batches.map((b: any) => ({
+      ...b,
+      lots: b.lots.map((l: any) => ({
+        ...l,
+        marka: markaMap.get(l.lotNo?.toLowerCase().trim() ?? '') ?? null,
+      })),
+    })),
+  }))
+  return NextResponse.json(enriched)
 }
 
 // POST /api/fold — create new fold program

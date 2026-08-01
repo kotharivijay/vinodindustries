@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
@@ -12,6 +12,7 @@ interface FoldBatchLot {
   than: number
   party?: { name: string }
   quality?: { name: string }
+  marka?: string | null
 }
 
 interface FoldBatch {
@@ -400,33 +401,18 @@ export default function FoldListPage() {
   const [showImport, setShowImport] = useState(false)
   const [sortBy, setSortBy] = useState<'fold-asc' | 'fold-desc' | 'date-desc' | 'date-asc'>('fold-desc')
 
-  // Sheet import state
-  const [sheetImporting, setSheetImporting] = useState(false)
-  const [sheetPreview, setSheetPreview] = useState<any[] | null>(null)
-  const [sheetPreviewMeta, setSheetPreviewMeta] = useState<any>(null)
-  const [sheetResult, setSheetResult] = useState<any[] | null>(null)
-  const [sheetError, setSheetError] = useState('')
-
-  async function importFromSheet(action: 'preview' | 'import') {
-    if (action === 'preview') { setSheetImporting(true); setSheetPreview(null); setSheetPreviewMeta(null); setSheetResult(null); setSheetError('') }
-    else setSheetImporting(true)
-    try {
-      const res = await fetch('/api/fold/import-sheet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed')
-      if (action === 'preview') {
-        setSheetPreview(data.folds)
-        setSheetPreviewMeta({ total: data.total, newCount: data.newCount, skippedCount: data.skippedCount })
-      } else { setSheetResult(data.results); mutate() }
-    } catch (e: any) {
-      setSheetError(e.message)
-    } finally {
-      setSheetImporting(false)
-    }
+  // Marka toggle — off by default; remembered across visits. Loaded in an
+  // effect (not the useState initializer) so SSR and first client render
+  // match and hydration stays clean.
+  const [showMarka, setShowMarka] = useState(false)
+  useEffect(() => {
+    if (localStorage.getItem('foldListShowMarka') === '1') setShowMarka(true)
+  }, [])
+  function toggleMarka() {
+    setShowMarka(prev => {
+      localStorage.setItem('foldListShowMarka', prev ? '0' : '1')
+      return !prev
+    })
   }
 
   const filtered = (programs ?? []).filter(p => {
@@ -436,7 +422,7 @@ export default function FoldListPage() {
     // "milan 62" narrows to M.Milan folds whose lot/fold contains 62.
     const hay = [
       p.foldNo,
-      ...p.batches.flatMap(b => b.lots.flatMap(l => [l.lotNo, l.party?.name ?? ''])),
+      ...p.batches.flatMap(b => b.lots.flatMap(l => [l.lotNo, l.party?.name ?? '', l.marka ?? ''])),
     ].join(' ').toLowerCase()
     return q.split(/\s+/).every(tok => hay.includes(tok))
   }).sort((a, b) => {
@@ -514,83 +500,18 @@ export default function FoldListPage() {
             {label}
           </button>
         ))}
+        <button
+          onClick={toggleMarka}
+          className={`text-xs px-3 py-1.5 rounded-full border transition ${
+            showMarka
+              ? 'bg-teal-600 text-white border-teal-600'
+              : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+          }`}
+        >
+          🏷 Marka
+        </button>
         <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">{filtered.length} folds</span>
       </div>
-
-      {/* Sheet Import Preview */}
-      {sheetError && (
-        <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg px-4 py-2 text-sm">
-          {sheetError}
-          <button onClick={() => setSheetError('')} className="ml-2 text-red-400 hover:text-red-600">✕</button>
-        </div>
-      )}
-      {sheetPreview && !sheetResult && (
-        <div className="mb-4 bg-white dark:bg-gray-800 rounded-xl border border-orange-200 dark:border-orange-800 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">Sheet Preview — {sheetPreview.length} new folds</h3>
-              {(sheetPreviewMeta as any)?.skippedCount > 0 && (
-                <p className="text-[10px] text-gray-400">{(sheetPreviewMeta as any).skippedCount} already imported folds hidden</p>
-              )}
-            </div>
-            <button onClick={() => { setSheetPreview(null); setSheetPreviewMeta(null) }} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
-          </div>
-          {sheetPreview.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">All folds already imported!</p>
-          ) : (
-            <>
-              <div className="space-y-2 max-h-72 overflow-y-auto">
-                {sheetPreview.map((f: any, i: number) => (
-                  <div key={i} className={`border rounded-lg px-3 py-2 ${
-                    f.status === 'error' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                    : f.status === 'warning' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-                    : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-                  }`}>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm">{f.status === 'ok' ? '✅' : f.status === 'warning' ? '⚠️' : '❌'}</span>
-                      <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Fold {f.foldNo}</span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400">{f.partyName} · {f.qualityName}</span>
-                    </div>
-                    <p className="text-xs text-gray-400 ml-6">{f.batchCount} batches · {f.lots.join(', ')} · {f.totalThan} than · {f.shadeNo ? `${f.shadeNo}${f.shadeName ? ` — ${f.shadeName}` : ''}` : f.shadeName || 'no shade'}</p>
-                    {/* Lot validations */}
-                    {f.lotValidations?.filter((l: any) => l.status !== 'ok').map((l: any, li: number) => (
-                      <p key={li} className={`text-[10px] ml-6 mt-0.5 ${l.status === 'not_found' ? 'text-red-500' : 'text-yellow-600 dark:text-yellow-400'}`}>
-                        {l.status === 'not_found' ? '❌' : '⚠️'} {l.lotNo}: {l.status === 'not_found' ? 'not found in grey' : `needs ${l.needed}, only ${l.available} available`}
-                      </p>
-                    ))}
-                  </div>
-                ))}
-              </div>
-              <button
-                onClick={() => importFromSheet('import')}
-                disabled={sheetImporting}
-                className="w-full py-2 bg-orange-600 text-white rounded-lg text-sm font-semibold hover:bg-orange-700 disabled:opacity-50 transition"
-              >
-                {sheetImporting ? 'Importing...' : `Import ${sheetPreview.length} Folds`}
-              </button>
-            </>
-          )}
-        </div>
-      )}
-      {sheetResult && (
-        <div className="mb-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">Import Results</h3>
-            <button onClick={() => { setSheetResult(null); setSheetPreview(null) }} className="text-gray-400 hover:text-gray-600 text-lg">✕</button>
-          </div>
-          {sheetResult.map((r: any, i: number) => (
-            <div key={i} className={`flex items-center gap-2 text-sm px-3 py-1 rounded ${
-              r.status === 'ok' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-              : r.status === 'skipped' ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400'
-              : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
-            }`}>
-              <span>{r.status === 'ok' ? '✓' : r.status === 'skipped' ? '⊘' : '✗'}</span>
-              <span>Fold {r.foldNo}</span>
-              {r.error && <span className="text-xs ml-1">— {r.error}</span>}
-            </div>
-          ))}
-        </div>
-      )}
 
       {filtered.length === 0 ? (
         <div className="text-center text-gray-400 py-16">
@@ -608,6 +529,7 @@ export default function FoldListPage() {
               allLots.map(l => l.party?.name || (l.lotNo?.toUpperCase().startsWith('RE-PRO-') ? 'Re-Process' : null))
                 .filter(Boolean) as string[]
             )]
+            const markaNames = [...new Set(allLots.map(l => l.marka).filter(Boolean) as string[])]
             // Dyeing progress per batch: done = slip marked dyeing-done,
             // on jet = slip exists but not done, not started = no slip.
             // Cancelled batches are out of the pipeline — excluded.
@@ -669,9 +591,14 @@ export default function FoldListPage() {
               {/* Party + quality on a dedicated last row — full width, wraps on
                   long names instead of truncating, never collides with the
                   total-than column on the right. */}
-              {partyNames.length > 0 && (
+              {(partyNames.length > 0 || (showMarka && markaNames.length > 0)) && (
                 <div className="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
-                  <span>👤 {partyNames.join(', ')}</span>
+                  {partyNames.length > 0 && <span>👤 {partyNames.join(', ')}</span>}
+                  {showMarka && markaNames.length > 0 && (
+                    <span className="text-indigo-500 dark:text-indigo-400 font-normal">
+                      {partyNames.length > 0 ? ' · ' : ''}🏷 {markaNames.join(', ')}
+                    </span>
+                  )}
                 </div>
               )}
 
