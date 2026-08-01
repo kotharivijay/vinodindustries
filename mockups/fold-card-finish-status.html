@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fold card — finish done / pending batches row</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+  </script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .screen { scroll-margin-top: 16px; }
+    .phone {
+      width: 380px; max-width: 100%;
+      border: 12px solid #1f2937; border-radius: 32px;
+      overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    }
+    .phone-notch { background: #1f2937; height: 22px; display: flex; align-items: center; justify-content: center; }
+    .phone-notch::after { content: ''; width: 90px; height: 6px; background: #111; border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="max-w-4xl mx-auto p-6 space-y-14">
+
+  <header class="space-y-1">
+    <h1 class="text-xl font-bold">Fold card — finish-status row (done / pending batches)</h1>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      New bottom row on each fold card: which batch numbers are <b>finish-done</b> and which are still
+      <b>pending</b>. Pending splits into “dyed, waiting finish” and “not dyed yet” so the card tells the
+      whole pipeline story at a glance. Two densities below.
+    </p>
+    <nav class="flex flex-wrap gap-2 text-xs pt-1">
+      <a href="#v1" class="text-blue-600 dark:text-blue-400 underline">A · Chips row</a>
+      <a href="#v2" class="text-blue-600 dark:text-blue-400 underline">B · Compact counts + expand</a>
+      <a href="#mobile" class="text-blue-600 dark:text-blue-400 underline">Mobile view</a>
+      <a href="#pick" class="text-blue-600 dark:text-blue-400 underline">Recommendation</a>
+    </nav>
+  </header>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant A — chips row, always visible        -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v1" class="screen space-y-3">
+    <h2 class="text-lg font-bold">A · Batch-number chips, always visible</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">Green = finish done · amber = dyed, finish pending · gray outline = not dyed yet. Wraps on long folds.</p>
+
+    <div class="space-y-3">
+      <!-- fold 289: mixed -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">289</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">confirmed</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">26/7/2026 · 7 batches · 14 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">238</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+          👤 M.Milan Industries <span class="text-gray-500 dark:text-gray-400 font-normal">· 62*50 44</span>
+        </div>
+        <!-- NEW ROW -->
+        <div class="px-4 pb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <span class="flex flex-wrap items-center gap-1">
+            <span class="text-green-600 dark:text-green-400 font-semibold">🏁 Done:</span>
+            <span class="px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">B3</span>
+            <span class="px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">B6</span>
+          </span>
+          <span class="flex flex-wrap items-center gap-1">
+            <span class="text-amber-600 dark:text-amber-400 font-semibold">⏳ Pending:</span>
+            <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B1</span>
+            <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B2</span>
+            <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B4</span>
+            <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B5</span>
+            <span class="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400" title="not dyed yet">B7</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- fold 234: all done except one -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">234</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">4/7/2026 · 20 batches · 74 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">420</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+          👤 M.Milan Industries <span class="text-gray-500 dark:text-gray-400 font-normal">· 62*50 44</span>
+        </div>
+        <!-- NEW ROW: many done — collapse the green list into a range summary -->
+        <div class="px-4 pb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <span class="flex flex-wrap items-center gap-1">
+            <span class="text-green-600 dark:text-green-400 font-semibold">🏁 Done:</span>
+            <span class="px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">18 batches (B14–B27, B29–B33)</span>
+          </span>
+          <span class="flex flex-wrap items-center gap-1">
+            <span class="text-amber-600 dark:text-amber-400 font-semibold">⏳ Pending:</span>
+            <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B28</span>
+            <span class="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400" title="not dyed yet">B15</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- fold 295: nothing started -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">295</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">30/7/2026 · 1 batch · 3 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">24</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+          👤 Shree Nageshwar Textile Mills <span class="text-gray-500 dark:text-gray-400 font-normal">· PC 36, PC 62*58 35</span>
+        </div>
+        <div class="px-4 pb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <span class="flex flex-wrap items-center gap-1">
+            <span class="text-amber-600 dark:text-amber-400 font-semibold">⏳ Pending:</span>
+            <span class="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400" title="not dyed yet">B1</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant B — compact bar + tap to expand      -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v2" class="screen space-y-3">
+    <h2 class="text-lg font-bold">B · Compact progress + tap to expand chips</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">One line: “Finish 18/20” + mini progress bar. Tapping it expands the chip row from Variant A. Quieter for long lists. (Click the row.)</p>
+
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div class="px-4 py-3 flex items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-0.5">
+            <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">234</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-300">4/7/2026 · 20 batches · 74 lots <span class="text-green-500">✅</span></p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-lg font-bold text-indigo-600">420</p>
+          <p class="text-[10px] text-gray-400">than</p>
+        </div>
+        <div class="flex gap-1.5">
+          <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+          <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+        </div>
+      </div>
+      <div class="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+        👤 M.Milan Industries <span class="text-gray-500 dark:text-gray-400 font-normal">· 62*50 44</span>
+      </div>
+      <!-- compact row -->
+      <button class="w-full text-left px-4 pb-2.5 flex items-center gap-2 text-[11px] hover:bg-gray-50 dark:hover:bg-gray-700/30" onclick="document.getElementById('bexp').classList.toggle('hidden')">
+        <span class="font-semibold text-gray-600 dark:text-gray-300">Finish:</span>
+        <span class="font-bold text-green-600 dark:text-green-400">18/20 done</span>
+        <span class="flex-1 max-w-[140px] bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+          <span class="block bg-green-500 h-full rounded-full" style="width:90%"></span>
+        </span>
+        <span class="text-amber-600 dark:text-amber-400 font-semibold">2 pending</span>
+        <span class="text-gray-400">▾</span>
+      </button>
+      <div id="bexp" class="hidden px-4 pb-2.5 -mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] border-t border-gray-50 dark:border-gray-700 pt-2">
+        <span class="flex flex-wrap items-center gap-1">
+          <span class="text-green-600 dark:text-green-400 font-semibold">🏁 Done:</span>
+          <span class="px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">B14–B27, B29–B33</span>
+        </span>
+        <span class="flex flex-wrap items-center gap-1">
+          <span class="text-amber-600 dark:text-amber-400 font-semibold">⏳ Pending:</span>
+          <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B28 (dyed)</span>
+          <span class="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400">B15 (not dyed)</span>
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Mobile                                       -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="mobile" class="screen space-y-3">
+    <h2 class="text-lg font-bold">Mobile view (Variant A)</h2>
+    <div class="phone bg-gray-50 dark:bg-gray-900">
+      <div class="phone-notch"></div>
+      <div class="p-3 space-y-2 h-[430px] overflow-hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <div class="px-3 py-2.5 flex items-center gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">289</span>
+                <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">confirmed</span>
+              </div>
+              <p class="text-[11px] text-gray-500">26/7/2026 · 7 batches · 14 lots <span class="text-green-500">✅</span></p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="text-base font-bold text-indigo-600">238</p>
+              <p class="text-[9px] text-gray-400">than</p>
+            </div>
+          </div>
+          <div class="px-3 pb-1 -mt-1 text-[11px] font-medium break-words">
+            👤 M.Milan Industries <span class="text-gray-500 font-normal">· 62*50 44</span>
+          </div>
+          <div class="px-3 pb-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[10px]">
+            <span class="flex flex-wrap items-center gap-1">
+              <span class="text-green-600 dark:text-green-400 font-semibold">🏁</span>
+              <span class="px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">B3</span>
+              <span class="px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold">B6</span>
+            </span>
+            <span class="flex flex-wrap items-center gap-1">
+              <span class="text-amber-600 dark:text-amber-400 font-semibold">⏳</span>
+              <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B1</span>
+              <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B2</span>
+              <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B4</span>
+              <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">B5</span>
+              <span class="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400">B7</span>
+            </span>
+          </div>
+        </div>
+        <p class="text-[9px] text-gray-400 text-center">on phones the labels shrink to just 🏁 / ⏳ icons</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Recommendation                               -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="pick" class="screen space-y-2">
+    <h2 class="text-lg font-bold">Recommendation</h2>
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-xs text-gray-600 dark:text-gray-300 space-y-2">
+      <p><b>Definitions:</b> a batch is <b>🏁 done</b> when its dye slip's than is fully claimed by finish entries; <b>⏳ pending (amber)</b> = dyed but finish not complete; <b>pending (gray outline)</b> = no dye slip yet.</p>
+      <p><b>Variant A</b> — chips always visible; when &gt;6 done batches, the green list auto-collapses to ranges (“B14–B27”) to stay one-line-ish. Best for scanning.</p>
+      <p><b>Variant B</b> — compact “18/20 done” + progress bar, chips on tap. Quieter, but hides the batch numbers the user asked to see.</p>
+      <p class="text-gray-400">Suggested: A with the range-collapse. Needs /api/fold (or /api/fold/validate-style side endpoint) to return per-batch finish status: join dyeingEntries → finishEntryLot sums per batch.</p>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

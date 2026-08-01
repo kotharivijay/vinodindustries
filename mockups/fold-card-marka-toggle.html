@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fold card — Quality / Marka toggle</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+  </script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .screen { scroll-margin-top: 16px; }
+    .phone {
+      width: 380px; max-width: 100%;
+      border: 12px solid #1f2937; border-radius: 32px;
+      overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    }
+    .phone-notch { background: #1f2937; height: 22px; display: flex; align-items: center; justify-content: center; }
+    .phone-notch::after { content: ''; width: 90px; height: 6px; background: #111; border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="max-w-4xl mx-auto p-6 space-y-14">
+
+  <header class="space-y-1">
+    <h1 class="text-xl font-bold">Fold card — show Marka or Quality (toggle)</h1>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      The card's bottom line currently shows party · qualities. Toggle switches that line to the
+      markas used in the fold. Two designs — both live, click them.
+    </p>
+    <nav class="flex flex-wrap gap-2 text-xs pt-1">
+      <a href="#v1" class="text-blue-600 dark:text-blue-400 underline">A · Global toggle</a>
+      <a href="#v2" class="text-blue-600 dark:text-blue-400 underline">B · Per-card flip</a>
+      <a href="#mobile" class="text-blue-600 dark:text-blue-400 underline">Mobile view</a>
+      <a href="#pick" class="text-blue-600 dark:text-blue-400 underline">Recommendation</a>
+    </nav>
+  </header>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant A — global toggle in the sort row    -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v1" class="screen space-y-3">
+    <h2 class="text-lg font-bold">A · Global toggle next to Sort pills</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">One switch changes every card. Choice remembered (localStorage) so the operator who thinks in markas keeps their view.</p>
+
+    <!-- sort row with toggle -->
+    <div class="flex gap-2 flex-wrap items-center">
+      <span class="text-[10px] text-gray-500 dark:text-gray-400">Sort:</span>
+      <button class="text-xs px-3 py-1.5 rounded-full border bg-indigo-600 text-white border-indigo-600">Fold No ↓</button>
+      <button class="text-xs px-3 py-1.5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">Fold No ↑</button>
+      <button class="text-xs px-3 py-1.5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">Date ↓</button>
+      <button class="text-xs px-3 py-1.5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">Date ↑</button>
+      <!-- the new toggle -->
+      <div class="ml-2 inline-flex rounded-full border border-gray-300 dark:border-gray-600 overflow-hidden text-xs" id="segA">
+        <button onclick="setModeA('quality')" id="segA-quality" class="px-3 py-1.5 font-medium bg-teal-600 text-white">Quality</button>
+        <button onclick="setModeA('marka')" id="segA-marka" class="px-3 py-1.5 font-medium text-gray-600 dark:text-gray-300">Marka</button>
+      </div>
+      <span class="text-xs text-gray-400 ml-auto">277 folds</span>
+    </div>
+
+    <!-- cards -->
+    <div class="space-y-3">
+      <!-- card 295 -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">295</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">30/7/2026 · 1 batch · 3 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">24</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-2 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+          👤 Shree Nageshwar Textile Mills
+          <span class="a-quality text-gray-500 dark:text-gray-400 font-normal"> · PC 36, PC 62*58 35</span>
+          <span class="a-marka hidden text-indigo-500 dark:text-indigo-400 font-normal"> · 🏷 NG-101, NG-105, NG-107</span>
+        </div>
+      </div>
+
+      <!-- card 294 -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">294</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">29/7/2026 · 4 batches · 10 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">120</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-2 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+          👤 M.Milan Industries
+          <span class="a-quality text-gray-500 dark:text-gray-400 font-normal"> · 62*50 44</span>
+          <span class="a-marka hidden text-indigo-500 dark:text-indigo-400 font-normal"> · 🏷 Mahi, Don, Umang, Neel</span>
+        </div>
+      </div>
+
+      <!-- card 290 (pali pc — markas matter most here) -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">293</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">29/7/2026 · 1 batch · 1 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">20</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-2 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+          👤 Shree Nageshwar Textile Mills
+          <span class="a-quality text-gray-500 dark:text-gray-400 font-normal"> · PC 36</span>
+          <span class="a-marka hidden text-indigo-500 dark:text-indigo-400 font-normal"> · 🏷 Love-268</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant B — per-card flip chip               -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v2" class="screen space-y-3">
+    <h2 class="text-lg font-bold">B · Per-card flip chip</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">A tiny 🏷/🧵 chip on each card's bottom line flips only that card. No global state — but the operator taps once per card.</p>
+
+    <div class="space-y-3">
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">294</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">29/7/2026 · 4 batches · 10 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">120</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-2 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words flex items-start gap-1.5">
+          <span>👤 M.Milan Industries
+            <span id="b1-quality" class="text-gray-500 dark:text-gray-400 font-normal"> · 62*50 44</span>
+            <span id="b1-marka" class="hidden text-indigo-500 dark:text-indigo-400 font-normal"> · Mahi, Don, Umang, Neel</span>
+          </span>
+          <button onclick="flipB('b1')" id="b1-btn"
+            class="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 transition">🏷 marka</button>
+        </div>
+      </div>
+
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">293</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">29/7/2026 · 1 batch · 1 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">20</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-2 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words flex items-start gap-1.5">
+          <span>👤 Shree Nageshwar Textile Mills
+            <span id="b2-quality" class="text-gray-500 dark:text-gray-400 font-normal"> · PC 36</span>
+            <span id="b2-marka" class="hidden text-indigo-500 dark:text-indigo-400 font-normal"> · Love-268</span>
+          </span>
+          <button onclick="flipB('b2')" id="b2-btn"
+            class="shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-600 transition">🏷 marka</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Mobile                                       -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="mobile" class="screen space-y-3">
+    <h2 class="text-lg font-bold">Mobile view (Variant A)</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">The Quality/Marka pill sits in the Sort row, which already wraps on phones. Cards unchanged otherwise.</p>
+
+    <div class="flex flex-wrap gap-8 items-start">
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Marka mode ON</div>
+        <div class="phone bg-gray-50 dark:bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="p-3 space-y-2 h-[460px] overflow-hidden">
+            <input class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800" placeholder="Search fold no, lot no, party..." />
+            <div class="flex gap-1.5 flex-wrap items-center text-[11px]">
+              <span class="text-gray-500">Sort:</span>
+              <span class="px-2.5 py-1 rounded-full bg-indigo-600 text-white">Fold No ↓</span>
+              <span class="px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300">Date ↓</span>
+              <span class="inline-flex rounded-full border border-gray-300 dark:border-gray-600 overflow-hidden">
+                <span class="px-2.5 py-1 text-gray-600 dark:text-gray-300">Quality</span>
+                <span class="px-2.5 py-1 bg-teal-600 text-white">Marka</span>
+              </span>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+              <div class="px-3 py-2.5 flex items-center gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">294</span>
+                    <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+                  </div>
+                  <p class="text-[11px] text-gray-500">29/7/2026 · 4 batches · 10 lots <span class="text-green-500">✅</span></p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="text-base font-bold text-indigo-600">120</p>
+                  <p class="text-[9px] text-gray-400">than</p>
+                </div>
+              </div>
+              <div class="px-3 pb-2 -mt-1 text-[11px] font-medium break-words">
+                👤 M.Milan Industries
+                <span class="text-indigo-500 dark:text-indigo-400 font-normal"> · 🏷 Mahi, Don, Umang, Neel</span>
+              </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+              <div class="px-3 py-2.5 flex items-center gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">293</span>
+                    <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+                  </div>
+                  <p class="text-[11px] text-gray-500">29/7/2026 · 1 batch · 1 lots <span class="text-green-500">✅</span></p>
+                </div>
+                <div class="text-right shrink-0">
+                  <p class="text-base font-bold text-indigo-600">20</p>
+                  <p class="text-[9px] text-gray-400">than</p>
+                </div>
+              </div>
+              <div class="px-3 pb-2 -mt-1 text-[11px] font-medium break-words">
+                👤 Shree Nageshwar Textile Mills
+                <span class="text-indigo-500 dark:text-indigo-400 font-normal"> · 🏷 Love-268</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Recommendation                               -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="pick" class="screen space-y-2">
+    <h2 class="text-lg font-bold">Recommendation</h2>
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-xs text-gray-600 dark:text-gray-300 space-y-2">
+      <p><b>Variant A (global toggle)</b> — one tap switches all 277 cards, remembered across visits. Matches how the choice is really used: an operator thinks in markas (Pali PC folds) or in qualities, not per-card.</p>
+      <p><b>Variant B (per-card)</b> — more flexible but noisy: 277 tiny buttons, and the state resets on reload.</p>
+      <p class="text-gray-400">Suggested: ship A. Marka line prefixed 🏷 in indigo so the two modes are visually distinct at a glance. Note: /api/fold must be extended to return per-lot marka (from grey register) — FoldBatchLot doesn't store it.</p>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  function setModeA(mode) {
+    document.querySelectorAll('.a-quality').forEach(el => el.classList.toggle('hidden', mode === 'marka'))
+    document.querySelectorAll('.a-marka').forEach(el => el.classList.toggle('hidden', mode === 'quality'))
+    const q = document.getElementById('segA-quality'), mk = document.getElementById('segA-marka')
+    q.className = 'px-3 py-1.5 font-medium ' + (mode === 'quality' ? 'bg-teal-600 text-white' : 'text-gray-600 dark:text-gray-300')
+    mk.className = 'px-3 py-1.5 font-medium ' + (mode === 'marka' ? 'bg-teal-600 text-white' : 'text-gray-600 dark:text-gray-300')
+  }
+  function flipB(id) {
+    const q = document.getElementById(id + '-quality'), mk = document.getElementById(id + '-marka'), btn = document.getElementById(id + '-btn')
+    const showingMarka = !mk.classList.contains('hidden')
+    mk.classList.toggle('hidden', showingMarka)
+    q.classList.toggle('hidden', !showingMarka)
+    btn.textContent = showingMarka ? '🏷 marka' : '🧵 quality'
+  }
+</script>
+</body>
+</html>

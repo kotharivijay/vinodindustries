@@ -19,6 +19,9 @@ export async function GET() {
           lots: {
             include: { party: true, quality: true },
           },
+          // For the list card's dyeing-progress row: done = slip with
+          // dyeingDoneAt, on jet = slip without, not started = no slip.
+          dyeingEntries: { select: { id: true, dyeingDoneAt: true } },
         },
         orderBy: { batchNo: 'asc' },
       },

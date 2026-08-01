@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fold card — dyeing done / pending row</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script type="text/tailwindcss">
+    @custom-variant dark (&:where(.dark, .dark *));
+  </script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .screen { scroll-margin-top: 16px; }
+    .phone {
+      width: 380px; max-width: 100%;
+      border: 12px solid #1f2937; border-radius: 32px;
+      overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+    }
+    .phone-notch { background: #1f2937; height: 22px; display: flex; align-items: center; justify-content: center; }
+    .phone-notch::after { content: ''; width: 90px; height: 6px; background: #111; border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+<div class="max-w-4xl mx-auto p-6 space-y-14">
+
+  <header class="space-y-1">
+    <h1 class="text-xl font-bold">Fold card — dyeing done / pending row</h1>
+    <p class="text-xs text-gray-500 dark:text-gray-400">
+      One new row per fold card showing <b>dyeing progress by batch count</b>. A batch is
+      <b>done</b> when its dyeing slip is marked dyeing-done; <b>on jet</b> = slip made but not done;
+      <b>not started</b> = no dyeing slip yet. Variant B adds the batch numbers.
+    </p>
+    <nav class="flex flex-wrap gap-2 text-xs pt-1">
+      <a href="#v1" class="text-blue-600 dark:text-blue-400 underline">A · Counts + progress bar</a>
+      <a href="#v2" class="text-blue-600 dark:text-blue-400 underline">B · Counts + batch no chips</a>
+      <a href="#mobile" class="text-blue-600 dark:text-blue-400 underline">Mobile view</a>
+      <a href="#pick" class="text-blue-600 dark:text-blue-400 underline">Recommendation</a>
+    </nav>
+  </header>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant A — counts + progress bar            -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v1" class="screen space-y-3">
+    <h2 class="text-lg font-bold">A · Counts + mini progress bar <span class="text-xs font-normal text-gray-400">(what you asked for)</span></h2>
+
+    <div class="space-y-3">
+      <!-- fold 289: mixed -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">289</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">confirmed</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">26/7/2026 · 7 batches · 14 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">238</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+          👤 M.Milan Industries <span class="text-gray-500 dark:text-gray-400 font-normal">· 62*50 44</span>
+        </div>
+        <!-- NEW ROW -->
+        <div class="px-4 pb-2.5 flex flex-wrap items-center gap-2 text-[11px]">
+          <span class="font-semibold text-gray-600 dark:text-gray-300">🎨 Dyeing:</span>
+          <span class="font-bold text-green-600 dark:text-green-400">5/7 done</span>
+          <span class="flex-1 max-w-[130px] bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+            <span class="block bg-green-500 h-full rounded-full" style="width:71%"></span>
+          </span>
+          <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">1 on jet</span>
+          <span class="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400 font-medium">1 not started</span>
+        </div>
+      </div>
+
+      <!-- fold 290-style: nothing started -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">295</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">draft</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">30/7/2026 · 1 batch · 3 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">24</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+          👤 Shree Nageshwar Textile Mills <span class="text-gray-500 dark:text-gray-400 font-normal">· PC 36, PC 62*58 35</span>
+        </div>
+        <div class="px-4 pb-2.5 flex flex-wrap items-center gap-2 text-[11px]">
+          <span class="font-semibold text-gray-600 dark:text-gray-300">🎨 Dyeing:</span>
+          <span class="font-bold text-gray-400">0/1 done</span>
+          <span class="flex-1 max-w-[130px] bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+            <span class="block bg-green-500 h-full rounded-full" style="width:0%"></span>
+          </span>
+          <span class="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400 font-medium">1 not started</span>
+        </div>
+      </div>
+
+      <!-- all done -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">257</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">confirmed</span>
+            </div>
+            <p class="text-xs text-gray-500 dark:text-gray-300">10/7/2026 · 7 batches · 35 lots <span class="text-green-500">✅</span></p>
+          </div>
+          <div class="text-right shrink-0">
+            <p class="text-lg font-bold text-indigo-600">147</p>
+            <p class="text-[10px] text-gray-400">than</p>
+          </div>
+          <div class="flex gap-1.5">
+            <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+            <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+          </div>
+        </div>
+        <div class="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+          👤 M.Milan Industries <span class="text-gray-500 dark:text-gray-400 font-normal">· 62*50 44</span>
+        </div>
+        <div class="px-4 pb-2.5 flex flex-wrap items-center gap-2 text-[11px]">
+          <span class="font-semibold text-gray-600 dark:text-gray-300">🎨 Dyeing:</span>
+          <span class="font-bold text-green-600 dark:text-green-400">7/7 done ✓</span>
+          <span class="flex-1 max-w-[130px] bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+            <span class="block bg-green-500 h-full rounded-full" style="width:100%"></span>
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Variant B — counts + batch numbers           -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="v2" class="screen space-y-3">
+    <h2 class="text-lg font-bold">B · Same row, plus the pending batch numbers</h2>
+    <p class="text-xs text-gray-500 dark:text-gray-400">Counts first, then chips for the batches still pending (amber = on jet, gray = not started). Done batches stay as a count — it's the pending ones you chase.</p>
+
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+      <div class="px-4 py-3 flex items-center gap-3">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-0.5">
+            <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">289</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">confirmed</span>
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-300">26/7/2026 · 7 batches · 14 lots <span class="text-green-500">✅</span></p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-lg font-bold text-indigo-600">238</p>
+          <p class="text-[10px] text-gray-400">than</p>
+        </div>
+        <div class="flex gap-1.5">
+          <span class="text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 px-2 py-1 rounded">View</span>
+          <span class="text-xs bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-2 py-1 rounded">Delete</span>
+        </div>
+      </div>
+      <div class="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+        👤 M.Milan Industries <span class="text-gray-500 dark:text-gray-400 font-normal">· 62*50 44</span>
+      </div>
+      <div class="px-4 pb-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+        <span class="font-semibold text-gray-600 dark:text-gray-300">🎨 Dyeing:</span>
+        <span class="font-bold text-green-600 dark:text-green-400">5/7 done</span>
+        <span class="text-gray-300 dark:text-gray-600">·</span>
+        <span class="text-amber-600 dark:text-amber-400 font-semibold">pending:</span>
+        <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold" title="slip made, on jet">B4</span>
+        <span class="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400 font-medium" title="no dyeing slip yet">B7</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Mobile                                       -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="mobile" class="screen space-y-3">
+    <h2 class="text-lg font-bold">Mobile view</h2>
+    <div class="phone bg-gray-50 dark:bg-gray-900">
+      <div class="phone-notch"></div>
+      <div class="p-3 space-y-2 h-[400px] overflow-hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <div class="px-3 py-2.5 flex items-center gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span class="text-sm font-bold text-indigo-700 dark:text-indigo-400">289</span>
+                <span class="text-[9px] px-1.5 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">confirmed</span>
+              </div>
+              <p class="text-[11px] text-gray-500">26/7/2026 · 7 batches · 14 lots <span class="text-green-500">✅</span></p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="text-base font-bold text-indigo-600">238</p>
+              <p class="text-[9px] text-gray-400">than</p>
+            </div>
+          </div>
+          <div class="px-3 pb-1 -mt-1 text-[11px] font-medium break-words">
+            👤 M.Milan Industries <span class="text-gray-500 font-normal">· 62*50 44</span>
+          </div>
+          <div class="px-3 pb-2.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+            <span class="font-semibold text-gray-600 dark:text-gray-300">🎨</span>
+            <span class="font-bold text-green-600 dark:text-green-400">5/7 done</span>
+            <span class="flex-1 max-w-[80px] bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+              <span class="block bg-green-500 h-full rounded-full" style="width:71%"></span>
+            </span>
+            <span class="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">1 on jet</span>
+            <span class="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400">1 not started</span>
+          </div>
+        </div>
+        <p class="text-[9px] text-gray-400 text-center">row wraps naturally; label shrinks to the 🎨 icon</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- Recommendation                               -->
+  <!-- ═══════════════════════════════════════════ -->
+  <section id="pick" class="screen space-y-2">
+    <h2 class="text-lg font-bold">Recommendation</h2>
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-4 text-xs text-gray-600 dark:text-gray-300 space-y-2">
+      <p><b>Definitions:</b> done = batch's dyeing slip has dyeing-done timestamp · on jet = slip exists, not done · not started = no dyeing slip.</p>
+      <p><b>Variant A</b> — pure counts + progress bar. Cleanest for 277 cards.</p>
+      <p><b>Variant B</b> — counts plus pending batch-number chips, since the pending ones are what you chase on the floor.</p>
+      <p class="text-gray-400">Data: /api/fold already returns batches; it needs to include per-batch dyeingEntries (id + dyeingDoneAt) — a small include, no extra endpoint. Also easy to add a matching “🏁 Finish” row later (see fold-card-finish-status.html mockup).</p>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

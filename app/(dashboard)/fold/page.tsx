@@ -19,7 +19,9 @@ interface FoldBatch {
   batchNo: number
   shadeName?: string
   shade?: { name: string }
+  cancelled?: boolean
   lots: FoldBatchLot[]
+  dyeingEntries?: { id: number; dyeingDoneAt: string | null }[]
 }
 
 interface FoldProgram {
@@ -607,6 +609,13 @@ export default function FoldListPage() {
                 .filter(Boolean) as string[]
             )]
             const qualityNames = [...new Set(allLots.map(l => l.quality?.name).filter(Boolean) as string[])]
+            // Dyeing progress per batch: done = slip marked dyeing-done,
+            // on jet = slip exists but not done, not started = no slip.
+            // Cancelled batches are out of the pipeline — excluded.
+            const activeBatches = p.batches.filter(b => !b.cancelled)
+            const dyeDone = activeBatches.filter(b => b.dyeingEntries?.some(d => d.dyeingDoneAt)).length
+            const dyeOnJet = activeBatches.filter(b => (b.dyeingEntries?.length ?? 0) > 0 && !b.dyeingEntries!.some(d => d.dyeingDoneAt)).length
+            const dyeNotStarted = activeBatches.length - dyeDone - dyeOnJet
             return (
             <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
               <div className="px-4 py-3 flex items-center gap-3">
@@ -662,11 +671,37 @@ export default function FoldListPage() {
                   long names instead of truncating, never collides with the
                   total-than column on the right. */}
               {(partyNames.length > 0 || qualityNames.length > 0) && (
-                <div className="px-4 pb-2 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
+                <div className="px-4 pb-1 -mt-1 text-xs text-gray-700 dark:text-gray-200 font-medium break-words">
                   {partyNames.length > 0 && <span>👤 {partyNames.join(', ')}</span>}
                   {qualityNames.length > 0 && (
                     <span className="text-gray-500 dark:text-gray-400 font-normal">
                       {partyNames.length > 0 ? ' · ' : ''}{qualityNames.join(', ')}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Dyeing progress row */}
+              {activeBatches.length > 0 && (
+                <div className="px-4 pb-2.5 flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="font-semibold text-gray-600 dark:text-gray-300">🎨<span className="hidden sm:inline"> Dyeing:</span></span>
+                  <span className={`font-bold ${dyeDone > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
+                    {dyeDone}/{activeBatches.length} done{dyeDone === activeBatches.length ? ' ✓' : ''}
+                  </span>
+                  <span className="flex-1 max-w-[130px] bg-gray-100 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                    <span
+                      className="block bg-green-500 h-full rounded-full"
+                      style={{ width: `${Math.round((dyeDone / activeBatches.length) * 100)}%` }}
+                    />
+                  </span>
+                  {dyeOnJet > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-semibold">
+                      {dyeOnJet} on jet
+                    </span>
+                  )}
+                  {dyeNotStarted > 0 && (
+                    <span className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-400 font-medium">
+                      {dyeNotStarted} not started
                     </span>
                   )}
                 </div>
