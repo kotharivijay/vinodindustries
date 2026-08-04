@@ -96,6 +96,9 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
   //                       'program' = share an as-yet-unchecked lot list on WhatsApp (no DB write)
   const [innerTab, setInnerTab] = useState<'save' | 'program'>('save')
   const [sharing, setSharing] = useState(false)
+  // Quality column in the shared PNG — hidden by default so long lot names
+  // (e.g. SSN-433-VISHAL) get the freed width instead of being truncated.
+  const [showQuality, setShowQuality] = useState(false)
 
   useEffect(() => {
     if (!slipNo && nextSlip?.next) setSlipNo(nextSlip.next)
@@ -250,7 +253,13 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
 
       // Table header. Marka is added between Bale and Than — narrow on
       // non-PC-Job rows (often blank), important on PC Job rows.
-      const cols = { sn: 16, lot: 50, party: 150, qual: 310, lr: 430, bale: 490, marka: 575, than: 704 }
+      // Quality column is optional (hidden by default): its 120px goes to
+      // Lot + Party so long lot names print in full.
+      const cols = showQuality
+        ? { sn: 16, lot: 50, party: 150, qual: 310, lr: 430, bale: 490, marka: 575, than: 704 }
+        : { sn: 16, lot: 50, party: 200, qual: 0, lr: 430, bale: 490, marka: 575, than: 704 }
+      const lotMax = showQuality ? 12 : 20
+      const partyMax = showQuality ? 20 : 30
       const tHeaderY = headerH + padY
       ctx.fillStyle = '#f1f5f9'
       ctx.fillRect(0, tHeaderY, W, tableHeaderH)
@@ -259,7 +268,7 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
       ctx.fillText('#', cols.sn, tHeaderY + 18)
       ctx.fillText('Lot', cols.lot, tHeaderY + 18)
       ctx.fillText('Party', cols.party, tHeaderY + 18)
-      ctx.fillText('Quality', cols.qual, tHeaderY + 18)
+      if (showQuality) ctx.fillText('Quality', cols.qual, tHeaderY + 18)
       ctx.fillText('LR', cols.lr, tHeaderY + 18)
       ctx.fillText('Bale', cols.bale, tHeaderY + 18)
       ctx.fillText('Marka', cols.marka, tHeaderY + 18)
@@ -281,11 +290,11 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
         ctx.fillText(String(i + 1), cols.sn, baseY)
         ctx.fillStyle = '#4338ca'
         ctx.font = 'bold 13px Arial'
-        ctx.fillText(truncate(r.lotNo, 12), cols.lot, baseY)
+        ctx.fillText(truncate(r.lotNo, lotMax), cols.lot, baseY)
         ctx.fillStyle = '#0f172a'
         ctx.font = '13px Arial'
-        ctx.fillText(truncate(r.party.name, 20), cols.party, baseY)
-        ctx.fillText(truncate(r.quality.name, 14), cols.qual, baseY)
+        ctx.fillText(truncate(r.party.name, partyMax), cols.party, baseY)
+        if (showQuality) ctx.fillText(truncate(r.quality.name, 14), cols.qual, baseY)
         // LR — wrap each comma-separated value onto its own line, no truncate
         ctx.fillStyle = '#64748b'
         const lrLines = lrLinesByRow[i]
@@ -563,13 +572,26 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
                 {saving ? 'Saving…' : 'Save Checking'}
               </button>
             ) : (
-              <button
-                onClick={handleShareProgram}
-                disabled={sharing || selected.size === 0}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
-              >
-                {sharing ? 'Rendering…' : '📤 Share on WhatsApp'}
-              </button>
+              <>
+                <button
+                  onClick={() => setShowQuality(q => !q)}
+                  className={`text-xs px-3 py-2 rounded-lg border transition ${
+                    showQuality
+                      ? 'bg-teal-600 text-white border-teal-600'
+                      : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+                  }`}
+                  title={showQuality ? 'Quality column shown in the shared image — click to hide (full lot names)' : 'Quality column hidden — full lot names shown. Click to include quality.'}
+                >
+                  {showQuality ? 'Quality: shown' : 'Quality: hidden'}
+                </button>
+                <button
+                  onClick={handleShareProgram}
+                  disabled={sharing || selected.size === 0}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
+                >
+                  {sharing ? 'Rendering…' : '📤 Share on WhatsApp'}
+                </button>
+              </>
             )}
           </div>
         </div>
