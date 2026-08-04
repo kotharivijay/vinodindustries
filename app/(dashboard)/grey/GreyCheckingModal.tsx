@@ -551,7 +551,7 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
+        <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 bg-gray-50 dark:bg-gray-800/50 rounded-b-xl">
           <div className="flex items-baseline gap-3">
             <span className="text-sm text-gray-500 dark:text-gray-400">
               Selected <span className="font-semibold text-gray-800 dark:text-gray-100">{selected.size}</span> lot{selected.size === 1 ? '' : 's'}
@@ -560,7 +560,7 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
             <span className="text-sm text-gray-500 dark:text-gray-400">Total Than</span>
             <span className="text-xl font-bold text-indigo-700 dark:text-indigo-400 leading-none">{totalThan}</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 ml-auto justify-end">
             {error && <span className="text-xs text-red-600 dark:text-red-400">{error}</span>}
             <button onClick={onClose} disabled={saving || sharing} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">Cancel</button>
             {innerTab === 'save' ? (
@@ -582,14 +582,14 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
                   }`}
                   title={showQuality ? 'Quality column shown in the shared image — click to hide (full lot names)' : 'Quality column hidden — full lot names shown. Click to include quality.'}
                 >
-                  {showQuality ? 'Quality: shown' : 'Quality: hidden'}
+                  <span className="whitespace-nowrap">{showQuality ? 'Quality: shown' : 'Quality: hidden'}</span>
                 </button>
                 <button
                   onClick={handleShareProgram}
                   disabled={sharing || selected.size === 0}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 flex items-center gap-1 whitespace-nowrap"
                 >
-                  {sharing ? 'Rendering…' : '📤 Share on WhatsApp'}
+                  {sharing ? 'Rendering…' : <>📤 Share<span className="hidden sm:inline"> on WhatsApp</span></>}
                 </button>
               </>
             )}
