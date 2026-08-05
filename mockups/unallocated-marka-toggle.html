@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Unallocated Stock — Marka toggle (mobile)</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .phone { width: 390px; max-width: 100%; border: 12px solid #111827; border-radius: 34px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  .phone-notch { background: #111827; height: 24px; display:flex; align-items:center; justify-content:center; }
+  .phone-notch::after { content:''; width: 100px; height: 6px; background:#000; border-radius:4px; }
+</style>
+</head>
+<body class="dark bg-gray-950 text-gray-100 p-6">
+<div class="max-w-5xl mx-auto space-y-6">
+
+  <header class="space-y-1">
+    <h1 class="text-xl font-bold">Unallocated Grey Stock — Marka toggle (mobile)</h1>
+    <p class="text-xs text-gray-400 max-w-2xl">
+      New <b>Marka</b> toggle in the header. When ON, each party expands into <b>marka groups</b> (marka =
+      the suffix after the last dash of the lot no, e.g. <code>MMI-429-<b>MAHI</b></code>). Tapping a marka
+      shows the lots carrying it. Toggle OFF = the current quality grouping. Both phones are live — tap the
+      toggle, the party, and the marka rows.
+    </p>
+  </header>
+
+  <div class="flex flex-wrap gap-10 items-start">
+
+    <!-- ══════════ PHONE 1 — Marka mode ══════════ -->
+    <div class="space-y-2">
+      <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Marka mode — M.Milan expanded → tap a marka</div>
+      <div class="phone bg-gray-900">
+        <div class="phone-notch"></div>
+        <div class="bg-gray-900 h-[720px] flex flex-col">
+          <!-- header -->
+          <div class="px-3 py-3 border-b border-gray-800">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="text-sm font-bold flex items-center gap-1">📊 Unallocated Grey Stock</h3>
+                <p class="text-[11px] text-gray-400 mt-0.5">6959 than · 95 lots · 12 parties</p>
+              </div>
+              <span class="text-gray-500 text-xl leading-none">&times;</span>
+            </div>
+            <!-- action row: toggle added here -->
+            <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+              <button onclick="setMode('marka')" id="mk-btn"
+                class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border bg-teal-600 text-white border-teal-600">🏷 Marka ✓</button>
+              <span class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border bg-amber-600 text-white border-amber-600">🏭 PC Pali ✓</span>
+              <span class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border bg-gray-800 text-gray-300 border-gray-700">☐ Select</span>
+              <span class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600 text-white ml-auto">📤 PDF</span>
+            </div>
+          </div>
+          <!-- search -->
+          <div class="px-3 py-2 border-b border-gray-800">
+            <input class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500" placeholder="Search party, marka, or lot..." />
+          </div>
+          <!-- body -->
+          <div class="flex-1 overflow-y-auto p-3 space-y-2">
+            <!-- party: Gayatri (collapsed) -->
+            <div class="border border-gray-700 rounded-xl overflow-hidden">
+              <div class="flex items-center gap-2 px-3 py-3 bg-gray-800/40">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-bold truncate">Gayatri Textiles</p>
+                  <p class="text-[10px] text-gray-400 mt-0.5" id="g-sub">6 marka · 8 lots</p>
+                </div>
+                <span class="text-sm font-bold text-emerald-400">969</span>
+                <span class="text-gray-500 text-xs">▶</span>
+              </div>
+            </div>
+
+            <!-- party: M.Milan (expanded, marka groups) -->
+            <div class="border border-gray-700 rounded-xl overflow-hidden">
+              <div class="flex items-center gap-2 px-3 py-3 bg-gray-800/40">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-bold truncate">M.Milan Industries</p>
+                  <p class="text-[10px] text-gray-400 mt-0.5" id="mm-sub">6 marka · 43 lots</p>
+                </div>
+                <span class="text-sm font-bold text-emerald-400">3540</span>
+                <span class="text-gray-500 text-xs rotate-90 inline-block">▶</span>
+              </div>
+              <div class="px-3 pb-3 pt-2 space-y-1.5 border-t border-gray-800">
+
+                <!-- marka DON (expanded → lots) -->
+                <div class="border border-gray-700 rounded-lg overflow-hidden">
+                  <button onclick="tog('don')" class="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-800/40">
+                    <span class="text-xs font-semibold text-gray-200 flex items-center gap-1.5"><span class="text-indigo-400">🏷</span> DON <span class="text-[10px] text-gray-500 font-normal">· 4 lots</span></span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-semibold text-emerald-400">1180</span>
+                      <span id="don-c" class="text-gray-500 text-[10px] rotate-90 inline-block">▶</span>
+                    </div>
+                  </button>
+                  <div id="don" class="px-2 pb-2 pt-1 space-y-1 border-t border-gray-800">
+                    <div class="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+                      <div class="min-w-0">
+                        <span class="text-xs font-semibold text-teal-400">MMI-431-DON</span>
+                        <p class="text-[10px] text-gray-500 mt-0.5">Ch: 240 · 27 Jul · 62*50 34</p>
+                      </div>
+                      <span class="text-sm font-bold text-emerald-400 ml-2">99</span>
+                    </div>
+                    <div class="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+                      <div class="min-w-0">
+                        <span class="text-xs font-semibold text-teal-400">MMI-470-DON</span>
+                        <p class="text-[10px] text-gray-500 mt-0.5">Ch: 235 · 24 Jul · 62*50 44</p>
+                      </div>
+                      <span class="text-sm font-bold text-emerald-400 ml-2">48</span>
+                    </div>
+                    <div class="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+                      <div class="min-w-0">
+                        <span class="text-xs font-semibold text-teal-400">MMI-514-DON</span>
+                        <p class="text-[10px] text-gray-500 mt-0.5">Ch: 251 · 28 Jul · 62*50 34</p>
+                      </div>
+                      <span class="text-sm font-bold text-emerald-400 ml-2">99</span>
+                    </div>
+                    <div class="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+                      <div class="min-w-0">
+                        <span class="text-xs font-semibold text-teal-400">MMI-545-DON</span>
+                        <p class="text-[10px] text-gray-500 mt-0.5">Ch: 253 · 29 Jul · 62*50 44</p>
+                      </div>
+                      <span class="text-sm font-bold text-emerald-400 ml-2">99</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- marka NEEL (collapsed) -->
+                <div class="border border-gray-700 rounded-lg overflow-hidden">
+                  <button onclick="tog('neel')" class="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-800/40">
+                    <span class="text-xs font-semibold text-gray-200 flex items-center gap-1.5"><span class="text-indigo-400">🏷</span> NEEL <span class="text-[10px] text-gray-500 font-normal">· 3 lots</span></span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-semibold text-emerald-400">750</span>
+                      <span id="neel-c" class="text-gray-500 text-[10px]">▶</span>
+                    </div>
+                  </button>
+                  <div id="neel" class="hidden px-2 pb-2 pt-1 space-y-1 border-t border-gray-800">
+                    <div class="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+                      <div class="min-w-0"><span class="text-xs font-semibold text-teal-400">MMI-561-NEEL</span><p class="text-[10px] text-gray-500 mt-0.5">Ch: 250 · 27 Jul · 62*50 34</p></div>
+                      <span class="text-sm font-bold text-emerald-400 ml-2">100</span>
+                    </div>
+                    <div class="flex items-center justify-between bg-gray-800 border border-gray-700 rounded-lg px-3 py-2">
+                      <div class="min-w-0"><span class="text-xs font-semibold text-teal-400">MMI-460-NEEL</span><p class="text-[10px] text-gray-500 mt-0.5">Ch: 234 · 22 Jul · 62*50 34</p></div>
+                      <span class="text-sm font-bold text-emerald-400 ml-2">100</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- other markas collapsed -->
+                <div class="border border-gray-700 rounded-lg">
+                  <button onclick="tog('mahi')" class="w-full flex items-center justify-between px-3 py-2">
+                    <span class="text-xs font-semibold text-gray-200 flex items-center gap-1.5"><span class="text-indigo-400">🏷</span> MAHI <span class="text-[10px] text-gray-500 font-normal">· 2 lots</span></span>
+                    <div class="flex items-center gap-2"><span class="text-xs font-semibold text-emerald-400">420</span><span class="text-gray-500 text-[10px]">▶</span></div>
+                  </button>
+                </div>
+                <div class="border border-gray-700 rounded-lg">
+                  <button class="w-full flex items-center justify-between px-3 py-2">
+                    <span class="text-xs font-semibold text-gray-200 flex items-center gap-1.5"><span class="text-indigo-400">🏷</span> USHA <span class="text-[10px] text-gray-500 font-normal">· 2 lots</span></span>
+                    <div class="flex items-center gap-2"><span class="text-xs font-semibold text-emerald-400">340</span><span class="text-gray-500 text-[10px]">▶</span></div>
+                  </button>
+                </div>
+                <div class="border border-gray-700 rounded-lg">
+                  <button class="w-full flex items-center justify-between px-3 py-2">
+                    <span class="text-xs font-semibold text-gray-200 flex items-center gap-1.5"><span class="text-indigo-400">🏷</span> UMANG <span class="text-[10px] text-gray-500 font-normal">· 3 lots</span></span>
+                    <div class="flex items-center gap-2"><span class="text-xs font-semibold text-emerald-400">550</span><span class="text-gray-500 text-[10px]">▶</span></div>
+                  </button>
+                </div>
+                <div class="border border-gray-700 rounded-lg">
+                  <button class="w-full flex items-center justify-between px-3 py-2">
+                    <span class="text-xs font-semibold text-gray-200 flex items-center gap-1.5"><span class="text-indigo-400">🏷</span> AMIR <span class="text-[10px] text-gray-500 font-normal">· 1 lot</span></span>
+                    <div class="flex items-center gap-2"><span class="text-xs font-semibold text-emerald-400">300</span><span class="text-gray-500 text-[10px]">▶</span></div>
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ PHONE 2 — Quality mode (toggle off) ══════════ -->
+    <div class="space-y-2">
+      <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Quality mode (toggle OFF) — today's behaviour</div>
+      <div class="phone bg-gray-900">
+        <div class="phone-notch"></div>
+        <div class="bg-gray-900 h-[720px] flex flex-col">
+          <div class="px-3 py-3 border-b border-gray-800">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0">
+                <h3 class="text-sm font-bold">📊 Unallocated Grey Stock</h3>
+                <p class="text-[11px] text-gray-400 mt-0.5">6959 than · 95 lots · 12 parties</p>
+              </div>
+              <span class="text-gray-500 text-xl leading-none">&times;</span>
+            </div>
+            <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+              <span class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border bg-gray-800 text-gray-300 border-gray-700">🏷 Marka</span>
+              <span class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border bg-amber-600 text-white border-amber-600">🏭 PC Pali ✓</span>
+              <span class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border bg-gray-800 text-gray-300 border-gray-700">☐ Select</span>
+              <span class="px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-emerald-600 text-white ml-auto">📤 PDF</span>
+            </div>
+          </div>
+          <div class="px-3 py-2 border-b border-gray-800">
+            <input class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500" placeholder="Search party, quality, or lot..." />
+          </div>
+          <div class="flex-1 overflow-y-auto p-3 space-y-2">
+            <div class="border border-gray-700 rounded-xl overflow-hidden">
+              <div class="flex items-center gap-2 px-3 py-3 bg-gray-800/40">
+                <div class="flex-1 min-w-0"><p class="text-sm font-bold truncate">Gayatri Textiles</p><p class="text-[10px] text-gray-400 mt-0.5">5 quality · 8 lots</p></div>
+                <span class="text-sm font-bold text-emerald-400">969</span><span class="text-gray-500 text-xs">▶</span>
+              </div>
+            </div>
+            <div class="border border-gray-700 rounded-xl overflow-hidden">
+              <div class="flex items-center gap-2 px-3 py-3 bg-gray-800/40">
+                <div class="flex-1 min-w-0"><p class="text-sm font-bold truncate">M.Milan Industries</p><p class="text-[10px] text-gray-400 mt-0.5">3 quality · 43 lots</p></div>
+                <span class="text-sm font-bold text-emerald-400">3540</span><span class="text-gray-500 text-xs rotate-90 inline-block">▶</span>
+              </div>
+              <div class="px-3 pb-3 pt-2 space-y-1.5 border-t border-gray-800">
+                <div class="border border-gray-700 rounded-lg flex items-center justify-between px-3 py-2">
+                  <span class="text-xs font-semibold text-gray-200">62*50 34</span>
+                  <div class="flex items-center gap-2"><span class="text-xs font-semibold text-emerald-400">1878</span><span class="text-gray-500 text-[10px]">▶</span></div>
+                </div>
+                <div class="border border-gray-700 rounded-lg flex items-center justify-between px-3 py-2">
+                  <span class="text-xs font-semibold text-gray-200">62*50 34 40g</span>
+                  <div class="flex items-center gap-2"><span class="text-xs font-semibold text-emerald-400">198</span><span class="text-gray-500 text-[10px]">▶</span></div>
+                </div>
+                <div class="border border-gray-700 rounded-lg flex items-center justify-between px-3 py-2">
+                  <span class="text-xs font-semibold text-gray-200">62*50 44</span>
+                  <div class="flex items-center gap-2"><span class="text-xs font-semibold text-emerald-400">1464</span><span class="text-gray-500 text-[10px]">▶</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <section class="max-w-2xl space-y-2 text-xs text-gray-400">
+    <h2 class="text-sm font-bold text-gray-200">Notes</h2>
+    <p><b>Marka = lot suffix:</b> the part after the last <code>-</code> in the lot no (<code>MMI-429-MAHI</code> → <code>MAHI</code>, <code>SST-675-LOVE</code> → <code>LOVE</code>). Lots with no suffix fall into a <code>— (no marka)</code> group.</p>
+    <p><b>Toggle behaviour:</b> the middle grouping level swaps between Quality and Marka; party totals and lots are unchanged. Party subtitle switches "N quality" ↔ "N marka". Search still matches party / lot / and now marka.</p>
+    <p><b>Toggle placement:</b> first pill in the header action row (before PC Pali), teal when on — matches the Marka toggle already on the fold cards. State can persist in sessionStorage like the expand state does.</p>
+  </section>
+
+</div>
+
+<script>
+  function tog(id){
+    const b=document.getElementById(id), c=document.getElementById(id+'-c')
+    if(!b) return
+    b.classList.toggle('hidden')
+    if(c) c.classList.toggle('rotate-90')
+  }
+  function setMode(m){
+    // mockup: just reflect the button state; the two phones already show both modes
+    const btn=document.getElementById('mk-btn')
+    const on = m==='marka'
+    btn.textContent = on ? '🏷 Marka ✓' : '🏷 Marka'
+    btn.className = 'px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border ' +
+      (on ? 'bg-teal-600 text-white border-teal-600' : 'bg-gray-800 text-gray-300 border-gray-700')
+  }
+</script>
+</body>
+</html>

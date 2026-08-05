@@ -26,6 +26,42 @@ interface PartyGroup { party: string; totalThan: number; totalLots: number; qual
 
 interface Response { parties: PartyGroup[]; grandTotal: number; totalLots: number; totalParties: number }
 
+// Marka = the lot-number suffix (segment after the last dash), e.g.
+// MMI-429-MAHI → MAHI, SST-675-LOVE → LOVE. A purely-numeric tail
+// (RE-PRO-20, MMI-480) is not a marka → grouped under "— No marka".
+const NO_MARKA = '— No marka'
+function markaOf(lotNo: string): string {
+  const last = lotNo.split('-').pop()?.trim() ?? ''
+  return last && /[a-z]/i.test(last) ? last.toUpperCase() : NO_MARKA
+}
+
+type GroupMode = 'quality' | 'marka'
+interface Group { key: string; totalThan: number; lots: Lot[] }
+
+// Regroup a party's lots by the active mode. Quality mode returns the
+// server's existing quality groups untouched; marka mode re-buckets every
+// lot by its suffix, largest-than first (No-marka bucket always last).
+function groupsForParty(p: PartyGroup, mode: GroupMode): Group[] {
+  if (mode === 'quality') {
+    return p.qualities.map(q => ({ key: q.quality, totalThan: q.totalThan, lots: q.lots }))
+  }
+  const map = new Map<string, Lot[]>()
+  for (const q of p.qualities) {
+    for (const l of q.lots) {
+      const k = markaOf(l.lotNo)
+      if (!map.has(k)) map.set(k, [])
+      map.get(k)!.push(l)
+    }
+  }
+  return Array.from(map.entries())
+    .map(([key, lots]) => ({ key, totalThan: lots.reduce((s, l) => s + l.remaining, 0), lots }))
+    .sort((a, b) => {
+      if (a.key === NO_MARKA) return 1
+      if (b.key === NO_MARKA) return -1
+      return b.totalThan - a.totalThan
+    })
+}
+
 interface Props {
   open: boolean
   onClose: () => void
@@ -45,6 +81,8 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
   const [selectedParties, setSelectedParties] = useState<Set<string>>(new Set())
   // When on, show only stock belonging to "Pali PC Job"-tagged parties.
   const [paliOnly, setPaliOnly] = useState(false)
+  // When on, group each party by marka (lot suffix) instead of quality.
+  const [markaMode, setMarkaMode] = useState(false)
 
   // Restore expansion state from sessionStorage
   useEffect(() => {
@@ -56,6 +94,7 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
       if (p) setExpandedParties(new Set(JSON.parse(p)))
       if (q) setExpandedQualities(new Set(JSON.parse(q)))
       if (s) setSearch(s)
+      if (sessionStorage.getItem('unallocated-marka-mode') === '1') setMarkaMode(true)
     } catch {}
     setLoading(true)
     fetch('/api/grey/unallocated-stock', { cache: 'no-store' })
@@ -92,8 +131,9 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
       sessionStorage.setItem('unallocated-expanded-parties', JSON.stringify(Array.from(expandedParties)))
       sessionStorage.setItem('unallocated-expanded-qualities', JSON.stringify(Array.from(expandedQualities)))
       sessionStorage.setItem('unallocated-search', search)
+      sessionStorage.setItem('unallocated-marka-mode', markaMode ? '1' : '0')
     } catch {}
-  }, [expandedParties, expandedQualities, search, open])
+  }, [expandedParties, expandedQualities, search, markaMode, open])
 
   // PC Pali stock = lots whose party carries the "Pali PC Job" tag.
   const isPaliPcLot = (l: Lot) => (l.partyTag || '').toLowerCase() === 'pali pc job'
@@ -182,10 +222,10 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
         doc.setFont('helvetica', 'normal')
         y += 1.5
 
-        for (const q of p.qualities) {
+        for (const q of groupsForParty(p, markaMode ? 'marka' : 'quality')) {
           autoTable(doc, {
             head: [
-              [{ content: q.quality, colSpan: 7, styles: { fillColor: [99, 102, 241], textColor: 255, halign: 'left' } },
+              [{ content: q.key, colSpan: 7, styles: { fillColor: [99, 102, 241], textColor: 255, halign: 'left' } },
                { content: `${q.totalThan} than`, styles: { fillColor: [99, 102, 241], textColor: 255, halign: 'right' } }],
               [
                 'Date', 'Lot No', 'Chln', 'Wght', 'LR', 'Weaver Name Bill', 'Marka',
@@ -266,6 +306,15 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setMarkaMode(v => !v)}
+              title="Group each party by marka (lot-number suffix) instead of quality"
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
+                markaMode
+                  ? 'bg-teal-600 text-white border-teal-600'
+                  : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+              }`}>
+              🏷 Marka{markaMode ? ' ✓' : ''}
+            </button>
             <button onClick={() => setPaliOnly(v => !v)}
               title="Show only stock of parties tagged 'Pali PC Job'"
               className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition ${
@@ -319,6 +368,7 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
               {filtered.parties.map(p => {
                 const pOpen = expandedParties.has(p.party)
                 const isPicked = selectedParties.has(p.party)
+                const groups = groupsForParty(p, markaMode ? 'marka' : 'quality')
                 return (
                   <div key={p.party} className={`border rounded-xl overflow-hidden ${
                     isPicked ? 'border-violet-400 dark:border-violet-600 ring-1 ring-violet-300 dark:ring-violet-700/40' : 'border-gray-200 dark:border-gray-700'
@@ -339,7 +389,7 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                       )}
                       <div className="text-left flex-1 min-w-0">
                         <p className="text-sm font-bold text-gray-800 dark:text-gray-100 truncate">{p.party}</p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{p.qualities.length} quality · {p.totalLots} lots</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{groups.length} {markaMode ? 'marka' : 'quality'} · {p.totalLots} lots</p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{p.totalThan}</span>
@@ -349,8 +399,8 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
 
                     {pOpen && (
                       <div className="px-3 pb-3 pt-2 space-y-1.5 border-t border-gray-100 dark:border-gray-700">
-                        {p.qualities.map(q => {
-                          const qKey = `${p.party}::${q.quality}`
+                        {groups.map(q => {
+                          const qKey = `${p.party}::${markaMode ? 'mk' : 'ql'}::${q.key}`
                           const qOpen = expandedQualities.has(qKey)
                           return (
                             <div key={qKey} className="border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden">
@@ -358,7 +408,11 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                 onClick={() => toggleQuality(qKey)}
                                 className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition"
                               >
-                                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{q.quality}</span>
+                                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+                                  {markaMode && q.key !== NO_MARKA && <span className="text-indigo-500 dark:text-indigo-400">🏷</span>}
+                                  {q.key}
+                                  <span className="text-[10px] text-gray-400 font-normal">· {q.lots.length} lot{q.lots.length === 1 ? '' : 's'}</span>
+                                </span>
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">{q.totalThan}</span>
                                   <span className={`text-gray-400 text-[10px] transition-transform ${qOpen ? 'rotate-90' : ''}`}>▶</span>
@@ -392,9 +446,11 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                         </div>
                                         {(() => {
                                           const showMarka = /prakash\s+shirting/i.test(l.party) || (l.partyTag || '').toLowerCase() === 'pali pc job'
-                                          if (!l.challanNos && !l.date && !(showMarka && l.marka)) return null
+                                          // In marka mode quality is no longer the group header, so show it per lot.
+                                          if (!l.challanNos && !l.date && !markaMode && !(showMarka && l.marka)) return null
                                           return (
                                             <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-x-2">
+                                              {markaMode && l.quality && <span className="text-gray-600 dark:text-gray-300 font-medium">{l.quality}</span>}
                                               {l.challanNos && <span>Ch: {l.challanNos}</span>}
                                               {l.date && <span>{new Date(l.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>}
                                               {showMarka && l.marka && <span>Marka: {l.marka}</span>}
