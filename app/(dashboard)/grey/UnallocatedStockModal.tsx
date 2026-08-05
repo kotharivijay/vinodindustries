@@ -453,7 +453,7 @@ export default function UnallocatedStockModal({ open, onClose }: Props) {
                                               {markaMode && l.quality && <span className="text-gray-600 dark:text-gray-300 font-medium">{l.quality}</span>}
                                               {l.challanNos && <span>Ch: {l.challanNos}</span>}
                                               {l.date && <span>{new Date(l.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}</span>}
-                                              {showMarka && l.marka && <span>Marka: {l.marka}</span>}
+                                              {showMarka && l.marka && <span className="text-[12px] font-bold text-amber-600 dark:text-amber-400">Marka: {l.marka}</span>}
                                             </p>
                                           )
                                         })()}
