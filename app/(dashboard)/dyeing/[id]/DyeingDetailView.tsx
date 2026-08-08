@@ -22,6 +22,8 @@ interface Addition {
   defectType: string | null
   defectPhoto: string | null
   reason: string | null
+  resultShadeName?: string | null
+  resultShadeDescription?: string | null
   createdAt: string
   machine?: { name: string } | null
   operator?: { name: string } | null
@@ -244,15 +246,27 @@ export default function DyeingDetailView({ id }: { id: string }) {
             <p className="font-medium text-gray-800 dark:text-gray-100">{entry.slipNo}</p>
           </div>
           {(entry.shadeName || entry.foldBatch?.shade?.name) && (() => {
-            const name = entry.shadeName || entry.foldBatch?.shade?.name || ''
+            const baseName = entry.shadeName || entry.foldBatch?.shade?.name || ''
             // Slip-level descriptor wins, then fold-batch, then master.
-            const desc = entry.shadeDescription || entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+            const baseDesc = entry.shadeDescription || entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+            // Effective shade: latest addition round that set a result shade
+            // overrides the slip shade (e.g. Milan-K cream → T-186).
+            const changed = (entry.additions ?? [])
+              .filter(a => a.resultShadeName && a.resultShadeName.trim())
+              .sort((a, b) => b.roundNo - a.roundNo)[0]
+            const name = changed ? changed.resultShadeName!.trim() : baseName
+            const desc = changed ? (changed.resultShadeDescription?.trim() || null) : baseDesc
             return (
               <div>
                 <p className="text-xs text-gray-400">Shade</p>
                 <p className="font-medium text-gray-800 dark:text-gray-100">
                   {name}{desc ? <span className="text-gray-500 dark:text-gray-400"> — {desc}</span> : null}
                 </p>
+                {changed && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                    was {baseName} · changed in Round {changed.roundNo}
+                  </p>
+                )}
               </div>
             )
           })()}
