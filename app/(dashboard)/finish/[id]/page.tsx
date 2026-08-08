@@ -45,6 +45,8 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
       id: true, slipNo: true, shadeName: true, shadeDescription: true,
       lots: { select: { lotNo: true, than: true } },
       foldBatch: { select: { shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true, colorCategory: true } } } },
+      // Per-round resulting shade — an addition may have changed the colour.
+      additions: { select: { roundNo: true, resultShadeName: true, resultShadeDescription: true } },
     },
     orderBy: { slipNo: 'desc' },
     distinct: ['id'],
@@ -54,16 +56,22 @@ export default async function FinishDetailPage({ params }: { params: Promise<{ i
   // fit-by-than heuristic and produces a different colour-category split than
   // the printed slip (the on-screen vs print mismatch on FP 289).
   const categoryByShadeName = await buildShadeCategoryMap()
+  const { effectiveShade } = await import('@/lib/effective-shade')
   const allocatedFolds = allocateFpToDyeingSlips(
     lots.map((l: any) => ({ id: l.id, lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
-    dyeingEntries.map((de: any) => ({
-      id: de.id,
-      slipNo: de.slipNo,
-      shadeName: de.shadeName ?? null,
-      shadeDescription: de.shadeDescription ?? null,
-      lots: de.lots,
-      foldBatch: de.foldBatch ?? null,
-    })),
+    dyeingEntries.map((de: any) => {
+      // Effective shade wins — if an addition changed the colour (K-cream →
+      // T-186), the finish program shows the final shade.
+      const eff = effectiveShade({ shadeName: de.shadeName ?? null, shadeDescription: de.shadeDescription ?? null, additions: de.additions })
+      return {
+        id: de.id,
+        slipNo: de.slipNo,
+        shadeName: eff.name,
+        shadeDescription: eff.description,
+        lots: de.lots,
+        foldBatch: de.foldBatch ?? null,
+      }
+    }),
     categoryByShadeName,
   )
 
