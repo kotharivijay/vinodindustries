@@ -169,9 +169,15 @@ export default function DyeingDetailView({ id }: { id: string }) {
     try {
       const slipLots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo, than: entry.than }]
       // Combine shade name + per-batch descriptor (Hitset / APC use-case)
-      // into a single label for the shared PDF.
-      const baseName = entry.shadeName ?? entry.foldBatch?.shade?.name ?? null
-      const desc = entry.shadeDescription || entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+      // into a single label for the shared PDF. An addition round may have
+      // changed the colour — use the effective (final) shade.
+      const baseName0 = entry.shadeName ?? entry.foldBatch?.shade?.name ?? null
+      const baseDesc0 = entry.shadeDescription || entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+      const changed0 = (entry.additions ?? [])
+        .filter(a => a.resultShadeName && a.resultShadeName.trim())
+        .sort((a, b) => b.roundNo - a.roundNo)[0]
+      const baseName = changed0 ? changed0.resultShadeName!.trim() : baseName0
+      const desc = changed0 ? (changed0.resultShadeDescription?.trim() || null) : baseDesc0
       const combinedShade = baseName ? (desc ? `${baseName} — ${desc}` : baseName) : null
       const slip: SlipData = {
         slipNo: entry.slipNo,

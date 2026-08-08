@@ -4,6 +4,12 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import BackButton from '../../BackButton'
+import { effectiveShade } from '@/lib/effective-shade'
+
+// Effective shade: a later addition round may have changed the colour.
+function effShadeName(e: { shadeName: string | null; additions?: any[] | null }): string | null {
+  return effectiveShade({ shadeName: e.shadeName, additions: e.additions }).name
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -605,7 +611,7 @@ export default function PcDyeingPage() {
     let filtered = savedEntries.filter(e => {
       if (!q) return true
       const allLots = (e.lots?.length ? e.lots.map(l => l.lotNo) : [e.lotNo]).join(' ').toLowerCase()
-      return allLots.includes(q) || String(e.slipNo).includes(q) || (e.partyName ?? '').toLowerCase().includes(q) || (e.marka ?? '').toLowerCase().includes(q) || (e.shadeName ?? '').toLowerCase().includes(q)
+      return allLots.includes(q) || String(e.slipNo).includes(q) || (e.partyName ?? '').toLowerCase().includes(q) || (e.marka ?? '').toLowerCase().includes(q) || `${e.shadeName ?? ''} ${effShadeName(e) ?? ''}`.toLowerCase().includes(q)
     })
     filtered.sort((a, b) => {
       switch (savedSort) {
@@ -981,7 +987,7 @@ export default function PcDyeingPage() {
 
                     <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2">
                       <div><span className="text-gray-500">Marka:</span> <span className="text-gray-200 font-medium">{e.marka || '-'}</span></div>
-                      <div><span className="text-gray-500">Shade:</span> <span className="text-gray-200">{e.shadeName || '-'}</span></div>
+                      <div><span className="text-gray-500">Shade:</span> <span className="text-gray-200">{effShadeName(e) || '-'}</span></div>
                       <div><span className="text-gray-500">Machine:</span> <span className="text-gray-200">{e.machine?.name || '-'}</span></div>
                       <div><span className="text-gray-500">Operator:</span> <span className="text-gray-200">{e.operator?.name || '-'}</span></div>
                     </div>

@@ -6,7 +6,14 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import BackButton from '../BackButton'
 import { generateMultiSlipPDF, sharePDF, type SlipData } from '@/lib/pdf-share'
+import { effectiveShade } from '@/lib/effective-shade'
 import { useRole } from '../RoleContext'
+
+// Effective shade name for a list entry: a later addition round may have
+// changed the colour (e.g. K-cream → T-186). Falls back to fold-batch shade.
+function effShadeName(e: { shadeName?: string | null; foldBatch?: { shade?: { name: string } | null } | null; additions?: any[] | null }): string | null {
+  return effectiveShade({ shadeName: e.shadeName ?? e.foldBatch?.shade?.name ?? null, additions: e.additions }).name
+}
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -610,7 +617,7 @@ export default function DyeingListPage() {
         if (hideDone && e.dyeingDoneAt) return false
         const allLots = (e.lots?.length ? e.lots.map(l => l.lotNo) : [e.lotNo]).join(' ').toLowerCase()
         const foldStr = (e.foldBatch ? `fold ${e.foldBatch.foldProgram?.foldNo ?? ''} batch ${e.foldBatch.batchNo}` : '').toLowerCase()
-        const shadeStr = (e.shadeName ?? e.foldBatch?.shade?.name ?? '').toLowerCase()
+        const shadeStr = `${e.shadeName ?? e.foldBatch?.shade?.name ?? ''} ${effShadeName(e) ?? ''}`.toLowerCase()
         const matchSearch = !q || allLots.includes(q) || String(e.slipNo).includes(q) || (e.partyName ?? '').toLowerCase().includes(q) || foldStr.includes(q) || shadeStr.includes(q)
         const matchLot = !fl || allLots.includes(fl)
         const matchSlip = !fs || String(e.slipNo).includes(fs)
@@ -953,10 +960,10 @@ export default function DyeingListPage() {
                               {e.operator && <span className="text-[10px] text-gray-400 bg-gray-700 px-1.5 py-0.5 rounded">{e.operator.name}</span>}
                             </div>
                           )}
-                          {e.shadeName && (
+                          {effShadeName(e) && (
                             <div className="flex items-center gap-1.5 mt-1">
                               <span className="text-[10px] text-gray-500 uppercase tracking-wide">Shade</span>
-                              <span className="inline-block bg-purple-700/50 text-purple-200 text-xs font-bold px-2.5 py-0.5 rounded-full border border-purple-600/40">{e.shadeName}</span>
+                              <span className="inline-block bg-purple-700/50 text-purple-200 text-xs font-bold px-2.5 py-0.5 rounded-full border border-purple-600/40">{effShadeName(e)}</span>
                             </div>
                           )}
                           {e.notes && <p className="text-[10px] text-gray-500 mt-0.5 truncate">{e.notes}</p>}
@@ -1073,8 +1080,8 @@ export default function DyeingListPage() {
                               </div>
                             </td>
                             <td className="px-3 py-2.5">
-                              {e.shadeName
-                                ? <span className="inline-block bg-purple-900/40 text-purple-300 text-xs font-semibold px-2 py-0.5 rounded-full">{e.shadeName}</span>
+                              {effShadeName(e)
+                                ? <span className="inline-block bg-purple-900/40 text-purple-300 text-xs font-semibold px-2 py-0.5 rounded-full">{effShadeName(e)}</span>
                                 : <span className="text-gray-600">&mdash;</span>}
                             </td>
                             <td className="px-3 py-2.5 text-sm text-gray-400">{e.partyName ?? '\u2014'}</td>
@@ -1193,7 +1200,7 @@ export default function DyeingListPage() {
                                 {st === 'pending' && <span className="text-amber-400 text-xs">Pending</span>}
                               </div>
                               <div className="text-xs text-gray-500 truncate">
-                                {lots.map((l: any) => l.lotNo).join(', ')} ({totalThan} than) {e.shadeName ? `| ${e.shadeName}` : ''}
+                                {lots.map((l: any) => l.lotNo).join(', ')} ({totalThan} than) {effShadeName(e) ? `| ${effShadeName(e)}` : ''}
                               </div>
                             </div>
                             <div className="text-right shrink-0">

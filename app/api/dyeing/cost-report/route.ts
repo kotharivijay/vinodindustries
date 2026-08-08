@@ -69,9 +69,12 @@ export async function GET(req: NextRequest) {
           shadeDescription: true,
         },
       },
+      // Per-round resulting shade — an addition may have changed the colour.
+      additions: { select: { roundNo: true, resultShadeName: true, resultShadeDescription: true } },
     },
     orderBy: { date: 'desc' },
   })
+  const { effectiveShade } = await import('@/lib/effective-shade')
   const reworkIdSet = new Set(pcReworkSlipIds)
 
   // Get quality per lot
@@ -104,7 +107,7 @@ export async function GET(req: NextRequest) {
 
     // Name follows the codebase convention: slip snapshot → live shade
     // master → fold-batch snapshot.
-    const shadeName = e.shadeName || e.foldBatch?.shade?.name || e.foldBatch?.shadeName || 'Unknown'
+    const baseShadeName = e.shadeName || e.foldBatch?.shade?.name || e.foldBatch?.shadeName || 'Unknown'
 
     // Description fall-through: slip snapshot → fold-batch snapshot → live
     // shade master. The live-master fallback is gated on a name match so a
@@ -112,20 +115,27 @@ export async function GET(req: NextRequest) {
     // attach its current description to a slip still showing the old name
     // T-296. When the master has been renamed, its description is treated
     // as not-applicable for this slip and we fall through to empty.
-    let shadeDesc = ''
+    let baseShadeDesc = ''
     if (e.shadeDescription) {
-      shadeDesc = e.shadeDescription
+      baseShadeDesc = e.shadeDescription
     } else if (e.foldBatch?.shadeDescription) {
-      shadeDesc = e.foldBatch.shadeDescription
-    } else if (e.foldBatch?.shade?.name === shadeName && e.foldBatch?.shade?.description) {
-      shadeDesc = e.foldBatch.shade.description
+      baseShadeDesc = e.foldBatch.shadeDescription
+    } else if (e.foldBatch?.shade?.name === baseShadeName && e.foldBatch?.shade?.description) {
+      baseShadeDesc = e.foldBatch.shade.description
     }
+
+    // Effective shade: an addition round may have changed the colour to a
+    // different shade (e.g. K-cream → T-186). The cost then belongs to the
+    // new shade, so group under it.
+    const eff = effectiveShade({ shadeName: baseShadeName, shadeDescription: baseShadeDesc || null, additions: e.additions })
+    const shadeName = eff.name || 'Unknown'
+    const shadeDesc = eff.description || ''
     const shadeLabel = shadeName + (shadeDesc ? ` — ${shadeDesc}` : '')
 
     // Colour category lives only on the live shade master (not snapshotted on
-    // the slip), so gate it on a name match to avoid mis-attributing a renamed
-    // master's category to a slip showing the old name.
-    const colorCategory = e.foldBatch?.shade?.name === shadeName ? (e.foldBatch?.shade?.colorCategory ?? null) : null
+    // the slip), so gate it on a name match. A changed shade no longer maps to
+    // the fold's master shade, so no category is attached.
+    const colorCategory = !eff.changed && e.foldBatch?.shade?.name === shadeName ? (e.foldBatch?.shade?.colorCategory ?? null) : null
 
     // Split chemicals into dyes and auxiliary
     const dyes: any[] = []

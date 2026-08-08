@@ -53,11 +53,18 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
 
   // Shade description priority: slip > fold batch > master. Lets Hitset /
   // APC carry per-slip "Red" / "Rani" all the way through to print.
-  let shadeDescription: string | null = entry.shadeDescription || entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
-  if (!shadeDescription && entry.shadeName) {
+  let baseShadeDescription: string | null = entry.shadeDescription || entry.foldBatch?.shadeDescription || entry.foldBatch?.shade?.description || null
+  if (!baseShadeDescription && entry.shadeName) {
     const shade = await db.shade.findFirst({ where: { name: entry.shadeName }, select: { description: true } })
-    shadeDescription = shade?.description || null
+    baseShadeDescription = shade?.description || null
   }
+
+  // Effective shade: an addition round may have changed the colour (e.g.
+  // K-cream → T-186). The printed slip shows the final shade.
+  const { effectiveShade } = await import('@/lib/effective-shade')
+  const eff = effectiveShade({ shadeName: entry.shadeName, shadeDescription: baseShadeDescription, additions: entry.additions })
+  const printShadeName: string | null = eff.name
+  const shadeDescription: string | null = eff.description
 
   const lots = entry.lots?.length ? entry.lots : [{ lotNo: entry.lotNo, than: entry.than }]
   const totalThan = lots.reduce((s: number, l: any) => s + l.than, 0)
@@ -152,7 +159,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
         </div>
         <div className="flex gap-2">
           <span className="font-semibold w-24">Shade:</span>
-          <span>{entry.shadeName || '\u2014'}{shadeDescription ? ` \u2014 ${shadeDescription}` : ''}</span>
+          <span>{printShadeName || '\u2014'}{shadeDescription ? ` \u2014 ${shadeDescription}` : ''}</span>
         </div>
         {qualityName && (
           <div className="flex gap-2">
@@ -376,7 +383,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           slipNo: entry.slipNo,
           date: entry.date,
           partyName: partyName || null,
-          shadeName: entry.shadeName || null,
+          shadeName: printShadeName || null,
           shadeDescription: shadeDescription || null,
           qualityName: qualityName || null,
           marka: entryMarka || null,
@@ -395,7 +402,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           slipNo: entry.slipNo,
           date: new Date(entry.date).toLocaleDateString('en-IN'),
           partyName,
-          shadeName: entry.shadeName || null,
+          shadeName: printShadeName || null,
           shadeDescription: shadeDescription || null,
           qualityName: qualityName || null,
           marka: entryMarka || null,
@@ -418,7 +425,7 @@ export default async function DyeingPrintPage({ params, searchParams }: { params
           slipNo: entry.slipNo,
           date: new Date(entry.date).toLocaleDateString('en-IN'),
           partyName,
-          shadeName: entry.shadeName || null,
+          shadeName: printShadeName || null,
           shadeDescription: shadeDescription || null,
           qualityName: qualityName || null,
           marka: entryMarka || null,
