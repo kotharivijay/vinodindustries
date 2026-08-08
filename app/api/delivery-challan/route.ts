@@ -130,11 +130,14 @@ export async function POST(req: NextRequest) {
       dyeingEntry: {
         select: {
           shadeName: true,
+          shadeDescription: true,
           foldBatch: { select: { shade: { select: { name: true, colorCategory: true } } } },
+          additions: { select: { roundNo: true, resultShadeName: true, resultShadeDescription: true } },
         },
       },
     },
   })
+  const { effectiveShade } = await import('@/lib/effective-shade')
   if (fels.length !== felIds.length) {
     return NextResponse.json({ error: 'FEL_NOT_FOUND', message: 'One or more finish-lot ids do not exist.' }, { status: 400 })
   }
@@ -215,14 +218,19 @@ export async function POST(req: NextRequest) {
       create: fels.map((f: any) => {
         const key = f.lotNo.toLowerCase().trim()
         const tp = transportByLot.get(key)
+        // Snapshot the effective shade — an addition round may have changed
+        // the colour (e.g. K-cream → T-186), and the challan should carry the
+        // final shade.
+        const de = f.dyeingEntry
+        const effF = de ? effectiveShade({ shadeName: de.shadeName || de.foldBatch?.shade?.name || null, shadeDescription: de.shadeDescription ?? null, additions: de.additions }) : null
         return {
           finishEntryLotId: f.id,
           finishEntryId: f.entry.id,
           finishSlipNo: f.entry.slipNo,
           lotNo: f.lotNo,
           qualityName: qualityByLot.get(key) ?? null,
-          shadeName: f.dyeingEntry?.shadeName || f.dyeingEntry?.foldBatch?.shade?.name || null,
-          shadeCategory: f.dyeingEntry?.foldBatch?.shade?.colorCategory || null,
+          shadeName: effF?.name ?? null,
+          shadeCategory: effF?.changed ? null : (f.dyeingEntry?.foldBatch?.shade?.colorCategory || null),
           than: f.status === 'done' ? f.than : f.doneThan,
           meter: null, // PC Job challans don't carry meter
           transportName: tp?.name ?? null,

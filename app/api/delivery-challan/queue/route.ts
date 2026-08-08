@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { effectiveShade } from '@/lib/effective-shade'
 
 const db = prisma as any
 
@@ -31,7 +32,9 @@ export async function GET() {
       dyeingEntry: {
         select: {
           shadeName: true,
+          shadeDescription: true,
           foldBatch: { select: { shade: { select: { name: true, description: true, colorCategory: true } } } },
+          additions: { select: { roundNo: true, resultShadeName: true, resultShadeDescription: true } },
         },
       },
       entry: {
@@ -118,8 +121,11 @@ export async function GET() {
     // group stays on the legacy finishDespSlipNo flow.
     if (info.partyTag !== 'Pali PC Job') continue
 
-    const shadeName = f.dyeingEntry?.shadeName || f.dyeingEntry?.foldBatch?.shade?.name || null
-    const shadeCategory = f.dyeingEntry?.foldBatch?.shade?.colorCategory || null
+    // Effective shade — an addition round may have changed the colour.
+    const de = f.dyeingEntry
+    const effQ = de ? effectiveShade({ shadeName: de.shadeName || de.foldBatch?.shade?.name || null, shadeDescription: de.shadeDescription ?? null, additions: de.additions }) : null
+    const shadeName = effQ?.name ?? null
+    const shadeCategory = effQ?.changed ? null : (f.dyeingEntry?.foldBatch?.shade?.colorCategory || null)
     const rowThan = f.status === 'done' ? f.than : f.doneThan
 
     if (!parties.has(info.partyId)) {

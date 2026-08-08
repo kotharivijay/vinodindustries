@@ -102,22 +102,32 @@ export async function GET() {
         shadeDescription: true,
         lots: { select: { lotNo: true } },
         foldBatch: { select: { shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true, colorCategory: true } } } },
+        // Per-round resulting shade — an addition may have changed the colour.
+        additions: { select: { roundNo: true, resultShadeName: true, resultShadeDescription: true } },
       },
     }),
   ])
+  const { effectiveShade } = await import('@/lib/effective-shade')
+  // Effective (final) shade for a source dye slip.
+  const dyeShade = (de: any) => {
+    const baseName = de.shadeName || de.foldBatch?.shade?.name || null
+    const baseDesc = de.shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
+    const eff = effectiveShade({ shadeName: baseName, shadeDescription: baseDesc, additions: de.additions })
+    return { shadeName: eff.name, shadeDescription: eff.description, changed: eff.changed }
+  }
 
   // Per-id map — when a FEL has dyeingEntryId set, resolve its EXACT source
   // slip's shade/fold/slipNo instead of the lot-level first-match heuristic.
   const dyeingById = new Map<number, { dyeSlipNo: number; shadeName: string | null; shadeDescription: string | null; shadeColorCategory: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
-    const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
-    // Colour category lives only on the live master — gate on a name match.
-    const colorCategory = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
+    const { shadeName, shadeDescription, changed } = dyeShade(de)
+    // Colour category lives only on the live master — gate on a name match;
+    // a changed shade no longer maps to the fold's master.
+    const colorCategory = !changed && de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
     dyeingById.set(de.id, {
       dyeSlipNo: de.slipNo,
       shadeName,
-      // Slip > fold batch > master so dyeing form Step 2 wins.
-      shadeDescription: (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null,
+      shadeDescription,
       shadeColorCategory: colorCategory,
       foldNo: de.foldBatch?.foldProgram?.foldNo || null,
     })
@@ -125,10 +135,8 @@ export async function GET() {
   // Fallback for unlinked FELs — first dye entry that touched this lot.
   const lotDyeMap = new Map<string, { shadeName: string | null; shadeDescription: string | null; shadeColorCategory: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
-    const shade = de.shadeName || de.foldBatch?.shade?.name || null
-    // Slip > fold batch > master.
-    const desc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
-    const colorCategory = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shade ? (de.foldBatch.shade.colorCategory ?? null) : null
+    const { shadeName: shade, shadeDescription: desc, changed } = dyeShade(de)
+    const colorCategory = !changed && de.foldBatch?.shade?.name && de.foldBatch.shade.name === shade ? (de.foldBatch.shade.colorCategory ?? null) : null
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
     const lotsInEntry = de.lots?.length ? de.lots.map((l: any) => l.lotNo) : [de.lotNo]
     for (const ln of lotsInEntry) {

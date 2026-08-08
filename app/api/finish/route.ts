@@ -64,10 +64,20 @@ export async function GET() {
             shade: { select: { name: true, description: true, colorCategory: true } },
           },
         },
+        // Per-round resulting shade — an addition may have changed the colour.
+        additions: { select: { roundNo: true, resultShadeName: true, resultShadeDescription: true } },
       },
     }).catch(() => []),
     buildShadeCategoryMap(),
   ])
+  const { effectiveShade } = await import('@/lib/effective-shade')
+  // Effective (final) shade name + description for a source dye slip.
+  const dyeShade = (de: any) => {
+    const baseName = de.shadeName || de.foldBatch?.shade?.name || null
+    const baseDesc = de.shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
+    const eff = effectiveShade({ shadeName: baseName, shadeDescription: baseDesc, additions: de.additions })
+    return { shadeName: eff.name, shadeDesc: eff.description, changed: eff.changed }
+  }
 
   // Per-id index so an FEL row with dyeingEntryId can resolve its exact
   // source slip's meta (slipNo / shade / fold) without the lot-level
@@ -75,15 +85,12 @@ export async function GET() {
   const dyeingById = new Map<number, { slipNo: number; shadeName: string | null; shadeDesc: string | null; colorCategory: string | null; foldNo: string | null }>()
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
-    const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
-    // Display priority: slip-level (DyeingEntry.shadeDescription) wins,
-    // then fold-batch override, then the master. Lets generic recipes
-    // (Hitset / APC) carry the real colour per slip.
-    const shadeDesc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
+    // Effective shade — an addition round may have changed the colour.
+    const { shadeName, shadeDesc, changed } = dyeShade(de)
     // Colour category from the live master, resolved by the slip's actual shade
     // NAME (the operator-typed truth); fall back to the FK only when its master
-    // name matches. See lib/shade-category.ts.
-    const fkCat = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
+    // name matches. A changed shade no longer maps to the fold's master.
+    const fkCat = !changed && de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
     const colorCategory = categoryForShadeName(categoryByShadeName, shadeName) ?? fkCat
     dyeingById.set(de.id, { slipNo: de.slipNo, shadeName, shadeDesc, colorCategory, foldNo })
   }
@@ -93,12 +100,8 @@ export async function GET() {
   const dyeingByLotNo = new Map<string, any[]>()
   for (const de of dyeingEntries) {
     const foldNo = de.foldBatch?.foldProgram?.foldNo || null
-    const shadeName = de.shadeName || de.foldBatch?.shade?.name || null
-    // Display priority: slip-level (DyeingEntry.shadeDescription) wins,
-    // then fold-batch override, then the master. Lets generic recipes
-    // (Hitset / APC) carry the real colour per slip.
-    const shadeDesc = (de as any).shadeDescription || de.foldBatch?.shadeDescription || de.foldBatch?.shade?.description || null
-    const fkCat = de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
+    const { shadeName, shadeDesc, changed } = dyeShade(de)
+    const fkCat = !changed && de.foldBatch?.shade?.name && de.foldBatch.shade.name === shadeName ? (de.foldBatch.shade.colorCategory ?? null) : null
     const colorCategory = categoryForShadeName(categoryByShadeName, shadeName) ?? fkCat
     const dLots = de.lots?.length ? de.lots : []
     for (const lot of dLots) {

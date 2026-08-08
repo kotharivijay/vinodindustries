@@ -49,6 +49,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       id: true,
       slipNo: true,
       shadeName: true,
+      shadeDescription: true,
       lots: { select: { lotNo: true, than: true } },
       foldBatch: {
         select: {
@@ -57,20 +58,30 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           shade: { select: { name: true, description: true, colorCategory: true } },
         },
       },
+      // Per-round resulting shade — an addition may have changed the colour.
+      additions: { select: { roundNo: true, resultShadeName: true, resultShadeDescription: true } },
     },
     orderBy: { slipNo: 'desc' },
   })
 
   const categoryByShadeName = await buildShadeCategoryMap()
+  const { effectiveShade } = await import('@/lib/effective-shade')
   const foldGroups = allocateFpToDyeingSlips(
     fpLots.map((l: any) => ({ id: l.id, lotNo: l.lotNo, than: Number(l.than), dyeingEntryId: l.dyeingEntryId ?? null })),
-    dyeingEntries.map((de: any) => ({
-      id: de.id,
-      slipNo: de.slipNo,
-      shadeName: de.shadeName ?? null,
-      lots: de.lots,
-      foldBatch: de.foldBatch ?? null,
-    })),
+    dyeingEntries.map((de: any) => {
+      // Effective shade wins — if an addition changed the colour, the printed
+      // finish program shows the final shade. Passed as shadeName/description
+      // which the allocator prefers over the fold-batch master.
+      const eff = effectiveShade({ shadeName: de.shadeName ?? null, shadeDescription: de.shadeDescription ?? null, additions: de.additions })
+      return {
+        id: de.id,
+        slipNo: de.slipNo,
+        shadeName: eff.name,
+        shadeDescription: eff.description,
+        lots: de.lots,
+        foldBatch: de.foldBatch ?? null,
+      }
+    }),
     categoryByShadeName,
   )
 
