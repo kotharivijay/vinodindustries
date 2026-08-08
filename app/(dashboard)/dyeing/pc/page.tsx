@@ -160,6 +160,9 @@ export default function PcDyeingPage() {
   const [addChemRows, setAddChemRows] = useState<{chemicalId: number | null; name: string; quantity: string; unit: string; rate: string; cost: number | null}[]>([])
   const [addReason, setAddReason] = useState('')
   const [addSaving, setAddSaving] = useState(false)
+  const [addShadeChanged, setAddShadeChanged] = useState(false)
+  const [addResultShade, setAddResultShade] = useState('')
+  const [addResultShadeDesc, setAddResultShadeDesc] = useState('')
   const [addChemDrop, setAddChemDrop] = useState<number | null>(null)
   const [addChemSearch, setAddChemSearch] = useState('')
 
@@ -487,6 +490,9 @@ export default function PcDyeingPage() {
     setAdditionEntry(e)
     setAddChemRows([{ chemicalId: null, name: '', quantity: '', unit: 'kg', rate: '', cost: null }])
     setAddReason('')
+    setAddShadeChanged(false)
+    setAddResultShade('')
+    setAddResultShadeDesc('')
     setAddSaving(false)
   }
 
@@ -501,7 +507,9 @@ export default function PcDyeingPage() {
       const res = await fetch(`/api/dyeing/${additionEntry.id}/additions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'addition', roundNo: additionEntry.totalRounds ?? 1, reason: addReason || null, chemicals: chems }),
+        body: JSON.stringify({ type: 'addition', roundNo: additionEntry.totalRounds ?? 1, reason: addReason || null, chemicals: chems,
+          resultShadeName: addShadeChanged ? (addResultShade.trim() || null) : null,
+          resultShadeDescription: addShadeChanged ? (addResultShadeDesc.trim() || null) : null }),
       })
       if (res.ok) {
         const fresh = await fetch('/api/dyeing/pc').then(r => r.json())
@@ -1084,6 +1092,26 @@ export default function PcDyeingPage() {
               <button onClick={() => setAddChemRows(prev => [...prev, { chemicalId: null, name: '', quantity: '', unit: 'kg', rate: '', cost: null }])}
                 className="text-xs text-teal-400 hover:text-teal-300">+ Add Row</button>
             </div>
+
+            {/* Resulting shade — only when this addition changed the colour */}
+            <div className={`mt-4 rounded-xl border p-3 space-y-2 ${addShadeChanged ? 'border-teal-700 bg-teal-950/30' : 'border-gray-700 bg-gray-800/40'}`}>
+              <label className="flex items-center gap-2 text-sm font-semibold text-teal-300 cursor-pointer select-none">
+                <input type="checkbox" checked={addShadeChanged} onChange={e => setAddShadeChanged(e.target.checked)} className="w-4 h-4 accent-teal-600" />
+                🎨 Shade changed after this round?
+              </label>
+              {addShadeChanged && (
+                <>
+                  <p className="text-[11px] text-gray-400">
+                    Was <span className="text-gray-200 font-medium">{additionEntry.shadeName || '—'}</span>. Enter the new shade — it will show in Finish stock &amp; cost.
+                  </p>
+                  <input type="text" value={addResultShade} onChange={e => setAddResultShade(e.target.value)} placeholder="New shade name (e.g. T-186)"
+                    className="w-full bg-gray-700 border border-teal-700 text-gray-100 placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  <input type="text" value={addResultShadeDesc} onChange={e => setAddResultShadeDesc(e.target.value)} placeholder="New description (optional, e.g. R Maroon)"
+                    className="w-full bg-gray-700 border border-gray-600 text-gray-100 placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                </>
+              )}
+            </div>
+
             <div className="flex gap-3 mt-5">
               <button onClick={() => setAdditionEntry(null)} className={btnSecondary}>Cancel</button>
               <button onClick={submitAddition} disabled={addSaving} className={btnPrimary}>{addSaving ? 'Saving...' : 'Save Addition'}</button>

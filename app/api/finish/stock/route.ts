@@ -31,6 +31,9 @@ export async function GET() {
         operator: { select: { name: true } },
         lots: { select: { lotNo: true, than: true } },
         foldBatch: { select: { batchNo: true, shadeDescription: true, foldProgram: { select: { foldNo: true } }, shade: { select: { name: true, description: true, colorCategory: true } } } },
+        // Per-round resulting shade — if any addition changed the shade, that
+        // overrides the slip's shade in finish stock (effective shade).
+        additions: { select: { roundNo: true, resultShadeName: true, resultShadeDescription: true } },
       },
       orderBy: { dyeingDoneAt: 'desc' },
     }),
@@ -133,17 +136,28 @@ export async function GET() {
   }
 
   // Now build display list in the original desc order using precomputed remaining.
+  const { effectiveShade } = await import('@/lib/effective-shade')
+
   const stock: any[] = []
   for (const d of doneSlips) {
     const lots = mergedLots(d)
     const lotInfo = lotInfoMap.get((lots[0]?.lotNo || d.lotNo).toLowerCase().trim())
-    const shadeName = d.shadeName || d.foldBatch?.shade?.name || null
-    // Priority: slip > fold batch > master. Slip-level descriptor (typed in
-    // dyeing form Step 2) wins so each slip can carry its own colour.
-    const shadeDesc = d.shadeDescription || d.foldBatch?.shadeDescription || d.foldBatch?.shade?.description || null
+    // Effective shade: an addition round may have changed the colour to a
+    // different shade (e.g. K-cream → T-186). That override wins here.
+    const baseShadeName = d.shadeName || d.foldBatch?.shade?.name || null
+    const eff = effectiveShade({ shadeName: baseShadeName, shadeDescription: d.shadeDescription, additions: d.additions })
+    const shadeName = eff.name
+    // Priority: effective-shade result → slip > fold batch > master. Slip-level
+    // descriptor (typed in dyeing form Step 2) wins so each slip carries its
+    // own colour. When an addition changed the shade, its description wins.
+    const shadeDesc = eff.changed
+      ? eff.description
+      : (d.shadeDescription || d.foldBatch?.shadeDescription || d.foldBatch?.shade?.description || null)
     // Colour category lives only on the live shade master. Gate on a name match
     // so a renamed master can't attach its category to a slip's old shade name.
-    const shadeColorCategory = d.foldBatch?.shade?.name && d.foldBatch.shade.name === shadeName ? (d.foldBatch.shade.colorCategory ?? null) : null
+    // When the shade was changed by an addition it no longer maps to the fold's
+    // master shade, so no category is attached.
+    const shadeColorCategory = !eff.changed && d.foldBatch?.shade?.name && d.foldBatch.shade.name === shadeName ? (d.foldBatch.shade.colorCategory ?? null) : null
 
     // Piece-color jobs use the customer/owner name as the lotNo and don't
     // have grey/OB records — without explicit handling they fall through to
@@ -182,6 +196,9 @@ export async function GET() {
       shadeName,
       shadeDescription: shadeDesc,
       shadeColorCategory,
+      // When an addition round changed the shade, surface the original so the
+      // finish screen can show "T-186 (was Milan-K cream)".
+      shadeChangedFrom: eff.changed ? eff.originalName : null,
       foldNo: d.foldBatch?.foldProgram?.foldNo || null,
       batchNo: d.foldBatch?.batchNo || null,
       lots: adjustedLots,

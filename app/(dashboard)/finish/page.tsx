@@ -40,6 +40,7 @@ interface StockEntry {
   shadeName: string | null
   shadeDescription: string | null
   shadeColorCategory: string | null
+  shadeChangedFrom?: string | null
   foldNo: string | null
   batchNo: number | null
   marka: string | null
@@ -177,6 +178,7 @@ interface SlipDetail {
   shadeName: string | null
   shadeDescription: string | null
   shadeColorCategory: string | null
+  shadeChangedFrom?: string | null
   foldNo: string | null
   batchNo: number | null
   lots: StockLot[]
@@ -3303,6 +3305,9 @@ export default function FinishStockPage() {
                                           <span className="text-gray-400">{new Date(s.date).toLocaleDateString('en-IN')}</span>
                                           {s.shadeName && (
                                             <span className="text-indigo-600 dark:text-indigo-400">{shadeDisplay(s.shadeName, s.shadeDescription)}</span>
+                                          )}
+                                          {s.shadeChangedFrom && (
+                                            <span className="text-[9px] text-amber-600 dark:text-amber-400" title={`Shade changed by an addition round from ${s.shadeChangedFrom}`}>was {s.shadeChangedFrom}</span>
                                           )}
                                           <ShadeCategoryBadge category={s.shadeColorCategory} />
                                         </div>

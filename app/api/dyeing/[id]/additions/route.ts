@@ -74,7 +74,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!entry) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
 
   const body = await req.json()
-  const { type, roundNo, defectType, defectPhoto, reason, time, machineId, operatorId, chemicals } = body
+  const { type, roundNo, defectType, defectPhoto, reason, time, machineId, operatorId, chemicals, resultShadeName, resultShadeDescription } = body
 
   let defectPhotoUrl: string | null = null
   let defectDriveId: string | null = null
@@ -133,6 +133,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       defectDriveId: defectDriveId,
       reason: reason || null,
       time: time || null,
+      resultShadeName: resultShadeName?.trim() || null,
+      resultShadeDescription: resultShadeDescription?.trim() || null,
       machineId: machineId ? parseInt(machineId) : null,
       operatorId: operatorId ? parseInt(operatorId) : null,
       chemicals: chemData.length > 0 ? { create: chemData } : undefined,

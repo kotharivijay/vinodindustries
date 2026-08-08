@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Shade change after addition round — idea</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .phone { width: 390px; max-width: 100%; border: 12px solid #111827; border-radius: 34px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  .phone-notch { background:#111827; height:24px; display:flex; align-items:center; justify-content:center; }
+  .phone-notch::after { content:''; width:100px; height:6px; background:#000; border-radius:4px; }
+</style>
+</head>
+<body class="dark bg-gray-950 text-gray-100 p-6">
+<div class="max-w-5xl mx-auto space-y-8">
+
+  <header class="space-y-1">
+    <h1 class="text-xl font-bold">Idea — record a shade change on an addition round</h1>
+    <p class="text-xs text-gray-400 max-w-3xl">
+      Slip 2341 was dyed <b>Milan-K cream</b>. It came out improper, so an extra <b>addition round</b>
+      (Orange RL, Dark Red 2B, Scarlet 4BS…) was run and the colour shifted to about <b>T-186</b>.
+      The idea: the addition round captures the <b>resulting shade</b>, and the slip then shows the
+      final shade everywhere — while keeping the original for history.
+    </p>
+  </header>
+
+  <!-- The core idea, explained visually -->
+  <section class="space-y-2">
+    <h2 class="text-sm font-bold text-gray-200">The flow</h2>
+    <div class="flex flex-wrap items-center gap-3 text-xs">
+      <div class="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
+        <p class="text-[10px] text-gray-500 uppercase">Original dyeing</p>
+        <p class="font-bold text-gray-200">Milan-K cream</p>
+        <p class="text-[10px] text-gray-500">Round 1 · recipe from master</p>
+      </div>
+      <span class="text-gray-500 text-lg">→</span>
+      <div class="bg-amber-950/40 border border-amber-800 rounded-xl px-4 py-3">
+        <p class="text-[10px] text-amber-500 uppercase">Round 2 · Addition</p>
+        <p class="text-gray-300">+Orange RL, Dark Red 2B, Scarlet 4BS, Red HE8B…</p>
+        <p class="text-[11px] text-amber-400 font-semibold mt-1">🎨 Shade changed → T-186</p>
+      </div>
+      <span class="text-gray-500 text-lg">→</span>
+      <div class="bg-teal-950/40 border border-teal-800 rounded-xl px-4 py-3">
+        <p class="text-[10px] text-teal-500 uppercase">Final shade (slip now shows)</p>
+        <p class="font-bold text-teal-300">T-186</p>
+        <p class="text-[10px] text-gray-500">was Milan-K cream</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="flex flex-wrap gap-10 items-start">
+
+    <!-- Phone 1: addition round form with the NEW section -->
+    <div class="space-y-2">
+      <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">1 · New addition round — capture the resulting shade</div>
+      <div class="phone bg-gray-900">
+        <div class="phone-notch"></div>
+        <div class="bg-gray-900 h-[720px] flex flex-col">
+          <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-bold">Addition — Round 2</h3>
+              <p class="text-[11px] text-gray-400">Slip 2341 · Milan-K cream</p>
+            </div>
+            <span class="text-gray-500 text-xl">&times;</span>
+          </div>
+          <div class="flex-1 overflow-y-auto p-4 space-y-3">
+            <div>
+              <label class="text-[11px] text-gray-400">Reason / defect</label>
+              <div class="mt-1 flex gap-1.5 flex-wrap">
+                <span class="px-2 py-1 rounded-full text-[11px] bg-red-900/40 text-red-300 border border-red-800">patchy</span>
+                <span class="px-2 py-1 rounded-full text-[11px] bg-gray-800 text-gray-400 border border-gray-700">uneven</span>
+                <span class="px-2 py-1 rounded-full text-[11px] bg-gray-800 text-gray-400 border border-gray-700">light</span>
+              </div>
+            </div>
+            <div>
+              <label class="text-[11px] text-gray-400">Chemicals added</label>
+              <div class="mt-1 space-y-1 text-[11px]">
+                <div class="flex justify-between bg-gray-800 rounded px-2 py-1"><span>Orange RL</span><span class="text-gray-400">6 kg</span></div>
+                <div class="flex justify-between bg-gray-800 rounded px-2 py-1"><span>Dark Red 2B</span><span class="text-gray-400">5.358 kg</span></div>
+                <div class="flex justify-between bg-gray-800 rounded px-2 py-1"><span>Scarlet 4BS</span><span class="text-gray-400">4.427 kg</span></div>
+                <div class="text-[10px] text-gray-500 text-center">+ 4 more</div>
+              </div>
+            </div>
+
+            <!-- ★ THE NEW SECTION ★ -->
+            <div class="rounded-xl border border-teal-700 bg-teal-950/30 p-3 space-y-2">
+              <label class="flex items-center gap-2 text-xs font-semibold text-teal-300">
+                <span class="w-9 h-5 rounded-full bg-teal-600 relative"><span class="absolute right-0.5 top-0.5 w-4 h-4 bg-white rounded-full"></span></span>
+                🎨 Shade changed after this round?
+              </label>
+              <p class="text-[10px] text-gray-400">Leave off if the round only corrected the same shade. Turn on when the colour became a different shade.</p>
+              <div>
+                <label class="text-[10px] text-gray-400">New shade name</label>
+                <input value="T-186" class="mt-0.5 w-full bg-gray-800 border border-teal-700 rounded-lg px-3 py-2 text-sm text-gray-100" />
+              </div>
+              <div>
+                <label class="text-[10px] text-gray-400">New description (optional)</label>
+                <input value="R Maroon" placeholder="e.g. R Maroon" class="mt-0.5 w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100" />
+              </div>
+              <p class="text-[10px] text-gray-500">Original <b class="text-gray-300">Milan-K cream</b> is kept in history.</p>
+            </div>
+          </div>
+          <div class="px-4 py-3 border-t border-gray-800 flex justify-end gap-2">
+            <span class="px-4 py-2 rounded-lg text-sm text-gray-300 bg-gray-800">Cancel</span>
+            <span class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white">Save Round</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phone 2: how the slip shows afterwards -->
+    <div class="space-y-2">
+      <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">2 · Slip afterwards — final shade with history</div>
+      <div class="phone bg-gray-900">
+        <div class="phone-notch"></div>
+        <div class="bg-gray-900 h-[720px] flex flex-col">
+          <div class="px-4 py-3 border-b border-gray-800">
+            <h3 class="text-sm font-bold">Dyeing Slip 2341</h3>
+            <p class="text-[11px] text-gray-400">M.Milan · PC Job · 26 Jul</p>
+          </div>
+          <div class="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
+            <!-- shade block -->
+            <div class="bg-gray-800/60 border border-gray-700 rounded-xl p-3">
+              <p class="text-[10px] text-gray-500 uppercase">Shade</p>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span class="text-base font-bold text-teal-300">T-186</span>
+                <span class="text-[10px] text-gray-400">R Maroon</span>
+              </div>
+              <p class="text-[11px] text-gray-500 mt-1">
+                <span class="line-through">Milan-K cream</span>
+                <span class="text-amber-400"> → changed in Round 2</span>
+              </p>
+            </div>
+            <!-- rounds -->
+            <div class="space-y-2">
+              <div class="border border-gray-700 rounded-lg px-3 py-2">
+                <p class="text-xs font-semibold text-gray-200">Round 1 · Original</p>
+                <p class="text-[10px] text-gray-500">Milan-K cream · recipe from master</p>
+              </div>
+              <div class="border border-amber-800 bg-amber-950/20 rounded-lg px-3 py-2">
+                <p class="text-xs font-semibold text-amber-300">Round 2 · Addition <span class="text-[10px] font-normal text-gray-400">(patchy)</span></p>
+                <p class="text-[10px] text-gray-400">+Orange RL, Dark Red 2B, Scarlet 4BS, Red HE8B…</p>
+                <p class="text-[11px] text-teal-400 font-semibold mt-1">🎨 Shade → T-186 (R Maroon)</p>
+              </div>
+            </div>
+            <p class="text-[10px] text-gray-500 pt-1">
+              Finish, Stock &amp; Cost reports now group this slip under <b class="text-teal-300">T-186</b>, not K-cream.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Design notes -->
+  <section class="max-w-3xl space-y-2 text-xs text-gray-400">
+    <h2 class="text-sm font-bold text-gray-200">How it works (recommended)</h2>
+    <p><b>Where it's captured:</b> two new optional fields on the <i>addition round</i> — <code>resultShadeName</code> and <code>resultShadeDescription</code>. A round only sets them when the colour actually became a different shade; a plain correction leaves them blank.</p>
+    <p><b>Effective shade:</b> the slip's shown shade = the <i>latest round that set a result shade</i>, else the original slip shade. So the read priority becomes: <code>last addition.resultShadeName → DyeingEntry.shadeName → FoldBatch → Shade master</code>. Every place that reads the shade (slip detail, Finish/Center, Stock, Cost report, production report) picks up T-186 automatically.</p>
+    <p><b>History kept:</b> the original Milan-K cream stays on the slip and Round 1; the slip header shows <i>"T-186 — was Milan-K cream, changed in Round 2"</i>. Nothing is overwritten, so you can always see what it started as.</p>
+    <p><b>Optional:</b> a "Save as new shade to master" button on that section, so T-186's corrected recipe (original + additions) can be saved as a reusable shade — reusing the existing Save-to-Shade-Master flow.</p>
+    <p class="text-gray-500"><b>Alternative (simpler, no schema change):</b> just let you edit the slip's shade name/description directly and add a note. Faster to build, but loses the "was K-cream → became T-186" trail and the per-round attribution. The recommended per-round approach is the one drawn above.</p>
+  </section>
+
+</div>
+</body>
+</html>

@@ -393,6 +393,12 @@ model DyeingAddition {
   defectDriveId String?
   reason        String?
   time          String?
+  // When an addition round shifts the colour to a genuinely different shade
+  // (e.g. K-cream → T-186), the operator records the resulting shade here.
+  // The slip's EFFECTIVE shade = latest round that set resultShadeName, else
+  // the slip's own shadeName. Original shade is never overwritten.
+  resultShadeName        String?
+  resultShadeDescription String?
   machineId     Int?
   machine       DyeingMachine?       @relation(fields: [machineId], references: [id])
   operatorId    Int?

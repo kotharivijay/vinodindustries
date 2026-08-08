@@ -47,6 +47,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('machineId' in body) meta.machineId = body.machineId ? parseInt(body.machineId) : null
   if ('operatorId' in body) meta.operatorId = body.operatorId ? parseInt(body.operatorId) : null
   if ('time' in body) meta.time = body.time || null
+  if ('resultShadeName' in body) meta.resultShadeName = body.resultShadeName?.trim() || null
+  if ('resultShadeDescription' in body) meta.resultShadeDescription = body.resultShadeDescription?.trim() || null
 
   let chemReplacement: any[] | null = null
   if (Array.isArray(body.chemicals)) {
