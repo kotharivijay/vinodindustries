@@ -2173,6 +2173,7 @@ model Staff {
   aadhar            String? // 12-digit India national ID
   dob               DateTime? // age >= 18 enforced server-side at write time
   department        String? // free-form (kadap, OPERATOR, FOLDING, ...)
+  whatsappNo        String? // saved staff WhatsApp number for the individual wages summary share
   monthlyBaseSalary Float    @default(0)
   actualSalary      Float?
   paymentMode       String   @default("SALARIED") // SALARIED | CONTRACTOR_LINKED

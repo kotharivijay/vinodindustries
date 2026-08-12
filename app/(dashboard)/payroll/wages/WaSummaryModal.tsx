@@ -13,13 +13,19 @@ import { createPortal } from 'react-dom'
 
 type WaAllocation = { contractorId: string; share: number; daysWorked: number }
 type WaRow = {
+  staffId?: string
   name: string
   contractors: { id: string }[]
   allocations: WaAllocation[]
+  monthlyBaseSalary?: number
+  dailyRate?: number
+  strategy?: string
   daysWorked: number | null
   calculatedWage: number
   staffAdvance: number
   netPayable: number
+  notes?: string | null
+  whatsappNo?: string | null
 }
 type WaBalance = {
   contractorId: string
@@ -35,6 +41,7 @@ type WaBalance = {
 export type WaData =
   | { kind: 'contractor'; balance: WaBalance; rows: WaRow[] }
   | { kind: 'standalone'; rows: WaRow[] }
+  | { kind: 'individual'; row: WaRow }
 
 function Portal({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false)
@@ -148,6 +155,52 @@ export function buildStandaloneWa(
   return lines.join('\n')
 }
 
+export function buildIndividualWa(
+  row: WaRow,
+  monthKey: string,
+  opts: { hindi: boolean; includeCalc: boolean; includeRemarks: boolean },
+): string {
+  const t = opts.hindi
+    ? { title: 'तनख्वाह पर्ची', salary: 'महीने की तनख्वाह', rate: 'रोज़ का रेट', days: 'काम के दिन', wage: 'बनी मज़दूरी', direct: 'तय रकम', advance: 'एडवांस', net: 'नेट देना', calc: 'हिसाब', remarks: 'नोट', day: 'दिन' }
+    : { title: 'Wage Slip', salary: 'Monthly salary', rate: 'Daily rate', days: 'Days worked', wage: 'Wage earned', direct: 'Agreed amount', advance: 'Advance', net: 'Net payable', calc: 'Calculation', remarks: 'Remarks', day: 'days' }
+
+  const lines: string[] = []
+  lines.push(`*KOTHARI SYNTHETIC INDUSTRIES — ${t.title}*`)
+  lines.push(`*${row.name} — ${monthLabel(monthKey)}*`)
+  lines.push('')
+
+  if (opts.includeCalc) {
+    lines.push(`*${t.calc}:*`)
+    if (row.strategy === 'SHARE_FIRST') {
+      // Amount was agreed directly (₹ typed). Show it as the direct figure.
+      lines.push(`${t.direct}: *${inr(row.calculatedWage)}*`)
+      if ((row.daysWorked ?? 0) > 0 && (row.dailyRate ?? 0) > 0) {
+        lines.push(`(≈ ${row.daysWorked} ${t.day} × ${inr(row.dailyRate || 0)})`)
+      }
+    } else {
+      if (row.monthlyBaseSalary) lines.push(`${t.salary}: ${inr(row.monthlyBaseSalary)}`)
+      if (row.dailyRate) lines.push(`${t.rate}: ${inr(row.dailyRate)}`)
+      lines.push(`${t.days}: ${row.daysWorked ?? 0} ${t.day}`)
+      lines.push(`${t.wage}: ${row.daysWorked ?? 0} × ${inr(row.dailyRate || 0)} = *${inr(row.calculatedWage)}*`)
+    }
+    if (row.staffAdvance > 0) {
+      lines.push(`${t.advance}: − ${inr(row.staffAdvance)}`)
+    }
+    lines.push(`*${t.net}: ${inr(row.netPayable)}*`)
+  } else {
+    lines.push(`*${t.net}: ${inr(row.netPayable)}*`)
+  }
+
+  if (opts.includeRemarks && row.notes && row.notes.trim()) {
+    lines.push('')
+    lines.push(`*${t.remarks}:* ${row.notes.trim()}`)
+  }
+
+  lines.push('')
+  lines.push('— Kothari Synthetic Industries, Jasol')
+  return lines.join('\n')
+}
+
 export default function WaSummaryModal({ data, monthKey, onClose, onNumberSaved }: {
   data: WaData
   monthKey: string
@@ -155,21 +208,28 @@ export default function WaSummaryModal({ data, monthKey, onClose, onNumberSaved 
   onNumberSaved: () => void
 }) {
   const isContractor = data.kind === 'contractor'
-  const title = isContractor ? data.balance.contractorName : 'Standalone Staff'
-  const [num, setNum] = useState(isContractor ? (data.balance.whatsappNo || '') : '')
+  const isIndividual = data.kind === 'individual'
+  const savedNumber = isContractor ? (data.balance.whatsappNo || '') : isIndividual ? (data.row.whatsappNo || '') : ''
+  const title = isContractor ? data.balance.contractorName : isIndividual ? data.row.name : 'Standalone Staff'
+  const [num, setNum] = useState(savedNumber)
   const [hindi, setHindi] = useState(true)
   const [incJobs, setIncJobs] = useState(true)
   const [incStaff, setIncStaff] = useState(true)
   const [incAdvance, setIncAdvance] = useState(true)
   const [incCarry, setIncCarry] = useState(true)
+  // Individual-mode toggles: show the calc breakdown + remarks.
+  const [incCalc, setIncCalc] = useState(true)
+  const [incRemarks, setIncRemarks] = useState(true)
   const [edited, setEdited] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const generated = useMemo(() => (
     data.kind === 'contractor'
       ? buildContractorWa(data.balance, data.rows, monthKey, { hindi, includeJobs: incJobs, includeStaff: incStaff, includeAdvance: incAdvance, includeCarry: incCarry })
-      : buildStandaloneWa(data.rows, monthKey, { hindi, includeAdvance: incAdvance })
-  ), [data, monthKey, hindi, incJobs, incStaff, incAdvance, incCarry])
+      : data.kind === 'individual'
+        ? buildIndividualWa(data.row, monthKey, { hindi, includeCalc: incCalc, includeRemarks: incRemarks })
+        : buildStandaloneWa(data.rows, monthKey, { hindi, includeAdvance: incAdvance })
+  ), [data, monthKey, hindi, incJobs, incStaff, incAdvance, incCarry, incCalc, incRemarks])
   const [text, setText] = useState(generated)
   useEffect(() => { if (!edited) setText(generated) }, [generated, edited])
 
@@ -177,13 +237,18 @@ export default function WaSummaryModal({ data, monthKey, onClose, onNumberSaved 
     const digits = num.replace(/\D/g, '')
     const full = digits ? (digits.length === 10 ? '91' + digits : digits) : ''
     setBusy(true)
-    // Save the number back to the contractor master (contractor mode only).
-    if (isContractor && full && full !== (data.balance.whatsappNo || '')) {
-      await fetch(`/api/payroll/contractors/${data.balance.contractorId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ whatsappNo: full }),
-      }).then(() => onNumberSaved()).catch(() => {})
+    // Save the number back to the master (contractor or individual staff).
+    if (full && full !== savedNumber) {
+      const url = isContractor ? `/api/payroll/contractors/${data.balance.contractorId}`
+        : isIndividual && data.row.staffId ? `/api/payroll/staff/${data.row.staffId}`
+        : null
+      if (url) {
+        await fetch(url, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ whatsappNo: full }),
+        }).then(() => onNumberSaved()).catch(() => {})
+      }
     }
     setBusy(false)
     // wa.me works with or without a number; without one WhatsApp asks the
@@ -199,10 +264,16 @@ export default function WaSummaryModal({ data, monthKey, onClose, onNumberSaved 
         ['Carry / pool math', incCarry, setIncCarry],
         ['हिन्दी', hindi, setHindi],
       ]
-    : [
-        ['Advances', incAdvance, setIncAdvance],
-        ['हिन्दी', hindi, setHindi],
-      ]
+    : isIndividual
+      ? [
+          ['Calculation', incCalc, setIncCalc],
+          ['Remarks', incRemarks, setIncRemarks],
+          ['हिन्दी', hindi, setHindi],
+        ]
+      : [
+          ['Advances', incAdvance, setIncAdvance],
+          ['हिन्दी', hindi, setHindi],
+        ]
 
   return (
     <Portal>
@@ -223,6 +294,7 @@ export default function WaSummaryModal({ data, monthKey, onClose, onNumberSaved 
                 placeholder="10-digit mobile (optional)"
                 className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm w-48 bg-white dark:bg-gray-800" />
               {isContractor && !data.balance.whatsappNo && <span className="text-[10px] text-amber-600">not on file — will be saved to contractor</span>}
+              {isIndividual && !savedNumber && <span className="text-[10px] text-amber-600">not on file — will be saved to this staff</span>}
             </div>
 
             <div className="flex flex-wrap gap-1.5">
@@ -248,7 +320,9 @@ export default function WaSummaryModal({ data, monthKey, onClose, onNumberSaved 
             <p className="text-[11px] text-gray-500">
               {isContractor
                 ? "Multi-contractor staff show only this contractor's share. "
-                : 'Standalone staff wages for the month. '}
+                : isIndividual
+                  ? "This member's own wage slip — sent to their number. "
+                  : 'Standalone staff wages for the month. '}
               Opens WhatsApp with the message pre-filled — you press send there.
             </p>
           </div>

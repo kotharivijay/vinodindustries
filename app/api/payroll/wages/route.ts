@@ -112,6 +112,7 @@ export async function GET(request: Request) {
       paymentPostedAt: e?.paymentPostedAt || null,
       paymentVoucherNo: e?.paymentVoucherNo || null,
       notes: e?.notes || null,
+      whatsappNo: s.whatsappNo || null,
     }
   })
 
