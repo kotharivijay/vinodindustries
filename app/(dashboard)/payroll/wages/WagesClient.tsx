@@ -1862,17 +1862,19 @@ function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected,
         </div>
       </div>
 
-      {/* Remarks + per-member WhatsApp — remarks flow into the wage slip. */}
-      <div className="flex items-center gap-2 border-t border-gray-100 dark:border-gray-700 pt-2.5">
-        <input type="text" ref={notesRef} value={notesStr}
+      {/* Remarks (min 4 lines) + per-member WhatsApp — remarks flow into the
+          wage slip. Multi-line so the operator can write how the amount was
+          calculated, adjustments, notes, etc. */}
+      <div className="border-t border-gray-100 dark:border-gray-700 pt-2.5 space-y-2">
+        <label className="text-[11px] text-gray-500 font-semibold">Remarks</label>
+        <textarea value={notesStr} rows={4}
           onChange={(e) => setNotesStr(e.target.value)}
           onBlur={commitNotes}
-          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-          placeholder="Remarks (how calculated, notes…)"
-          className="flex-1 h-9 px-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 placeholder-gray-400" />
+          placeholder="How the amount was calculated, adjustments, notes…"
+          className="w-full px-2.5 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 placeholder-gray-400 leading-relaxed resize-y" />
         <button onClick={onWhatsApp}
-          className="shrink-0 h-9 px-3 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold cursor-pointer flex items-center gap-1">
-          📱 Send
+          className="w-full h-10 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold cursor-pointer flex items-center justify-center gap-1">
+          📱 Send WhatsApp
         </button>
       </div>
     </div>
