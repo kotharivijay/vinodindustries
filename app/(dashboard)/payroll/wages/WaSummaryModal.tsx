@@ -57,7 +57,7 @@ export function buildContractorWa(
     : { title: 'Wages Summary', jobs: 'Work done (jobs)', jobsTotal: 'Jobs total', opening: 'Opening carry', pool: 'Total pool', staff: 'Staff payments', advance: 'advance', net: 'net', advBalance: 'advance balance', shareOnly: "this contractor's share only", distributed: 'Total distributed', closing: 'Carry to next month' }
 
   const lines: string[] = []
-  lines.push(`*VINOD INDUSTRIES — ${t.title}*`)
+  lines.push(`*KOTHARI SYNTHETIC INDUSTRIES — ${t.title}*`)
   lines.push(`*${balance.contractorName} — ${monthLabel(monthKey)}*`)
 
   if (opts.includeJobs && balance.jobs.length > 0) {
@@ -112,7 +112,7 @@ export function buildContractorWa(
 
   if (opts.includeCarry) lines.push(`*${t.closing}: ${inr(balance.closingCarry)}*`)
   lines.push('')
-  lines.push('— Vinod Industries, Jasol')
+  lines.push('— Kothari Synthetic Industries, Jasol')
   return lines.join('\n')
 }
 
@@ -128,7 +128,7 @@ export function buildStandaloneWa(
   const paid = rows.filter((r) => r.calculatedWage > 0 || (opts.includeAdvance && r.staffAdvance > 0))
     .sort((a, b) => b.calculatedWage - a.calculatedWage)
   const lines: string[] = []
-  lines.push(`*VINOD INDUSTRIES — ${t.title}*`)
+  lines.push(`*KOTHARI SYNTHETIC INDUSTRIES — ${t.title}*`)
   lines.push(`*${monthLabel(monthKey)}*`)
   lines.push('')
   lines.push(`*${t.staff}:*`)
@@ -144,7 +144,7 @@ export function buildStandaloneWa(
   lines.push('')
   lines.push(`*${t.total}: ${inr(totalNet)}*`)
   lines.push('')
-  lines.push('— Vinod Industries, Jasol')
+  lines.push('— Kothari Synthetic Industries, Jasol')
   return lines.join('\n')
 }
 
