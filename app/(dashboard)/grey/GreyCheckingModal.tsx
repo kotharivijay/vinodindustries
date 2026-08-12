@@ -5,6 +5,7 @@ import useSWR from 'swr'
 
 interface GreyEntry {
   id: number
+  sn: number | null
   date: string
   lotNo: string
   than: number
@@ -85,6 +86,16 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
   const [lrSearch, setLrSearch] = useState(''); const [debLr, setDebLr] = useDebounce('')
   const [baleSearch, setBaleSearch] = useState(''); const [debBale, setDebBale] = useDebounce('')
 
+  // Sort control for the lot list. Defaults to Date desc (newest first), the
+  // list's previous fixed behaviour.
+  type SortField = 'sn' | 'lot' | 'party' | 'date'
+  const [sortField, setSortField] = useState<SortField>('date')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const toggleSort = (f: SortField) => {
+    if (sortField === f) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))
+    else { setSortField(f); setSortDir(f === 'date' ? 'desc' : 'asc') }
+  }
+
   // Selection now carries the than value to be recorded per lot. For non-PC-Job
   // lots this is always entry.than (full lot). For Pali PC Job lots it defaults
   // to remainingThan(entry) and the operator can lower it via the input on the
@@ -117,8 +128,19 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
       .filter(e => !party || e.party.name.toLowerCase().includes(party))
       .filter(e => !lr || (e.transportLrNo ?? '').toLowerCase().includes(lr))
       .filter(e => !bale || (e.baleNo ?? '').toLowerCase().includes(bale))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [entries, debLot, debParty, debLr, debBale, checkedThanByLot])
+      .sort((a, b) => {
+        let cmp = 0
+        switch (sortField) {
+          case 'sn': cmp = (a.sn ?? a.id) - (b.sn ?? b.id); break
+          case 'lot': cmp = a.lotNo.localeCompare(b.lotNo); break
+          case 'party': cmp = a.party.name.localeCompare(b.party.name); break
+          case 'date': cmp = new Date(a.date).getTime() - new Date(b.date).getTime(); break
+        }
+        // Stable tie-break by SN/id so equal keys keep a consistent order.
+        if (cmp === 0) cmp = (a.sn ?? a.id) - (b.sn ?? b.id)
+        return sortDir === 'asc' ? cmp : -cmp
+      })
+  }, [entries, debLot, debParty, debLr, debBale, checkedThanByLot, sortField, sortDir])
 
   // Sum across ALL selected lots' chosen than (not the lot total). For PC Job
   // partials, this reflects the actual than being recorded on this slip.
@@ -460,6 +482,22 @@ export default function GreyCheckingModal({ onClose, onSaved }: {
               <input className={inputCls} placeholder="Party…" value={partySearch} onChange={e => { setPartySearch(e.target.value); setDebParty(e.target.value) }} />
               <input className={inputCls} placeholder="LR No…" value={lrSearch}    onChange={e => { setLrSearch(e.target.value);    setDebLr(e.target.value) }} />
               <input className={inputCls} placeholder="Bale No…" value={baleSearch} onChange={e => { setBaleSearch(e.target.value); setDebBale(e.target.value) }} />
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400 mr-0.5">Sort:</span>
+              {([['sn', 'SN'], ['lot', 'Lot'], ['party', 'Party'], ['date', 'Date']] as [SortField, string][]).map(([f, label]) => (
+                <button
+                  key={f}
+                  onClick={() => toggleSort(f)}
+                  className={`text-xs px-2 py-0.5 rounded-full border font-medium transition ${
+                    sortField === f
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {label}{sortField === f ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+                </button>
+              ))}
             </div>
             <div className="flex items-center justify-between mt-2 text-xs text-gray-500 dark:text-gray-400">
               <span>Showing {filtered.length} of {entries.filter(e => e.id > 0 && e.stock > 0 && remainingThan(e) > 0).length} lots with than to check</span>
