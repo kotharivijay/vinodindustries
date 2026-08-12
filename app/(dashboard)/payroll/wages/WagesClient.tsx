@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { currentMonthKey, monthDaysFor, daysFromShare, shareFromDays, snapDays, previousMonthKey, fmtDailyRate, type WageStrategy } from '@/lib/payrollCalc'
+import WaSummaryModal, { type WaData } from './WaSummaryModal'
 
 // Render a child in document.body via portal. Needed for our modal because
 // the page's parent <div> uses animate-fade-in which applies a CSS
@@ -71,6 +72,7 @@ type ContractorBalance = {
   contractorId: string
   contractorName: string
   hiddenInWages: boolean
+  whatsappNo: string | null
   openingCarry: number
   jobsTotal: number
   distributed: number
@@ -123,6 +125,8 @@ export default function WagesClient() {
   const [previewBusy, setPreviewBusy] = useState(false)
   const [preview, setPreview] = useState<PreviewPayload | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // WhatsApp summary modal — for a contractor section or the standalone section.
+  const [waData, setWaData] = useState<WaData | null>(null)
 
   // New state variables for Payment Vouchers
   const [bankDetailsMap, setBankDetailsMap] = useState<Record<string, { accountNumber: string; ifsc: string; bankName: string; branch: string }>>({})
@@ -308,7 +312,7 @@ export default function WagesClient() {
   // allocation days and recomputing it via liveRate × days double-counts or
   // (when daysWorked is stale from a prior sync) inflates the wage. Instead
   // keep r.calculatedWage from the allocation sum and only update advance.
-  function updateStandalone(staffId: string, patch: { daysWorked?: number; actualDaysWorked?: number; staffAdvance?: number }) {
+  function updateStandalone(staffId: string, patch: { daysWorked?: number; actualDaysWorked?: number; staffAdvance?: number; share?: number; strategy?: WageStrategy }) {
     setRows((prev) => prev.map((r) => {
       if (r.staffId !== staffId) return r
       const isContractorStaff = r.contractors.length > 0
@@ -325,6 +329,29 @@ export default function WagesClient() {
       // True standalone path
       const liveRate = monthDays > 0 ? r.monthlyBaseSalary / monthDays : 0
       const advance = patch.staffAdvance ?? r.staffAdvance
+
+      // SHARE_FIRST: a ₹ amount typed directly on the standalone row — wage is
+      // stored EXACTLY as typed and days derive from it (mirror of contractor
+      // allocations in Share→Days). Editing the ₹ field selects this strategy;
+      // editing days selects DAYS_FIRST.
+      const effStrategy: WageStrategy =
+        patch.share !== undefined ? 'SHARE_FIRST'
+        : patch.daysWorked !== undefined ? 'DAYS_FIRST'
+        : (patch.strategy ?? r.strategy ?? 'DAYS_FIRST')
+      if (effStrategy === 'SHARE_FIRST') {
+        const share = Math.max(0, patch.share ?? r.calculatedWage ?? 0)
+        const days = daysFromShare(share, liveRate, monthDays)
+        return {
+          ...r,
+          monthDays,
+          dailyRate: liveRate,
+          daysWorked: days,
+          strategy: 'SHARE_FIRST',
+          calculatedWage: share,
+          staffAdvance: advance,
+          netPayable: Math.max(0, share - advance),
+        }
+      }
 
       if (r.actualSalary != null && r.actualSalary > 0) {
         // Register days = primary editable input → wage = dailyRate × registerDays.
@@ -343,6 +370,7 @@ export default function WagesClient() {
           dailyRate: liveRate,
           daysWorked: regDays,
           actualDaysWorked: actDays,
+          strategy: 'DAYS_FIRST',
           calculatedWage,
           staffAdvance: advance,
           netPayable: Math.max(0, calculatedWage - advance),
@@ -357,6 +385,7 @@ export default function WagesClient() {
         monthDays,
         dailyRate: liveRate,
         daysWorked: days,
+        strategy: 'DAYS_FIRST',
         calculatedWage,
         staffAdvance: advance,
         netPayable: Math.max(0, calculatedWage - advance),
@@ -389,12 +418,19 @@ export default function WagesClient() {
             })),
             staffAdvance: row.staffAdvance,
           }
-        : {
-            daysWorked: row.daysWorked ?? 0,
-            actualDaysWorked: row.actualDaysWorked ?? undefined,
-            strategy: 'DAYS_FIRST' as WageStrategy,
-            staffAdvance: row.staffAdvance,
-          }
+        : row.strategy === 'SHARE_FIRST'
+          ? {
+              // ₹ typed directly — persist the exact wage; server derives days.
+              share: row.calculatedWage,
+              strategy: 'SHARE_FIRST' as WageStrategy,
+              staffAdvance: row.staffAdvance,
+            }
+          : {
+              daysWorked: row.daysWorked ?? 0,
+              actualDaysWorked: row.actualDaysWorked ?? undefined,
+              strategy: 'DAYS_FIRST' as WageStrategy,
+              staffAdvance: row.staffAdvance,
+            }
       const res = await fetch(`/api/payroll/wages/${staffId}?month=${monthKey}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -568,16 +604,17 @@ export default function WagesClient() {
     } finally { setPaymentPostBusy(false) }
   }
 
-  // Toggle the persisted hiddenInWages flag for a contractor.
-  // Server stores it on the Contractor row so the choice survives reloads.
+  // Toggle the PER-MONTH hiddenInWages flag for a contractor. Stored on the
+  // ContractorMonthlyBalance row (contractor + month), so hiding a contractor
+  // this month leaves other months untouched.
   const [showHidden, setShowHidden] = useState(false)
   async function setContractorHidden(contractorId: string, hidden: boolean) {
     // Optimistic flip
     setBalances((b) => ({ ...b, [contractorId]: { ...b[contractorId], hiddenInWages: hidden } }))
-    const res = await fetch(`/api/payroll/contractors/${contractorId}`, {
-      method: 'PATCH',
+    const res = await fetch('/api/payroll/contractor-balance/hide', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hiddenInWages: hidden }),
+      body: JSON.stringify({ contractorId, monthKey, hidden }),
     })
     if (!res.ok) {
       // Revert on failure
@@ -891,18 +928,29 @@ export default function WagesClient() {
               </>
             )}
             {isOpen && balance && g.kind === 'contractor' && (
-              <ContractorBalanceFooter balance={balance} />
+              <ContractorBalanceFooter balance={balance}
+                onWhatsApp={() => setWaData({ kind: 'contractor', balance, rows: g.rows })} />
             )}
             {isOpen && g.kind === 'standalone' && (
-              <StandaloneCarryFooter rows={g.rows} />
+              <StandaloneCarryFooter rows={g.rows}
+                onWhatsApp={() => setWaData({ kind: 'standalone', rows: g.rows })} />
             )}
           </div>
         )
       })}
 
       <p className="text-xs text-gray-500 mt-4">
-        Daily rate = round(salary ÷ {monthDays}). For contractor-tagged staff, enter Share (₹) or Days under each contractor — the other auto-derives. Standalone staff: enter days at their daily rate. Carry surplus/shortage flows to the next month&apos;s opening pool automatically.
+        Daily rate = round(salary ÷ {monthDays}). For contractor-tagged staff, enter Share (₹) or Days under each contractor — the other auto-derives. Standalone staff: enter Days (Days→Share) or a ₹ amount directly (Share→Days). Carry surplus/shortage flows to the next month&apos;s opening pool automatically.
       </p>
+
+      {waData && (
+        <WaSummaryModal
+          data={waData}
+          monthKey={monthKey}
+          onClose={() => setWaData(null)}
+          onNumberSaved={() => load(monthKey)}
+        />
+      )}
 
       {preview && (
         <ModalPortal>
@@ -1314,12 +1362,16 @@ function TemplateJobRow({ template, job, onCreate, onUpdate, onDelete }: {
   )
 }
 
-function ContractorBalanceFooter({ balance }: { balance: ContractorBalance }) {
+function ContractorBalanceFooter({ balance, onWhatsApp }: { balance: ContractorBalance; onWhatsApp: () => void }) {
   const carryColor = Math.abs(balance.closingCarry) < 1
     ? 'text-emerald-600'
     : balance.closingCarry < 0 ? 'text-red-600' : 'text-amber-600'
   return (
-    <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-200 dark:border-gray-700 text-xs flex flex-wrap justify-end gap-x-4 gap-y-1.5 text-right">
+    <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-200 dark:border-gray-700 text-xs flex flex-wrap items-center justify-end gap-x-4 gap-y-1.5 text-right">
+      <button onClick={onWhatsApp}
+        className="mr-auto px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-green-600 hover:bg-green-700 text-white cursor-pointer">
+        📱 WhatsApp Summary
+      </button>
       <span>Opening carry: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(balance.openingCarry)}</strong></span>
       <span>+ Jobs total: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(balance.jobsTotal)}</strong></span>
       <span>= Pool: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(balance.openingCarry + balance.jobsTotal)}</strong></span>
@@ -1331,7 +1383,7 @@ function ContractorBalanceFooter({ balance }: { balance: ContractorBalance }) {
 
 // Salaried analogue of ContractorBalanceFooter: sums the per-staff
 // running balance across every row in the Standalone section.
-function StandaloneCarryFooter({ rows }: { rows: Row[] }) {
+function StandaloneCarryFooter({ rows, onWhatsApp }: { rows: Row[]; onWhatsApp: () => void }) {
   const openingCarry = rows.reduce((s, r) => s + (r.openingCarry || 0), 0)
   const target = rows.reduce((s, r) => s + (r.target || 0), 0)
   const paid = rows.reduce((s, r) => s + (r.calculatedWage || 0), 0)
@@ -1340,7 +1392,11 @@ function StandaloneCarryFooter({ rows }: { rows: Row[] }) {
     ? 'text-emerald-600'
     : closingCarry < 0 ? 'text-red-600' : 'text-amber-600'
   return (
-    <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-200 dark:border-gray-700 text-xs flex flex-wrap justify-end gap-x-4 gap-y-1.5 text-right">
+    <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-200 dark:border-gray-700 text-xs flex flex-wrap items-center justify-end gap-x-4 gap-y-1.5 text-right">
+      <button onClick={onWhatsApp}
+        className="mr-auto px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-green-600 hover:bg-green-700 text-white cursor-pointer">
+        📱 WhatsApp Summary
+      </button>
       <span>Opening carry: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(openingCarry)}</strong></span>
       <span>+ Target salaries: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(target)}</strong></span>
       <span>− Paid (calc wage): <strong className="text-gray-900 dark:text-gray-100">{fmtINR(paid)}</strong></span>
@@ -1507,20 +1563,23 @@ function AllocationRow({ row, contractorId, liveMonthDays, onChange, onChangeAdv
 function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onToggleSelect, onResetPosted }: {
   row: Row
   liveMonthDays: number
-  onChange: (patch: { daysWorked?: number; actualDaysWorked?: number; staffAdvance?: number }) => void
+  onChange: (patch: { daysWorked?: number; actualDaysWorked?: number; staffAdvance?: number; share?: number; strategy?: WageStrategy }) => void
   saving: boolean
   isSelected: boolean
   onToggleSelect: () => void
   onResetPosted: (kind: 'journal' | 'payment' | 'both') => void
 }) {
   const isActual = row.actualSalary !== null && row.actualSalary > 0
+  const isShareFirst = !isActual && row.strategy === 'SHARE_FIRST'
   const days = row.daysWorked ?? 0
   const actDays = row.actualDaysWorked ?? liveMonthDays
   const [daysStr, setDaysStr] = useState(String(days))
   const [actDaysStr, setActDaysStr] = useState(String(actDays))
+  const [shareStr, setShareStr] = useState(String(Math.round(row.calculatedWage)))
   const [advStr, setAdvStr] = useState(String(row.staffAdvance))
   const daysRef = useRef<HTMLInputElement>(null)
   const actDaysRef = useRef<HTMLInputElement>(null)
+  const shareRef = useRef<HTMLInputElement>(null)
   const advRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -1530,12 +1589,19 @@ function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected,
     if (document.activeElement !== actDaysRef.current) setActDaysStr(String(actDays))
   }, [actDays])
   useEffect(() => {
+    if (document.activeElement !== shareRef.current) setShareStr(String(Math.round(row.calculatedWage)))
+  }, [row.calculatedWage])
+  useEffect(() => {
     if (document.activeElement !== advRef.current) setAdvStr(String(row.staffAdvance))
   }, [row.staffAdvance])
 
   function commitDays() {
     const v = Number(daysStr) || 0
     if (v !== days) onChange({ daysWorked: v })
+  }
+  function commitShare() {
+    const v = Number(shareStr) || 0
+    if (Math.round(v) !== Math.round(row.calculatedWage) || !isShareFirst) onChange({ share: v, strategy: 'SHARE_FIRST' })
   }
   function commitActDays() {
     const v = Number(actDaysStr) || 0
@@ -1703,6 +1769,40 @@ function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected,
           </div>
         </div>
       </div>
+
+      {/* Share (₹) direct input + strategy — non-actual standalone only.
+          Typing a ₹ amount sets the wage exactly (Share→Days); days derive. */}
+      {!isActual && (
+        <div className="grid grid-cols-2 gap-3 items-end">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500 font-semibold">Wage / Share (₹)</span>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+              <input
+                type="number"
+                min={0}
+                ref={shareRef}
+                value={shareStr}
+                onChange={(e) => setShareStr(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                onBlur={commitShare}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                title="Type a ₹ amount to set the wage directly — days derive from it"
+                className="w-full h-8 border border-gray-300 dark:border-gray-600 rounded-lg pl-6 pr-2 text-right text-sm bg-white dark:bg-gray-800 font-semibold"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-500 font-semibold">Mode</span>
+            <select value={isShareFirst ? 'SHARE_FIRST' : 'DAYS_FIRST'}
+              onChange={(e) => onChange({ strategy: e.target.value as WageStrategy })}
+              className="h-8 border border-gray-300 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800 px-2">
+              <option value="DAYS_FIRST">Days→Share</option>
+              <option value="SHARE_FIRST">Share→Days</option>
+            </select>
+          </div>
+        </div>
+      )}
 
       {/* Target & Carry Metrics (Only shown if worked on or carries exist) */}
       {(row.calculatedWage > 0 || Math.abs(row.openingCarry) > 0.5) && (
@@ -1972,22 +2072,28 @@ function MobileAllocationRow({ row, contractorId, liveMonthDays, onChange, onCha
 function StandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onToggleSelect, onResetPosted }: {
   row: Row
   liveMonthDays: number
-  onChange: (patch: { daysWorked?: number; actualDaysWorked?: number; staffAdvance?: number }) => void
+  onChange: (patch: { daysWorked?: number; actualDaysWorked?: number; staffAdvance?: number; share?: number; strategy?: WageStrategy }) => void
   saving: boolean
   isSelected: boolean
   onToggleSelect: () => void
   onResetPosted: (kind: 'journal' | 'payment' | 'both') => void
 }) {
   const isActual = row.actualSalary !== null && row.actualSalary > 0
+  // Share↔Days dual input (non-actual standalone). isShareFirst = the wage was
+  // typed as a ₹ amount; days derive from it. Actual-salary rows keep their
+  // register-days workflow and don't expose the share input.
+  const isShareFirst = !isActual && row.strategy === 'SHARE_FIRST'
   // PRIMARY = register days (drives the wage). SECONDARY = actual days
   // (drives the informational target salary, only shown when actualSalary set).
   const days = row.daysWorked ?? 0
   const actDays = row.actualDaysWorked ?? liveMonthDays
   const [daysStr, setDaysStr] = useState(String(days))
   const [actDaysStr, setActDaysStr] = useState(String(actDays))
+  const [shareStr, setShareStr] = useState(String(Math.round(row.calculatedWage)))
   const [advStr, setAdvStr] = useState(String(row.staffAdvance))
   const daysRef = useRef<HTMLInputElement>(null)
   const actDaysRef = useRef<HTMLInputElement>(null)
+  const shareRef = useRef<HTMLInputElement>(null)
   const advRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -1997,12 +2103,19 @@ function StandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onTog
     if (document.activeElement !== actDaysRef.current) setActDaysStr(String(actDays))
   }, [actDays])
   useEffect(() => {
+    if (document.activeElement !== shareRef.current) setShareStr(String(Math.round(row.calculatedWage)))
+  }, [row.calculatedWage])
+  useEffect(() => {
     if (document.activeElement !== advRef.current) setAdvStr(String(row.staffAdvance))
   }, [row.staffAdvance])
 
   function commitDays() {
     const v = Number(daysStr) || 0
     if (v !== days) onChange({ daysWorked: v })
+  }
+  function commitShare() {
+    const v = Number(shareStr) || 0
+    if (Math.round(v) !== Math.round(row.calculatedWage) || !isShareFirst) onChange({ share: v, strategy: 'SHARE_FIRST' })
   }
   function commitActDays() {
     const v = Number(actDaysStr) || 0
@@ -2100,7 +2213,20 @@ function StandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onTog
         </div>
       </td>
       <td className="px-2 py-1.5 text-right font-semibold">
-        <div>{fmtINR(row.calculatedWage)}</div>
+        {isActual ? (
+          <div>{fmtINR(row.calculatedWage)}</div>
+        ) : (
+          // Editable ₹ share (Share→Days). Typing here sets SHARE_FIRST and
+          // the wage is stored exactly; days derive from it.
+          <input type="number" min={0}
+            ref={shareRef} value={shareStr}
+            onChange={(e) => setShareStr(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={commitShare}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            title="Type a ₹ amount to set the wage directly (days derive from it)"
+            className="w-28 px-1 py-0.5 border border-gray-300 dark:border-gray-600 rounded text-right text-sm font-semibold bg-white dark:bg-gray-800" />
+        )}
         {/* Diff + Carry only shown when the row has actually been worked
             on (wage entered OR a carry inherited from a prior month).
             Otherwise an untouched row would scream "Diff: ₹28,000" simply
@@ -2121,8 +2247,17 @@ function StandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onTog
           </>
         )}
       </td>
-      <td className="px-2 py-1.5 text-center text-[10px] text-gray-400">
-        {isActual ? '(actual)' : '(direct)'}
+      <td className="px-2 py-1.5 text-center">
+        {isActual ? (
+          <span className="text-[10px] text-gray-400">(actual)</span>
+        ) : (
+          <select value={isShareFirst ? 'SHARE_FIRST' : 'DAYS_FIRST'}
+            onChange={(e) => onChange({ strategy: e.target.value as WageStrategy })}
+            className="px-1.5 py-0.5 border border-gray-300 dark:border-gray-600 rounded text-[10px] bg-white dark:bg-gray-800">
+            <option value="DAYS_FIRST">Days→Share</option>
+            <option value="SHARE_FIRST">Share→Days</option>
+          </select>
+        )}
       </td>
       <td className="px-2 py-1.5 text-right">
         <input type="number" min={0}

@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     }),
     prisma.contractorMonthlyBalance.findMany({
       where: { monthKey },
-      include: { contractor: { select: { id: true, name: true, hiddenInWages: true } } },
+      include: { contractor: { select: { id: true, name: true, whatsappNo: true } } },
     }),
     prisma.contractorProcessJob.findMany({
       where: { monthKey },
@@ -119,10 +119,13 @@ export async function GET(request: Request) {
   // staff are tagged to even if no balance row exists yet (defaults).
   // jobTemplates carries the per-contractor default rows the UI surfaces
   // as auto-filled rows in the job editor.
-  // Fetch hiddenInWages flag for every contractor we'll surface — keeps
-  // the bucket merge below simple (no extra round-trips per ID).
+  // Fetch contractor meta (name + saved WhatsApp number) for every
+  // contractor we'll surface. The HIDE flag is now PER MONTH — it lives on
+  // the ContractorMonthlyBalance row (b.hiddenInWages), not on the
+  // contractor — so a contractor hidden in one month stays visible in the
+  // next. Contractors without a balance row this month default to visible.
   const allContractors = await prisma.contractor.findMany({
-    select: { id: true, name: true, hiddenInWages: true },
+    select: { id: true, name: true, whatsappNo: true },
   })
   const contractorMeta = new Map(allContractors.map((c) => [c.id, c]))
 
@@ -130,6 +133,7 @@ export async function GET(request: Request) {
     contractorId: string
     contractorName: string
     hiddenInWages: boolean
+    whatsappNo: string | null
     openingCarry: number
     jobsTotal: number
     distributed: number
@@ -149,7 +153,8 @@ export async function GET(request: Request) {
     contractorBalances[b.contractorId] = {
       contractorId: b.contractorId,
       contractorName: b.contractor.name,
-      hiddenInWages: contractorMeta.get(b.contractorId)?.hiddenInWages || false,
+      hiddenInWages: b.hiddenInWages, // PER-MONTH flag from the balance row
+      whatsappNo: contractorMeta.get(b.contractorId)?.whatsappNo ?? null,
       openingCarry: b.openingCarry,
       jobsTotal: b.jobsTotal,
       distributed: b.distributed,
@@ -171,7 +176,9 @@ export async function GET(request: Request) {
       contractorBalances[cid] = {
         contractorId: cid,
         contractorName: meta?.name || '?',
-        hiddenInWages: meta?.hiddenInWages || false,
+        // No balance row for this month yet → visible this month.
+        hiddenInWages: false,
+        whatsappNo: meta?.whatsappNo ?? null,
         openingCarry: 0,
         jobsTotal: jobs.reduce((s, j) => s + j.total, 0),
         distributed: 0,
@@ -192,7 +199,9 @@ export async function GET(request: Request) {
       if (!contractorBalances[c.id]) {
         contractorBalances[c.id] = {
           contractorId: c.id, contractorName: c.name,
-          hiddenInWages: contractorMeta.get(c.id)?.hiddenInWages || false,
+          // No balance row for this month yet → visible this month.
+          hiddenInWages: false,
+          whatsappNo: contractorMeta.get(c.id)?.whatsappNo ?? null,
           openingCarry: 0, jobsTotal: 0, distributed: 0, closingCarry: 0,
           jobs: [],
           jobTemplates: mapTemplates(c.id),

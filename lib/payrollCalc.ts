@@ -16,7 +16,10 @@
 export const PAYMENT_MODES = ['SALARIED', 'CONTRACTOR_LINKED'] as const
 export type PaymentMode = (typeof PAYMENT_MODES)[number]
 
-export const WAGE_STRATEGIES = ['DAYS_FIRST', 'SALARY_FIRST', 'SYNC'] as const
+// SHARE_FIRST: the user types the ₹ amount directly (standalone rows) — the
+// wage is stored EXACTLY as typed and days derive from it (like contractor
+// allocations in Share→Days mode).
+export const WAGE_STRATEGIES = ['DAYS_FIRST', 'SALARY_FIRST', 'SHARE_FIRST', 'SYNC'] as const
 export type WageStrategy = (typeof WAGE_STRATEGIES)[number]
 
 // Days in a calendar month for the YYYY-MM key. Returns 28-31.

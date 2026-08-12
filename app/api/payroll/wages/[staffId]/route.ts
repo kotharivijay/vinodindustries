@@ -32,6 +32,7 @@ export async function PATCH(
       daysWorked?: number
       actualDaysWorked?: number
       strategy?: WageStrategy
+      share?: number
       staffAdvance?: number
       notes?: string | null
       allocations?: { contractorId: string; share?: number; days?: number; strategy?: 'SHARE_FIRST' | 'DAYS_FIRST' }[]
@@ -127,29 +128,52 @@ export async function PATCH(
         }
       } else {
         const strategy = (body.strategy ?? (existing?.strategy as WageStrategy | undefined) ?? 'DAYS_FIRST') as WageStrategy
-        const incomingDays = body.daysWorked ?? existing?.daysWorked ?? 0
-        const incomingActualDays = body.actualDaysWorked !== undefined
-          ? body.actualDaysWorked
-          : (existing?.actualDaysWorked ?? null)
-        const calc = computeWageRow({
-          monthlyBaseSalary: staff.monthlyBaseSalary,
-          monthDays,
-          daysWorked: incomingDays,
-          strategy,
-          staffAdvance: advance,
-          actualSalary: staff.actualSalary,
-          actualDaysWorked: incomingActualDays,
-        })
-        dataCommon = {
-          monthDays,
-          dailyRate: calc.dailyRate,
-          daysWorked: calc.daysWorked,
-          actualDaysWorked: calc.actualDaysWorked,
-          strategy,
-          calculatedWage: calc.calculatedWage,
-          staffAdvance: advance,
-          netPayable: calc.netPayable,
-          notes: body.notes !== undefined ? body.notes : (existing?.notes ?? null),
+        if (strategy === 'SHARE_FIRST') {
+          // Direct ₹ amount typed on a standalone row: the wage is stored
+          // EXACTLY as typed and days derive from it (mirror of the
+          // contractor allocation Share→Days mode). actualDaysWorked is left
+          // untouched (informational only for actual-salary staff).
+          const share = Math.max(0, Number(body.share ?? existing?.calculatedWage ?? 0) || 0)
+          const days = daysFromShare(share, dailyRate, monthDays)
+          const actDays = body.actualDaysWorked !== undefined
+            ? Math.max(0, Math.round(body.actualDaysWorked * 2) / 2)
+            : (existing?.actualDaysWorked ?? null)
+          dataCommon = {
+            monthDays,
+            dailyRate,
+            daysWorked: days,
+            actualDaysWorked: actDays,
+            strategy,
+            calculatedWage: share,
+            staffAdvance: advance,
+            netPayable: Math.max(0, share - advance),
+            notes: body.notes !== undefined ? body.notes : (existing?.notes ?? null),
+          }
+        } else {
+          const incomingDays = body.daysWorked ?? existing?.daysWorked ?? 0
+          const incomingActualDays = body.actualDaysWorked !== undefined
+            ? body.actualDaysWorked
+            : (existing?.actualDaysWorked ?? null)
+          const calc = computeWageRow({
+            monthlyBaseSalary: staff.monthlyBaseSalary,
+            monthDays,
+            daysWorked: incomingDays,
+            strategy,
+            staffAdvance: advance,
+            actualSalary: staff.actualSalary,
+            actualDaysWorked: incomingActualDays,
+          })
+          dataCommon = {
+            monthDays,
+            dailyRate: calc.dailyRate,
+            daysWorked: calc.daysWorked,
+            actualDaysWorked: calc.actualDaysWorked,
+            strategy,
+            calculatedWage: calc.calculatedWage,
+            staffAdvance: advance,
+            netPayable: calc.netPayable,
+            notes: body.notes !== undefined ? body.notes : (existing?.notes ?? null),
+          }
         }
       }
       if (existing) {

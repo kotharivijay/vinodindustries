@@ -2150,8 +2150,9 @@ model Contractor {
   name            String   @unique
   tallyLedgerName String? // for journal credit if paying through contractor
   notes           String?
+  whatsappNo      String? // saved contractor WhatsApp number (E.164-ish digits) for the wages summary share
   isActive        Boolean  @default(true)
-  hiddenInWages   Boolean  @default(false) // per-contractor hide flag for /payroll/wages - persists across sessions
+  hiddenInWages   Boolean  @default(false) // LEGACY global hide flag. The live per-month hide lives on ContractorMonthlyBalance.hiddenInWages.
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -2301,6 +2302,9 @@ model ContractorMonthlyBalance {
   contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
   monthKey     String
   openingCarry Float      @default(0)
+  // Per-MONTH hide on the wages page — independent month to month. The
+  // contractor-level Contractor.hiddenInWages is legacy/global.
+  hiddenInWages Boolean   @default(false)
   jobsTotal    Float      @default(0)
   distributed  Float      @default(0)
   closingCarry Float      @default(0)

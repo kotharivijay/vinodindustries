@@ -15,6 +15,7 @@ export async function PATCH(
   if (typeof body.name === 'string') data.name = body.name.trim()
   if ('tallyLedgerName' in body) data.tallyLedgerName = body.tallyLedgerName?.trim() || null
   if ('notes' in body) data.notes = body.notes?.trim() || null
+  if ('whatsappNo' in body) data.whatsappNo = (typeof body.whatsappNo === 'string' ? body.whatsappNo.replace(/\D/g, '') : '') || null
   if (typeof body.isActive === 'boolean') data.isActive = body.isActive
   if (typeof body.hiddenInWages === 'boolean') data.hiddenInWages = body.hiddenInWages
 
