@@ -33,6 +33,7 @@ export async function PATCH(
       actualDaysWorked?: number
       strategy?: WageStrategy
       share?: number
+      openingAdjust?: number
       staffAdvance?: number
       notes?: string | null
       allocations?: { contractorId: string; share?: number; days?: number; strategy?: 'SHARE_FIRST' | 'DAYS_FIRST' }[]
@@ -199,7 +200,14 @@ export async function PATCH(
     })
     if (fresh) {
       const wasFreshCreate = !existing
-      const openingCarry = wasFreshCreate ? await fetchPreviousCarry(staffId, monthKey) : fresh.openingCarry
+      // openingCarry = prev month's closing + manual add/less (openingAdjust).
+      // Re-derive from the base whenever the adjust is set/changed so repeated
+      // edits replace (not stack on) the earlier adjustment.
+      const adjustProvided = body.openingAdjust !== undefined && Number.isFinite(Number(body.openingAdjust))
+      const openingAdjust = adjustProvided ? Number(body.openingAdjust) : ((fresh as any).openingAdjust || 0)
+      const openingCarry = adjustProvided || wasFreshCreate
+        ? (await fetchPreviousCarry(staffId, monthKey)) + openingAdjust
+        : fresh.openingCarry
       const target = targetSalaryFor({
         monthlyBaseSalary: staff.monthlyBaseSalary,
         actualSalary: staff.actualSalary,
@@ -213,7 +221,7 @@ export async function PATCH(
       })
       await prisma.monthlyWageEntry.update({
         where: { id: fresh.id },
-        data: { openingCarry, closingCarry },
+        data: { openingCarry, openingAdjust, closingCarry },
       })
     }
 

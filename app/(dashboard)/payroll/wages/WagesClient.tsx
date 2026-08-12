@@ -45,6 +45,7 @@ type Row = {
   target: number
   diff: number
   openingCarry: number
+  openingAdjust: number
   closingCarry: number
   actualSalary: number | null
   entryId: string | null
@@ -631,6 +632,32 @@ export default function WagesClient() {
     }
   }
 
+  // Manual add/less on a standalone staff row's opening carry. The amount is
+  // stored as openingAdjust (absolute — replaces the previous adjustment) and
+  // folded in as openingCarry = prev month's closing + adjust.
+  async function adjustStaffCarry(row: Row) {
+    const input = window.prompt(
+      `Add / Less on opening carry — ${row.code} ${row.name}\n` +
+      `Opening carry now: ${fmtINR(row.openingCarry)}` +
+      (row.openingAdjust ? ` (includes adjustment ${fmtINR(row.openingAdjust)})` : '') +
+      `\nEnter adjustment amount (+ add, − less, 0 removes):`,
+      String(row.openingAdjust || 0),
+    )
+    if (input === null) return
+    const v = Number(input.replace(/[,₹\s]/g, ''))
+    if (!Number.isFinite(v)) { setError('Invalid adjustment amount'); return }
+    setError(null)
+    try {
+      const res = await fetch(`/api/payroll/wages/${row.staffId}?month=${monthKey}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ openingAdjust: v }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Adjust failed')
+      await load(monthKey)
+    } catch (e) { setError((e as Error).message) }
+  }
+
   async function addJob(contractorId: string, j: { processName: string; quality?: string; rate: number; quantity: number }) {
     const res = await fetch('/api/payroll/contractor-jobs', {
       method: 'POST',
@@ -886,6 +913,7 @@ export default function WagesClient() {
                             onToggleSelect={() => r.entryId && toggleRowSelection(r.entryId)}
                             onResetPosted={(kind) => r.entryId && resetPosted(r.entryId, kind, `${r.code} ${r.name}`)}
                             onWhatsApp={() => setWaData({ kind: 'individual', row: r })}
+                            onAdjustCarry={() => adjustStaffCarry(r)}
                           />
                         : <AllocationRow
                             key={`${g.id}|${r.staffId}`}
@@ -920,6 +948,7 @@ export default function WagesClient() {
                         onToggleSelect={() => r.entryId && toggleRowSelection(r.entryId)}
                         onResetPosted={(kind) => r.entryId && resetPosted(r.entryId, kind, `${r.code} ${r.name}`)}
                         onWhatsApp={() => setWaData({ kind: 'individual', row: r })}
+                        onAdjustCarry={() => adjustStaffCarry(r)}
                       />
                     : <MobileAllocationRow
                         key={`${g.id}|${r.staffId}`}
@@ -1567,7 +1596,7 @@ function AllocationRow({ row, contractorId, liveMonthDays, onChange, onChangeAdv
   )
 }
 
-function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onToggleSelect, onResetPosted, onWhatsApp }: {
+function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onToggleSelect, onResetPosted, onWhatsApp, onAdjustCarry }: {
   row: Row
   liveMonthDays: number
   onChange: (patch: { daysWorked?: number; actualDaysWorked?: number; staffAdvance?: number; share?: number; strategy?: WageStrategy; notes?: string }) => void
@@ -1576,6 +1605,7 @@ function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected,
   onToggleSelect: () => void
   onResetPosted: (kind: 'journal' | 'payment' | 'both') => void
   onWhatsApp: () => void
+  onAdjustCarry: () => void
 }) {
   const isActual = row.actualSalary !== null && row.actualSalary > 0
   // Every standalone employee can set a direct ₹ share (SHARE_FIRST) — even
@@ -1842,6 +1872,11 @@ function MobileStandaloneRow({ row, liveMonthDays, onChange, saving, isSelected,
             <strong className={`font-semibold ${Math.abs(row.closingCarry) < 1 ? 'text-emerald-600' : row.closingCarry > 0 ? 'text-blue-600' : 'text-red-600'}`}>
               {fmtINR(row.closingCarry)}
             </strong>
+            <button onClick={onAdjustCarry}
+              title="Add / Less on this staff's opening carry"
+              className={`block mt-0.5 ${row.openingAdjust ? 'text-indigo-600 font-semibold' : 'text-gray-400'}`}>
+              {row.openingAdjust ? `adj ${row.openingAdjust > 0 ? '+' : ''}${fmtINR(row.openingAdjust)}` : '± adjust'}
+            </button>
           </div>
         </div>
       )}
@@ -2105,7 +2140,7 @@ function MobileAllocationRow({ row, contractorId, liveMonthDays, onChange, onCha
   )
 }
 
-function StandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onToggleSelect, onResetPosted, onWhatsApp }: {
+function StandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onToggleSelect, onResetPosted, onWhatsApp, onAdjustCarry }: {
   row: Row
   liveMonthDays: number
   onChange: (patch: { daysWorked?: number; actualDaysWorked?: number; staffAdvance?: number; share?: number; strategy?: WageStrategy; notes?: string }) => void
@@ -2114,6 +2149,7 @@ function StandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onTog
   onToggleSelect: () => void
   onResetPosted: (kind: 'journal' | 'payment' | 'both') => void
   onWhatsApp: () => void
+  onAdjustCarry: () => void
 }) {
   const isActual = row.actualSalary !== null && row.actualSalary > 0
   // Share↔Days dual input (non-actual standalone). isShareFirst = the wage was
@@ -2295,6 +2331,11 @@ function StandaloneRow({ row, liveMonthDays, onChange, saving, isSelected, onTog
             <div className={`text-[10px] ${Math.abs(row.closingCarry) < 1 ? 'text-emerald-600' : row.closingCarry > 0 ? 'text-blue-600' : 'text-red-600'}`}
               title={`Opening carry ${fmtINR(row.openingCarry)} + Target ${fmtINR(row.target)} − Paid ${fmtINR(row.calculatedWage)}`}>
               Carry: {fmtINR(row.closingCarry)}
+              <button onClick={onAdjustCarry}
+                title="Add / Less on this staff's opening carry"
+                className={`ml-1.5 ${row.openingAdjust ? 'text-indigo-600 font-semibold' : 'text-gray-400 hover:text-indigo-600'}`}>
+                {row.openingAdjust ? `adj ${row.openingAdjust > 0 ? '+' : ''}${fmtINR(row.openingAdjust)}` : '±'}
+              </button>
             </div>
           </>
         )}

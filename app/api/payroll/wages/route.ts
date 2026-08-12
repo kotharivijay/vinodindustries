@@ -101,6 +101,7 @@ export async function GET(request: Request) {
       target,
       diff,
       openingCarry,
+      openingAdjust: (e as any)?.openingAdjust || 0,
       closingCarry,
       staffAdvance: e?.staffAdvance || 0,
       advanceSyncedAt: e?.advanceSyncedAt || null,

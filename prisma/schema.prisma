@@ -2215,6 +2215,9 @@ model MonthlyWageEntry {
   advanceSyncedAt DateTime?
   netPayable      Float     @default(0)
   openingCarry    Float     @default(0)
+  // Manual add/less on the opening carry (absolute; replaces the prior
+  // adjustment). Folded in as openingCarry = prev month's closing + openingAdjust.
+  openingAdjust   Float     @default(0)
   closingCarry    Float     @default(0)
   postedToTally   Boolean   @default(false)
   postedAt        DateTime?
