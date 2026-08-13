@@ -121,6 +121,9 @@ export default function WagesClient() {
   const [loading, setLoading] = useState(false)
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set())
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  // View filter by row status. 'ready' = has an entry but journal not posted;
+  // 'posted' = journal posted to Tally; 'paid' = payment posted to Tally.
+  const [statusFilter, setStatusFilter] = useState<'all' | 'ready' | 'posted' | 'paid'>('all')
   const [calcAllBusy, setCalcAllBusy] = useState(false)
   const [syncBusy, setSyncBusy] = useState(false)
   const [syncSummary, setSyncSummary] = useState<{ updated: number; notFound: number; skippedLocked?: number; missingExamples: { staffName: string; tallyLedger: string }[] } | null>(null)
@@ -699,6 +702,17 @@ export default function WagesClient() {
     await load(monthKey)
   }
 
+  // View filter predicate — Ready (entry made, journal not posted) / Posted
+  // (journal in Tally) / Paid (payment in Tally).
+  function rowMatchesStatus(r: Row): boolean {
+    switch (statusFilter) {
+      case 'posted': return r.postedToTally
+      case 'paid': return r.paymentPostedToTally
+      case 'ready': return !!r.entryId && !r.postedToTally
+      default: return true
+    }
+  }
+
   // Footer counters track unique staff only (staff appearing in N contractor
   // sections still counts as 1 person).
   const uniqueStaffCount = rows.length
@@ -770,6 +784,20 @@ export default function WagesClient() {
             Select all ({selectedIds.size}/{allPendingIds.length})
           </label>
           <span className="text-xs font-medium text-gray-500">{monthKey} ({monthDays} days)</span>
+        </div>
+        {/* Status view-filter */}
+        <div className="w-full flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-gray-500 dark:text-gray-400">Show:</span>
+          {([['all', 'All'], ['ready', 'Ready'], ['posted', 'Posted'], ['paid', 'Paid']] as [typeof statusFilter, string][]).map(([key, label]) => (
+            <button key={key} onClick={() => setStatusFilter(key)}
+              className={`text-xs px-3 py-1 rounded-full border transition ${
+                statusFilter === key
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600'
+              }`}>
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -848,6 +876,10 @@ export default function WagesClient() {
       }).map((g) => {
         const isOpen = !collapsedGroups.has(g.id)
         const balance = g.kind === 'contractor' ? balances[g.id] : undefined
+        // Apply the status view-filter to this section's rows. Carry/pool
+        // footers keep using g.rows (section totals are filter-independent).
+        const visRows = statusFilter === 'all' ? g.rows : g.rows.filter(rowMatchesStatus)
+        if (statusFilter !== 'all' && visRows.length === 0) return null
         return (
           <div key={g.id} className={`card overflow-hidden mb-4 ${balance?.hiddenInWages ? 'opacity-60 border-2 border-dashed border-gray-300 dark:border-gray-700' : ''}`}>
             <SectionHeader
@@ -855,7 +887,7 @@ export default function WagesClient() {
               name={g.name}
               isOpen={isOpen}
               onToggle={() => toggleGroup(g.id)}
-              rowCount={g.rows.length}
+              rowCount={visRows.length}
               balance={balance}
               onToggleHide={balance ? () => setContractorHidden(g.id, !balance.hiddenInWages) : undefined}
             />
@@ -878,11 +910,11 @@ export default function WagesClient() {
                           <input
                             type="checkbox"
                             checked={
-                              g.rows.filter((r) => r.entryId && ((!r.postedToTally && r.calculatedWage > 0) || (!r.paymentPostedToTally && r.netPayable > 0))).length > 0 &&
-                              g.rows.filter((r) => r.entryId && ((!r.postedToTally && r.calculatedWage > 0) || (!r.paymentPostedToTally && r.netPayable > 0))).every((r) => selectedIds.has(r.entryId as string))
+                              visRows.filter((r) => r.entryId && ((!r.postedToTally && r.calculatedWage > 0) || (!r.paymentPostedToTally && r.netPayable > 0))).length > 0 &&
+                              visRows.filter((r) => r.entryId && ((!r.postedToTally && r.calculatedWage > 0) || (!r.paymentPostedToTally && r.netPayable > 0))).every((r) => selectedIds.has(r.entryId as string))
                             }
-                            onChange={() => toggleGroupSelection(g.rows)}
-                            disabled={g.rows.filter((r) => r.entryId && ((!r.postedToTally && r.calculatedWage > 0) || (!r.paymentPostedToTally && r.netPayable > 0))).length === 0}
+                            onChange={() => toggleGroupSelection(visRows)}
+                            disabled={visRows.filter((r) => r.entryId && ((!r.postedToTally && r.calculatedWage > 0) || (!r.paymentPostedToTally && r.netPayable > 0))).length === 0}
                             className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                           />
                         </th>
@@ -899,10 +931,10 @@ export default function WagesClient() {
                       </tr>
                     </thead>
                     <tbody>
-                      {g.rows.length === 0 && (
+                      {visRows.length === 0 && (
                         <tr><td colSpan={11} className="px-4 py-6 text-center text-gray-400 text-xs">No staff tagged to this contractor yet.</td></tr>
                       )}
-                      {g.rows.map((r) => g.kind === 'standalone'
+                      {visRows.map((r) => g.kind === 'standalone'
                         ? <StandaloneRow
                             key={r.staffId}
                             row={r}
@@ -934,10 +966,10 @@ export default function WagesClient() {
 
                 {/* Mobile Cards View */}
                 <div className="block md:hidden space-y-3 bg-gray-50/50 dark:bg-gray-900/10 p-3 border-t border-gray-200 dark:border-gray-700">
-                  {g.rows.length === 0 && (
+                  {visRows.length === 0 && (
                     <div className="py-6 text-center text-gray-400 text-xs">No staff tagged to this contractor yet.</div>
                   )}
-                  {g.rows.map((r) => g.kind === 'standalone'
+                  {visRows.map((r) => g.kind === 'standalone'
                     ? <MobileStandaloneRow
                         key={r.staffId}
                         row={r}
