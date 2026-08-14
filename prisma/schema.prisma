@@ -2306,6 +2306,10 @@ model ContractorMonthlyBalance {
   contractor   Contractor @relation(fields: [contractorId], references: [id], onDelete: Cascade)
   monthKey     String
   openingCarry Float      @default(0)
+  // Manual add/less on the pool's opening carry (absolute; replaces prior).
+  // openingCarry = prev month's closing + openingAdjust, kept in its own
+  // column so it survives the balance recompute.
+  openingAdjust Float     @default(0)
   // Per-MONTH hide on the wages page — independent month to month. The
   // contractor-level Contractor.hiddenInWages is legacy/global.
   hiddenInWages Boolean   @default(false)

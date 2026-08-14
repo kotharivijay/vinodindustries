@@ -76,6 +76,7 @@ type ContractorBalance = {
   hiddenInWages: boolean
   whatsappNo: string | null
   openingCarry: number
+  openingAdjust: number
   jobsTotal: number
   distributed: number
   closingCarry: number
@@ -661,6 +662,30 @@ export default function WagesClient() {
     } catch (e) { setError((e as Error).message) }
   }
 
+  // Same manual add/less on a contractor pool's opening carry.
+  async function adjustContractorCarry(balance: ContractorBalance) {
+    const input = window.prompt(
+      `Add / Less on opening carry — ${balance.contractorName}\n` +
+      `Opening carry now: ${fmtINR(balance.openingCarry)}` +
+      (balance.openingAdjust ? ` (includes adjustment ${fmtINR(balance.openingAdjust)})` : '') +
+      `\nEnter adjustment amount (+ add, − less, 0 removes):`,
+      String(balance.openingAdjust || 0),
+    )
+    if (input === null) return
+    const v = Number(input.replace(/[,₹\s]/g, ''))
+    if (!Number.isFinite(v)) { setError('Invalid adjustment amount'); return }
+    setError(null)
+    try {
+      const res = await fetch('/api/payroll/contractor-balance/adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contractorId: balance.contractorId, monthKey, openingAdjust: v }),
+      })
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Adjust failed')
+      await load(monthKey)
+    } catch (e) { setError((e as Error).message) }
+  }
+
   async function addJob(contractorId: string, j: { processName: string; quality?: string; rate: number; quantity: number }) {
     const res = await fetch('/api/payroll/contractor-jobs', {
       method: 'POST',
@@ -1000,7 +1025,8 @@ export default function WagesClient() {
             )}
             {isOpen && balance && g.kind === 'contractor' && (
               <ContractorBalanceFooter balance={balance}
-                onWhatsApp={() => setWaData({ kind: 'contractor', balance, rows: g.rows })} />
+                onWhatsApp={() => setWaData({ kind: 'contractor', balance, rows: g.rows })}
+                onAdjust={() => adjustContractorCarry(balance)} />
             )}
             {isOpen && g.kind === 'standalone' && (
               <StandaloneCarryFooter rows={g.rows} />
@@ -1432,7 +1458,7 @@ function TemplateJobRow({ template, job, onCreate, onUpdate, onDelete }: {
   )
 }
 
-function ContractorBalanceFooter({ balance, onWhatsApp }: { balance: ContractorBalance; onWhatsApp: () => void }) {
+function ContractorBalanceFooter({ balance, onWhatsApp, onAdjust }: { balance: ContractorBalance; onWhatsApp: () => void; onAdjust: () => void }) {
   const carryColor = Math.abs(balance.closingCarry) < 1
     ? 'text-emerald-600'
     : balance.closingCarry < 0 ? 'text-red-600' : 'text-amber-600'
@@ -1442,7 +1468,15 @@ function ContractorBalanceFooter({ balance, onWhatsApp }: { balance: ContractorB
         className="mr-auto px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-green-600 hover:bg-green-700 text-white cursor-pointer">
         📱 WhatsApp Summary
       </button>
-      <span>Opening carry: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(balance.openingCarry)}</strong></span>
+      <span>Opening carry: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(balance.openingCarry)}</strong>
+        {balance.openingAdjust !== 0 && (
+          <span className="ml-1 text-[10px] text-indigo-500" title="Includes manual add/less">
+            (adj {balance.openingAdjust > 0 ? '+' : ''}{fmtINR(balance.openingAdjust)})
+          </span>
+        )}
+        <button onClick={onAdjust} title="Add / less amount on opening carry"
+          className="ml-1 text-indigo-500 hover:text-indigo-700 cursor-pointer font-semibold">±</button>
+      </span>
       <span>+ Jobs total: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(balance.jobsTotal)}</strong></span>
       <span>= Pool: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(balance.openingCarry + balance.jobsTotal)}</strong></span>
       <span>− Distributed: <strong className="text-gray-900 dark:text-gray-100">{fmtINR(balance.distributed)}</strong></span>

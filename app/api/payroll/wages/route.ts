@@ -137,6 +137,7 @@ export async function GET(request: Request) {
     hiddenInWages: boolean
     whatsappNo: string | null
     openingCarry: number
+    openingAdjust: number
     jobsTotal: number
     distributed: number
     closingCarry: number
@@ -158,6 +159,7 @@ export async function GET(request: Request) {
       hiddenInWages: b.hiddenInWages, // PER-MONTH flag from the balance row
       whatsappNo: contractorMeta.get(b.contractorId)?.whatsappNo ?? null,
       openingCarry: b.openingCarry,
+      openingAdjust: (b as any).openingAdjust || 0,
       jobsTotal: b.jobsTotal,
       distributed: b.distributed,
       closingCarry: b.closingCarry,
@@ -182,6 +184,7 @@ export async function GET(request: Request) {
         hiddenInWages: false,
         whatsappNo: meta?.whatsappNo ?? null,
         openingCarry: 0,
+        openingAdjust: 0,
         jobsTotal: jobs.reduce((s, j) => s + j.total, 0),
         distributed: 0,
         closingCarry: jobs.reduce((s, j) => s + j.total, 0),
@@ -204,7 +207,7 @@ export async function GET(request: Request) {
           // No balance row for this month yet → visible this month.
           hiddenInWages: false,
           whatsappNo: contractorMeta.get(c.id)?.whatsappNo ?? null,
-          openingCarry: 0, jobsTotal: 0, distributed: 0, closingCarry: 0,
+          openingCarry: 0, openingAdjust: 0, jobsTotal: 0, distributed: 0, closingCarry: 0,
           jobs: [],
           jobTemplates: mapTemplates(c.id),
         }
