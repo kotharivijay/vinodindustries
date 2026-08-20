@@ -104,8 +104,14 @@ export default function PartiesPage() {
                       p.gstRegistrationType === 'Composition' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' :
                       'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
                     }`}>
-                      {p.gstRegistrationType}
+                      {p.gstRegistrationType === 'Unregistered' ? 'URP' : p.gstRegistrationType}
                     </span>
+                    {p.gstRegistrationType === 'Regular' && !p.gstin && (
+                      <span title="Marked Regular but has no GSTIN — likely URP. Edit → GST Type → Unregistered."
+                        className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        no GSTIN — URP?
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-1.5 text-gray-500 text-[11px]">{p.parentGroup || '—'}</td>
                   <td className="px-3 py-1.5 text-gray-500">{p.whatsapp || '—'}</td>
