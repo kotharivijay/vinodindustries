@@ -285,7 +285,10 @@ export function buildPurchaseVoucherJSON(
       ...(party.gstin ? { partygstin: party.gstin } : {}),
       ...(party.state ? { statename: party.state } : {}),
       placeofsupply: party.state || KSI_STATE,
-      gstregistrationtype: party.gstRegistrationType,
+      // Tally Prime's valid token for URP is "Unregistered/Consumer" — plain
+      // "Unregistered" flags "GST Registration Details of the Party are invalid".
+      gstregistrationtype: party.gstRegistrationType === 'Unregistered'
+        ? 'Unregistered/Consumer' : party.gstRegistrationType,
       narration: `App push. Series: ${invoice.linkedChallanSeries.join(', ')}.`,
       allinventoryentries,
       ledgerentries,
