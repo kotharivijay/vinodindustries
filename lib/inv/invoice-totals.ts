@@ -19,6 +19,11 @@ export interface InvoiceTotals {
   linesByRate: Record<string, number>
   majorityRate: number
   gstByRate: Record<string, number>
+  // Intra-state only: per-rate CGST(=SGST) head amount. Each head is the sum
+  // of per-line round2(amount × rate/200) — Tally Prime's own convention
+  // (verified against GSTR-2B recon, Jul 2026), so pushed vouchers match
+  // Tally's expected tax and CGST/SGST are always equal.
+  gstHalfByRate: Record<string, number>
   totalGst: number
   cgst: number
   sgst: number
@@ -58,13 +63,28 @@ export function computeInvoiceTotals(
     }
   }
 
-  // Per-rate GST. Freight adds, discount subtracts — both folded into majority rate.
+  // Per-rate GST, computed per LINE per duty head with each line rounded to
+  // 2dp — exactly how Tally Prime derives its expected tax. Intra: each of
+  // CGST/SGST = Σ round2(line × rate/200), so both halves are always equal.
+  // Freight adds / discount subtracts as one extra base at the majority rate.
+  const rh2 = (n: number) => Math.sign(n) * Math.round(Math.abs(n) * 100 + 1e-9) / 100
   const gstByRate: Record<string, number> = {}
-  for (const [r, sub] of Object.entries(linesByRate)) {
-    const numR = parseFloat(r)
-    let base = sub
-    if (numR === majorityRate) base += freight - discount
-    gstByRate[r] = isUnreg ? 0 : r2(base * (numR / 100))
+  const gstHalfByRate: Record<string, number> = {}
+  for (const r of Object.keys(linesByRate)) { gstByRate[r] = 0; gstHalfByRate[r] = 0 }
+  if (!isUnreg) {
+    const addBase = (numR: number, base: number) => {
+      const key = String(numR)
+      if (isIntra) {
+        const half = rh2(base * (numR / 200))
+        gstHalfByRate[key] = rh2((gstHalfByRate[key] || 0) + half)
+        gstByRate[key] = rh2((gstByRate[key] || 0) + half * 2)
+      } else {
+        gstByRate[key] = rh2((gstByRate[key] || 0) + rh2(base * (numR / 100)))
+      }
+    }
+    for (const l of lines) addBase(Number(l.gstRate || 0), Number(l.amount || 0))
+    const fold = freight - discount
+    if (fold !== 0) addBase(majorityRate, fold)
   }
 
   const totalGst = r2(Object.values(gstByRate).reduce((s, x) => s + x, 0))
@@ -73,8 +93,8 @@ export function computeInvoiceTotals(
   let cgst = 0, sgst = 0, igst = 0
   if (!isUnreg) {
     if (isIntra) {
-      cgst = r2(totalGst / 2)
-      sgst = r2(totalGst - cgst)  // residual to absorb half-paisa rounding
+      cgst = r2(Object.values(gstHalfByRate).reduce((s, x) => s + x, 0))
+      sgst = cgst  // equal by construction — Tally computes each head the same way
     } else {
       igst = totalGst
     }
@@ -85,7 +105,7 @@ export function computeInvoiceTotals(
   const roundOff = r2(total - totalBeforeRound)
 
   return {
-    linesByRate, majorityRate, gstByRate, totalGst,
+    linesByRate, majorityRate, gstByRate, gstHalfByRate, totalGst,
     cgst, sgst, igst,
     taxable, freight, discount,
     totalBeforeRound, total, roundOff,

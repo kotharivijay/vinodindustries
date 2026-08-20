@@ -51,7 +51,10 @@ async function main() {
         supplierInvoiceNo: inv.supplierInvoiceNo,
         supplierInvoiceDate: inv.supplierInvoiceDate,
         freightAmount: Number(inv.freightAmount),
-        totalDiscountAmount: Number(inv.totalDiscountAmount),
+        // Header-only discount: line discounts are already netted out of line amounts.
+        headerDiscountAmount: Math.max(0, +(Number(inv.totalDiscountAmount) -
+          inv.lines.reduce((s: number, l: any) => s + Number(l.discountAmount || 0), 0)).toFixed(2)),
+        otherCharges: Number(inv.otherCharges || 0),
         linkedChallanSeries,
       },
       {

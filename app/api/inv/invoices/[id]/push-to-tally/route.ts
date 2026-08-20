@@ -68,7 +68,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       rate: Number(l.rate || 0),
       amount: Number(l.amount),
       description: l.description || l.item.displayName,
-      gstRate: Number(l.gstRate || 0),
+      // Line rate wins; alias only fills historical null lines (autofill bug).
+      gstRate: l.gstRate != null ? Number(l.gstRate) : Number(l.item.alias.gstRate),
       item: { displayName: l.item.displayName },
       alias: {
         tallyStockItem: l.item.alias.tallyStockItem,
@@ -78,6 +79,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       },
     }))
 
+  // totalDiscountAmount = line discounts + header discount; line discounts are
+  // already netted out of line amounts, so hand the builder only the header part.
+  const lineDiscountTotal = inv.lines.reduce((s: number, l: any) => s + Number(l.discountAmount || 0), 0)
+  const headerDiscountAmount = Math.max(0, +(Number(inv.totalDiscountAmount) - lineDiscountTotal).toFixed(2))
+
   let payload: any
   try {
     payload = buildPurchaseVoucherJSON(
@@ -86,7 +92,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         supplierInvoiceNo: inv.supplierInvoiceNo,
         supplierInvoiceDate: inv.supplierInvoiceDate,
         freightAmount: Number(inv.freightAmount),
-        totalDiscountAmount: Number(inv.totalDiscountAmount),
+        headerDiscountAmount,
+        otherCharges: Number(inv.otherCharges || 0),
         linkedChallanSeries,
       },
       {

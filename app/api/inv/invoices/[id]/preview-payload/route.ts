@@ -34,11 +34,16 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     `KSI/IN/${cl.challan.seriesFy}/${String(cl.challan.internalSeriesNo).padStart(4, '0')}`,
   )
 
+  // Same header-only discount convention as the real push route.
+  const lineDiscountTotal = inv.lines.reduce((s: number, l: any) => s + Number(l.discountAmount || 0), 0)
+  const headerDiscountAmount = Math.max(0, +(Number(inv.totalDiscountAmount) - lineDiscountTotal).toFixed(2))
+
   let payload = null
   try {
     payload = buildPurchaseVoucherJSON(
       { id: inv.id, supplierInvoiceNo: inv.supplierInvoiceNo, supplierInvoiceDate: inv.supplierInvoiceDate,
-        freightAmount: Number(inv.freightAmount), totalDiscountAmount: Number(inv.totalDiscountAmount),
+        freightAmount: Number(inv.freightAmount), headerDiscountAmount,
+        otherCharges: Number(inv.otherCharges || 0),
         linkedChallanSeries },
       { tallyLedger: inv.party.tallyLedger, state: inv.party.state, gstin: inv.party.gstin,
         gstRegistrationType: inv.party.gstRegistrationType },
@@ -47,7 +52,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         lineNo: l.lineNo, qty: Number(l.qty || 0), unit: l.unit || 'kg',
         rate: Number(l.rate || 0), amount: Number(l.amount),
         description: l.description || l.item.displayName,
-        gstRate: Number(l.gstRate || 0),
+        gstRate: l.gstRate != null ? Number(l.gstRate) : Number(l.item.alias.gstRate),
         item: { displayName: l.item.displayName },
         alias: { tallyStockItem: l.item.alias.tallyStockItem, gstRate: Number(l.item.alias.gstRate),
           category: l.item.alias.category, godownOverride: l.item.alias.godownOverride },

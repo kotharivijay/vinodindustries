@@ -21,7 +21,11 @@ interface InvoiceForBuild {
   supplierInvoiceNo: string
   supplierInvoiceDate: Date | string
   freightAmount: number
-  totalDiscountAmount: number
+  // Header-level discount ONLY. Line-level discounts are already netted out of
+  // each line's `amount`; passing them here would subtract them twice.
+  headerDiscountAmount: number
+  // GST-free extras (hamali/cartage). Added on top of totals.total, no GST fold.
+  otherCharges: number
   linkedChallanSeries: string[]
 }
 
@@ -39,6 +43,7 @@ interface CfgForBuild {
   roundOffLedger: string
   freightLedger: string
   discountLedger: string
+  otherChargesLedger?: string
 }
 
 export function buildPurchaseVoucherJSON(
@@ -57,7 +62,10 @@ export function buildPurchaseVoucherJSON(
     if (!godown) throw new Error(`No godown for category ${l.alias.category}`)
     if (!purchaseLedger) throw new Error(`No purchase ledger for category ${l.alias.category}`)
 
-    const rate = Number(l.alias.gstRate)
+    // Line rate is authoritative — it's what invoice creation computed GST
+    // from. The alias master can go stale (e.g. coal 5% → 18% in 2025) and
+    // must not silently override the invoice.
+    const rate = Number(l.gstRate)
     const half = (rate / 2).toFixed(2)
     const desc = (l.description || l.item.displayName).slice(0, 240)
 
@@ -111,11 +119,14 @@ export function buildPurchaseVoucherJSON(
     }
   })
 
-  // ── Centralized totals (lines + freight/discount at majority rate) ──
+  // ── Centralized totals (lines + freight/header-discount at majority rate) ──
+  // Line amounts are already net of line discounts, so only the header
+  // discount participates here — same as invoice creation. Rates come from
+  // the invoice lines, not the alias master.
   const totals = computeInvoiceTotals(
-    lines.map(l => ({ amount: l.amount, gstRate: Number(l.alias.gstRate) })),
+    lines.map(l => ({ amount: l.amount, gstRate: Number(l.gstRate) })),
     invoice.freightAmount,
-    invoice.totalDiscountAmount,
+    invoice.headerDiscountAmount,
     isIntra,
     isUnreg,
   )
@@ -125,27 +136,59 @@ export function buildPurchaseVoucherJSON(
     { ledgername: party.tallyLedger, isdeemedpositive: false, ispartyledger: true, amount: '0.00' },
   ]
 
-  // Per-rate GST ledgers — amounts already include the freight/discount fold
-  // for the majority rate (see computeInvoiceTotals). Grouped by ledgername
-  // to avoid sending duplicate ledger lines for the same ledger.
+  // Freight & discount (and GST-free extras) come BEFORE the Input GST
+  // ledgers — the GST entries below already include tax on freight/discount
+  // (majority-rate fold), and Tally's voucher/tax-analysis expects the
+  // charges above the taxes they feed into. No `appropriatefor` tag, so
+  // Tally won't re-apportion GST itself.
+  if (invoice.freightAmount > 0) {
+    ledgerentries.push({
+      ledgername: cfg.freightLedger,
+      isdeemedpositive: true, ispartyledger: false,
+      amount: neg(invoice.freightAmount),
+    })
+  }
+  if (invoice.headerDiscountAmount > 0) {
+    ledgerentries.push({
+      ledgername: cfg.discountLedger,
+      isdeemedpositive: true, ispartyledger: false,
+      amount: invoice.headerDiscountAmount.toFixed(2),
+    })
+  }
+  // GST-free extra charges — debit like freight, but never in any GST base.
+  if (invoice.otherCharges > 0) {
+    if (!cfg.otherChargesLedger) throw new Error('otherCharges > 0 but otherChargesLedger not configured')
+    ledgerentries.push({
+      ledgername: cfg.otherChargesLedger,
+      isdeemedpositive: true, ispartyledger: false,
+      amount: neg(invoice.otherCharges),
+    })
+  }
+
+  // Per-rate GST ledgers LAST (before round-off) — amounts already include
+  // the freight/discount fold for the majority rate (see computeInvoiceTotals).
+  // Grouped by ledgername to avoid sending duplicate ledger lines.
   if (!isUnreg) {
     const groupedGst: Record<string, number> = {}
-    for (const [rate, gstAmt] of Object.entries(totals.gstByRate)) {
-      if (gstAmt === 0) continue
-      if (isIntra) {
-        const half = +(gstAmt / 2).toFixed(2)
-        const otherHalf = +(gstAmt - half).toFixed(2)
+    if (isIntra) {
+      // Per-line-rounded head amounts (see computeInvoiceTotals) so
+      // CGST = SGST exactly, matching Tally's own expected-tax computation.
+      for (const [rate, half] of Object.entries(totals.gstHalfByRate)) {
+        if (half === 0) continue
         const halfRate = String(parseFloat(rate) / 2)
         const cgstLedger = cfg.gstLedgers.CGST[halfRate]
         const sgstLedger = cfg.gstLedgers.SGST[halfRate]
         if (!cgstLedger) throw new Error(`CGST ledger for ${halfRate}% not configured`)
         if (!sgstLedger) throw new Error(`SGST ledger for ${halfRate}% not configured`)
-        groupedGst[cgstLedger] = (groupedGst[cgstLedger] || 0) + half
-        groupedGst[sgstLedger] = (groupedGst[sgstLedger] || 0) + otherHalf
-      } else {
+        groupedGst[cgstLedger] = +((groupedGst[cgstLedger] || 0) + half).toFixed(2)
+        groupedGst[sgstLedger] = +((groupedGst[sgstLedger] || 0) + half).toFixed(2)
+      }
+    } else {
+      for (const [rate, gstAmt] of Object.entries(totals.gstByRate)) {
+        if (gstAmt === 0) continue
         const igstLedger = cfg.gstLedgers.IGST[rate]
         if (!igstLedger) throw new Error(`IGST ledger for ${rate}% not configured`)
-        groupedGst[igstLedger] = (groupedGst[igstLedger] || 0) + gstAmt
+        groupedGst[igstLedger] = +((groupedGst[igstLedger] || 0) + gstAmt).toFixed(2)
       }
     }
     for (const [ledgername, amt] of Object.entries(groupedGst)) {
@@ -157,34 +200,20 @@ export function buildPurchaseVoucherJSON(
     }
   }
 
-  // Freight & discount as bare expense/contra ledgers — GST on them is
-  // already inside the CGST/SGST/IGST entries above. No `appropriatefor`
-  // tag, so Tally won't re-apportion GST itself.
-  if (invoice.freightAmount > 0) {
-    ledgerentries.push({
-      ledgername: cfg.freightLedger,
-      isdeemedpositive: true, ispartyledger: false,
-      amount: neg(invoice.freightAmount),
-    })
-  }
-  if (invoice.totalDiscountAmount > 0) {
-    ledgerentries.push({
-      ledgername: cfg.discountLedger,
-      isdeemedpositive: true, ispartyledger: false,
-      amount: invoice.totalDiscountAmount.toFixed(2),
-    })
-  }
-
   // ── Round-off ───────────────────────────────────────────────────
+  // Rounding UP (roundOff > 0) is an extra expense → debit: deemedpositive
+  // with a negative amount, same convention as the GST/freight entries.
+  // Rounding DOWN is income → credit: positive amount, not deemedpositive.
   if (Math.abs(totals.roundOff) > 0.001) {
     const roundAmt = totals.roundOff > 0 ? neg(totals.roundOff) : Math.abs(totals.roundOff).toFixed(2)
     ledgerentries.push({
       ledgername: cfg.roundOffLedger,
-      isdeemedpositive: totals.roundOff < 0, ispartyledger: false,
+      isdeemedpositive: totals.roundOff > 0, ispartyledger: false,
       amount: roundAmt, vatexpamount: roundAmt,
     })
   }
-  ledgerentries[0].amount = totals.total.toFixed(2)
+  // Party total mirrors invoice creation: rounded GST total + GST-free extras.
+  ledgerentries[0].amount = (totals.total + invoice.otherCharges).toFixed(2)
 
   // ── Voucher header ──────────────────────────────────────────────
   return {
