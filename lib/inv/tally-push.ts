@@ -151,7 +151,11 @@ export function buildPurchaseVoucherJSON(
   // No `appropriatefor` tag, so Tally won't re-apportion GST itself.
   // GST-free freight instead goes at the END (after round-off).
   if (invoice.freightAmount > 0 && invoice.freightTaxable) {
+    // appropriatefor GST → Tally counts the freight in the GST assessable
+    // value (taxable = goods + freight), matching the supplier's GSTR-2B.
     ledgerentries.push({
+      appropriatefor: 'GST',
+      gstappropriateto: 'Goods and Services',
       ledgername: cfg.freightLedger,
       isdeemedpositive: true, ispartyledger: false,
       amount: neg(invoice.freightAmount),
