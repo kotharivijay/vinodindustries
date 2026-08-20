@@ -162,7 +162,11 @@ export function buildPurchaseVoucherJSON(
     })
   }
   if (invoice.headerDiscountAmount > 0) {
+    // appropriatefor GST → Tally reduces the GST assessable value by the
+    // discount (taxable = goods − discount), matching the supplier's GSTR-2B.
     ledgerentries.push({
+      appropriatefor: 'GST',
+      gstappropriateto: 'Goods and Services',
       ledgername: cfg.discountLedger,
       isdeemedpositive: true, ispartyledger: false,
       amount: invoice.headerDiscountAmount.toFixed(2),
@@ -284,7 +288,10 @@ export function buildPurchaseVoucherJSON(
       // makes Tally flag "GST Registration Details of the Party are invalid".
       ...(party.gstin ? { partygstin: party.gstin } : {}),
       ...(party.state ? { statename: party.state } : {}),
-      placeofsupply: party.state || KSI_STATE,
+      // Inward supplies: Place of Supply is the BUYER's (home) state, even for
+      // inter-state purchases — supplier's state here makes Tally flag a GST
+      // Registration mismatch (transaction PoS ≠ home Registration).
+      placeofsupply: KSI_STATE,
       // Tally Prime's valid token for URP is "Unregistered/Consumer" — plain
       // "Unregistered" flags "GST Registration Details of the Party are invalid".
       gstregistrationtype: party.gstRegistrationType === 'Unregistered'
