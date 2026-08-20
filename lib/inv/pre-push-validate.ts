@@ -62,7 +62,10 @@ export async function prePushValidate(invoiceId: number): Promise<ValidationFail
   }
 
   for (const cat of categoriesNeeded) {
-    if (!cfg.purchaseLedgerMap?.[cat]) failures.push({ code: 'NO_PURCHASE_LEDGER', message: `purchaseLedgerMap.${cat} not configured` })
+    // Party-level purchase ledger override replaces the category map entirely.
+    if (!inv.party.purchaseLedgerOverride && !cfg.purchaseLedgerMap?.[cat]) {
+      failures.push({ code: 'NO_PURCHASE_LEDGER', message: `purchaseLedgerMap.${cat} not configured` })
+    }
     if (!cfg.godownMap?.[cat]) failures.push({ code: 'NO_GODOWN', message: `godownMap.${cat} not configured` })
   }
 

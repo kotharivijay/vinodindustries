@@ -102,6 +102,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         state: inv.party.state,
         gstin: inv.party.gstin,
         gstRegistrationType: inv.party.gstRegistrationType,
+        purchaseLedgerOverride: inv.party.purchaseLedgerOverride,
       },
       cfg as any,
       lines,

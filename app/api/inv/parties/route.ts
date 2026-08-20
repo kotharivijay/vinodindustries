@@ -31,10 +31,11 @@ export async function PATCH(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { id, whatsapp, email, city, gstRegistrationType } = await req.json()
+  const { id, whatsapp, email, city, gstRegistrationType, purchaseLedgerOverride } = await req.json()
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
   const data: any = {}
   if (whatsapp !== undefined) data.whatsapp = whatsapp || null
+  if (purchaseLedgerOverride !== undefined) data.purchaseLedgerOverride = purchaseLedgerOverride || null
   if (email !== undefined) data.email = email || null
   if (city !== undefined) data.city = city || null
   if (gstRegistrationType && ['Regular', 'Composition', 'Unregistered'].includes(gstRegistrationType)) {

@@ -17,6 +17,7 @@ interface Party {
   email: string | null
   parentGroup: string | null
   gstRegistrationType: 'Regular' | 'Composition' | 'Unregistered'
+  purchaseLedgerOverride: string | null
   active: boolean
   lastSyncedAt: string | null
 }
@@ -43,7 +44,7 @@ export default function PartiesPage() {
 
   function openEdit(p: Party) {
     setEditingId(p.id)
-    setEditForm({ whatsapp: p.whatsapp || '', email: p.email || '', city: p.city || '', gstRegistrationType: p.gstRegistrationType })
+    setEditForm({ whatsapp: p.whatsapp || '', email: p.email || '', city: p.city || '', gstRegistrationType: p.gstRegistrationType, purchaseLedgerOverride: p.purchaseLedgerOverride || '' })
   }
 
   async function saveEdit() {
@@ -130,6 +131,14 @@ export default function PartiesPage() {
                   className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
               </label>
             ))}
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400">Purchase Ledger override (Tally)</span>
+              <input value={editForm.purchaseLedgerOverride || ''}
+                onChange={e => setEditForm(f => ({ ...f, purchaseLedgerOverride: e.target.value }))}
+                placeholder="blank = category map"
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+              <span className="text-[10px] text-gray-400">All invoice lines of this party post to this Tally purchase ledger.</span>
+            </label>
             <label className="block text-xs">
               <span className="text-gray-500 dark:text-gray-400">GST Type</span>
               <select value={editForm.gstRegistrationType || 'Regular'}

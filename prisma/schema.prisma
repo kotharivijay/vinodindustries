@@ -1726,6 +1726,9 @@ model InvParty {
   parentGroup         String?
   // 'Regular' | 'Composition' | 'Unregistered'
   gstRegistrationType String    @default("Regular")
+  // Tally purchase ledger for this party's invoice lines — overrides the
+  // category map (mirror of VI's per-party override).
+  purchaseLedgerOverride String?
   active              Boolean   @default(true)
   lastSyncedAt        DateTime?
   createdAt           DateTime  @default(now())

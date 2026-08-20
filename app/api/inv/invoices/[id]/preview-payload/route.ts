@@ -47,7 +47,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         otherCharges: Number(inv.otherCharges || 0),
         linkedChallanSeries },
       { tallyLedger: inv.party.tallyLedger, state: inv.party.state, gstin: inv.party.gstin,
-        gstRegistrationType: inv.party.gstRegistrationType },
+        gstRegistrationType: inv.party.gstRegistrationType,
+        purchaseLedgerOverride: inv.party.purchaseLedgerOverride },
       cfg as any,
       inv.lines.filter((l: any) => l.item).map((l: any) => ({
         lineNo: l.lineNo, qty: Number(l.qty || 0), unit: l.unit || 'kg',

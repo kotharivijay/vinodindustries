@@ -38,6 +38,8 @@ interface PartyForBuild {
   state: string | null
   gstin: string | null
   gstRegistrationType: string
+  // Overrides purchaseLedgerMap[category] for every line of this party's invoices.
+  purchaseLedgerOverride?: string | null
 }
 
 interface CfgForBuild {
@@ -64,7 +66,7 @@ export function buildPurchaseVoucherJSON(
   // ── Inventory entries ────────────────────────────────────────────
   const allinventoryentries = lines.map(l => {
     const godown = l.alias.godownOverride ?? cfg.godownMap[l.alias.category]
-    const purchaseLedger = cfg.purchaseLedgerMap[l.alias.category]
+    const purchaseLedger = party.purchaseLedgerOverride || cfg.purchaseLedgerMap[l.alias.category]
     if (!godown) throw new Error(`No godown for category ${l.alias.category}`)
     if (!purchaseLedger) throw new Error(`No purchase ledger for category ${l.alias.category}`)
 
