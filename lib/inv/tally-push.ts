@@ -232,7 +232,13 @@ export function buildPurchaseVoucherJSON(
     })
   }
   // Party total mirrors invoice creation: rounded GST total + GST-free extras.
-  ledgerentries[0].amount = (totals.total + invoice.otherCharges).toFixed(2)
+  const partyTotal = (totals.total + invoice.otherCharges).toFixed(2)
+  ledgerentries[0].amount = partyTotal
+  // Bill-wise details (New Ref on the supplier bill no.) — without this the
+  // payable sits in "On Account" instead of the bill-wise outstanding section.
+  ledgerentries[0].billallocations = [
+    { name: invoice.supplierInvoiceNo, billtype: 'New Ref', amount: partyTotal },
+  ]
 
   // ── Voucher header ──────────────────────────────────────────────
   return {
