@@ -280,7 +280,9 @@ export function buildPurchaseVoucherJSON(
       vchentrymode: 'Item Invoice',
       isinvoice: true,
       effectivedate: fmtDate(invoice.supplierInvoiceDate),
-      ...(party.gstin ? { partygstin: party.gstin } : { partygstin: '' }),
+      // Omit partygstin entirely when the party has no GSTIN — an empty tag
+      // makes Tally flag "GST Registration Details of the Party are invalid".
+      ...(party.gstin ? { partygstin: party.gstin } : {}),
       ...(party.state ? { statename: party.state } : {}),
       placeofsupply: party.state || KSI_STATE,
       gstregistrationtype: party.gstRegistrationType,
