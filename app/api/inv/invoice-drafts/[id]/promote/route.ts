@@ -49,6 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     party,
     lines: (draft.lines as any[]) || [],
     freightAmount: draft.freightAmount as any,
+    freightTaxable: draft.freightTaxable,
     otherCharges: draft.otherCharges as any,
     discountAmount: draft.discountAmount as any,
   })
@@ -66,6 +67,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           cgstAmount: built.cgstAmount,
           sgstAmount: built.sgstAmount,
           freightAmount: built.freight,
+          freightTaxable: built.freightTaxable,
           totalDiscountAmount: built.totalDiscountAmount,
           otherCharges: built.other,
           roundOff: built.roundOff,

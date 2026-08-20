@@ -38,7 +38,9 @@ export default function TallyConfigPage() {
           gstLedgers: form.gstLedgers,
           roundOffLedger: form.roundOffLedger,
           freightLedger: form.freightLedger,
+          freightNoGstLedger: form.freightNoGstLedger,
           discountLedger: form.discountLedger,
+          otherChargesLedger: form.otherChargesLedger,
         }),
       })
       mutate()
@@ -104,7 +106,7 @@ export default function TallyConfigPage() {
         <section className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
           <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-3">Misc Ledgers</h2>
           <div className="grid md:grid-cols-3 gap-3">
-            {[['roundOffLedger', 'Round-off'], ['freightLedger', 'Freight (Inward)'], ['discountLedger', 'Discount']].map(([k, label]) => (
+            {[['roundOffLedger', 'Round-off'], ['freightLedger', 'Freight (with GST)'], ['freightNoGstLedger', 'Freight (No GST)'], ['discountLedger', 'Discount'], ['otherChargesLedger', 'Other Charges (GST-free)']].map(([k, label]) => (
               <label key={k} className="block text-xs">
                 <span className="text-gray-500 dark:text-gray-400">{label}</span>
                 <input value={form[k] || ''} onChange={e => setForm((f: any) => ({ ...f, [k]: e.target.value }))}

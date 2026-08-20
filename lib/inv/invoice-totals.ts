@@ -1,11 +1,14 @@
 /**
  * Single source of truth for purchase-invoice money math.
  *
- * Model (locked 2026-05-04):
+ * Model (locked 2026-05-04; freight GST split made per-invoice 2026-08-20):
  *   - Each line carries its own gstRate; line GST is computed at that rate.
- *   - Freight ADDS to GST base at the majority rate (rate with the highest
- *     line-amount subtotal; ties broken by the higher rate).
- *   - Discount REDUCES the GST base at the majority rate.
+ *   - Freight is GST-FREE by default: it adds to the invoice total but not
+ *     to any GST base. When the supplier's bill DOES tax freight
+ *     (freightTaxable=true, detected at entry by matching the bill total),
+ *     freight folds into the GST base at the majority rate.
+ *   - Discount REDUCES the GST base at the majority rate (rate with the
+ *     highest line-amount subtotal; ties broken by the higher rate).
  *   - Totals split: state === KSI state → CGST + SGST (each = total/2);
  *     other state → IGST (full amount).
  */
@@ -44,6 +47,7 @@ export function computeInvoiceTotals(
   discount: number,
   isIntra: boolean,
   isUnreg: boolean = false,
+  freightTaxable: boolean = false,
 ): InvoiceTotals {
   // Group line amounts by rate
   const linesByRate: Record<string, number> = {}
@@ -66,7 +70,8 @@ export function computeInvoiceTotals(
   // Per-rate GST, computed per LINE per duty head with each line rounded to
   // 2dp — exactly how Tally Prime derives its expected tax. Intra: each of
   // CGST/SGST = Σ round2(line × rate/200), so both halves are always equal.
-  // Freight adds / discount subtracts as one extra base at the majority rate.
+  // Discount subtracts (and taxable freight adds) as one extra base at the
+  // majority rate; GST-free freight never enters the base.
   const rh2 = (n: number) => Math.sign(n) * Math.round(Math.abs(n) * 100 + 1e-9) / 100
   const gstByRate: Record<string, number> = {}
   const gstHalfByRate: Record<string, number> = {}
@@ -83,7 +88,7 @@ export function computeInvoiceTotals(
       }
     }
     for (const l of lines) addBase(Number(l.gstRate || 0), Number(l.amount || 0))
-    const fold = freight - discount
+    const fold = (freightTaxable ? freight : 0) - discount
     if (fold !== 0) addBase(majorityRate, fold)
   }
 

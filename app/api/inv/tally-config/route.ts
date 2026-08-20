@@ -48,7 +48,7 @@ export async function PATCH(req: NextRequest) {
   for (const k of ['purchaseLedgerMap', 'godownMap', 'gstLedgers'] as const) {
     if (body[k]) data[k] = body[k]
   }
-  for (const k of ['roundOffLedger', 'freightLedger', 'discountLedger'] as const) {
+  for (const k of ['roundOffLedger', 'freightLedger', 'freightNoGstLedger', 'discountLedger', 'otherChargesLedger'] as const) {
     if (body[k]) data[k] = body[k]
   }
   const updated = await db.invTallyConfig.update({ where: { id: 1 }, data })

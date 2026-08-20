@@ -88,6 +88,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const merged = {
     lines: Array.isArray(body.lines) ? body.lines : (existing.lines as any[]) || [],
     freightAmount: body.freightAmount !== undefined ? body.freightAmount : existing.freightAmount,
+    freightTaxable: body.freightTaxable !== undefined ? body.freightTaxable : existing.freightTaxable,
     otherCharges: body.otherCharges !== undefined ? body.otherCharges : existing.otherCharges,
     discountAmount: body.discountAmount !== undefined ? body.discountAmount : existing.discountAmount,
   }
@@ -101,6 +102,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         : undefined,
       lines: built.lineRows,
       freightAmount: built.freight || null,
+      freightTaxable: built.freightTaxable,
       otherCharges: built.other || null,
       discountAmount: Number(merged.discountAmount || 0) || null,
       notes: body.notes !== undefined ? (body.notes || null) : undefined,

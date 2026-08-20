@@ -51,6 +51,7 @@ async function main() {
         supplierInvoiceNo: inv.supplierInvoiceNo,
         supplierInvoiceDate: inv.supplierInvoiceDate,
         freightAmount: Number(inv.freightAmount),
+        freightTaxable: Boolean(inv.freightTaxable),
         // Header-only discount: line discounts are already netted out of line amounts.
         headerDiscountAmount: Math.max(0, +(Number(inv.totalDiscountAmount) -
           inv.lines.reduce((s: number, l: any) => s + Number(l.discountAmount || 0), 0)).toFixed(2)),

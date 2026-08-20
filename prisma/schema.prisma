@@ -1961,6 +1961,11 @@ model InvPurchaseInvoice {
   cgstAmount            Decimal   @default(0) @db.Decimal(14, 2)
   sgstAmount            Decimal   @default(0) @db.Decimal(14, 2)
   freightAmount         Decimal   @default(0) @db.Decimal(14, 2)
+  // Did the supplier charge GST on freight? Detected at entry by matching the
+  // bill total. true → freight folds into the GST base (majority rate) and
+  // pushes to the "(GST)" freight ledger before Input GST; false → GST-free,
+  // pushed to the plain freight ledger at the end of the voucher.
+  freightTaxable        Boolean   @default(false)
   totalDiscountAmount   Decimal   @default(0) @db.Decimal(14, 2)
   otherCharges          Decimal   @default(0) @db.Decimal(14, 2)
   roundOff              Decimal   @default(0) @db.Decimal(8, 2)
@@ -2010,6 +2015,7 @@ model InvPurchaseInvoiceDraft {
   // discountAmount, challanLineId, freeTextLabel }.
   lines             Json
   freightAmount     Decimal?  @db.Decimal(14, 2)
+  freightTaxable    Boolean   @default(false)
   otherCharges      Decimal?  @db.Decimal(14, 2)
   discountAmount    Decimal?  @db.Decimal(14, 2)
   notes             String?
@@ -2093,7 +2099,11 @@ model InvTallyConfig {
   gstLedgers        Json
   roundOffLedger    String   @default("Round Off")
   freightLedger     String   @default("Freight Inward (GST)")
+  // GST-free freight ledger — used when the invoice's freightTaxable=false
+  freightNoGstLedger String  @default("")
   discountLedger    String   @default("Discount (GST)")
+  // GST-free extras (hamali/cartage etc.) — pushed as a plain debit, no GST fold
+  otherChargesLedger String  @default("")
   updatedAt         DateTime @default(now()) @updatedAt
 }
 

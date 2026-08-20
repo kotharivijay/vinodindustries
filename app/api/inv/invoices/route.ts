@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const {
     partyId, supplierInvoiceNo, supplierInvoiceDate,
-    challanIds, lines, freightAmount, otherCharges, defaultDiscountPct, discountAmount, notes,
+    challanIds, lines, freightAmount, freightTaxable, otherCharges, defaultDiscountPct, discountAmount, notes,
   } = body
   if (!partyId || !supplierInvoiceNo || !supplierInvoiceDate || !Array.isArray(lines)) {
     return NextResponse.json({ error: 'partyId, supplierInvoiceNo, supplierInvoiceDate, lines required' }, { status: 400 })
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   if (!party) return NextResponse.json({ error: 'Party not found' }, { status: 404 })
 
   const built = await buildInvoiceTotals(db, {
-    party, lines, freightAmount, otherCharges, discountAmount,
+    party, lines, freightAmount, freightTaxable, otherCharges, discountAmount,
   })
 
   try {
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
           cgstAmount: built.cgstAmount,
           sgstAmount: built.sgstAmount,
           freightAmount: built.freight,
+          freightTaxable: built.freightTaxable,
           totalDiscountAmount: built.totalDiscountAmount,
           otherCharges: built.other,
           roundOff: built.roundOff,

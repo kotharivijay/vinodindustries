@@ -21,6 +21,10 @@ interface InvoiceForBuild {
   supplierInvoiceNo: string
   supplierInvoiceDate: Date | string
   freightAmount: number
+  // Supplier charged GST on freight (detected at entry from the bill total).
+  // true → fold at majority rate, "(GST)" freight ledger before Input GST;
+  // false → GST-free, plain freight ledger at the end of the voucher.
+  freightTaxable: boolean
   // Header-level discount ONLY. Line-level discounts are already netted out of
   // each line's `amount`; passing them here would subtract them twice.
   headerDiscountAmount: number
@@ -42,6 +46,8 @@ interface CfgForBuild {
   gstLedgers: { IGST: Record<string, string>; CGST: Record<string, string>; SGST: Record<string, string> }
   roundOffLedger: string
   freightLedger: string
+  // GST-free freight ledger — required when freightTaxable=false and freight > 0.
+  freightNoGstLedger?: string
   discountLedger: string
   otherChargesLedger?: string
 }
@@ -129,6 +135,7 @@ export function buildPurchaseVoucherJSON(
     invoice.headerDiscountAmount,
     isIntra,
     isUnreg,
+    invoice.freightTaxable,
   )
 
   // ── Ledger entries ──────────────────────────────────────────────
@@ -136,12 +143,12 @@ export function buildPurchaseVoucherJSON(
     { ledgername: party.tallyLedger, isdeemedpositive: false, ispartyledger: true, amount: '0.00' },
   ]
 
-  // Freight & discount (and GST-free extras) come BEFORE the Input GST
-  // ledgers — the GST entries below already include tax on freight/discount
-  // (majority-rate fold), and Tally's voucher/tax-analysis expects the
-  // charges above the taxes they feed into. No `appropriatefor` tag, so
-  // Tally won't re-apportion GST itself.
-  if (invoice.freightAmount > 0) {
+  // Discount and taxable freight come BEFORE the Input GST ledgers — the
+  // GST entries below already include their majority-rate fold, and Tally's
+  // voucher/tax-analysis expects the charges above the taxes they feed into.
+  // No `appropriatefor` tag, so Tally won't re-apportion GST itself.
+  // GST-free freight instead goes at the END (after round-off).
+  if (invoice.freightAmount > 0 && invoice.freightTaxable) {
     ledgerentries.push({
       ledgername: cfg.freightLedger,
       isdeemedpositive: true, ispartyledger: false,
@@ -210,6 +217,16 @@ export function buildPurchaseVoucherJSON(
       ledgername: cfg.roundOffLedger,
       isdeemedpositive: totals.roundOff > 0, ispartyledger: false,
       amount: roundAmt, vatexpamount: roundAmt,
+    })
+  }
+  // GST-free freight LAST — shown at the end of the voucher
+  // (Input GST → Round Off → Freight), like the manually-corrected vouchers.
+  if (invoice.freightAmount > 0 && !invoice.freightTaxable) {
+    if (!cfg.freightNoGstLedger) throw new Error('Freight is GST-free but freightNoGstLedger not configured')
+    ledgerentries.push({
+      ledgername: cfg.freightNoGstLedger,
+      isdeemedpositive: true, ispartyledger: false,
+      amount: neg(invoice.freightAmount),
     })
   }
   // Party total mirrors invoice creation: rounded GST total + GST-free extras.

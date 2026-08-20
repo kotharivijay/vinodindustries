@@ -79,9 +79,15 @@ export async function prePushValidate(invoiceId: number): Promise<ValidationFail
     }
   }
 
-  // Freight/discount ledgers — needed when those amounts are non-zero
-  if (Number(inv.freightAmount) > 0 && !cfg.freightLedger) {
-    failures.push({ code: 'NO_FREIGHT_LEDGER', message: 'freightLedger not configured' })
+  // Freight/discount ledgers — needed when those amounts are non-zero.
+  // Taxable freight uses the "(GST)" ledger; GST-free freight its own ledger.
+  if (Number(inv.freightAmount) > 0) {
+    if (inv.freightTaxable && !cfg.freightLedger) {
+      failures.push({ code: 'NO_FREIGHT_LEDGER', message: 'Freight is GST-taxable but freightLedger not configured' })
+    }
+    if (!inv.freightTaxable && !cfg.freightNoGstLedger) {
+      failures.push({ code: 'NO_FREIGHT_NOGST_LEDGER', message: 'Freight is GST-free but the No-GST freight ledger is not configured — set it in /inventory/config' })
+    }
   }
   if (Number(inv.totalDiscountAmount) > 0 && !cfg.discountLedger) {
     failures.push({ code: 'NO_DISCOUNT_LEDGER', message: 'discountLedger not configured' })

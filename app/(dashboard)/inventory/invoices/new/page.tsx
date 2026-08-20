@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import useSWR from 'swr'
 import { useRouter, useSearchParams } from 'next/navigation'
 import BackButton from '../../../BackButton'
+import { computeInvoiceTotals } from '@/lib/inv/invoice-totals'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -21,6 +22,7 @@ export default function NewInvoicePage() {
   const [freightAmount, setFreight] = useState('')
   const [otherCharges, setOther] = useState('')
   const [discountAmount, setDiscount] = useState('')
+  const [billTotal, setBillTotal] = useState('')
   const [notes, setNotes] = useState('')
 
   const { data: pendingChallans = [] } = useSWR<any[]>(
@@ -91,26 +93,52 @@ export default function NewInvoicePage() {
     setLines(prev => [...prev, { itemId: null, description: 'Freight', qty: '1', unit: 'lot', rate: '', gstRate: '0' }])
   }
 
+  const selectedParty = parties.find((p: any) => String(p.id) === partyId)
+  const isIntra = (selectedParty?.state || '').toLowerCase() === 'rajasthan'
+  const isUnreg = ['Unregistered', 'Composition'].includes(selectedParty?.gstRegistrationType || '')
+
   const totals = useMemo(() => {
-    let net = 0, gst = 0
-    for (const l of lines) {
-      const q = Number(l.qty) || 0
-      const r = Number(l.rate) || 0
-      const lineNet = q * r
-      const lineGst = lineNet * (Number(l.gstRate) || 0) / 100
-      net += lineNet; gst += lineGst
-    }
+    const linesCalc = lines.map(l => ({
+      amount: (Number(l.qty) || 0) * (Number(l.rate) || 0),
+      gstRate: Number(l.gstRate) || 0,
+    }))
+    const freight = Number(freightAmount) || 0
+    const other = Number(otherCharges) || 0
+    const discount = Number(discountAmount) || 0
+    // Both freight conventions — the bill total tells us which one the
+    // supplier used (GST on freight, or freight as a plain GST-free charge).
+    const without = computeInvoiceTotals(linesCalc, freight, discount, isIntra, isUnreg, false)
+    const withTax = computeInvoiceTotals(linesCalc, freight, discount, isIntra, isUnreg, true)
     return {
-      net, gst,
-      freight: Number(freightAmount) || 0,
-      other: Number(otherCharges) || 0,
-      discount: Number(discountAmount) || 0,
+      net: without.taxable, freight, other, discount,
+      totalWithout: without.total + other, gstWithout: without.totalGst,
+      totalWith: withTax.total + other, gstWith: withTax.totalGst,
     }
-  }, [lines, freightAmount, otherCharges, discountAmount])
+  }, [lines, freightAmount, otherCharges, discountAmount, isIntra, isUnreg])
+
+  // Detect freight GST treatment from the entered bill total
+  const bill = billTotal.trim() === '' ? null : Number(billTotal)
+  const freightMode: 'without' | 'with' | 'mismatch' | null =
+    bill == null || !Number.isFinite(bill) ? null
+      : Math.abs(bill - totals.totalWithout) < 0.005 ? 'without'
+      : totals.freight > 0 && Math.abs(bill - totals.totalWith) < 0.005 ? 'with'
+      : 'mismatch'
+  const freightTaxable = freightMode === 'with'
+  const computedTotal = freightTaxable ? totals.totalWith : totals.totalWithout
+  const computedGst = freightTaxable ? totals.gstWith : totals.gstWithout
 
   async function save() {
     if (!partyId || !supplierInvoiceNo || !supplierInvoiceDate || !lines.length) {
       alert('Party, Invoice No, Date and at least one line are required.'); return
+    }
+    if (bill == null || !Number.isFinite(bill)) {
+      alert('Enter the Total Invoice Amount from the supplier\'s bill — it verifies the entry and decides the freight GST treatment.'); return
+    }
+    if (freightMode === 'mismatch') {
+      const msg = totals.freight > 0
+        ? `Bill total ₹${bill.toLocaleString('en-IN')} matches neither ₹${totals.totalWithout.toLocaleString('en-IN')} (freight without GST) nor ₹${totals.totalWith.toLocaleString('en-IN')} (freight with GST).\n\nCheck rates/GST%/freight. Save anyway with freight WITHOUT GST?`
+        : `Bill total ₹${bill.toLocaleString('en-IN')} doesn't match the computed ₹${totals.totalWithout.toLocaleString('en-IN')}.\n\nCheck rates/GST%. Save anyway?`
+      if (!confirm(msg)) return
     }
     setSaving(true)
     try {
@@ -119,6 +147,7 @@ export default function NewInvoicePage() {
         body: JSON.stringify({
           partyId: Number(partyId), supplierInvoiceNo, supplierInvoiceDate,
           freightAmount, otherCharges, discountAmount, notes,
+          freightTaxable,
           challanIds: Array.from(selectedChallans),
           lines,
         }),
@@ -215,7 +244,7 @@ export default function NewInvoicePage() {
 
         <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-sm space-y-1">
           <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Taxable</span><span>₹{totals.net.toLocaleString('en-IN')}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">GST</span><span>₹{totals.gst.toLocaleString('en-IN')}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">GST</span><span>₹{computedGst.toLocaleString('en-IN')}</span></div>
           <div className="flex justify-between"><span className="text-gray-500 dark:text-gray-400">Freight + other</span><span>₹{(totals.freight + totals.other).toLocaleString('en-IN')}</span></div>
           {totals.discount > 0 && (
             <div className="flex justify-between text-rose-600 dark:text-rose-400">
@@ -223,8 +252,32 @@ export default function NewInvoicePage() {
             </div>
           )}
           <div className="flex justify-between font-bold border-t border-gray-200 dark:border-gray-700 pt-1">
-            <span>Total</span>
-            <span>₹{(totals.net + totals.gst + totals.freight + totals.other - totals.discount).toLocaleString('en-IN')}</span>
+            <span>Total (computed)</span>
+            <span>₹{computedTotal.toLocaleString('en-IN')}</span>
+          </div>
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+            <label className="block text-xs">
+              <span className="text-gray-500 dark:text-gray-400 font-semibold">Total Invoice Amount (as per bill) *</span>
+              <input type="number" step="0.01" value={billTotal} onChange={e => setBillTotal(e.target.value)}
+                placeholder="Enter the bill's grand total"
+                className="mt-0.5 w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm" />
+            </label>
+            {freightMode === 'without' && (
+              <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                ✓ Matches{totals.freight > 0 ? ' — freight WITHOUT GST (plain freight ledger at end)' : ''}
+              </p>
+            )}
+            {freightMode === 'with' && (
+              <p className="mt-1 text-[11px] text-sky-600 dark:text-sky-400 font-semibold">
+                ✓ Matches — freight WITH GST (freight (GST) ledger, taxed at majority rate)
+              </p>
+            )}
+            {freightMode === 'mismatch' && (
+              <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                ⚠ Matches neither ₹{totals.totalWithout.toLocaleString('en-IN')} (freight without GST)
+                {totals.freight > 0 ? ` nor ₹${totals.totalWith.toLocaleString('en-IN')} (freight with GST)` : ''} — check rates / GST% / freight.
+              </p>
+            )}
           </div>
         </div>
 

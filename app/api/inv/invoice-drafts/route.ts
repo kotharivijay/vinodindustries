@@ -52,14 +52,14 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { partyId, challanIds, lines, freightAmount, otherCharges, discountAmount, notes } = body
+  const { partyId, challanIds, lines, freightAmount, freightTaxable, otherCharges, discountAmount, notes } = body
   if (!partyId || !Array.isArray(lines)) {
     return NextResponse.json({ error: 'partyId and lines required' }, { status: 400 })
   }
   const party = await db.invParty.findUnique({ where: { id: Number(partyId) } })
   if (!party) return NextResponse.json({ error: 'Party not found' }, { status: 404 })
 
-  const built = await buildInvoiceTotals(db, { party, lines, freightAmount, otherCharges, discountAmount })
+  const built = await buildInvoiceTotals(db, { party, lines, freightAmount, freightTaxable, otherCharges, discountAmount })
 
   const draft = await db.invPurchaseInvoiceDraft.create({
     data: {
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
       challanIds: Array.isArray(challanIds) ? challanIds.map((c: any) => Number(c)).filter(Number.isFinite) : [],
       lines: built.lineRows,
       freightAmount: built.freight || null,
+      freightTaxable: built.freightTaxable,
       otherCharges: built.other || null,
       discountAmount: Number(discountAmount || 0) || null,
       notes: notes || null,

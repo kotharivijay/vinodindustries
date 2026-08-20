@@ -42,7 +42,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   try {
     payload = buildPurchaseVoucherJSON(
       { id: inv.id, supplierInvoiceNo: inv.supplierInvoiceNo, supplierInvoiceDate: inv.supplierInvoiceDate,
-        freightAmount: Number(inv.freightAmount), headerDiscountAmount,
+        freightAmount: Number(inv.freightAmount), freightTaxable: Boolean(inv.freightTaxable),
+        headerDiscountAmount,
         otherCharges: Number(inv.otherCharges || 0),
         linkedChallanSeries },
       { tallyLedger: inv.party.tallyLedger, state: inv.party.state, gstin: inv.party.gstin,

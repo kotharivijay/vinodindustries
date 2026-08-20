@@ -30,6 +30,8 @@ export interface BuildInvoiceTotalsInput {
   party: { gstRegistrationType: string; state: string | null }
   lines: LineInput[]
   freightAmount?: string | number | null
+  // Supplier charged GST on freight (detected at entry from the bill total).
+  freightTaxable?: boolean | null
   otherCharges?: string | number | null
   discountAmount?: string | number | null
 }
@@ -58,6 +60,7 @@ export interface BuiltInvoiceTotals {
   isIntra: boolean
   isUnreg: boolean
   lineRows: BuiltInvoiceLineRow[]
+  freightTaxable: boolean
   taxableAmount: number
   igstAmount: number
   cgstAmount: number
@@ -81,7 +84,7 @@ type Db = {
 
 export async function buildInvoiceTotals(
   db: Db,
-  { party, lines, freightAmount, otherCharges, discountAmount }: BuildInvoiceTotalsInput,
+  { party, lines, freightAmount, freightTaxable, otherCharges, discountAmount }: BuildInvoiceTotalsInput,
 ): Promise<BuiltInvoiceTotals> {
   const gstTreatment = decideGstTreatment(party)
   const isIntra = (party.state || '').toLowerCase() === KSI_STATE.toLowerCase()
@@ -140,7 +143,8 @@ export async function buildInvoiceTotals(
   const freight = Number(freightAmount || 0)
   const other = Number(otherCharges || 0)
   const headerDiscount = Number(discountAmount || 0)
-  const totals = computeInvoiceTotals(linesForTotals, freight, headerDiscount, isIntra, isUnreg)
+  const isFreightTaxable = Boolean(freightTaxable)
+  const totals = computeInvoiceTotals(linesForTotals, freight, headerDiscount, isIntra, isUnreg, isFreightTaxable)
   const totalAmount = totals.total + other
   const totalDiscountAmount = lineDiscountTotal + headerDiscount
 
@@ -149,6 +153,7 @@ export async function buildInvoiceTotals(
     isIntra,
     isUnreg,
     lineRows,
+    freightTaxable: isFreightTaxable,
     taxableAmount: totals.taxable,
     igstAmount: totals.igst,
     cgstAmount: totals.cgst,

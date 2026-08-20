@@ -92,6 +92,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         supplierInvoiceNo: inv.supplierInvoiceNo,
         supplierInvoiceDate: inv.supplierInvoiceDate,
         freightAmount: Number(inv.freightAmount),
+        freightTaxable: Boolean(inv.freightTaxable),
         headerDiscountAmount,
         otherCharges: Number(inv.otherCharges || 0),
         linkedChallanSeries,
