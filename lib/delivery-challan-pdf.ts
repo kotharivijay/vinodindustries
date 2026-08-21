@@ -186,14 +186,22 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   const head: any[] = ['#', 'Lot No', 'Marka', 'Quality', 'Challan', 'Than']
   if (showCharges) head.push('Extra Charges')
 
+  // Compact the rows when a challan has many lines so it stays on one A4 page.
+  // Small challans keep comfortable spacing; large ones shrink font + padding.
+  const bodyRows = body.length
+  const compact = bodyRows > 22
+  const veryCompact = bodyRows > 40
+  const rowFont = veryCompact ? 6.5 : compact ? 7 : 8
+  const rowPad = veryCompact ? 0.6 : compact ? 0.9 : 1.6
+
   autoTable(doc, {
-    startY: 55,
+    startY: 50,
     head: [head],
     body,
     margin: { left: marginL, right: marginR },
     theme: 'grid',
-    styles: { fontSize: 8, cellPadding: 1.6, textColor: [30, 30, 30], lineColor: [200, 200, 200] },
-    headStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontStyle: 'bold' },
+    styles: { fontSize: rowFont, cellPadding: rowPad, textColor: [30, 30, 30], lineColor: [200, 200, 200] },
+    headStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontStyle: 'bold', fontSize: rowFont },
     columnStyles: showCharges
       ? {
           0: { cellWidth: 8, halign: 'center' },   // #
@@ -229,8 +237,8 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
 
   const finalY = (doc as any).lastAutoTable.finalY || 100
 
-  // Signature slots
-  const sigY = Math.min(finalY + 25, doc.internal.pageSize.getHeight() - 30)
+  // Signature slots — sit just below the table, but never off the page.
+  const sigY = Math.min(finalY + (compact ? 12 : 20), doc.internal.pageSize.getHeight() - 24)
   const sigW = (pageW - marginL - marginR - 20) / 3
   const sigLabels = ['Prepared by', 'For KSI · Authorised signatory', 'Received by (party)']
   for (let i = 0; i < 3; i++) {
