@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import BackButton from '../BackButton'
@@ -87,6 +87,43 @@ export default function DeliveryChallanPage() {
   // Show/hide the Transport column in the on-screen challan detail table.
   // Hidden by default (matches the printed challan, which drops Transport).
   const [showTransport, setShowTransport] = useState(false)
+
+  // Settings-gated edit mode: add missed than / remove wrongly-added lines on
+  // an already-issued challan. Off by default; opt-in and persisted so it's a
+  // deliberate action, not something normal users trip over.
+  const [editMode, setEditMode] = useState(false)
+  useEffect(() => { try { setEditMode(localStorage.getItem('dc-edit-mode') === 'true') } catch {} }, [])
+  const setEdit = (v: boolean) => { setEditMode(v); try { localStorage.setItem('dc-edit-mode', String(v)) } catch {} ; if (!v) { setAddPanelFor(null); setAddPick(new Set()) } }
+  const [addPanelFor, setAddPanelFor] = useState<number | null>(null) // challanId with add-panel open
+  const [addPick, setAddPick] = useState<Set<number>>(new Set())
+  const [editBusy, setEditBusy] = useState(false)
+
+  // Queue finish-lots available to add, grouped by party id
+  const availByParty = useMemo(() => {
+    const m = new Map<number, { felId: number; lotNo: string; than: number; quality: string; shade: string | null; fpSlipNo: number }[]>()
+    for (const p of queue?.parties ?? []) {
+      const rows: { felId: number; lotNo: string; than: number; quality: string; shade: string | null; fpSlipNo: number }[] = []
+      for (const fp of p.finishPrograms) for (const r of fp.rows) rows.push({ felId: r.felId, lotNo: r.lotNo, than: r.than, quality: r.quality, shade: r.shade, fpSlipNo: fp.finishSlipNo })
+      if (rows.length) m.set(p.partyId, rows)
+    }
+    return m
+  }, [queue])
+
+  async function editLines(challanId: number, payload: { addFelIds?: number[]; removeLineIds?: number[] }) {
+    setEditBusy(true)
+    try {
+      const res = await fetch(`/api/delivery-challan/${challanId}/edit-lines`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.message || e.error || 'Edit failed'); return }
+      setAddPanelFor(null); setAddPick(new Set())
+      mutateIssued(); mutateQueue()
+    } finally { setEditBusy(false) }
+  }
+  function removeLine(challanId: number, line: ChallanLine) {
+    if (!confirm(`Remove ${line.lotNo} (${line.than} than) from this challan? It returns to the queue.`)) return
+    editLines(challanId, { removeLineIds: [line.id] })
+  }
 
   const issuedPartyOptions = useMemo(() => {
     const set = new Set<string>()
@@ -432,17 +469,30 @@ export default function DeliveryChallanPage() {
                 </label>
                 <div className="flex items-end justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <span>{filteredIssued.length} of {issued.length} challans</span>
-                  <button
-                    onClick={() => setShowTransport(v => !v)}
-                    title="Show / hide the Transport column in the challan detail below"
-                    className={`px-2.5 py-1.5 rounded font-semibold border whitespace-nowrap ${
-                      showTransport
-                        ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
-                    }`}
-                  >
-                    {showTransport ? '✓ Transport shown' : 'Transport hidden'}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowTransport(v => !v)}
+                      title="Show / hide the Transport column in the challan detail below"
+                      className={`px-2.5 py-1.5 rounded font-semibold border whitespace-nowrap ${
+                        showTransport
+                          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+                      }`}
+                    >
+                      {showTransport ? '✓ Transport shown' : 'Transport hidden'}
+                    </button>
+                    <button
+                      onClick={() => setEdit(!editMode)}
+                      title="Settings: enable editing issued challans — add missed than or remove wrongly-added lines"
+                      className={`px-2.5 py-1.5 rounded font-semibold border whitespace-nowrap ${
+                        editMode
+                          ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border-amber-400 dark:border-amber-700'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+                      }`}
+                    >
+                      {editMode ? '⚙ Edit mode: ON' : '⚙ Edit challans'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -489,6 +539,7 @@ export default function DeliveryChallanPage() {
                       <th className="py-1 pr-2 font-semibold">Challan</th>
                       {showTransport && <th className="py-1 pr-2 font-semibold">Transport / LR</th>}
                       <th className="py-1 pl-2 font-semibold text-right">Than</th>
+                      {editMode && <th className="py-1 pl-2 w-8"></th>}
                     </tr>
                   </thead>
                   <tbody className="text-gray-700 dark:text-gray-300">
@@ -509,11 +560,76 @@ export default function DeliveryChallanPage() {
                           )
                         })()}
                         <td className="py-1 pl-2 text-right">{l.than}</td>
+                        {editMode && (
+                          <td className="py-1 pl-2 text-right">
+                            <button
+                              onClick={() => removeLine(c.id, l)}
+                              disabled={editBusy}
+                              title="Remove this line (returns to queue)"
+                              className="w-5 h-5 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 text-xs font-bold hover:bg-rose-200 disabled:opacity-50 leading-none"
+                            >
+                              ×
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+              {editMode && (() => {
+                const avail = availByParty.get(c.party.id) ?? []
+                const isOpen = addPanelFor === c.id
+                return (
+                  <div className="px-4 pb-2 -mt-1">
+                    <button
+                      onClick={() => { setAddPanelFor(isOpen ? null : c.id); setAddPick(new Set()) }}
+                      className="text-xs px-2.5 py-1 rounded font-semibold border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
+                    >
+                      {isOpen ? 'Close' : `+ Add lots${avail.length ? ` (${avail.length} in queue)` : ''}`}
+                    </button>
+                    {isOpen && (
+                      <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-2">
+                        {avail.length === 0 ? (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 py-2 text-center">No queued finish-lots for {c.party.name}.</div>
+                        ) : (
+                          <>
+                            <div className="max-h-48 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+                              {avail.map(r => (
+                                <label key={r.felId} className="flex items-center gap-2 py-1 text-xs cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={addPick.has(r.felId)}
+                                    onChange={() => setAddPick(prev => { const n = new Set(prev); n.has(r.felId) ? n.delete(r.felId) : n.add(r.felId); return n })}
+                                    className="accent-emerald-600"
+                                  />
+                                  <span className="font-mono text-gray-800 dark:text-gray-200">{r.lotNo}</span>
+                                  <span className="text-gray-500 dark:text-gray-400">{r.quality}</span>
+                                  {r.shade && <span className="text-gray-500 dark:text-gray-400">· {r.shade}</span>}
+                                  <span className="text-[10px] text-gray-400">FP-{r.fpSlipNo}</span>
+                                  <span className="ml-auto text-gray-700 dark:text-gray-300">{r.than} than</span>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex items-center justify-end gap-2 mt-2">
+                              <span className="text-[11px] text-gray-500 dark:text-gray-400 mr-auto">
+                                {addPick.size} selected · {avail.filter(r => addPick.has(r.felId)).reduce((s, r) => s + r.than, 0)} than
+                              </span>
+                              <button
+                                onClick={() => editLines(c.id, { addFelIds: [...addPick] })}
+                                disabled={addPick.size === 0 || editBusy}
+                                className="text-xs px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50"
+                              >
+                                {editBusy ? 'Adding…' : `Add ${addPick.size} to challan`}
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
               <div className="flex items-center justify-end gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700">
                 <button
                   onClick={() => toggleExtraCharges(c)}
