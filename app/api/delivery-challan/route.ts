@@ -105,7 +105,9 @@ export async function POST(req: NextRequest) {
   const felIds: number[] = Array.isArray(body.finishEntryLotIds)
     ? body.finishEntryLotIds.map((x: any) => parseInt(String(x))).filter(Number.isFinite)
     : []
-  const date = body.date ? new Date(body.date) : new Date()
+  // Challan is dated by its finish-program date (computed below from the FELs),
+  // not the moment of creation. An explicit body.date still overrides.
+  const explicitDate = body.date ? new Date(body.date) : null
   const transport = body.transport ? String(body.transport).trim() : null
   const lrNo = body.lrNo ? String(body.lrNo).trim() : null
   const vehicleNo = body.vehicleNo ? String(body.vehicleNo).trim() : null
@@ -219,6 +221,15 @@ export async function POST(req: NextRequest) {
       message: `Lot(s) ${stillMissing.join(', ')} do not belong to party ${party.name}.`,
     }, { status: 400 })
   }
+
+  // Date the challan by its finish-program date, not creation time. When the
+  // selected FELs span multiple FPs, use the latest finish date. An explicit
+  // body.date wins; fall back to now only if no FP date is available.
+  const fpTimes = (fels as any[])
+    .map((f: any) => f.entry?.date)
+    .filter(Boolean)
+    .map((d: any) => new Date(d).getTime())
+  const date = explicitDate ?? (fpTimes.length ? new Date(Math.max(...fpTimes)) : new Date())
 
   // Auto challan number: max + 1, retry once on unique collision. Manual
   // overrides skip the max lookup entirely.
