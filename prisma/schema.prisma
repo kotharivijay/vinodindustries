@@ -660,6 +660,10 @@ model FinishDeliveryChallan {
   transport       String?
   lrNo            String?
   vehicleNo       String?
+  // Delivery destination (city / party location). Auto-inherited from the
+  // most recent challan at create time so consecutive challans in a trip
+  // don't need re-typing; editable per challan.
+  destination     String?
   notes           String?
   status          String                      @default("issued")
   // Show / hide the Freight + Checking chips + summary on this challan's

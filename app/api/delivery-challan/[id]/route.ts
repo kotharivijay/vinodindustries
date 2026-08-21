@@ -80,6 +80,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const data: any = {}
   if ('showExtraCharges' in body) data.showExtraCharges = !!body.showExtraCharges
+  if ('vehicleNo' in body) data.vehicleNo = body.vehicleNo ? String(body.vehicleNo).trim() : null
+  if ('destination' in body) data.destination = body.destination ? String(body.destination).trim() : null
+  if ('transport' in body) data.transport = body.transport ? String(body.transport).trim() : null
+  if ('lrNo' in body) data.lrNo = body.lrNo ? String(body.lrNo).trim() : null
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'NO_UPDATES' }, { status: 400 })

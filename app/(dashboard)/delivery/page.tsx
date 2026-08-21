@@ -55,6 +55,7 @@ interface Challan {
   transport: string | null
   lrNo: string | null
   vehicleNo: string | null
+  destination: string | null
   showExtraCharges: boolean
   party: { id: number; name: string; tag: string | null; gstin: string | null; address: string | null; state: string | null }
   lines: ChallanLine[]
@@ -125,6 +126,16 @@ export default function DeliveryChallanPage() {
   function removeLine(challanId: number, line: ChallanLine) {
     if (!confirm(`Remove ${line.lotNo} (${line.than} than) from this challan? It returns to the queue.`)) return
     editLines(challanId, { removeLineIds: [line.id] })
+  }
+  // Save vehicle no / destination on a challan (optimistic).
+  async function saveChallanField(c: Challan, field: 'vehicleNo' | 'destination', value: string) {
+    const v = value.trim() || null
+    if ((c as any)[field] === v) return
+    mutateIssued((prev) => (prev ?? []).map(x => x.id === c.id ? { ...x, [field]: v } : x), { revalidate: false })
+    const res = await fetch(`/api/delivery-challan/${c.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: v }),
+    })
+    if (!res.ok) { mutateIssued(); alert('Save failed') } else mutateIssued()
   }
   function editThan(challanId: number, line: ChallanLine) {
     const raw = prompt(`New than for ${line.lotNo} (dye slip ${line.dyeSlipNo ?? '?'}).\nCurrent ${line.than}. Reducing frees the difference back to the queue.`, String(line.than))
@@ -532,6 +543,24 @@ export default function DeliveryChallanPage() {
                   <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                     {c.party.name} · {new Date(c.date).toLocaleDateString('en-IN')}
                   </div>
+                  {(editMode || c.vehicleNo || c.destination) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                      <span className="flex items-center gap-1">
+                        <span className="text-gray-500 dark:text-gray-400">Vehicle No:</span>
+                        {editMode ? (
+                          <input defaultValue={c.vehicleNo ?? ''} onBlur={e => saveChallanField(c, 'vehicleNo', e.target.value)} placeholder="—"
+                            className="w-28 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5" />
+                        ) : <span className="font-semibold text-gray-800 dark:text-gray-200">{c.vehicleNo || '—'}</span>}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <span className="text-gray-500 dark:text-gray-400">Destination:</span>
+                        {editMode ? (
+                          <input defaultValue={c.destination ?? ''} onBlur={e => saveChallanField(c, 'destination', e.target.value)} placeholder="—"
+                            className="w-32 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded px-1.5 py-0.5" />
+                        ) : <span className="font-semibold text-gray-800 dark:text-gray-200">{c.destination || '—'}</span>}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-none">

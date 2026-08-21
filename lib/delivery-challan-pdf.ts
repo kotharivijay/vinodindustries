@@ -21,6 +21,7 @@ export interface DeliveryChallanForPdf {
   transport: string | null
   lrNo: string | null
   vehicleNo: string | null
+  destination?: string | null
   showExtraCharges?: boolean
   party: { name: string; gstin?: string | null; address?: string | null; state?: string | null }
   lines: DeliveryChallanLineForPdf[]
@@ -104,7 +105,9 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
     `Date: ${fmtDate(c.date)}`,
   ]
   if (c.transport) rightMeta.push(`Transport: ${c.transport}`)
-  if (c.lrNo || c.vehicleNo) rightMeta.push(`LR / Vehicle: ${[c.lrNo, c.vehicleNo].filter(Boolean).join(' / ')}`)
+  if (c.lrNo) rightMeta.push(`LR: ${c.lrNo}`)
+  if (c.vehicleNo) rightMeta.push(`Vehicle No: ${c.vehicleNo}`)
+  if (c.destination) rightMeta.push(`Destination: ${c.destination}`)
   rightMeta.forEach((line, i) => {
     doc.text(line, rightX, 31 + i * 4, { align: 'right' })
   })

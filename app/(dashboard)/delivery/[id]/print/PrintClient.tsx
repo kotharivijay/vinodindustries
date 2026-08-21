@@ -23,6 +23,7 @@ interface Challan {
   transport: string | null
   lrNo: string | null
   vehicleNo: string | null
+  destination: string | null
   showExtraCharges: boolean
   party: { name: string; tag: string | null; gstin: string | null; address: string | null; state: string | null }
   lines: Line[]
@@ -125,11 +126,9 @@ export default function PrintClient({ challan }: { challan: Challan }) {
             <div className="text-xs"><span className="text-gray-500">Challan No</span> <span className="font-bold">{challan.challanNo}</span></div>
             <div className="text-xs"><span className="text-gray-500">Date</span> {fmtDate(challan.date)}</div>
             {challan.transport && <div className="text-xs"><span className="text-gray-500">Transport</span> {challan.transport}</div>}
-            {(challan.lrNo || challan.vehicleNo) && (
-              <div className="text-xs">
-                <span className="text-gray-500">LR / Vehicle</span> {[challan.lrNo, challan.vehicleNo].filter(Boolean).join(' / ')}
-              </div>
-            )}
+            {challan.lrNo && <div className="text-xs"><span className="text-gray-500">LR</span> {challan.lrNo}</div>}
+            {challan.vehicleNo && <div className="text-xs"><span className="text-gray-500">Vehicle No</span> <span className="font-semibold">{challan.vehicleNo}</span></div>}
+            {challan.destination && <div className="text-xs"><span className="text-gray-500">Destination</span> <span className="font-semibold">{challan.destination}</span></div>}
           </div>
         </div>
 

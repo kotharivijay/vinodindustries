@@ -110,8 +110,16 @@ export async function POST(req: NextRequest) {
   const explicitDate = body.date ? new Date(body.date) : null
   const transport = body.transport ? String(body.transport).trim() : null
   const lrNo = body.lrNo ? String(body.lrNo).trim() : null
-  const vehicleNo = body.vehicleNo ? String(body.vehicleNo).trim() : null
   const notes = body.notes ? String(body.notes).trim() : null
+  // Auto-inherit vehicle no + destination from the most recent challan so a
+  // batch of challans in one trip doesn't need re-typing. Explicit body values
+  // always win.
+  const prevChallan = await db.finishDeliveryChallan.findFirst({
+    orderBy: { challanNo: 'desc' },
+    select: { vehicleNo: true, destination: true },
+  })
+  const vehicleNo = body.vehicleNo != null && String(body.vehicleNo).trim() ? String(body.vehicleNo).trim() : (prevChallan?.vehicleNo ?? null)
+  const destination = body.destination != null && String(body.destination).trim() ? String(body.destination).trim() : (prevChallan?.destination ?? null)
   // Manual challan number override — bare positive integer. Any legacy
   // "DC-" prefix on input is tolerated but stripped.
   let manualChallanNo: number | null = null
@@ -246,6 +254,7 @@ export async function POST(req: NextRequest) {
     transport,
     lrNo,
     vehicleNo,
+    destination,
     notes,
     status: 'issued' as const,
     // Seed the per-challan visibility from the party master's default. The
