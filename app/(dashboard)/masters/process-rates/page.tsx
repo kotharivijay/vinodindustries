@@ -5,7 +5,7 @@
 // grey-inward lots linked to it. Create a new rate (POST → new version),
 // edit a contract in place (PUT), or delete one (blocked when lots are linked).
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { LotLink } from '@/lib/viewStatePersist'
 import BackButton from '../../BackButton'
@@ -515,10 +515,7 @@ function ContractModal({ mode, contract, presetPartyId, parties, onClose, onSave
           {mode === 'create' && (
             <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-300">
               Party
-              <select value={partyId} onChange={e => setPartyId(e.target.value ? Number(e.target.value) : '')} className={inp}>
-                <option value="">Select party…</option>
-                {parties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <PartySearchSelect parties={parties} value={partyId} onChange={setPartyId} />
             </label>
           )}
 
@@ -586,3 +583,62 @@ function ContractModal({ mode, contract, presetPartyId, parties, onClose, onSave
 }
 
 const inp = 'mt-1 w-full border border-gray-300 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-[13px] bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-400'
+
+// Searchable party dropdown — type to filter, click to pick. Falls back to the
+// full list when the query is empty or equals the current selection.
+function PartySearchSelect({ parties, value, onChange }: {
+  parties: Party[]; value: number | ''; onChange: (id: number | '') => void
+}) {
+  const selected = parties.find(p => p.id === value)
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Show the selected party name once it's known (and not mid-typing).
+  useEffect(() => { if (selected && !query) setQuery(selected.name) }, [selected, query])
+  // Close on outside click; revert the text to the current selection.
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+        if (selected) setQuery(selected.name)
+      }
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [selected])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const base = (!q || q === selected?.name.toLowerCase()) ? parties : parties.filter(p => p.name.toLowerCase().includes(q))
+    return base.slice(0, 60)
+  }, [parties, query, selected])
+
+  return (
+    <div ref={ref} className="relative">
+      <input
+        className={inp}
+        value={query}
+        placeholder="Search party…"
+        onChange={e => { setQuery(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+      />
+      {open && (
+        <div className="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 shadow-lg">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-gray-400 dark:text-gray-500">No party found</div>
+          ) : filtered.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => { onChange(p.id); setQuery(p.name); setOpen(false) }}
+              className={`w-full text-left px-3 py-1.5 text-[13px] text-gray-800 dark:text-gray-100 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 ${p.id === value ? 'bg-indigo-50 dark:bg-indigo-900/20 font-semibold' : ''}`}
+            >
+              {p.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
