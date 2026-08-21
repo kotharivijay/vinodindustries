@@ -16,6 +16,7 @@ interface QueueRow {
   quality: string
   shade: string | null
   shadeCategory: string | null
+  dyeSlipNo: number | null
 }
 interface QueueFp {
   finishEntryId: number
@@ -44,6 +45,7 @@ interface ChallanLine {
   transportLrNo: string | null
   marka: string | null
   greyChallanNo: string | null
+  dyeSlipNo: number | null
 }
 interface Challan {
   id: number
@@ -100,16 +102,16 @@ export default function DeliveryChallanPage() {
 
   // Queue finish-lots available to add, grouped by party id
   const availByParty = useMemo(() => {
-    const m = new Map<number, { felId: number; lotNo: string; than: number; quality: string; shade: string | null; fpSlipNo: number }[]>()
+    const m = new Map<number, { felId: number; lotNo: string; than: number; quality: string; shade: string | null; fpSlipNo: number; dyeSlipNo: number | null }[]>()
     for (const p of queue?.parties ?? []) {
-      const rows: { felId: number; lotNo: string; than: number; quality: string; shade: string | null; fpSlipNo: number }[] = []
-      for (const fp of p.finishPrograms) for (const r of fp.rows) rows.push({ felId: r.felId, lotNo: r.lotNo, than: r.than, quality: r.quality, shade: r.shade, fpSlipNo: fp.finishSlipNo })
+      const rows: { felId: number; lotNo: string; than: number; quality: string; shade: string | null; fpSlipNo: number; dyeSlipNo: number | null }[] = []
+      for (const fp of p.finishPrograms) for (const r of fp.rows) rows.push({ felId: r.felId, lotNo: r.lotNo, than: r.than, quality: r.quality, shade: r.shade, fpSlipNo: fp.finishSlipNo, dyeSlipNo: r.dyeSlipNo })
       if (rows.length) m.set(p.partyId, rows)
     }
     return m
   }, [queue])
 
-  async function editLines(challanId: number, payload: { addFelIds?: number[]; removeLineIds?: number[] }) {
+  async function editLines(challanId: number, payload: { addFelIds?: number[]; removeLineIds?: number[]; edits?: { lineId: number; than: number }[] }) {
     setEditBusy(true)
     try {
       const res = await fetch(`/api/delivery-challan/${challanId}/edit-lines`, {
@@ -123,6 +125,15 @@ export default function DeliveryChallanPage() {
   function removeLine(challanId: number, line: ChallanLine) {
     if (!confirm(`Remove ${line.lotNo} (${line.than} than) from this challan? It returns to the queue.`)) return
     editLines(challanId, { removeLineIds: [line.id] })
+  }
+  function editThan(challanId: number, line: ChallanLine) {
+    const raw = prompt(`New than for ${line.lotNo} (dye slip ${line.dyeSlipNo ?? '?'}).\nCurrent ${line.than}. Reducing frees the difference back to the queue.`, String(line.than))
+    if (raw == null) return
+    const n = parseInt(raw, 10)
+    if (!Number.isFinite(n) || n < 1) { alert('Enter a valid than (≥ 1).'); return }
+    if (n === line.than) return
+    if (n > line.than) { alert(`Cannot exceed ${line.than}. To add more, use "+ Add lots".`); return }
+    editLines(challanId, { edits: [{ lineId: line.id, than: n }] })
   }
 
   const issuedPartyOptions = useMemo(() => {
@@ -537,6 +548,7 @@ export default function DeliveryChallanPage() {
                       <th className="py-1 pr-2 font-semibold">Marka</th>
                       <th className="py-1 pr-2 font-semibold">Quality</th>
                       <th className="py-1 pr-2 font-semibold">Challan</th>
+                      <th className="py-1 pr-2 font-semibold">Dye Slip</th>
                       {showTransport && <th className="py-1 pr-2 font-semibold">Transport / LR</th>}
                       <th className="py-1 pl-2 font-semibold text-right">Than</th>
                       {editMode && <th className="py-1 pl-2 w-8"></th>}
@@ -549,6 +561,7 @@ export default function DeliveryChallanPage() {
                         <td className="py-1 pr-2 font-semibold">{l.marka ?? '-'}</td>
                         <td className="py-1 pr-2">{l.qualityName ?? '-'}</td>
                         <td className="py-1 pr-2 font-mono">{l.greyChallanNo ?? '-'}</td>
+                        <td className="py-1 pr-2 font-mono text-indigo-600 dark:text-indigo-400">{l.dyeSlipNo ?? '-'}</td>
                         {showTransport && (() => {
                           const tName = l.transportName ?? c.transport
                           const tLr = l.transportLrNo ?? c.lrNo
@@ -559,7 +572,11 @@ export default function DeliveryChallanPage() {
                             </td>
                           )
                         })()}
-                        <td className="py-1 pl-2 text-right">{l.than}</td>
+                        <td className="py-1 pl-2 text-right">
+                          {editMode ? (
+                            <button onClick={() => editThan(c.id, l)} title="Click to edit than (reduce → frees to queue)" className="underline decoration-dotted underline-offset-2 hover:text-emerald-600 dark:hover:text-emerald-400 font-semibold">{l.than}</button>
+                          ) : l.than}
+                        </td>
                         {editMode && (
                           <td className="py-1 pl-2 text-right">
                             <button
@@ -607,6 +624,7 @@ export default function DeliveryChallanPage() {
                                   <span className="text-gray-500 dark:text-gray-400">{r.quality}</span>
                                   {r.shade && <span className="text-gray-500 dark:text-gray-400">· {r.shade}</span>}
                                   <span className="text-[10px] text-gray-400">FP-{r.fpSlipNo}</span>
+                                  <span className="text-[10px] text-indigo-500 dark:text-indigo-400 font-mono">Dye {r.dyeSlipNo ?? '?'}</span>
                                   <span className="ml-auto text-gray-700 dark:text-gray-300">{r.than} than</span>
                                 </label>
                               ))}

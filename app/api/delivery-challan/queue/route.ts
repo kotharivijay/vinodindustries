@@ -31,6 +31,7 @@ export async function GET() {
       status: true,
       dyeingEntry: {
         select: {
+          slipNo: true,
           shadeName: true,
           shadeDescription: true,
           foldBatch: { select: { shade: { select: { name: true, description: true, colorCategory: true } } } },
@@ -96,6 +97,7 @@ export async function GET() {
     quality: string
     shade: string | null
     shadeCategory: string | null
+    dyeSlipNo: number | null
   }
   type FpBucket = {
     finishEntryId: number
@@ -159,6 +161,7 @@ export async function GET() {
       quality: info.quality,
       shade: shadeName,
       shadeCategory,
+      dyeSlipNo: f.dyeingEntry?.slipNo ?? null,
     })
   }
 

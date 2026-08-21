@@ -23,12 +23,41 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => ({}))
   const addFelIds: number[] = Array.isArray(body.addFelIds) ? body.addFelIds.map((x: any) => parseInt(String(x))).filter(Number.isFinite) : []
   const removeLineIds: number[] = Array.isArray(body.removeLineIds) ? body.removeLineIds.map((x: any) => parseInt(String(x))).filter(Number.isFinite) : []
-  if (!addFelIds.length && !removeLineIds.length) {
-    return NextResponse.json({ error: 'NO_CHANGES', message: 'Nothing to add or remove.' }, { status: 400 })
+  // edits: reduce a line's than. The freed than splits off into a new queued
+  // finish-lot (same finish program), so the FP total is unchanged and the
+  // difference becomes available in the queue again.
+  const edits: { lineId: number; than: number }[] = Array.isArray(body.edits)
+    ? body.edits.map((e: any) => ({ lineId: parseInt(String(e.lineId)), than: parseInt(String(e.than)) })).filter((e: any) => Number.isFinite(e.lineId) && Number.isFinite(e.than))
+    : []
+  if (!addFelIds.length && !removeLineIds.length && !edits.length) {
+    return NextResponse.json({ error: 'NO_CHANGES', message: 'Nothing to add, remove or edit.' }, { status: 400 })
   }
 
   const challan = await db.finishDeliveryChallan.findUnique({ where: { id: challanId }, select: { id: true, challanNo: true, partyId: true, party: { select: { name: true } } } })
   if (!challan) return NextResponse.json({ error: 'NOT_FOUND' }, { status: 404 })
+
+  // ── Edit than (reduce; freed than re-queued via a split FEL) ───────────────
+  for (const e of edits) {
+    const line = await db.finishDeliveryChallanLine.findFirst({
+      where: { id: e.lineId, challanId },
+      select: { id: true, than: true, lotNo: true, finishEntryLot: { select: { id: true, than: true, doneThan: true, entryId: true, dyeingEntryId: true } } },
+    })
+    if (!line || !line.finishEntryLot) continue
+    const fel = line.finishEntryLot
+    if (e.than < 1) return NextResponse.json({ error: 'BAD_THAN', message: `Than must be at least 1 for ${line.lotNo}.` }, { status: 400 })
+    if (e.than > fel.than) {
+      return NextResponse.json({ error: 'THAN_TOO_HIGH', message: `${line.lotNo}: cannot exceed its finished ${fel.than} than. To add more, use "+ Add lots".` }, { status: 400 })
+    }
+    if (e.than === fel.than) continue // no-op
+    const diff = fel.than - e.than
+    await db.$transaction([
+      // shrink this line + its FEL to the new than
+      db.finishDeliveryChallanLine.update({ where: { id: line.id }, data: { than: e.than } }),
+      db.finishEntryLot.update({ where: { id: fel.id }, data: { than: e.than, doneThan: Math.min(fel.doneThan, e.than) } }),
+      // split off the freed than into a fresh queued finish-lot
+      db.finishEntryLot.create({ data: { entryId: fel.entryId, lotNo: line.lotNo, than: diff, doneThan: diff, status: 'done', dyeingEntryId: fel.dyeingEntryId, meter: null } }),
+    ])
+  }
 
   // ── Remove ───────────────────────────────────────────────────────────────
   if (removeLineIds.length) {

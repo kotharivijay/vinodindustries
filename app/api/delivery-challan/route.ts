@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     where: status ? { status } : undefined,
     include: {
       party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } },
-      lines: { orderBy: { id: 'asc' } },
+      lines: { orderBy: { id: 'asc' }, include: { finishEntryLot: { select: { dyeingEntry: { select: { slipNo: true } } } } } },
     },
     orderBy: { challanNo: 'desc' },
   })
@@ -85,6 +85,7 @@ export async function GET(req: NextRequest) {
       const info = byLot.get(String(l.lotNo).toLowerCase().trim())
       l.marka = info?.marka ?? null
       l.greyChallanNo = info && info.chs.size ? [...info.chs].join(', ') : null
+      l.dyeSlipNo = l.finishEntryLot?.dyeingEntry?.slipNo ?? null
     }
   }
 
