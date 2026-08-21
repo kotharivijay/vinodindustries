@@ -63,6 +63,31 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Enrich each line with marka + source grey challan no (for the on-screen
+  // detail table, print view and PDF). Neither is stored on the challan line,
+  // so resolve from GreyEntry — one batched lookup over all lots.
+  const allLots: string[] = Array.from(new Set(rows.flatMap((c: any) => c.lines.map((l: any) => l.lotNo as string))))
+  if (allLots.length) {
+    const gInfo = await db.greyEntry.findMany({
+      where: { lotNo: { in: allLots, mode: 'insensitive' } },
+      select: { lotNo: true, marka: true, challanNo: true },
+      orderBy: { challanNo: 'asc' },
+    })
+    const byLot = new Map<string, { marka: string | null; chs: Set<number> }>()
+    for (const g of gInfo as any[]) {
+      const k = String(g.lotNo).toLowerCase().trim()
+      if (!byLot.has(k)) byLot.set(k, { marka: null, chs: new Set() })
+      const e = byLot.get(k)!
+      if (g.marka && !e.marka) e.marka = g.marka
+      if (g.challanNo != null) e.chs.add(g.challanNo)
+    }
+    for (const c of rows as any[]) for (const l of c.lines) {
+      const info = byLot.get(String(l.lotNo).toLowerCase().trim())
+      l.marka = info?.marka ?? null
+      l.greyChallanNo = info && info.chs.size ? [...info.chs].join(', ') : null
+    }
+  }
+
   return NextResponse.json(rows)
 }
 

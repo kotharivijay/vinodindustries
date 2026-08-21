@@ -42,6 +42,8 @@ interface ChallanLine {
   finishSlipNo: number
   transportName: string | null
   transportLrNo: string | null
+  marka: string | null
+  greyChallanNo: string | null
 }
 interface Challan {
   id: number
@@ -82,6 +84,9 @@ export default function DeliveryChallanPage() {
   const [issuedQuery, setIssuedQuery] = useState('')
   const [issuedPartyFilter, setIssuedPartyFilter] = useState<'all' | string>('all')
   const [issuedSort, setIssuedSort] = useState<'challan_desc' | 'challan_asc' | 'date_desc' | 'party' | 'than_desc'>('challan_desc')
+  // Show/hide the Transport column in the on-screen challan detail table.
+  // Hidden by default (matches the printed challan, which drops Transport).
+  const [showTransport, setShowTransport] = useState(false)
 
   const issuedPartyOptions = useMemo(() => {
     const set = new Set<string>()
@@ -425,8 +430,19 @@ export default function DeliveryChallanPage() {
                     <option value="than_desc">Total than (high → low)</option>
                   </select>
                 </label>
-                <div className="flex items-end text-xs text-gray-500 dark:text-gray-400">
-                  {filteredIssued.length} of {issued.length} challans
+                <div className="flex items-end justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span>{filteredIssued.length} of {issued.length} challans</span>
+                  <button
+                    onClick={() => setShowTransport(v => !v)}
+                    title="Show / hide the Transport column in the challan detail below"
+                    className={`px-2.5 py-1.5 rounded font-semibold border whitespace-nowrap ${
+                      showTransport
+                        ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+                    }`}
+                  >
+                    {showTransport ? '✓ Transport shown' : 'Transport hidden'}
+                  </button>
                 </div>
               </div>
             </div>
@@ -463,15 +479,40 @@ export default function DeliveryChallanPage() {
                   <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">than · {c.lines.length} lots</div>
                 </div>
               </div>
-              <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
-                {c.lines.slice(0, 4).map(l => (
-                  <div key={l.id}>
-                    <span className="font-mono">{l.lotNo}</span>
-                    {l.shadeCategory && <span className="ml-2 text-[10px] text-gray-500">[{l.shadeCategory}]</span>}
-                    <span className="ml-auto float-right">{l.than} than</span>
-                  </div>
-                ))}
-                {c.lines.length > 4 && <div className="text-gray-400 dark:text-gray-500">+{c.lines.length - 4} more…</div>}
+              <div className="px-4 py-2 overflow-x-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead className="text-gray-500 dark:text-gray-400">
+                    <tr className="text-left border-b border-gray-100 dark:border-gray-700">
+                      <th className="py-1 pr-2 font-semibold">Lot No</th>
+                      <th className="py-1 pr-2 font-semibold">Marka</th>
+                      <th className="py-1 pr-2 font-semibold">Quality</th>
+                      <th className="py-1 pr-2 font-semibold">Challan</th>
+                      {showTransport && <th className="py-1 pr-2 font-semibold">Transport / LR</th>}
+                      <th className="py-1 pl-2 font-semibold text-right">Than</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-gray-700 dark:text-gray-300">
+                    {c.lines.map(l => (
+                      <tr key={l.id} className="border-b border-gray-50 dark:border-gray-800/60 last:border-0">
+                        <td className="py-1 pr-2 font-mono">{l.lotNo}</td>
+                        <td className="py-1 pr-2 font-semibold">{l.marka ?? '-'}</td>
+                        <td className="py-1 pr-2">{l.qualityName ?? '-'}</td>
+                        <td className="py-1 pr-2 font-mono">{l.greyChallanNo ?? '-'}</td>
+                        {showTransport && (() => {
+                          const tName = l.transportName ?? c.transport
+                          const tLr = l.transportLrNo ?? c.lrNo
+                          return (
+                            <td className="py-1 pr-2">
+                              <span>{tName?.trim() || '-'}</span>
+                              <span className="text-[10px] text-gray-400 ml-1 font-mono">LR {tLr?.trim() || (tName?.trim() ? 'Open' : '-')}</span>
+                            </td>
+                          )
+                        })()}
+                        <td className="py-1 pl-2 text-right">{l.than}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
               <div className="flex items-center justify-end gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-900/30 border-t border-gray-100 dark:border-gray-700">
                 <button
