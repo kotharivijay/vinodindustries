@@ -264,6 +264,8 @@ function UnlinkLotsModal({ contract: c, onClose, onUnlinked }: { contract: Contr
   const allChecked = lots.length > 0 && sel.size === lots.length
   const toggle = (id: number) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const toggleAll = () => setSel(allChecked ? new Set() : new Set(lots.map(l => l.id)))
+  const selThan = lots.reduce((s, l) => s + (sel.has(l.id) ? l.than : 0), 0)
+  const totalThan = lots.reduce((s, l) => s + l.than, 0)
 
   async function unlink() {
     if (!sel.size) return
@@ -291,6 +293,18 @@ function UnlinkLotsModal({ contract: c, onClose, onUnlinked }: { contract: Contr
             </button>
           )}
         </div>
+
+        {lots.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-2 bg-rose-50 dark:bg-rose-900/20 border-b border-rose-100 dark:border-rose-900/40 text-[12px]">
+            <span className="text-gray-600 dark:text-gray-300">
+              Selected <span className="font-bold text-rose-700 dark:text-rose-300">{sel.size}</span> of {lots.length} lots
+            </span>
+            <span className="text-gray-600 dark:text-gray-300">
+              Than <span className="font-bold text-rose-700 dark:text-rose-300 text-sm">{selThan.toLocaleString('en-IN')}</span>
+              <span className="text-gray-400 dark:text-gray-500"> / {totalThan.toLocaleString('en-IN')}</span>
+            </span>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
           {lots.length === 0 ? (
@@ -332,6 +346,8 @@ function LinkLotsModal({ contract: c, onClose, onLinked }: { contract: Contract;
   const allChecked = lots.length > 0 && sel.size === lots.length
   const toggle = (id: number) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const toggleAll = () => setSel(allChecked ? new Set() : new Set(lots.map(l => l.id)))
+  const selThan = lots.reduce((s, l) => s + (sel.has(l.id) ? l.than : 0), 0)
+  const totalThan = lots.reduce((s, l) => s + l.than, 0)
 
   async function link() {
     if (!sel.size) return
@@ -362,6 +378,18 @@ function LinkLotsModal({ contract: c, onClose, onLinked }: { contract: Contract;
             </button>
           )}
         </div>
+
+        {lots.length > 0 && (
+          <div className="flex items-center justify-between px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900/40 text-[12px]">
+            <span className="text-gray-600 dark:text-gray-300">
+              Selected <span className="font-bold text-indigo-700 dark:text-indigo-300">{sel.size}</span> of {lots.length} lots
+            </span>
+            <span className="text-gray-600 dark:text-gray-300">
+              Than <span className="font-bold text-indigo-700 dark:text-indigo-300 text-sm">{selThan.toLocaleString('en-IN')}</span>
+              <span className="text-gray-400 dark:text-gray-500"> / {totalThan.toLocaleString('en-IN')}</span>
+            </span>
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
           {isLoading ? (
