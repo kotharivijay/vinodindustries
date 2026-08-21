@@ -13,6 +13,8 @@ interface Line {
   finishSlipNo: number
   transportName: string | null
   transportLrNo: string | null
+  marka: string | null
+  greyChallanNo: string | null
 }
 interface Challan {
   id: number
@@ -54,7 +56,7 @@ export default function PrintClient({ challan }: { challan: Challan }) {
   // category, summing than across all underlying FinishEntryLot slices.
   // Transport + LR from the first slice of each merged row wins — all slices
   // of a lot share the same source grey so it's stable.
-  type MergedRow = { lotNo: string; qualityName: string | null; than: number; sliceCount: number; transportName: string | null; transportLrNo: string | null }
+  type MergedRow = { lotNo: string; qualityName: string | null; than: number; sliceCount: number; transportName: string | null; transportLrNo: string | null; marka: string | null; greyChallanNo: string | null }
   const groups = useMemo(() => {
     const m = new Map<string, Map<string, MergedRow>>()
     for (const l of challan.lines) {
@@ -64,7 +66,7 @@ export default function PrintClient({ challan }: { challan: Challan }) {
       const key = `${l.lotNo}||${l.qualityName ?? ''}`
       const cur = bucket.get(key)
       if (cur) { cur.than += l.than; cur.sliceCount++ }
-      else bucket.set(key, { lotNo: l.lotNo, qualityName: l.qualityName ?? null, than: l.than, sliceCount: 1, transportName: l.transportName, transportLrNo: l.transportLrNo })
+      else bucket.set(key, { lotNo: l.lotNo, qualityName: l.qualityName ?? null, than: l.than, sliceCount: 1, transportName: l.transportName, transportLrNo: l.transportLrNo, marka: l.marka, greyChallanNo: l.greyChallanNo })
     }
     return [...m.entries()].map(
       ([cat, bucket]) => [cat, [...bucket.values()].sort((a, b) => a.lotNo.localeCompare(b.lotNo))] as const,
@@ -75,7 +77,9 @@ export default function PrintClient({ challan }: { challan: Challan }) {
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-IN')
 
   const showCharges = challan.showExtraCharges
-  const colSpanForSub = showCharges ? 4 : 3
+  // Columns before Than: #, Lot No, Marka, Quality, Challan = 5
+  const colSpanForSub = 5
+  const catHeaderColSpan = showCharges ? 7 : 6
   // Roll-up summary chip counts from all rows for the grand-total row + the
   // "Extra Charges applicable" caption. Uses the underlying (unmerged) lines
   // so lots that split into two rows still count once each.
@@ -134,8 +138,9 @@ export default function PrintClient({ challan }: { challan: Challan }) {
             <tr>
               <th className="border border-gray-300 px-2 py-1 text-left">#</th>
               <th className="border border-gray-300 px-2 py-1 text-left">Lot No</th>
+              <th className="border border-gray-300 px-2 py-1 text-left">Marka</th>
               <th className="border border-gray-300 px-2 py-1 text-left">Quality</th>
-              <th className="border border-gray-300 px-2 py-1 text-left">Transport / LR</th>
+              <th className="border border-gray-300 px-2 py-1 text-left">Challan</th>
               <th className="border border-gray-300 px-2 py-1 text-right">Than</th>
               {showCharges && (
                 <th className="border border-gray-300 px-2 py-1 text-left">Extra Charges</th>
@@ -152,7 +157,7 @@ export default function PrintClient({ challan }: { challan: Challan }) {
                 return (
                   <>
                     <tr key={`cat-${gi}`} className="bg-gray-50">
-                      <td className="border border-gray-300 px-2 py-1 font-semibold" colSpan={showCharges ? 6 : 5}>
+                      <td className="border border-gray-300 px-2 py-1 font-semibold" colSpan={catHeaderColSpan}>
                         {cat}
                       </td>
                     </tr>
@@ -160,19 +165,15 @@ export default function PrintClient({ challan }: { challan: Challan }) {
                       runningIdx++
                       const tName = r.transportName ?? challan.transport
                       const tLr = r.transportLrNo ?? challan.lrNo
-                      const tLabel = tName?.trim() || '-'
-                      const lrLabel = tLr?.trim() || (tName?.trim() ? 'Open' : '-')
                       const rowFreight = transportTriggersFreight(tName)
                       const rowChecking = lrTriggersChecking(tLr)
                       return (
                         <tr key={`${cat}-${r.lotNo}-${r.qualityName ?? ''}`}>
                           <td className="border border-gray-300 px-2 py-1">{runningIdx}</td>
                           <td className="border border-gray-300 px-2 py-1 font-mono">{r.lotNo}</td>
+                          <td className="border border-gray-300 px-2 py-1 font-semibold">{r.marka ?? '-'}</td>
                           <td className="border border-gray-300 px-2 py-1">{r.qualityName ?? '-'}</td>
-                          <td className="border border-gray-300 px-2 py-1">
-                            <div className="font-semibold">{tLabel}</div>
-                            <div className="text-[10px] text-gray-500 font-mono">LR {lrLabel}</div>
-                          </td>
+                          <td className="border border-gray-300 px-2 py-1 font-mono">{r.greyChallanNo ?? '-'}</td>
                           <td className="border border-gray-300 px-2 py-1 text-right">{r.than}</td>
                           {showCharges && (
                             <td className="border border-gray-300 px-2 py-1">

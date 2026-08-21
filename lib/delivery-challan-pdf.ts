@@ -11,6 +11,8 @@ export interface DeliveryChallanLineForPdf {
   finishSlipNo: number
   transportName?: string | null
   transportLrNo?: string | null
+  marka?: string | null
+  greyChallanNo?: string | null
 }
 
 export interface DeliveryChallanForPdf {
@@ -111,7 +113,7 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   // within each category so the printed challan shows one row per unique
   // lot-quality combo instead of every underlying FinishEntryLot slice.
   // Transport + LR from the first slice of each merged row wins.
-  type Merged = { lotNo: string; qualityName: string | null; than: number; sliceCount: number; transportName: string | null; transportLrNo: string | null }
+  type Merged = { lotNo: string; qualityName: string | null; than: number; sliceCount: number; transportName: string | null; transportLrNo: string | null; marka: string | null; greyChallanNo: string | null }
   const byCat = new Map<string, Map<string, Merged>>()
   for (const l of c.lines) {
     const catKey = l.shadeCategory || 'Uncategorised'
@@ -123,6 +125,7 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
     else bucket.set(key, {
       lotNo: l.lotNo, qualityName: l.qualityName ?? null, than: l.than, sliceCount: 1,
       transportName: l.transportName ?? null, transportLrNo: l.transportLrNo ?? null,
+      marka: l.marka ?? null, greyChallanNo: l.greyChallanNo ?? null,
     })
   }
   const cats = [...byCat.keys()].sort()
@@ -135,8 +138,8 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   const anyFreight = allRowsFlat.some(r => transportTriggersFreight(r.transportName ?? c.transport))
   const anyChecking = allRowsFlat.some(r => lrTriggersChecking(r.transportLrNo ?? c.lrNo))
   const grandChipsText = [anyFreight && 'Freight', anyChecking && 'Checking'].filter(Boolean).join(' + ') || '—'
-  const dataColSpan = showCharges ? 6 : 5    // # + Lot + Quality + Transport + Than + (Charges)
-  const subColSpan = showCharges ? 4 : 3     // colSpan on sub-total label
+  const dataColSpan = showCharges ? 7 : 6    // # + Lot + Marka + Quality + Challan + Than + (Charges)
+  const subColSpan = 5                        // colSpan on sub-total label (# + Lot + Marka + Quality + Challan)
 
   const body: any[] = []
   let idx = 1
@@ -152,16 +155,15 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
       subTotal += r.than
       const rowTransport = r.transportName ?? c.transport
       const rowLr = r.transportLrNo ?? c.lrNo
-      const tLabel = (rowTransport ?? '').trim() || '-'
-      const lrLabel = (rowLr ?? '').trim() || (rowTransport?.trim() ? 'Open' : '-')
       const rowFreight = transportTriggersFreight(rowTransport)
       const rowChecking = lrTriggersChecking(rowLr)
       const rowChipsText = [rowFreight && 'Freight', rowChecking && 'Checking'].filter(Boolean).join(' + ') || '—'
       const row: any[] = [
         String(idx++),
         r.lotNo,
+        r.marka ?? '-',
         r.qualityName ?? '-',
-        { content: `${tLabel}\nLR ${lrLabel}`, styles: { fontSize: 7 } },
+        r.greyChallanNo ?? '-',
         { content: String(r.than), styles: { halign: 'right' } },
       ]
       if (showCharges) row.push({ content: rowChipsText, styles: { fontSize: 7, textColor: rowFreight || rowChecking ? [146, 64, 14] : [140, 140, 140] } })
@@ -181,7 +183,7 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
   if (showCharges) grandRow.push({ content: grandChipsText, styles: { fillColor: [230, 230, 230], fontStyle: 'bold', fontSize: 7 } })
   body.push(grandRow)
 
-  const head: any[] = ['#', 'Lot No', 'Quality', 'Transport / LR', 'Than']
+  const head: any[] = ['#', 'Lot No', 'Marka', 'Quality', 'Challan', 'Than']
   if (showCharges) head.push('Extra Charges')
 
   autoTable(doc, {
@@ -194,19 +196,21 @@ export function buildDeliveryChallanPdf(c: DeliveryChallanForPdf): jsPDF {
     headStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontStyle: 'bold' },
     columnStyles: showCharges
       ? {
-          0: { cellWidth: 8, halign: 'center' },
-          1: { cellWidth: 42, fontStyle: 'bold' },
-          2: { cellWidth: 24 },
-          3: { cellWidth: 40 },
-          4: { cellWidth: 14, halign: 'right' },
-          5: { cellWidth: 30 },
+          0: { cellWidth: 8, halign: 'center' },   // #
+          1: { cellWidth: 38, fontStyle: 'bold' }, // Lot No
+          2: { cellWidth: 22 },                    // Marka
+          3: { cellWidth: 22 },                    // Quality
+          4: { cellWidth: 20 },                    // Challan
+          5: { cellWidth: 14, halign: 'right' },   // Than
+          6: { cellWidth: 22 },                    // Extra Charges
         }
       : {
-          0: { cellWidth: 10, halign: 'center' },
-          1: { cellWidth: 48, fontStyle: 'bold' },
-          2: { cellWidth: 30 },
-          3: { cellWidth: 50 },
-          4: { halign: 'right' },
+          0: { cellWidth: 10, halign: 'center' },  // #
+          1: { cellWidth: 46, fontStyle: 'bold' }, // Lot No
+          2: { cellWidth: 30 },                    // Marka
+          3: { cellWidth: 32 },                    // Quality
+          4: { cellWidth: 26 },                    // Challan
+          5: { halign: 'right' },                  // Than
         },
   })
 
