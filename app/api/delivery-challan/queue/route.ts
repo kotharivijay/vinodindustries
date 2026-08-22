@@ -114,11 +114,24 @@ export async function GET() {
     finishPrograms: Map<number, FpBucket>
   }
   const parties = new Map<number, PartyBucket>()
+  // Finished lots we could NOT place in the queue because their lotNo doesn't
+  // resolve to any grey / opening-balance record (usually a mistyped lot, e.g.
+  // SAM-768-SHANU for SCM-768-SHANU). Previously these were dropped silently,
+  // hiding real finished stock — surface them so the operator can fix the lot.
+  const unresolved = new Map<string, { lotNo: string; than: number; finishSlipNos: Set<number> }>()
 
   for (const f of fels as any[]) {
     if (consumedIds.has(f.id)) continue
     const info = infoByLot.get(f.lotNo.toLowerCase().trim())
-    if (!info || !info.partyId) continue
+    const rowThanForWarn = f.status === 'done' ? f.than : f.doneThan
+    if (!info || !info.partyId) {
+      const k = f.lotNo.toLowerCase().trim()
+      if (!unresolved.has(k)) unresolved.set(k, { lotNo: f.lotNo, than: 0, finishSlipNos: new Set() })
+      const u = unresolved.get(k)!
+      u.than += rowThanForWarn
+      u.finishSlipNos.add(f.entry.slipNo)
+      continue
+    }
     // Only Pali PC Job parties surface here — the mockup's regular-party
     // group stays on the legacy finishDespSlipNo flow.
     if (info.partyTag !== 'Pali PC Job') continue
@@ -184,5 +197,9 @@ export async function GET() {
         })),
     }))
 
-  return NextResponse.json({ parties: out })
+  const unknownLots = [...unresolved.values()]
+    .map(u => ({ lotNo: u.lotNo, than: u.than, finishSlipNos: [...u.finishSlipNos].sort((a, b) => a - b) }))
+    .sort((a, b) => b.than - a.than)
+
+  return NextResponse.json({ parties: out, unknownLots })
 }

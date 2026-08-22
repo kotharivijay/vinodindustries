@@ -32,6 +32,9 @@ interface QueueParty {
   totalThan: number
   finishPrograms: QueueFp[]
 }
+// Finished lots the queue couldn't place because the lot number matches no
+// grey / opening-balance record — almost always a mistyped lot number.
+interface UnknownLot { lotNo: string; than: number; finishSlipNos: number[] }
 
 interface ChallanLine {
   id: number
@@ -63,7 +66,7 @@ interface Challan {
 
 export default function DeliveryChallanPage() {
   const [tab, setTab] = useState<'queue' | 'issued'>('queue')
-  const { data: queue, mutate: mutateQueue } = useSWR<{ parties: QueueParty[] }>(
+  const { data: queue, mutate: mutateQueue } = useSWR<{ parties: QueueParty[]; unknownLots?: UnknownLot[] }>(
     '/api/delivery-challan/queue',
     fetcher,
     { revalidateOnFocus: false, dedupingInterval: 20_000 },
@@ -359,6 +362,29 @@ export default function DeliveryChallanPage() {
           {error && (
             <div className="rounded-xl border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 text-xs p-3">
               {error}
+            </div>
+          )}
+
+          {/* Finished stock that can't be queued because its lot number matches
+              no grey record — surfaces mistyped lots instead of hiding them. */}
+          {(queue?.unknownLots?.length ?? 0) > 0 && (
+            <div className="rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs">
+              <div className="font-bold text-amber-800 dark:text-amber-300 mb-1">
+                ⚠ {queue!.unknownLots!.reduce((s, u) => s + u.than, 0)} than hidden — unknown lot number
+              </div>
+              <p className="text-amber-700 dark:text-amber-400 mb-2">
+                These finished lots aren’t in the queue because their lot number matches no grey-inward record.
+                Usually a typo in the lot no — fix the lot and they’ll appear.
+              </p>
+              <div className="space-y-0.5">
+                {queue!.unknownLots!.map(u => (
+                  <div key={u.lotNo} className="flex items-center gap-2 text-amber-900 dark:text-amber-200">
+                    <span className="font-mono font-semibold">{u.lotNo}</span>
+                    <span>· {u.than} than</span>
+                    <span className="text-amber-600 dark:text-amber-400">· FP-{u.finishSlipNos.join(', FP-')}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
