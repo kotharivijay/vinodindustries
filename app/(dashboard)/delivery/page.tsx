@@ -300,7 +300,10 @@ export default function DeliveryChallanPage() {
       <div className="flex items-center justify-between gap-3">
         <BackButton />
         <h1 className="text-xl font-bold">Delivery Challan</h1>
-        <div />
+        <Link href="/delivery/report"
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-purple-300 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 whitespace-nowrap hover:bg-purple-100 dark:hover:bg-purple-900/50">
+          📊 Report
+        </Link>
       </div>
 
       <div className="flex border-b border-gray-200 dark:border-gray-700">
