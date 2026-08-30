@@ -172,7 +172,9 @@ model ProcessRateLine {
   contract      ProcessRateContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   processTypeId Int
   processType   ProcessType         @relation(fields: [processTypeId], references: [id])
-  unit          String              @default("kg") // per kg | mtr | than — configurable per line
+  // per than | mtr. `kg` is not offered — weight is never stored numerically
+  // (GreyEntry.weight is free text), so a per-kg rate can't produce an amount.
+  unit          String              @default("than")
   // FLAT rate mode
   rate          Decimal?            @db.Decimal(16, 2)
   // BY_COLOR_CATEGORY rate mode (keyed off Shade.colorCategory)

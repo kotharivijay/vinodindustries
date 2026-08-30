@@ -45,6 +45,8 @@ export async function validateLines(tx: any, lines: LineInput[]): Promise<string
         (dec(l.rateLight) === null || dec(l.rateMedium) === null || dec(l.rateDark) === null)) {
       return 'By-colour line needs Light, Medium and Deep rates'
     }
+    const u = (l.unit && String(l.unit).trim()) || RATE_UNIT_DEFAULT
+    if (!RATE_UNITS.includes(u as any)) return `Rate unit must be one of: ${RATE_UNITS.join(', ')}`
   }
   return null
 }
@@ -53,7 +55,7 @@ export async function validateLines(tx: any, lines: LineInput[]): Promise<string
 export function lineData(l: LineInput) {
   return {
     processTypeId: l.processTypeId,
-    unit: (l.unit && String(l.unit).trim()) || 'kg',
+    unit: (l.unit && String(l.unit).trim()) || RATE_UNIT_DEFAULT,
     rate: dec(l.rate),
     rateLight: dec(l.rateLight),
     rateMedium: dec(l.rateMedium),
@@ -61,4 +63,12 @@ export function lineData(l: LineInput) {
   }
 }
 
-export const VALIDITY_UNITS = ['than', 'kg', 'mtr'] as const
+// Units a rate can be quoted in. `kg` is deliberately NOT offered: weight is
+// never stored numerically (GreyEntry.weight is free text like "106g"), so a
+// per-kg rate could never produce an amount on the challan view — it only ever
+// arrived here as the old column default. All rates are per than.
+export const RATE_UNITS = ['than', 'mtr'] as const
+export const RATE_UNIT_DEFAULT = 'than'
+
+// Unit for the optional quantity cap on a contract. Same reasoning as above.
+export const VALIDITY_UNITS = ['than', 'mtr'] as const

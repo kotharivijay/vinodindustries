@@ -493,7 +493,7 @@ function ContractModal({ mode, contract, presetPartyId, parties, onClose, onSave
 
   function addLine(typeId: number) {
     const t = (types ?? []).find(x => x.id === typeId); if (!t) return
-    setLines(prev => [...prev, { processTypeId: t.id, rateMode: t.rateMode, unit: 'kg', rate: '', rateLight: '', rateMedium: '', rateDark: '' }])
+    setLines(prev => [...prev, { processTypeId: t.id, rateMode: t.rateMode, unit: 'than', rate: '', rateLight: '', rateMedium: '', rateDark: '' }])
   }
   const setLine = (i: number, patch: Partial<DraftLine>) => setLines(prev => prev.map((l, idx) => idx === i ? { ...l, ...patch } : l))
   const removeLine = (i: number) => setLines(prev => prev.filter((_, idx) => idx !== i))
@@ -556,7 +556,7 @@ function ContractModal({ mode, contract, presetPartyId, parties, onClose, onSave
             </label>
             <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">Unit
               <select value={validityUnit} onChange={e => setValidityUnit(e.target.value)} className={inp}>
-                <option value="than">than</option><option value="mtr">mtr</option><option value="kg">kg</option>
+                <option value="than">than</option><option value="mtr">mtr</option>
               </select>
             </label>
           </div>
@@ -567,8 +567,10 @@ function ContractModal({ mode, contract, presetPartyId, parties, onClose, onSave
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-gray-700 dark:text-gray-200">{nameOf(l.processTypeId)}</span>
                   <div className="flex items-center gap-2">
+                    {/* kg is not offered — rates are per than (weight is never
+                        stored numerically, so a per-kg rate can't be billed). */}
                     <select value={l.unit} onChange={e => setLine(i, { unit: e.target.value })} className="text-[11px] border border-gray-300 dark:border-gray-600 dark:bg-gray-700 rounded px-1.5 py-0.5">
-                      <option value="kg">/kg</option><option value="mtr">/mtr</option><option value="than">/than</option>
+                      <option value="than">/than</option><option value="mtr">/mtr</option>
                     </select>
                     <button type="button" onClick={() => removeLine(i)} className="text-rose-500 text-[11px] hover:underline">remove</button>
                   </div>
