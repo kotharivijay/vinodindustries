@@ -180,9 +180,15 @@ export default function NewChallanPage() {
           lines: lines.map(l => ({ itemId: l.itemId, qty: l.qty, rate: l.rate || null, unit: l.unit })),
         }),
       })
-      const d = await res.json()
-      if (!res.ok) { alert('Save failed: ' + (d.error || res.status)); return }
+      // A server 500 returns an HTML error page, not JSON — res.json() then
+      // throws and (without this catch) the click died silently, leaving the
+      // button looking fine and nothing saved. Always surface the failure.
+      const d = await res.json().catch(() => ({} as any))
+      if (!res.ok) { alert('Save failed: ' + (d.error || `HTTP ${res.status}`)); return }
+      if (!d?.id) { alert('Save failed: server did not return a challan id'); return }
       router.push(`/inventory/challans/${d.id}`)
+    } catch (e: any) {
+      alert('Save failed: ' + (e?.message || 'network error'))
     } finally { setSaving(false) }
   }
 
