@@ -718,6 +718,13 @@ export default function DeliveryChallanPage() {
                 >
                   {c.showExtraCharges ? '✓ Extras ON' : 'Extras OFF'}
                 </button>
+                <Link
+                  href={`/delivery/${c.id}`}
+                  title="Internal view with process rates + amounts, for raising the job bill"
+                  className="text-xs px-3 py-1.5 rounded bg-slate-600 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-semibold"
+                >
+                  View
+                </Link>
                 <button
                   onClick={() => downloadDeliveryChallanPdf(c)}
                   className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold"
