@@ -123,28 +123,31 @@ export default function NewGreyReturnPage() {
       // preventDefault on the label: without it, typing in the than input
       // bubbles up and toggles the checkbox (bug already solved in
       // GreyCheckingModal — same fix here).
+      // flex-wrap + a flex-1 lot column: on a narrow screen the than/meter
+      // inputs drop to a second line instead of squeezing the lot number down
+      // to "SBP-6…" — you must be able to read which lot you're typing against.
       <label onClick={e => e.preventDefault()}
-        className={`flex items-center gap-2 px-3 py-2 border-b border-gray-50 dark:border-gray-800 cursor-pointer ${on ? 'bg-emerald-50/60 dark:bg-emerald-900/20' : ''}`}>
+        className={`flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 py-2 border-b border-gray-50 dark:border-gray-800 cursor-pointer ${on ? 'bg-emerald-50/60 dark:bg-emerald-900/20' : ''}`}>
         <input type="checkbox" checked={on} onChange={() => toggle(k, available)} className="accent-emerald-600 shrink-0" />
-        <span className="font-mono text-[12px] font-semibold text-gray-800 dark:text-gray-100 truncate w-36 sm:w-44" title={lotNo}>{lotNo}</span>
+        <span className="font-mono text-[12px] font-semibold text-gray-800 dark:text-gray-100 truncate flex-1 min-w-[8rem]" title={lotNo}>{lotNo}</span>
         <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate hidden sm:inline w-28">{quality}</span>
         {marka && <span className="text-[10px] text-amber-700 dark:text-amber-400 truncate hidden md:inline w-20">{marka}</span>}
-        {extra && <span className="text-[10px] text-indigo-600 dark:text-indigo-400 whitespace-nowrap">{extra}</span>}
-        {checkingSlipNo && <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 rounded px-1 whitespace-nowrap">✓ {checkingSlipNo}</span>}
-        <span className="ml-auto text-[11px] text-gray-400 whitespace-nowrap">avail {available}</span>
+        {extra && <span className="text-[10px] text-indigo-600 dark:text-indigo-400 whitespace-nowrap shrink-0">{extra}</span>}
+        {checkingSlipNo && <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 rounded px-1 whitespace-nowrap shrink-0">✓ {checkingSlipNo}</span>}
+        <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0">avail {available}</span>
         {on && (
-          <>
+          <span className="flex items-center gap-2 ml-auto shrink-0">
             <input type="number" min={1} max={available} value={sel.get(k) ?? ''}
-              title="Than to return"
+              title="Than to return" aria-label={`Than to return for ${lotNo}`}
               onClick={ev => ev.stopPropagation()}
               onChange={ev => setThan(k, ev.target.value, available)}
               className="w-16 text-right text-[12px] font-bold border border-emerald-300 dark:border-emerald-700 rounded px-1.5 py-0.5 bg-white dark:bg-gray-700 dark:text-gray-100" />
             <input type="number" min={0} step="0.01" value={meters.get(k) ?? ''} placeholder="mtr"
-              title="Despatch metres (optional)"
+              title="Despatch metres (optional)" aria-label={`Despatch metres for ${lotNo}`}
               onClick={ev => ev.stopPropagation()}
               onChange={ev => setMeter(k, ev.target.value)}
               className="w-20 text-right text-[12px] border border-sky-300 dark:border-sky-700 rounded px-1.5 py-0.5 bg-white dark:bg-gray-700 dark:text-gray-100" />
-          </>
+          </span>
         )}
       </label>
     )
