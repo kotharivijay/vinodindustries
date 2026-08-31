@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import BackButton from '../../BackButton'
 import { resolveChallanRates, RATE_ISSUE_LABEL } from '@/lib/delivery-challan-rates'
+import BillLines from './BillLines'
 
 const db = prisma as any
 
@@ -108,72 +109,42 @@ export default async function DeliveryChallanViewPage({ params }: { params: Prom
         </div>
       )}
 
-      {/* Lines with rate + amount */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-3 sm:p-5 mb-4">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-700">
-                <th className="py-1.5 pr-2 font-semibold">Lot No</th>
-                <th className="py-1.5 pr-2 font-semibold">Marka</th>
-                <th className="py-1.5 pr-2 font-semibold">Quality</th>
-                <th className="py-1.5 pr-2 font-semibold">Shade</th>
-                <th className="py-1.5 pl-2 font-semibold text-right">Than</th>
-                <th className="py-1.5 pl-2 font-semibold text-right">Rate</th>
-                <th className="py-1.5 pl-2 font-semibold text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-              {challan.lines.map((l: any) => {
-                const r = rates.byLineId.get(l.id)
-                const info = greyByLot.get(String(l.lotNo).toLowerCase().trim())
-                return (
-                  <tr key={l.id}>
-                    <td className="py-1.5 pr-2 font-mono text-gray-700 dark:text-gray-200 whitespace-nowrap">{l.lotNo}</td>
-                    <td className="py-1.5 pr-2 text-gray-600 dark:text-gray-300">{info?.marka || '-'}</td>
-                    <td className="py-1.5 pr-2 text-gray-500 dark:text-gray-400">{l.qualityName || '-'}</td>
-                    <td className="py-1.5 pr-2 text-gray-500 dark:text-gray-400">
-                      {l.shadeName || '-'}
-                      {l.shadeCategory && <span className="ml-1 text-[9px] text-gray-400">[{l.shadeCategory}]</span>}
-                    </td>
-                    <td className="py-1.5 pl-2 text-right font-semibold text-gray-800 dark:text-gray-100">{l.than}</td>
-                    <td className="py-1.5 pl-2 text-right whitespace-nowrap">
-                      {r?.rate ? (
-                        <>
-                          <span className="font-semibold text-gray-800 dark:text-gray-100">{r.rate}</span>
-                          {r.unit !== 'than' && <span className="text-[9px] text-gray-400">/{r.unit}</span>}
-                          {r.contractVersion != null && <span className="ml-1 text-[9px] text-indigo-500 dark:text-indigo-400">v{r.contractVersion}</span>}
-                        </>
-                      ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
-                    </td>
-                    <td className="py-1.5 pl-2 text-right whitespace-nowrap">
-                      {r?.amount != null
-                        ? <span className="font-bold text-gray-900 dark:text-gray-50">{inr(r.amount)}</span>
-                        : <span className="text-[9px] text-rose-500 dark:text-rose-400">{r?.issue ? RATE_ISSUE_LABEL[r.issue] : '—'}</span>}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-gray-200 dark:border-gray-600 font-bold">
-                <td className="py-2 pr-2 text-gray-700 dark:text-gray-200" colSpan={4}>Grand Total</td>
-                <td className="py-2 pl-2 text-right text-gray-900 dark:text-gray-50">{totalThan}</td>
-                <td />
-                <td className="py-2 pl-2 text-right text-emerald-700 dark:text-emerald-400 whitespace-nowrap">{inr(rates.totals.amount)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        {rates.totals.unpricedLines > 0 && (
-          <p className="mt-3 text-[11px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg px-2.5 py-1.5">
-            ⚠ Total is partial — <strong>{rates.totals.unpricedLines}</strong> of {challan.lines.length} line(s)
-            ({rates.totals.unpricedThan} than) could not be priced. Fix the lot’s rate link / process type / colour
-            category, or add those lines to the bill manually.
-          </p>
+      {/* Clubbed lines with rate + amount; expansion + manual ticks live in
+          the client child. Totals come from the FLAT list (grouping-invariant). */}
+      <BillLines
+        challanId={challanId}
+        slices={challan.lines.map((l: any) => {
+          const r = rates.byLineId.get(l.id)
+          const info = greyByLot.get(String(l.lotNo).toLowerCase().trim())
+          return {
+            lineId: l.id,
+            lotNo: l.lotNo,
+            marka: info?.marka ?? null,
+            qualityName: l.qualityName ?? null,
+            shadeName: l.shadeName ?? null,
+            shadeCategory: l.shadeCategory ?? null,
+            than: l.than,
+            rate: r?.rate ?? null,
+            baseRate: r?.baseRate ?? null,
+            applied: r?.applied ?? [],
+            amount: r?.amount ?? null,
+            contractVersion: r?.contractVersion ?? null,
+            dyeSlipNo: r?.dyeSlipNo ?? null,
+            batchThan: r?.batchThan ?? null,
+            machineNumber: r?.machineNumber ?? null,
+            issueLabel: r?.issue ? RATE_ISSUE_LABEL[r.issue] : null,
+          }
+        })}
+        manualRules={rates.contractsUsed.flatMap(c =>
+          c.rules.filter(r => r.trigger === 'manual').map(r => ({
+            id: r.id, label: r.label, amountPerThan: r.amountPerThan, contractVersion: c.version,
+          })),
         )}
-      </div>
+        totalThan={totalThan}
+        totalAmount={rates.totals.amount}
+        unpricedSlices={rates.totals.unpricedLines}
+        unpricedThan={rates.totals.unpricedThan}
+      />
 
       {/* Process-rate notes at the end — the agreed terms for this bill */}
       {rates.contractsUsed.length > 0 && (

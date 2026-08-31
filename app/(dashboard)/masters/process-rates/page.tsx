@@ -261,6 +261,10 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
             </div>
           )}
 
+          {/* Rate rules — contract-defined billing adjustments, evaluated on
+              the delivery-challan billing view */}
+          <RulesEditor contract={c} />
+
           {/* Linked lot cards */}
           <div>
             <div className="flex items-center justify-between mb-1.5 gap-2">
@@ -296,6 +300,159 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
       {unlinkOpen && (
         <UnlinkLotsModal contract={c} onClose={() => setUnlinkOpen(false)}
           onUnlinked={() => { setUnlinkOpen(false); onChanged(); refreshAll() }} />
+      )}
+    </div>
+  )
+}
+
+// ── Rate rules: contract-defined billing adjustments ────────────────────────
+// Batch-size surcharges, Jet-1 discount, width extras, LR-triggered and
+// manual charges. Stored per contract version (copied forward on supersede);
+// evaluated by lib/process-rate-rules.ts on the delivery-challan billing view.
+interface RuleRow {
+  id?: number
+  processTypeId: number | '' // '' = all lines
+  trigger: 'auto' | 'lr' | 'manual'
+  minThan: string; maxThan: string; widthInch: string; machineNumber: string
+  amountPerThan: string
+  label: string
+}
+function RulesEditor({ contract: c }: { contract: Contract }) {
+  const { data: saved = [], mutate } = useSWR<any[]>(`/api/process-rates/${c.id}/rules`, fetcher, { revalidateOnFocus: false })
+  const [editing, setEditing] = useState(false)
+  const [rows, setRows] = useState<RuleRow[]>([])
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  function startEdit() {
+    setRows(saved.map(r => ({
+      id: r.id,
+      processTypeId: r.processTypeId ?? '',
+      trigger: r.trigger,
+      minThan: r.minThan != null ? String(r.minThan) : '',
+      maxThan: r.maxThan != null ? String(r.maxThan) : '',
+      widthInch: r.widthInch != null ? String(r.widthInch) : '',
+      machineNumber: r.machineNumber != null ? String(r.machineNumber) : '',
+      amountPerThan: String(r.amountPerThan),
+      label: r.label,
+    })))
+    setErr(''); setEditing(true)
+  }
+  const setRow = (i: number, patch: Partial<RuleRow>) => setRows(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r))
+  const addRow = () => setRows(prev => [...prev, { processTypeId: '', trigger: 'auto', minThan: '', maxThan: '', widthInch: '', machineNumber: '', amountPerThan: '', label: '' }])
+  const delRow = (i: number) => setRows(prev => prev.filter((_, idx) => idx !== i))
+
+  async function save() {
+    setSaving(true); setErr('')
+    try {
+      const res = await fetch(`/api/process-rates/${c.id}/rules`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules: rows.map(r => ({
+          processTypeId: r.processTypeId === '' ? null : Number(r.processTypeId),
+          trigger: r.trigger,
+          minThan: r.minThan || null, maxThan: r.maxThan || null,
+          widthInch: r.widthInch || null, machineNumber: r.machineNumber || null,
+          amountPerThan: r.amountPerThan, label: r.label,
+        })) }),
+      })
+      const d = await res.json().catch(() => ({} as any))
+      if (!res.ok) { setErr(d.messages?.join(' · ') || d.error || `HTTP ${res.status}`); return }
+      mutate(); setEditing(false)
+    } finally { setSaving(false) }
+  }
+
+  // Human-readable condition summary for the read view.
+  const condText = (r: any) => {
+    if (r.trigger === 'lr') return 'when line has a real LR'
+    if (r.trigger === 'manual') return 'manual tick on the bill'
+    const parts: string[] = []
+    if (r.minThan != null && r.maxThan != null) parts.push(`batch ${r.minThan}–${r.maxThan} than`)
+    else if (r.maxThan != null) parts.push(`batch ≤ ${r.maxThan} than`)
+    else if (r.minThan != null) parts.push(`batch ≥ ${r.minThan} than`)
+    if (r.widthInch != null) parts.push(`width ${r.widthInch}"`)
+    if (r.machineNumber != null) parts.push(`Jet ${r.machineNumber}`)
+    return parts.join(' · ') || '(no condition)'
+  }
+  const inpS = 'border border-gray-300 dark:border-gray-600 rounded px-1.5 py-1 text-[11px] bg-white dark:bg-gray-700 dark:text-gray-100'
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5 gap-2">
+        <p className="text-[10px] uppercase tracking-wide text-gray-400">Rate rules ({saved.length})</p>
+        {!editing && (
+          <button onClick={startEdit}
+            className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded px-1.5 py-0.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 whitespace-nowrap">
+            ⚙ {saved.length ? 'Edit rules' : 'Add rules'}
+          </button>
+        )}
+      </div>
+
+      {!editing && saved.length === 0 && (
+        <p className="text-[11px] text-gray-400">No billing rules — lines bill at the plain contract rate.</p>
+      )}
+      {!editing && saved.length > 0 && (
+        <div className="space-y-1">
+          {saved.map(r => (
+            <div key={r.id} className="flex items-center gap-2 text-[11px] border border-gray-100 dark:border-gray-700 rounded-lg px-2.5 py-1.5">
+              <span className="font-semibold text-gray-700 dark:text-gray-200 truncate">{r.label}</span>
+              <span className="text-gray-400 truncate">{r.processType?.name ?? 'All lines'} · {condText(r)}</span>
+              <span className={`ml-auto font-bold tabular-nums whitespace-nowrap ${Number(r.amountPerThan) < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
+                {Number(r.amountPerThan) > 0 ? '+' : ''}{Number(r.amountPerThan)} /than
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <div className="space-y-2">
+          {err && <div className="text-xs text-rose-700 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 rounded-lg px-3 py-2">{err}</div>}
+          {rows.map((r, i) => (
+            <div key={i} className="border border-gray-200 dark:border-gray-600 rounded-xl p-2 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <input value={r.label} onChange={e => setRow(i, { label: e.target.value })} placeholder="Label (shown on the bill)"
+                  className={`${inpS} flex-1 min-w-[10rem] font-semibold`} />
+                <select value={r.processTypeId} onChange={e => setRow(i, { processTypeId: e.target.value === '' ? '' : Number(e.target.value) })} className={inpS}>
+                  <option value="">All lines</option>
+                  {c.lines.map(l => <option key={l.processTypeId} value={l.processTypeId}>{l.processType.name}</option>)}
+                </select>
+                <select value={r.trigger} onChange={e => setRow(i, { trigger: e.target.value as RuleRow['trigger'] })} className={inpS}>
+                  <option value="auto">auto (conditions)</option>
+                  <option value="lr">when real LR</option>
+                  <option value="manual">manual tick</option>
+                </select>
+                <button onClick={() => delRow(i)} className="text-rose-500 text-[11px] hover:underline px-1">remove</button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {r.trigger === 'auto' && (
+                  <>
+                    <label className="text-[10px] text-gray-500 flex items-center gap-1">batch ≥
+                      <input type="number" value={r.minThan} onChange={e => setRow(i, { minThan: e.target.value })} className={`${inpS} w-14`} /></label>
+                    <label className="text-[10px] text-gray-500 flex items-center gap-1">batch ≤
+                      <input type="number" value={r.maxThan} onChange={e => setRow(i, { maxThan: e.target.value })} className={`${inpS} w-14`} /></label>
+                    <label className="text-[10px] text-gray-500 flex items-center gap-1">width
+                      <input type="number" value={r.widthInch} onChange={e => setRow(i, { widthInch: e.target.value })} className={`${inpS} w-14`} placeholder={'44'} /></label>
+                    <label className="text-[10px] text-gray-500 flex items-center gap-1">Jet no
+                      <input type="number" value={r.machineNumber} onChange={e => setRow(i, { machineNumber: e.target.value })} className={`${inpS} w-12`} /></label>
+                  </>
+                )}
+                <label className="text-[10px] text-gray-500 flex items-center gap-1 ml-auto">₹/than
+                  <input type="number" step="0.01" value={r.amountPerThan} onChange={e => setRow(i, { amountPerThan: e.target.value })}
+                    placeholder="+20 / -25" className={`${inpS} w-20 text-right font-bold`} /></label>
+              </div>
+            </div>
+          ))}
+          <div className="flex items-center gap-2">
+            <button onClick={addRow} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">+ Add rule</button>
+            <div className="ml-auto flex gap-2">
+              <button onClick={() => setEditing(false)} className="text-[11px] text-gray-500 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded px-2.5 py-1">Cancel</button>
+              <button onClick={save} disabled={saving}
+                className="text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded px-2.5 py-1 disabled:opacity-50">
+                {saving ? 'Saving…' : 'Save rules'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

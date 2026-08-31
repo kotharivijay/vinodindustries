@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      return tx.processRateContract.create({
+      const created = await tx.processRateContract.create({
         data: {
           partyId: body.partyId,
           version: nextVersion,
@@ -81,6 +81,31 @@ export async function POST(req: NextRequest) {
         },
         include: lineInclude,
       })
+
+      // Carry the previous version's rate RULES forward — a rate change must
+      // not silently drop the agreed terms (batch surcharges, LR extras…).
+      // Process-type-scoped rules only survive if the new version still has a
+      // line for that type.
+      if (active) {
+        const prevRules = await tx.processRateRule.findMany({ where: { contractId: active.id } })
+        const newTypeIds = new Set(created.lines.map((l: any) => l.processTypeId))
+        const carry = prevRules.filter((r: any) => r.processTypeId == null || newTypeIds.has(r.processTypeId))
+        if (carry.length) {
+          await tx.processRateRule.createMany({
+            data: carry.map((r: any) => ({
+              contractId: created.id,
+              processTypeId: r.processTypeId,
+              trigger: r.trigger,
+              minThan: r.minThan, maxThan: r.maxThan,
+              widthInch: r.widthInch, machineNumber: r.machineNumber,
+              amountPerThan: r.amountPerThan,
+              label: r.label, active: r.active, sortOrder: r.sortOrder,
+            })),
+          })
+        }
+      }
+
+      return created
     })
     return NextResponse.json(created)
   } catch (e: any) {

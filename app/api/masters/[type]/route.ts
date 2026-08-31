@@ -98,8 +98,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ty
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { type } = await params
+
+  // Qualities: width is the one editable field — the 44"-extra billing rule
+  // keys off it, so it must not live only in the free-text name.
+  if (type === 'qualities') {
+    const body = await req.json()
+    const id = parseInt(String(body.id))
+    if (!Number.isFinite(id)) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    if (!('widthInch' in body)) return NextResponse.json({ error: 'widthInch required' }, { status: 400 })
+    const v = body.widthInch == null || body.widthInch === '' ? null : parseInt(String(body.widthInch))
+    if (v != null && (!Number.isFinite(v) || v < 20 || v > 99)) {
+      return NextResponse.json({ error: 'widthInch must be 20-99 or null' }, { status: 400 })
+    }
+    try {
+      const updated = await (prisma as any).quality.update({ where: { id }, data: { widthInch: v } })
+      return NextResponse.json(updated)
+    } catch {
+      return NextResponse.json({ error: 'Quality not found' }, { status: 404 })
+    }
+  }
+
   if (type !== 'parties')
-    return NextResponse.json({ error: 'Per-row update only supported for parties' }, { status: 400 })
+    return NextResponse.json({ error: 'Per-row update only supported for parties and qualities' }, { status: 400 })
 
   const body = await req.json()
 

@@ -384,6 +384,11 @@ export default function MasterPage() {
                     />}
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm text-gray-800 dark:text-gray-200">{item.name}</span>
+                      {/* Width editor — billing rules (44" extra) key off this,
+                          so it is a real column, not parsed from the name. */}
+                      {type === 'qualities' && <QualityWidthEditor item={item as any}
+                        onSaved={(updated) => setItems(prev => prev.map(x => x.id === item.id ? { ...x, ...updated } : x))}
+                      />}
                       {/* Tag badge */}
                       {isParties && item.tag && (
                         <button
@@ -729,6 +734,61 @@ function PartyPrefixesEditor({ item, onSaved }: {
 
 // GSTIN / address / state editor for a party. Click-to-edit inline pattern
 // with a click-away save. Empty submit clears the field.
+// Width (inches) on a quality — a real column because the 44"-extra billing
+// rule keys off it; the free-text name is untrustworthy (inch marks stripped
+// on save, and "70*58"-style names have no width at all).
+function QualityWidthEditor({ item, onSaved }: {
+  item: { id: number; widthInch?: number | null }
+  onSaved: (updated: { widthInch: number | null }) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function commit() {
+    setSaving(true)
+    try {
+      const v = draft.trim() === '' ? null : parseInt(draft, 10)
+      if (v != null && (!Number.isFinite(v) || v < 20 || v > 99)) { alert('Width must be 20–99 inches (or blank to clear)'); return }
+      const res = await fetch('/api/masters/qualities', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: item.id, widthInch: v }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(data.error || 'Save failed'); return }
+      onSaved({ widthInch: data.widthInch ?? null })
+      setEditing(false); setDraft('')
+    } finally { setSaving(false) }
+  }
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1" onClick={e => e.stopPropagation()}>
+        <input value={draft} onChange={e => setDraft(e.target.value)} type="number" autoFocus
+          onKeyDown={e => {
+            if (e.key === 'Enter') { e.preventDefault(); commit() }
+            if (e.key === 'Escape') { setEditing(false); setDraft('') }
+          }}
+          placeholder={'44'}
+          className="text-[10px] px-1.5 py-0.5 w-14 border border-sky-300 dark:border-sky-700 rounded bg-white dark:bg-gray-700 dark:text-gray-100" />
+        <button onClick={commit} disabled={saving} className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold">Save</button>
+        <button onClick={() => { setEditing(false); setDraft('') }} className="text-[10px] text-gray-400">✕</button>
+      </span>
+    )
+  }
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); setEditing(true); setDraft(item.widthInch != null ? String(item.widthInch) : '') }}
+      title="Fabric width in inches — billing rules (e.g. 44&quot; extra) use this"
+      className={`text-[10px] rounded border px-1.5 py-0.5 hover:opacity-70 ${
+        item.widthInch != null
+          ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-700 font-semibold'
+          : 'bg-gray-50 dark:bg-gray-700/40 text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+      {item.widthInch != null ? `${item.widthInch}"` : '+ width'}
+    </button>
+  )
+}
+
 function PartyGstEditor({ item, onSaved }: {
   item: { id: number; gstin?: string | null; address?: string | null; state?: string | null }
   onSaved: (updated: { gstin: string | null; address: string | null; state: string | null }) => void

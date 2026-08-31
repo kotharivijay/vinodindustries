@@ -52,6 +52,12 @@ model Weaver {
 model Quality {
   id               Int                @id @default(autoincrement())
   name             String             @unique
+  // Fabric width in inches. Deliberately a real column, NOT parsed from the
+  // name at runtime: names carry two grammars ("PC 62*58 44" vs "Magic 47"),
+  // the masters API strips the inch mark on save, and billing rules
+  // (ProcessRateRule.widthInch) ride on this value. Seeded by a reviewed
+  // backfill, editable on the qualities master.
+  widthInch        Int?
   createdAt        DateTime           @default(now())
   greyEntries      GreyEntry[]
   despatchEntries  DespatchEntry[]
@@ -142,6 +148,7 @@ model ProcessType {
   isActive  Boolean           @default(true)
   sortOrder Int               @default(0)
   rateLines ProcessRateLine[]
+  rateRules ProcessRateRule[]
   greyEntries GreyEntry[]
 }
 
@@ -162,6 +169,7 @@ model ProcessRateContract {
   createdAt      DateTime          @default(now())
   supersededAt   DateTime?
   lines          ProcessRateLine[]
+  rules          ProcessRateRule[]
   greyEntries    GreyEntry[]
 
   @@index([partyId, status])
@@ -184,6 +192,49 @@ model ProcessRateLine {
   rateDark      Decimal?            @db.Decimal(16, 2)
 
   @@unique([contractId, processTypeId])
+}
+
+// Per-than rate adjustments agreed in the contract terms (previously prose in
+// notes, applied from memory). The delivery-challan billing view evaluates
+// these; the engine lives in lib/process-rate-rules.ts.
+model ProcessRateRule {
+  id            Int                 @id @default(autoincrement())
+  contractId    Int
+  contract      ProcessRateContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Which rate line it applies to. Null = every line in the contract.
+  processTypeId Int?
+  processType   ProcessType?        @relation(fields: [processTypeId], references: [id])
+  // How the rule fires:
+  //   auto   — all non-null conditions below must match (evaluated from data)
+  //   lr     — the line snapshots a real LR (non-blank, not 'open' — the same
+  //            test as the DC print's Checking chip)
+  //   manual — accounts ticks it per row on the billing view
+  trigger       String              @default("auto") // auto | lr | manual
+  // Conditions for trigger='auto' (all non-null ones are ANDed)
+  minThan       Int?                // dyeing-batch total >= this
+  maxThan       Int?                // dyeing-batch total <= this
+  widthInch     Int?                // quality width equals this
+  machineNumber Int?                // DyeingMachine.number equals this
+  // Effect — signed, per than
+  amountPerThan Decimal             @db.Decimal(16, 2)
+  label         String              // shown as the tag, e.g. "batch 19-20"
+  active        Boolean             @default(true)
+  sortOrder     Int                 @default(0)
+  ticks         ChallanLineRuleTick[]
+
+  @@index([contractId])
+}
+
+// Which manual rules accounts ticked, per challan line — so the bill total is
+// reproducible when the page is reopened.
+model ChallanLineRuleTick {
+  id     Int                       @id @default(autoincrement())
+  lineId Int
+  line   FinishDeliveryChallanLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  ruleId Int
+  rule   ProcessRateRule           @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, ruleId])
 }
 
 // ─── Grey Checking (intermediate review of incoming grey before fold/dye) ─
@@ -711,6 +762,7 @@ model FinishDeliveryChallanLine {
   transportName     String?
   transportLrNo     String?
   createdAt         DateTime              @default(now())
+  ruleTicks         ChallanLineRuleTick[]
 
   @@index([challanId])
   @@index([finishEntryId])

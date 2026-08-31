@@ -11,6 +11,7 @@
 
 import { prisma } from '@/lib/prisma'
 import { lineInclude } from '@/lib/processRates'
+import { applyRules, adjustmentPaise, isRealLr, type AppliedRule, type RateRule } from '@/lib/process-rate-rules'
 
 const db = prisma as any
 
@@ -23,12 +24,18 @@ export type RateIssue =
   | 'unit-not-than'      // rate is per kg/mtr — than x rate would be wrong
 
 export type LineRate = {
-  rate: string | null            // Decimal as string (wire convention)
+  rate: string | null            // EFFECTIVE rate (base + rule adjustments), Decimal as string
+  baseRate: string | null        // the contract rate before rules
+  applied: AppliedRule[]         // contract rules that fired on this line
   unit: string | null            // than | kg | mtr
-  amount: number | null          // than x rate, only when unit === 'than'
+  amount: number | null          // than x effective rate, only when unit === 'than'
   contractVersion: number | null
   contractStatus: string | null
   processTypeName: string | null
+  // Context for the expandable slice view
+  dyeSlipNo: number | null
+  batchThan: number | null       // whole dyeing-batch total (all lots in the slip)
+  machineNumber: number | null
   /** 'lot' = the version the lot is linked to; 'fallback-active' = party's current. */
   source: 'lot' | 'fallback-active' | null
   issue?: RateIssue
@@ -50,6 +57,15 @@ export type ContractUsed = {
     rateLight: string | null
     rateMedium: string | null
     rateDark: string | null
+  }>
+  /** Active billing rules on this version — the view renders manual ones as
+      tick checkboxes even before they're ticked. */
+  rules: Array<{
+    id: number
+    trigger: string
+    label: string
+    amountPerThan: number
+    processTypeId: number | null
   }>
 }
 
@@ -74,7 +90,28 @@ export async function resolveChallanRates(challanId: number): Promise<ChallanRat
     where: { id: challanId },
     select: {
       partyId: true,
-      lines: { select: { id: true, lotNo: true, than: true, shadeCategory: true } },
+      lines: {
+        select: {
+          id: true, lotNo: true, than: true, shadeCategory: true,
+          transportLrNo: true,
+          // Manual rule ticks accounts saved on this line
+          ruleTicks: { select: { ruleId: true } },
+          // Dye-slip chain for batch-size / machine rules. Batch size must be
+          // Σ DyeingEntryLot.than: the slip-edit route re-derives the header
+          // `than` from lots[0], so edited multi-lot slips lie in the header.
+          finishEntryLot: {
+            select: {
+              dyeingEntry: {
+                select: {
+                  slipNo: true, than: true,
+                  machine: { select: { number: true } },
+                  lots: { select: { than: true } },
+                },
+              },
+            },
+          },
+        },
+      },
     },
   })
 
@@ -89,14 +126,17 @@ export async function resolveChallanRates(challanId: number): Promise<ChallanRat
   const lotNos = [...new Set((challan.lines as any[]).map((l: any) => l.lotNo as string))] as string[]
   const greys = await db.greyEntry.findMany({
     where: { lotNo: { in: lotNos, mode: 'insensitive' }, partyId: challan.partyId },
-    select: { lotNo: true, processRateContractId: true, processTypeId: true, date: true, id: true },
+    select: {
+      lotNo: true, processRateContractId: true, processTypeId: true, date: true, id: true,
+      quality: { select: { widthInch: true } },
+    },
     orderBy: [{ date: 'desc' }, { id: 'desc' }],
   })
-  const greyByLot = new Map<string, { contractId: number | null; processTypeId: number | null }>()
+  const greyByLot = new Map<string, { contractId: number | null; processTypeId: number | null; widthInch: number | null }>()
   for (const g of greys as any[]) {
     const k = key(g.lotNo)
     // First row wins — the orderBy above puts the newest grey entry first.
-    if (!greyByLot.has(k)) greyByLot.set(k, { contractId: g.processRateContractId ?? null, processTypeId: g.processTypeId ?? null })
+    if (!greyByLot.has(k)) greyByLot.set(k, { contractId: g.processRateContractId ?? null, processTypeId: g.processTypeId ?? null, widthInch: g.quality?.widthInch ?? null })
   }
 
   // ── 2. load every contract we might need: those the lots are stamped with,
@@ -104,11 +144,15 @@ export async function resolveChallanRates(challanId: number): Promise<ChallanRat
   const stampedIds: number[] = [...new Set(
     [...greyByLot.values()].map(v => v.contractId).filter((x): x is number => x != null),
   )]
+  const contractInclude = {
+    ...lineInclude,
+    rules: { where: { active: true }, orderBy: [{ sortOrder: 'asc' as const }, { id: 'asc' as const }] },
+  }
   const [stamped, active] = await Promise.all([
     stampedIds.length
-      ? db.processRateContract.findMany({ where: { id: { in: stampedIds } }, include: lineInclude })
+      ? db.processRateContract.findMany({ where: { id: { in: stampedIds } }, include: contractInclude })
       : Promise.resolve([]),
-    db.processRateContract.findFirst({ where: { partyId: challan.partyId, status: 'active' }, include: lineInclude }),
+    db.processRateContract.findFirst({ where: { partyId: challan.partyId, status: 'active' }, include: contractInclude }),
   ])
   const contractById = new Map<number, any>()
   for (const c of stamped as any[]) contractById.set(c.id, c)
@@ -120,13 +164,24 @@ export async function resolveChallanRates(challanId: number): Promise<ChallanRat
   let amount = 0, pricedLines = 0, unpricedLines = 0, pricedThan = 0, unpricedThan = 0
 
   const fail = (line: any, issue: RateIssue, partial?: Partial<LineRate>): LineRate => ({
-    rate: null, unit: null, amount: null, contractVersion: null, contractStatus: null,
-    processTypeName: null, source: null, issue, ...partial,
+    rate: null, baseRate: null, applied: [], unit: null, amount: null,
+    contractVersion: null, contractStatus: null, processTypeName: null,
+    dyeSlipNo: null, batchThan: null, machineNumber: null,
+    source: null, issue, ...partial,
   })
 
   for (const line of challan.lines as any[]) {
     const grey = greyByLot.get(key(line.lotNo))
     let res: LineRate
+
+    // Dye-slip context for rule evaluation and the slice view.
+    const de = line.finishEntryLot?.dyeingEntry ?? null
+    const dyeSlipNo: number | null = de?.slipNo ?? null
+    const batchThan: number | null = de
+      ? (de.lots?.length ? de.lots.reduce((s: number, l: any) => s + (l.than || 0), 0) : de.than ?? null)
+      : null
+    const machineNumber: number | null = de?.machine?.number ?? null
+    const tickedRuleIds = new Set<number>((line.ruleTicks ?? []).map((t: any) => t.ruleId as number))
 
     if (!grey) {
       res = fail(line, 'lot-not-found')
@@ -142,6 +197,7 @@ export async function resolveChallanRates(challanId: number): Promise<ChallanRat
           contractVersion: contract.version as number,
           contractStatus: contract.status as string,
           source,
+          dyeSlipNo, batchThan, machineNumber,
         }
 
         // Pick the rate line: the lot's process type, else the sole line.
@@ -175,10 +231,21 @@ export async function resolveChallanRates(challanId: number): Promise<ChallanRat
             res = { ...fail(line, issue ?? 'rate-missing', base), unit, processTypeName }
           } else if (unit !== 'than') {
             // Only `than` is reliably known per lot — never treat a per-kg rate
-            // as per-than. Show the rate, withhold the amount.
-            res = { ...base, rate, unit, amount: null, processTypeName, issue: 'unit-not-than' }
+            // as per-than. Show the rate, withhold the amount. Rule adjustments
+            // are per-than too, so they deliberately don't apply here either.
+            res = { ...base, rate, baseRate: rate, applied: [], unit, amount: null, processTypeName, issue: 'unit-not-than' }
           } else {
-            res = { ...base, rate, unit, amount: multiply(line.than, rate), processTypeName }
+            // Contract rules adjust the per-than rate BEFORE the multiply, so
+            // Amount === Than × displayed Rate always holds, in paise space.
+            const applied = applyRules((contract.rules ?? []) as RateRule[], {
+              processTypeId: rateLine.processTypeId,
+              batchThan, widthInch: grey.widthInch, machineNumber,
+              hasRealLr: isRealLr(line.transportLrNo),
+              tickedRuleIds,
+            })
+            const effPaise = Math.round(parseFloat(rate) * 100) + adjustmentPaise(applied)
+            const effRate = (effPaise / 100).toFixed(2)
+            res = { ...base, rate: effRate, baseRate: rate, applied, unit, amount: multiply(line.than, effRate), processTypeName }
           }
         }
       }
@@ -202,6 +269,10 @@ export async function resolveChallanRates(challanId: number): Promise<ChallanRat
         rateLight: rl.rateLight == null ? null : String(rl.rateLight),
         rateMedium: rl.rateMedium == null ? null : String(rl.rateMedium),
         rateDark: rl.rateDark == null ? null : String(rl.rateDark),
+      })),
+      rules: ((c.rules ?? []) as any[]).map(r => ({
+        id: r.id, trigger: r.trigger, label: r.label,
+        amountPerThan: Number(r.amountPerThan), processTypeId: r.processTypeId ?? null,
       })),
     }
   }).sort((a, b) => a.version - b.version)
