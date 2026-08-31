@@ -9,6 +9,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { LotLink } from '@/lib/viewStatePersist'
 import BackButton from '../../BackButton'
+import { notesToPoints } from '@/lib/process-rate-notes'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 // Back-nav state key — lets /lot/[lotNo] return here with scroll restored.
@@ -143,6 +144,33 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
   // recompute their linked totals.
   const refreshAll = () => globalMutate((key: any) => typeof key === 'string' && key.includes('/process-rates'))
 
+  const [sharing, setSharing] = useState(false)
+  async function share() {
+    setSharing(true)
+    try {
+      const { shareProcessRateImage } = await import('@/lib/process-rate-share')
+      await shareProcessRateImage({
+        partyName: c.party.name,
+        version: c.version,
+        status: c.status,
+        effectiveFrom: c.effectiveFrom,
+        validityQty: c.validityQty,
+        validityUnit: c.validityUnit,
+        notes: c.notes,
+        lines: c.lines.map(l => ({
+          processTypeName: l.processType.name,
+          rateMode: l.processType.rateMode,
+          unit: l.unit,
+          rate: l.rate, rateLight: l.rateLight, rateMedium: l.rateMedium, rateDark: l.rateDark,
+        })),
+        linkedLots: c.greyEntries.length,
+        linkedThan: c.greyEntries.reduce((s, g) => s + g.than, 0),
+      })
+    } catch (e: any) {
+      alert('Share failed: ' + (e?.message ?? 'unknown error'))
+    } finally { setSharing(false) }
+  }
+
   async function del() {
     if (!confirm(`Delete v${c.version} for ${c.party.name}? This cannot be undone.`)) return
     setBusy(true)
@@ -177,6 +205,11 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
           {c.lines.length} line{c.lines.length > 1 ? 's' : ''} · {c.greyEntries.length} lot{c.greyEntries.length !== 1 ? 's' : ''}
         </span>
         <div className="flex gap-1">
+          <button onClick={share} disabled={sharing}
+            title="Share this rate card on WhatsApp as an image"
+            className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline px-1 disabled:opacity-50 whitespace-nowrap">
+            {sharing ? '…' : '📤 Share'}
+          </button>
           <button onClick={onEdit} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline px-1">Edit</button>
           <button onClick={del} disabled={busy} className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline px-1 disabled:opacity-50">Delete</button>
         </div>
@@ -210,8 +243,21 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
           <ValidityBar c={c} />
 
           {c.notes && (
-            <div className="flex gap-2 items-start text-[12px] text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg px-3 py-2">
-              <span>📝</span><span>{c.notes}</span>
+            <div className="text-[12px] text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2 mb-1">
+                <span>📝</span>
+                <span className="text-[10px] uppercase tracking-wide font-semibold opacity-70">Terms &amp; notes</span>
+              </div>
+              {/* Notes are typed as one run-on line with the point numbers
+                  buried in it — split and renumber for readability. */}
+              <ol className="space-y-1">
+                {notesToPoints(c.notes).map((p, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="font-bold shrink-0 tabular-nums">{p.n}.</span>
+                    <span>{p.text}</span>
+                  </li>
+                ))}
+              </ol>
             </div>
           )}
 
