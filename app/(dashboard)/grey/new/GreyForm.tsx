@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ComboSelect from '@/components/ComboSelect'
 import ProcessRatePicker, { type ProcessRateValue } from '@/components/ProcessRatePicker'
+import { lrEqualsMtr, cutPerThan, cutStatus, CUT_MIN, CUT_MAX } from '@/lib/grey-mtr-guard'
 
 interface Option { id: number; name: string; tag?: string | null; lotPrefixes?: string[] | null }
 interface Masters { parties: Option[]; qualities: Option[]; weavers: Option[]; transports: Option[] }
@@ -30,6 +31,10 @@ export default function GreyForm() {
   const [prefillApplied, setPrefillApplied] = useState(false)
   // Process-rate contract link for this lot (set via the pill on party-select).
   const [processRate, setProcessRate] = useState<ProcessRateValue>({ contractId: null, processTypeId: null })
+  // Live checks on the metres field (see lib/grey-mtr-guard.ts).
+  const lrMtrClash = lrEqualsMtr(form.grayMtr, form.transportLrNo, form.lrNo)
+  const cut = cutPerThan(form.grayMtr, form.than)
+  const cutState = cutStatus(cut)
 
   useEffect(() => {
     const load = async (type: string) => {
@@ -193,15 +198,26 @@ export default function GreyForm() {
     }
 
     setSaving(true); setError('')
+    // Metres identical to an LR number is almost always the LR typed into the
+    // wrong box; make the operator look at the challan before it goes in.
+    let confirmLrMtr = false
+    if (lrMtrClash) {
+      if (!confirm(`Gray Mtr (${form.grayMtr}) is exactly the same number as the ${lrMtrClash}.\n\nThat usually means the LR number went into the metres box — it silently distorts fold-batch weights.\n\nSave anyway?`)) {
+        setSaving(false)
+        return
+      }
+      confirmLrMtr = true
+    }
+
     const res = await fetch('/api/grey', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, processRateContractId: processRate.contractId, processTypeId: processRate.processTypeId }),
+      body: JSON.stringify({ ...form, confirmLrMtr, processRateContractId: processRate.contractId, processTypeId: processRate.processTypeId }),
     })
     if (res.ok) {
       router.push('/grey')
     } else {
       const d = await res.json()
-      setError(d.error ?? 'Failed to save')
+      setError(d.message ?? d.error ?? 'Failed to save')
       setSaving(false)
     }
   }
@@ -246,7 +262,34 @@ export default function GreyForm() {
             <input type="number" className={inp} value={form.than} onChange={e => set('than', e.target.value)} required />
           </Field>
           <Field label="Gray Mtr">
-            <input type="number" step="0.01" className={inp} value={form.grayMtr} onChange={e => set('grayMtr', e.target.value)} />
+            <div className="relative">
+              <input type="number" step="0.01"
+                className={`${lrMtrClash ? inp.replace('border-gray-300', 'border-rose-400') : inp} pr-24`}
+                value={form.grayMtr} onChange={e => set('grayMtr', e.target.value)} />
+              {/* Live cut (m/than). Every lot here runs ~215-235, so a wrong
+                  metres value shows up instantly instead of hiding until a
+                  fold-batch weight looks odd. */}
+              {cut != null && (
+                <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold rounded px-1.5 py-0.5 pointer-events-none ${
+                  cutState === 'odd'
+                    ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300'
+                    : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'}`}>
+                  cut {cut.toFixed(1)}
+                </span>
+              )}
+            </div>
+            {cutState === 'odd' && (
+              <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-300">
+                ⚠ Cut {cut!.toFixed(1)} m/than is outside the usual {CUT_MIN}–{CUT_MAX} — check the metres.
+              </p>
+            )}
+            {/* An LR number typed into this field reads as plausible metres and
+                silently distorts fold-batch weights — flag it while typing. */}
+            {lrMtrClash && (
+              <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 rounded px-2 py-1">
+                ⚠ Same number as the {lrMtrClash} — is this the LR number rather than metres?
+              </p>
+            )}
           </Field>
           <Field label="A-Lot No *">
             <div className="space-y-1">

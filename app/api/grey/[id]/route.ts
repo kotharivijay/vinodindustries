@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { logDelete } from '@/lib/deleteLog'
 import { normalizeLotNo } from '@/lib/lot-no'
+import { lrEqualsMtr, lrMtrMessage } from '@/lib/grey-mtr-guard'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -25,6 +26,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const data = await req.json()
+
+  // Guard: LR number typed into the Gray Mtr field (see lib/grey-mtr-guard.ts).
+  if (!data.confirmLrMtr) {
+    const which = lrEqualsMtr(data.grayMtr, data.transportLrNo, data.lrNo)
+    if (which) {
+      return NextResponse.json(
+        { error: 'LR_EQUALS_MTR', field: which, message: lrMtrMessage(which, data.grayMtr) },
+        { status: 400 },
+      )
+    }
+  }
 
   const entry = await prisma.greyEntry.update({
     where: { id: parseInt(id) },

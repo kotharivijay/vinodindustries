@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { appendRowToSheet, greyEntryToSheetRow } from '@/lib/sheets'
 import { normalizeLotNo } from '@/lib/lot-no'
+import { lrEqualsMtr, lrMtrMessage } from '@/lib/grey-mtr-guard'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -164,6 +165,17 @@ export async function POST(req: NextRequest) {
   } else {
     const top = await prisma.greyEntry.aggregate({ where: { sn: { gt: 0 } }, _max: { sn: true } })
     resolvedSn = (top._max.sn ?? 0) + 1
+  }
+
+  // Guard: LR number typed into the Gray Mtr field (see lib/grey-mtr-guard.ts).
+  if (!data.confirmLrMtr) {
+    const which = lrEqualsMtr(data.grayMtr, data.transportLrNo, data.lrNo)
+    if (which) {
+      return NextResponse.json(
+        { error: 'LR_EQUALS_MTR', field: which, message: lrMtrMessage(which, data.grayMtr) },
+        { status: 400 },
+      )
+    }
   }
 
   const entry = await prisma.greyEntry.create({

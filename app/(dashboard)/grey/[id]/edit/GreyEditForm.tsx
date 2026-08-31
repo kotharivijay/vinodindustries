@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import ComboSelect from '@/components/ComboSelect'
 import ProcessRatePicker, { type ProcessRateValue } from '@/components/ProcessRatePicker'
+import { lrEqualsMtr, cutPerThan, cutStatus, CUT_MIN, CUT_MAX } from '@/lib/grey-mtr-guard'
 
 interface Option { id: number; name: string; tag?: string | null; lotPrefixes?: string[] | null }
 interface Masters { parties: Option[]; qualities: Option[]; weavers: Option[]; transports: Option[] }
@@ -14,6 +15,7 @@ export default function GreyEditForm({ id }: { id: string }) {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Live check: metres identical to an LR number (see lib/grey-mtr-guard.ts).
 
   const [form, setForm] = useState({
     sn: '', date: '', challanNo: '',
@@ -26,6 +28,9 @@ export default function GreyEditForm({ id }: { id: string }) {
   })
   // Existing process-rate link for this lot — preserved on edit (see autoStamp).
   const [processRate, setProcessRate] = useState<ProcessRateValue>({ contractId: null, processTypeId: null })
+  const lrMtrClash = lrEqualsMtr(form.grayMtr, form.transportLrNo, form.lrNo)
+  const cut = cutPerThan(form.grayMtr, form.than)
+  const cutState = cutStatus(cut)
 
   useEffect(() => {
     const loadMasters = (type: string) => fetch(`/api/masters/${type}`).then(r => r.json())
@@ -101,10 +106,18 @@ export default function GreyEditForm({ id }: { id: string }) {
       } catch { /* don't block save on a usage-check failure */ }
     }
 
+    // Metres identical to an LR number is almost always the LR typed into the
+    // wrong box; make the operator look at the challan before it goes in.
+    let confirmLrMtr = false
+    if (lrMtrClash) {
+      if (!window.confirm(`Gray Mtr (${form.grayMtr}) is exactly the same number as the ${lrMtrClash}.\n\nThat usually means the LR number went into the metres box — it silently distorts fold-batch weights.\n\nSave anyway?`)) return
+      confirmLrMtr = true
+    }
+
     setSaving(true); setError('')
     const res = await fetch(`/api/grey/${id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, processRateContractId: processRate.contractId, processTypeId: processRate.processTypeId }),
+      body: JSON.stringify({ ...form, confirmLrMtr, processRateContractId: processRate.contractId, processTypeId: processRate.processTypeId }),
     })
     if (res.ok) {
       router.push('/grey')
@@ -157,7 +170,30 @@ export default function GreyEditForm({ id }: { id: string }) {
             <input type="number" className={inp} value={form.than} onChange={e => set('than', e.target.value)} required />
           </Field>
           <Field label="Gray Mtr">
-            <input type="number" step="0.01" className={inp} value={form.grayMtr} onChange={e => set('grayMtr', e.target.value)} />
+            <div className="relative">
+              <input type="number" step="0.01"
+                className={`${lrMtrClash ? inp.replace('border-gray-300', 'border-rose-400') : inp} pr-24`}
+                value={form.grayMtr} onChange={e => set('grayMtr', e.target.value)} />
+              {/* Live cut (m/than) — see the new-entry form for the rationale. */}
+              {cut != null && (
+                <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-semibold rounded px-1.5 py-0.5 pointer-events-none ${
+                  cutState === 'odd'
+                    ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300'
+                    : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'}`}>
+                  cut {cut.toFixed(1)}
+                </span>
+              )}
+            </div>
+            {cutState === 'odd' && (
+              <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-300">
+                ⚠ Cut {cut!.toFixed(1)} m/than is outside the usual {CUT_MIN}–{CUT_MAX} — check the metres.
+              </p>
+            )}
+            {lrMtrClash && (
+              <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 rounded px-2 py-1">
+                ⚠ Same number as the {lrMtrClash} — is this the LR number rather than metres?
+              </p>
+            )}
           </Field>
           <Field label="A-Lot No *">
             <input type="text" className={inp} value={form.lotNo} onChange={e => set('lotNo', e.target.value)} required />
