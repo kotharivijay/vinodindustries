@@ -115,13 +115,21 @@ export async function buildProcessRateImage(c: ShareContract): Promise<Blob> {
     const by = l.rateMode === 'BY_COLOR_CATEGORY'
     ctx.fillStyle = '#0f172a'; ctx.font = 'bold 14px Arial'
     ctx.fillText(l.processTypeName, PAD, y + 22)
-    ctx.fillStyle = '#94a3b8'; ctx.font = '11px Arial'
-    ctx.fillText(`${by ? 'by colour' : 'flat'} · per ${l.unit}`, 250, y + 22)
     ctx.textAlign = 'right'
     if (!by) {
+      // Rate first, then tuck the mode label directly to its left — the two
+      // belong together, and the old fixed x left a dead gap across the row.
+      // "/than" already carries the unit, so the label is just the mode.
+      const rateTxt = `${money(l.rate)} /${l.unit}`
       ctx.fillStyle = '#0f172a'; ctx.font = 'bold 17px Arial'
-      ctx.fillText(`${money(l.rate)} /${l.unit}`, W - PAD, y + 23)
+      ctx.fillText(rateTxt, W - PAD, y + 23)
+      const rw = ctx.measureText(rateTxt).width
+      ctx.fillStyle = '#94a3b8'; ctx.font = '11px Arial'
+      ctx.fillText('flat', W - PAD - rw - 12, y + 23)
     } else {
+      // The three colour chips fill the right; sit the label just left of them.
+      ctx.fillStyle = '#94a3b8'; ctx.font = '11px Arial'
+      ctx.fillText(`by colour · per ${l.unit}`, W - PAD - 3 * 108 - 12, y + 23)
       const cats: Array<[string, string | null, string]> = [
         ['LIGHT', l.rateLight, '#b45309'], ['MEDIUM', l.rateMedium, '#c2410c'], ['DARK', l.rateDark, '#6d28d9'],
       ]
