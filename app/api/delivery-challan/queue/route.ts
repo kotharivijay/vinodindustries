@@ -106,12 +106,31 @@ export async function GET() {
     totalThan: number
     rows: Row[]
   }
+  // Grey returns are a SECOND source feeding this same queue. They carry their
+  // own party FK, so unlike finish lots they need no lotNo → grey guesswork.
+  type GrRow = {
+    greyReturnLotId: number
+    lotNo: string
+    than: number
+    meter: number | null
+    quality: string
+    source: 'grey' | 'fold'
+    checkingSlipNo: string | null
+  }
+  type GrBucket = {
+    greyReturnId: number
+    slipNo: string
+    date: Date | null
+    totalThan: number
+    rows: GrRow[]
+  }
   type PartyBucket = {
     partyId: number
     partyName: string
     partyTag: string | null
     totalThan: number
     finishPrograms: Map<number, FpBucket>
+    greyReturns: Map<number, GrBucket>
   }
   const parties = new Map<number, PartyBucket>()
   // Finished lots we could NOT place in the queue because their lotNo doesn't
@@ -150,6 +169,7 @@ export async function GET() {
         partyTag: info.partyTag,
         totalThan: 0,
         finishPrograms: new Map(),
+        greyReturns: new Map(),
       })
     }
     const pb = parties.get(info.partyId)!
@@ -178,6 +198,60 @@ export async function GET() {
     })
   }
 
+  // ── Second source: grey returns ───────────────────────────────────────────
+  // Deliberately NOT gated on the 'Pali PC Job' tag. That gate exists because
+  // non-Pali parties send FINISHED goods out on the legacy finishDespSlipNo
+  // flow — grey returns have no legacy path, and 235 of 260 parties are
+  // untagged (Prakash Shirting among them), so gating would hide almost every
+  // return.
+  const consumedGrIds = new Set<number>(
+    (await db.finishDeliveryChallanLine.findMany({
+      where: { greyReturnLotId: { not: null } },
+      select: { greyReturnLotId: true },
+    })).map((l: any) => l.greyReturnLotId as number),
+  )
+
+  const greyReturns = await db.greyReturn.findMany({
+    where: { status: 'issued' },
+    select: {
+      id: true, slipNo: true, date: true,
+      party: { select: { id: true, name: true, tag: true } },
+      lots: { select: { id: true, lotNo: true, than: true, meter: true, qualityName: true, source: true, checkingSlipNo: true } },
+    },
+    orderBy: { serialNo: 'desc' },
+  })
+
+  for (const gr of greyReturns as any[]) {
+    const rows = (gr.lots as any[]).filter((l: any) => !consumedGrIds.has(l.id))
+    if (!rows.length) continue          // fully challaned already
+    if (!parties.has(gr.party.id)) {
+      parties.set(gr.party.id, {
+        partyId: gr.party.id,
+        partyName: gr.party.name,
+        partyTag: gr.party.tag ?? null,
+        totalThan: 0,
+        finishPrograms: new Map(),
+        greyReturns: new Map(),
+      })
+    }
+    const pb = parties.get(gr.party.id)!
+    const bucket: GrBucket = { greyReturnId: gr.id, slipNo: gr.slipNo, date: gr.date, totalThan: 0, rows: [] }
+    for (const l of rows) {
+      bucket.totalThan += l.than
+      pb.totalThan += l.than
+      bucket.rows.push({
+        greyReturnLotId: l.id,
+        lotNo: l.lotNo,
+        than: l.than,
+        meter: l.meter ?? null,
+        quality: l.qualityName ?? '-',
+        source: l.source,
+        checkingSlipNo: l.checkingSlipNo ?? null,
+      })
+    }
+    pb.greyReturns.set(gr.id, bucket)
+  }
+
   // Serialize: sorted arrays
   const out = [...parties.values()]
     .sort((a, b) => a.partyName.localeCompare(b.partyName))
@@ -194,6 +268,15 @@ export async function GET() {
           date: fp.date,
           totalThan: fp.totalThan,
           rows: fp.rows.sort((a, b) => a.lotNo.localeCompare(b.lotNo)),
+        })),
+      greyReturns: [...pb.greyReturns.values()]
+        .sort((a, b) => b.greyReturnId - a.greyReturnId)
+        .map(gr => ({
+          greyReturnId: gr.greyReturnId,
+          slipNo: gr.slipNo,
+          date: gr.date,
+          totalThan: gr.totalThan,
+          rows: gr.rows.sort((a, b) => a.source.localeCompare(b.source) || a.lotNo.localeCompare(b.lotNo)),
         })),
     }))
 

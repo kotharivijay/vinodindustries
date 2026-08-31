@@ -77,7 +77,14 @@ export async function GET(req: NextRequest) {
   })
 
   const despatchThan = (despParent._sum.than ?? 0) + (despChildren._sum.than ?? 0)
-  const stock = openingGrey + greyThan - despatchThan
 
-  return NextResponse.json({ exists: true, stock, greyThan, despatchThan, openingBalance, obAllocated, openingGrey })
+  // Grey sent back to the party unprocessed — a physical exit like despatch.
+  const grAgg = await (prisma as any).greyReturnLot.aggregate({
+    where: { lotNo: { equals: lotNo, mode: 'insensitive' }, greyReturn: { status: 'issued' } },
+    _sum: { than: true },
+  })
+  const returnedThan = grAgg._sum.than ?? 0
+  const stock = openingGrey + greyThan - despatchThan - returnedThan
+
+  return NextResponse.json({ exists: true, stock, greyThan, despatchThan, returnedThan, openingBalance, obAllocated, openingGrey })
 }

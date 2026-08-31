@@ -21,6 +21,20 @@ export async function GET() {
     foldMap.set(key, (foldMap.get(key) ?? 0) + fl.than)
   }
 
+  // Grey returned to the party unprocessed — a physical exit, like despatch.
+  // Counted for BOTH sources: a fold-sourced return shrank its FoldBatchLot,
+  // which lowers foldMap and would otherwise release that than back into the
+  // available pool even though the cloth has left.
+  const greyReturnLots = await (prisma as any).greyReturnLot.findMany({
+    where: { greyReturn: { status: 'issued' } },
+    select: { lotNo: true, than: true },
+  })
+  const greyReturnMap = new Map<string, number>()
+  for (const r of greyReturnLots as any[]) {
+    const key = String(r.lotNo).toLowerCase()
+    greyReturnMap.set(key, (greyReturnMap.get(key) ?? 0) + (r.than ?? 0))
+  }
+
   // Fetch dyeing entry lots WITHOUT fold program (direct dyeing slips)
   const dyeingLots = await (prisma as any).dyeingEntryLot.findMany({
     select: { lotNo: true, than: true, entry: { select: { foldBatchId: true } } },
@@ -249,7 +263,8 @@ export async function GET() {
     // Case-insensitive: GreyEntry.lotNo and despatch-table lotNo casings can
     // differ (e.g. "SAM-23-Super" vs "SAM-23-SUPER").
     const despThan = despatchMapLower.get(key) ?? 0
-    const stock = obThan + greyThan - despThan
+    const returnedThan = greyReturnMap.get(key) ?? 0
+    const stock = obThan + greyThan - despThan - returnedThan
     if (stock <= 0) continue
 
     const detail = lotDetailMap.get(key)
@@ -263,7 +278,7 @@ export async function GET() {
     // the actual exit; excess despatch over pipeline = grey-direct exits.
     const pipelineCommit = foldProgrammed + dyeingUsed
     const exitOrCommit = Math.max(despThan, pipelineCommit)
-    const foldAvailable = Math.max(0, obThan + greyThan - exitOrCommit - manuallyUsed)
+    const foldAvailable = Math.max(0, obThan + greyThan - exitOrCommit - manuallyUsed - returnedThan)
     lotStocks.push({
       lotNo: g.lotNo,
       party: detail?.party ?? ob?.party ?? 'Unknown',
@@ -290,7 +305,8 @@ export async function GET() {
     const key = ob.lotNo.toLowerCase()
     if (processedLots.has(key)) continue
     const despThan = despatchMapLower.get(key) ?? 0
-    const stock = ob.openingThan - despThan
+    const returnedThan = greyReturnMap.get(key) ?? 0
+    const stock = ob.openingThan - despThan - returnedThan
     if (stock <= 0) continue
 
     const foldProgrammed = foldMap.get(key) ?? 0
@@ -307,7 +323,7 @@ export async function GET() {
     // Same downstream-despatch handling as the grey branch above.
     const pipelineCommit = foldProgrammed + dyeingUsed
     const exitOrCommit = Math.max(despThan, pipelineCommit)
-    const foldAvailable = Math.max(0, ob.openingThan - exitOrCommit - manuallyUsed)
+    const foldAvailable = Math.max(0, ob.openingThan - exitOrCommit - manuallyUsed - returnedThan)
     lotStocks.push({
       lotNo: ob.lotNo,
       party: ob.party || 'Unknown',

@@ -10,7 +10,7 @@ interface Line {
   shadeName: string | null
   shadeCategory: string | null
   than: number
-  finishSlipNo: number
+  finishSlipNo: number | null   // null on grey-return lines (no finish program)
   transportName: string | null
   transportLrNo: string | null
   marka: string | null

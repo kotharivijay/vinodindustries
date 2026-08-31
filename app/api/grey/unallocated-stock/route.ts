@@ -62,6 +62,17 @@ export async function GET() {
     foldedMap.set(k, (foldedMap.get(k) || 0) + (f.than || 0))
   }
 
+  // Grey sent back to the party unprocessed (both grey- and fold-sourced).
+  const greyReturnRows = await (prisma as any).greyReturnLot.findMany({
+    where: { greyReturn: { status: 'issued' } },
+    select: { lotNo: true, than: true },
+  })
+  const greyReturnMap = new Map<string, number>()
+  for (const r of greyReturnRows as any[]) {
+    const k = String(r.lotNo).toLowerCase().trim()
+    greyReturnMap.set(k, (greyReturnMap.get(k) || 0) + (r.than || 0))
+  }
+
   type Lot = {
     lotNo: string
     remaining: number
@@ -140,8 +151,12 @@ export async function GET() {
     // folded pipeline). The actual grey-stage consumption is whichever is
     // larger: if despatch ≤ fold capacity it's all downstream; if despatch
     // exceeds fold, the excess is grey-direct despatch.
+    // Grey returned to the party unprocessed is a physical exit, subtracted for
+    // BOTH sources: a fold-sourced return shrank its FoldBatchLot, lowering
+    // `folded`, which would otherwise release that than back into this pool.
+    const returned = greyReturnMap.get(k) || 0
     const consumed = Math.max(despatched, folded)
-    const remaining = g.than - consumed
+    const remaining = g.than - consumed - returned
     if (remaining <= 0) continue
 
     // Find original lotNo casing
@@ -175,7 +190,7 @@ export async function GET() {
     const folded = foldedMap.get(k) || 0
     const obAllocated = (ob.allocations || []).reduce((s: number, a: any) => s + (a.than || 0), 0)
     const consumed = Math.max(despatched, folded)
-    const remaining = ob.openingThan - consumed - obAllocated
+    const remaining = ob.openingThan - consumed - obAllocated - (greyReturnMap.get(k) || 0)
     if (remaining <= 0) continue
 
     const obParty = ob.party || 'Unknown'

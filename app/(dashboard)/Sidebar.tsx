@@ -20,6 +20,7 @@ const ksiNavGroups = [
     links: [
       { href: '/grey', label: 'Grey Inward', icon: '📦' },
       { href: '/grey/weights', label: 'Update Weights', icon: '⚖️' },
+      { href: '/grey-return', label: 'Grey Return', icon: '↩️' },
       { href: '/despatch', label: 'Despatch', icon: '🚚' },
       { href: '/dyeing', label: 'Dyeing Slip', icon: '🎨' },
       { href: '/dyeing/batch', label: 'Dyeing (Batch)', icon: '🧫' },

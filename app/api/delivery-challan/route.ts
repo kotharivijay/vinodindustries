@@ -105,6 +105,13 @@ export async function POST(req: NextRequest) {
   const felIds: number[] = Array.isArray(body.finishEntryLotIds)
     ? body.finishEntryLotIds.map((x: any) => parseInt(String(x))).filter(Number.isFinite)
     : []
+  // Grey returns are the second source that feeds this queue. A challan holds
+  // ONE kind: finished goods and returned grey are different documents to the
+  // party, and the DB CHECK on FinishDeliveryChallanLine enforces one source
+  // per LINE anyway.
+  const grLotIds: number[] = Array.isArray(body.greyReturnLotIds)
+    ? body.greyReturnLotIds.map((x: any) => parseInt(String(x))).filter(Number.isFinite)
+    : []
   // Challan is dated by its finish-program date (computed below from the FELs),
   // not the moment of creation. An explicit body.date still overrides.
   const explicitDate = body.date ? new Date(body.date) : null
@@ -134,8 +141,16 @@ export async function POST(req: NextRequest) {
 
   const errors: string[] = []
   if (!Number.isFinite(partyId)) errors.push('partyId required')
-  if (felIds.length === 0) errors.push('At least one finish-lot required')
+  if (felIds.length === 0 && grLotIds.length === 0) errors.push('At least one finish-lot or grey-return lot required')
   if (errors.length) return NextResponse.json({ error: 'INVALID_INPUT', messages: errors }, { status: 400 })
+
+  if (felIds.length > 0 && grLotIds.length > 0) {
+    return NextResponse.json({
+      error: 'MIXED_SOURCES',
+      message: 'A challan cannot hold both finished goods and grey returns — create them separately.',
+    }, { status: 400 })
+  }
+  const isGreyReturn = grLotIds.length > 0
 
   // Guard manual number early so we surface a clear error before touching FELs
   if (manualChallanNo != null) {
@@ -150,11 +165,116 @@ export async function POST(req: NextRequest) {
 
   const party = await prisma.party.findUnique({ where: { id: partyId } })
   if (!party) return NextResponse.json({ error: 'PARTY_NOT_FOUND' }, { status: 404 })
-  if (party.tag !== 'Pali PC Job') {
+  // The tag gate applies to FINISHED goods only: non-Pali parties send finished
+  // cloth out on the legacy folding-despatch flow. Grey returns have no such
+  // legacy path (and 235 of 260 parties are untagged), so they are exempt.
+  if (!isGreyReturn && party.tag !== 'Pali PC Job') {
     return NextResponse.json({
       error: 'WRONG_PARTY_TAG',
       message: 'Delivery Challan is only for Pali PC Job parties. Other parties use the folding-despatch flow.',
     }, { status: 400 })
+  }
+
+  // Shared create: auto challan number (max + 1) with a single retry on unique
+  // collision. Used by BOTH sources so the numbering can't drift apart.
+  async function createChallanWithLines(date: Date, lineCreates: any[]) {
+    const allChallans = await db.finishDeliveryChallan.findMany({ select: { challanNo: true } })
+    let maxNo = 0
+    for (const c of allChallans) maxNo = Math.max(maxNo, c.challanNo)
+    const initialNo = manualChallanNo ?? (maxNo + 1)
+
+    const buildData = (challanNo: number) => ({
+      challanNo, date, partyId,
+      format: 'delivery-challan',
+      transport, lrNo, vehicleNo, destination, notes,
+      status: 'issued' as const,
+      // Seed the per-challan visibility from the party master's default. The
+      // operator can flip this on the challan card without touching the party.
+      showExtraCharges: !!(party as any).billExtraChargesDefault,
+      lines: { create: lineCreates },
+    })
+    const include = { party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } }, lines: true }
+
+    try {
+      return await db.finishDeliveryChallan.create({ data: buildData(initialNo), include })
+    } catch (e: any) {
+      // Only retry auto-generated numbers. Manual overrides bubble the
+      // duplicate error up so the operator picks a different number.
+      if (String(e?.code) === 'P2002' && manualChallanNo == null) {
+        const refreshed = await db.finishDeliveryChallan.findMany({ select: { challanNo: true } })
+        let refreshedMax = 0
+        for (const c of refreshed) refreshedMax = Math.max(refreshedMax, c.challanNo)
+        return await db.finishDeliveryChallan.create({ data: buildData(refreshedMax + 1), include })
+      }
+      throw e
+    }
+  }
+
+  // ── Grey-return challan ───────────────────────────────────────────────────
+  // Self-contained: a grey-return lot carries its own party FK and snapshotted
+  // quality/marka, so none of the FEL lotNo→grey party guesswork applies.
+  if (isGreyReturn) {
+    const grLots = await db.greyReturnLot.findMany({
+      where: { id: { in: grLotIds } },
+      include: { greyReturn: { select: { id: true, slipNo: true, date: true, partyId: true, status: true } } },
+    })
+    if (grLots.length !== grLotIds.length) {
+      return NextResponse.json({ error: 'GREY_RETURN_LOT_NOT_FOUND', message: 'One or more grey-return lot ids do not exist.' }, { status: 400 })
+    }
+    const wrongParty = (grLots as any[]).filter((l: any) => l.greyReturn.partyId !== partyId)
+    if (wrongParty.length) {
+      return NextResponse.json({
+        error: 'PARTY_MISMATCH',
+        message: `Lot(s) ${wrongParty.map((l: any) => l.lotNo).join(', ')} do not belong to party ${party.name}.`,
+      }, { status: 400 })
+    }
+    const cancelled = (grLots as any[]).filter((l: any) => l.greyReturn.status !== 'issued')
+    if (cancelled.length) {
+      return NextResponse.json({ error: 'GREY_RETURN_CANCELLED', message: 'One or more grey returns have been cancelled.' }, { status: 400 })
+    }
+    const already = await db.finishDeliveryChallanLine.findMany({
+      where: { greyReturnLotId: { in: grLotIds } },
+      select: { greyReturnLotId: true },
+    })
+    if (already.length > 0) {
+      return NextResponse.json({
+        error: 'ALREADY_ON_CHALLAN',
+        message: `${already.length} grey-return lot(s) already shipped on another challan.`,
+        greyReturnLotIds: already.map((l: any) => l.greyReturnLotId),
+      }, { status: 409 })
+    }
+
+    // Dated by the latest source grey-return date, mirroring how a finished
+    // challan is dated by its finish-program date.
+    const grTimes = (grLots as any[]).map((l: any) => new Date(l.greyReturn.date).getTime())
+    const grDate = explicitDate ?? (grTimes.length ? new Date(Math.max(...grTimes)) : new Date())
+
+    const lineCreates = (grLots as any[]).map((l: any) => ({
+      source: 'grey-return',
+      greyReturnLotId: l.id,
+      lotNo: l.lotNo,
+      qualityName: l.qualityName ?? null,
+      // Returned grey is undyed — no shade, and no shade category to group by.
+      shadeName: null,
+      shadeCategory: null,
+      than: l.than,
+      meter: l.meter ?? null,   // operator-entered despatch metres
+      transportName: null,
+      transportLrNo: null,
+    }))
+
+    try {
+      const createdGr = await createChallanWithLines(grDate, lineCreates)
+      return NextResponse.json(createdGr, { status: 201 })
+    } catch (e: any) {
+      if (String(e?.code) === 'P2002') {
+        return NextResponse.json({
+          error: 'DUPLICATE_CHALLAN_NO',
+          message: `Challan ${manualChallanNo} was taken by another challan in a parallel request. Retry with a different number.`,
+        }, { status: 409 })
+      }
+      throw e
+    }
   }
 
   // Load FELs with their finish entry + dyeing shade info; validate all are
@@ -239,76 +359,41 @@ export async function POST(req: NextRequest) {
     .map((d: any) => new Date(d).getTime())
   const date = explicitDate ?? (fpTimes.length ? new Date(Math.max(...fpTimes)) : new Date())
 
-  // Auto challan number: max + 1, retry once on unique collision. Manual
-  // overrides skip the max lookup entirely.
-  const allChallans = await db.finishDeliveryChallan.findMany({ select: { challanNo: true } })
-  let maxNo = 0
-  for (const c of allChallans) maxNo = Math.max(maxNo, c.challanNo)
-  const initialNo = manualChallanNo ?? (maxNo + 1)
-
-  const buildData = (challanNo: number) => ({
-    challanNo,
-    date,
-    partyId,
-    format: 'delivery-challan',
-    transport,
-    lrNo,
-    vehicleNo,
-    destination,
-    notes,
-    status: 'issued' as const,
-    // Seed the per-challan visibility from the party master's default. The
-    // operator can flip this on the challan card without touching the party.
-    showExtraCharges: !!(party as any).billExtraChargesDefault,
-    lines: {
-      create: fels.map((f: any) => {
-        const key = f.lotNo.toLowerCase().trim()
-        const tp = transportByLot.get(key)
-        // Snapshot the effective shade — an addition round may have changed
-        // the colour (e.g. K-cream → T-186), and the challan should carry the
-        // final shade.
-        const de = f.dyeingEntry
-        const effF = de ? effectiveShade({ shadeName: de.shadeName || de.foldBatch?.shade?.name || null, shadeDescription: de.shadeDescription ?? null, additions: de.additions }) : null
-        return {
-          finishEntryLotId: f.id,
-          finishEntryId: f.entry.id,
-          finishSlipNo: f.entry.slipNo,
-          lotNo: f.lotNo,
-          qualityName: qualityByLot.get(key) ?? null,
-          shadeName: effF?.name ?? null,
-          shadeCategory: effF?.changed ? null : (f.dyeingEntry?.foldBatch?.shade?.colorCategory || null),
-          than: f.status === 'done' ? f.than : f.doneThan,
-          meter: null, // PC Job challans don't carry meter
-          transportName: tp?.name ?? null,
-          transportLrNo: tp?.lrNo ?? null,
-        }
-      }),
-    },
+  const lineCreates = (fels as any[]).map((f: any) => {
+    const key = f.lotNo.toLowerCase().trim()
+    const tp = transportByLot.get(key)
+    // Snapshot the effective shade — an addition round may have changed
+    // the colour (e.g. K-cream → T-186), and the challan should carry the
+    // final shade.
+    const de = f.dyeingEntry
+    const effF = de ? effectiveShade({ shadeName: de.shadeName || de.foldBatch?.shade?.name || null, shadeDescription: de.shadeDescription ?? null, additions: de.additions }) : null
+    return {
+      source: 'finish',
+      finishEntryLotId: f.id,
+      finishEntryId: f.entry.id,
+      finishSlipNo: f.entry.slipNo,
+      lotNo: f.lotNo,
+      qualityName: qualityByLot.get(key) ?? null,
+      shadeName: effF?.name ?? null,
+      shadeCategory: effF?.changed ? null : (f.dyeingEntry?.foldBatch?.shade?.colorCategory || null),
+      than: f.status === 'done' ? f.than : f.doneThan,
+      meter: null, // PC Job challans don't carry meter
+      transportName: tp?.name ?? null,
+      transportLrNo: tp?.lrNo ?? null,
+    }
   })
 
   let created: any
   try {
-    created = await db.finishDeliveryChallan.create({
-      data: buildData(initialNo),
-      include: { party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } }, lines: true },
-    })
+    created = await createChallanWithLines(date, lineCreates)
   } catch (e: any) {
-    // Only retry auto-generated numbers. Manual overrides bubble the
-    // duplicate error up so the operator picks a different number.
-    if (String(e?.code) === 'P2002' && manualChallanNo == null) {
-      const refreshed = await db.finishDeliveryChallan.findMany({ select: { challanNo: true } })
-      let refreshedMax = 0
-      for (const c of refreshed) refreshedMax = Math.max(refreshedMax, c.challanNo)
-      created = await db.finishDeliveryChallan.create({
-        data: buildData(refreshedMax + 1),
-        include: { party: { select: { id: true, name: true, tag: true, gstin: true, address: true, state: true } }, lines: true },
-      })
-    } else if (String(e?.code) === 'P2002') {
+    if (String(e?.code) === 'P2002') {
       return NextResponse.json({
         error: 'DUPLICATE_CHALLAN_NO',
         message: `Challan ${manualChallanNo} was taken by another challan in a parallel request. Retry with a different number.`,
       }, { status: 409 })
-    } else throw e
+    }
+    throw e
   }
 
   return NextResponse.json(created, { status: 201 })

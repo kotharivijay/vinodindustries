@@ -69,6 +69,18 @@ export async function GET(req: NextRequest) {
   for (const d of despParent) despMap.set(d.lotNo.toLowerCase().trim(), (despMap.get(d.lotNo.toLowerCase().trim()) || 0) + (d._sum.than ?? 0))
   for (const d of despChild) despMap.set(d.lotNo.toLowerCase().trim(), (despMap.get(d.lotNo.toLowerCase().trim()) || 0) + (d._sum.than ?? 0))
 
+  // Grey returned to the party unprocessed — gone, so not foldable.
+  const returnedRows = await db.greyReturnLot.groupBy({
+    by: ['lotNo'],
+    where: { lotNo: lotNoIn, greyReturn: { status: 'issued' } },
+    _sum: { than: true },
+  })
+  const returnedMap = new Map<string, number>()
+  for (const r of returnedRows as any[]) {
+    const k = String(r.lotNo).toLowerCase().trim()
+    returnedMap.set(k, (returnedMap.get(k) || 0) + (r._sum.than ?? 0))
+  }
+
   // Active RE-PRO lots — treat their totalThan as available stock so
   // RE-PRO-N can be a fold input (matches /api/grey/lots model).
   const reproLots = await db.reProcessLot.findMany({
@@ -167,7 +179,10 @@ export async function GET(req: NextRequest) {
       // the rest was produced through a fold pipeline and is already
       // accounted for in that fold's allocation.
       const greyDespatch = Math.max(0, desp - allFold)
-      const stock = grey + ob + repro - greyDespatch
+      // Grey returned to the party unprocessed has physically left, so it can
+      // never be folded — subtract it like a despatch.
+      const returned = returnedMap.get(key) ?? 0
+      const stock = grey + ob + repro - greyDespatch - returned
       const available = Math.max(0, stock - otherFold - dye)
 
       if (stock <= 0 && grey === 0 && ob === 0 && repro === 0) {

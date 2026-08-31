@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
 export interface LogDeleteArgs {
+  // grey | despatch | finish | dyeing | fold | folding-receipt | packing |
+  // reprocess | grey-return
   module: string          // grey | despatch | finish | dyeing | fold | folding-receipt | packing | reprocess
   slipType?: string       // FP | FR | Fold | Dye | Grey | Despatch | Packing
   slipNo?: string | number | null

@@ -39,6 +39,7 @@ model Party {
   processRateContracts ProcessRateContract[]
   pcPaliReprocessLots PcPaliReprocessLot[]
   finishDeliveryChallans FinishDeliveryChallan[]
+  greyReturns GreyReturn[]
 }
 
 model Weaver {
@@ -686,10 +687,17 @@ model FinishDeliveryChallanLine {
   id                Int                   @id @default(autoincrement())
   challanId         Int
   challan           FinishDeliveryChallan @relation(fields: [challanId], references: [id], onDelete: Cascade)
-  finishEntryLotId  Int                   @unique
-  finishEntryLot    FinishEntryLot        @relation(fields: [finishEntryLotId], references: [id])
-  finishEntryId     Int
-  finishSlipNo      Int
+  // A line comes from EXACTLY ONE source: a finished-goods lot, or a grey
+  // return. A DB CHECK constraint enforces "exactly one of the two ids is
+  // non-null" — see migration 20260831000000_add_grey_return.
+  // Postgres allows many NULLs in a unique index, so @unique still holds.
+  source            String                @default("finish") // finish | grey-return
+  finishEntryLotId  Int?                  @unique
+  finishEntryLot    FinishEntryLot?       @relation(fields: [finishEntryLotId], references: [id])
+  finishEntryId     Int?
+  finishSlipNo      Int?
+  greyReturnLotId   Int?                  @unique
+  greyReturnLot     GreyReturnLot?        @relation(fields: [greyReturnLotId], references: [id])
   lotNo             String
   qualityName       String?
   shadeName         String?
@@ -706,6 +714,58 @@ model FinishDeliveryChallanLine {
 
   @@index([challanId])
   @@index([finishEntryId])
+  @@index([greyReturnLotId])
+}
+
+// ─── Grey Return (unprocessed cloth going back to the party) ───────────────
+// Grey that is returned before any dyeing — either plain grey that was never
+// folded, or cloth folded but not yet dyed. A saved return feeds the SAME
+// delivery-challan queue as a finish program, but a challan may never mix the
+// two sources.
+model GreyReturn {
+  id             Int             @id @default(autoincrement())
+  slipNo         String          @unique // "GR-7"
+  serialNo       Int                     // from InvSeriesCounter (gap-free)
+  fy             String
+  date           DateTime
+  partyId        Int
+  party          Party           @relation(fields: [partyId], references: [id])
+  status         String          @default("issued") // issued | cancelled
+  notes          String?
+  createdByEmail String?
+  lots           GreyReturnLot[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([partyId])
+  @@index([date])
+}
+
+model GreyReturnLot {
+  id             Int        @id @default(autoincrement())
+  greyReturnId   Int
+  greyReturn     GreyReturn @relation(fields: [greyReturnId], references: [id], onDelete: Cascade)
+  // Snapshot of the source values so the slip stays immutable even if the
+  // grey row or fold batch is later edited (same rule as CheckingSlipLot).
+  lotNo          String
+  source         String     // grey | fold
+  qualityName    String?
+  marka          String?
+  than           Int
+  // Despatch meters, typed by the operator at return time. Grey moves by than
+  // AND metres; finished PC-job challans deliberately carry no meter, so this
+  // is grey-return only. Carried onto the challan line so it reaches the
+  // print, the PDF and the Delivery Challan Report.
+  meter          Float?
+  // For a fold-sourced return: which FoldBatchLot line was reduced, and by
+  // how much — the audit trail that lets a delete restore it.
+  foldBatchLotId Int?
+  checkingSlipNo String?    // shows the ✓ Checked badge on the picker
+  finishDeliveryChallanLine FinishDeliveryChallanLine?
+  createdAt      DateTime   @default(now())
+
+  @@index([greyReturnId])
+  @@index([lotNo])
 }
 
 model FoldingReceipt {

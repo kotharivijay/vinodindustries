@@ -20,10 +20,28 @@ interface QueueRow {
 }
 interface QueueFp {
   finishEntryId: number
-  finishSlipNo: number
+  finishSlipNo: number   // an FP bucket always has one; only challan LINES can be null
   date: string
   totalThan: number
   rows: QueueRow[]
+}
+// Grey returns — the second source feeding this queue. Unprocessed cloth going
+// back to the party, never mixed onto a finished-goods challan.
+interface QueueGrRow {
+  greyReturnLotId: number
+  lotNo: string
+  than: number
+  meter: number | null
+  quality: string
+  source: 'grey' | 'fold'
+  checkingSlipNo: string | null
+}
+interface QueueGr {
+  greyReturnId: number
+  slipNo: string
+  date: string
+  totalThan: number
+  rows: QueueGrRow[]
 }
 interface QueueParty {
   partyId: number
@@ -31,6 +49,7 @@ interface QueueParty {
   partyTag: string | null
   totalThan: number
   finishPrograms: QueueFp[]
+  greyReturns?: QueueGr[]
 }
 // Finished lots the queue couldn't place because the lot number matches no
 // grey / opening-balance record — almost always a mistyped lot number.
@@ -43,7 +62,7 @@ interface ChallanLine {
   shadeName: string | null
   shadeCategory: string | null
   than: number
-  finishSlipNo: number
+  finishSlipNo: number | null
   transportName: string | null
   transportLrNo: string | null
   marka: string | null
@@ -79,6 +98,8 @@ export default function DeliveryChallanPage() {
 
   // Selection per (partyId, felId)
   const [picked, setPicked] = useState<Set<number>>(new Set())
+  // Selected grey-return lot ids, kept apart from felIds (ids collide).
+  const [pickedGr, setPickedGr] = useState<Set<number>>(new Set())
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Optional manual challan number. When set for a multi-party batch, the
@@ -194,6 +215,24 @@ export default function DeliveryChallanPage() {
     return m
   }, [parties, picked])
 
+  // Grey-return selection is kept in its own Set: a bare id would collide with
+  // a felId, and the two sources can never share a challan anyway.
+  const selectedGrByParty = useMemo(() => {
+    const m = new Map<number, number[]>()
+    for (const p of parties) {
+      const ids: number[] = []
+      for (const gr of (p.greyReturns ?? [])) for (const r of gr.rows) if (pickedGr.has(r.greyReturnLotId)) ids.push(r.greyReturnLotId)
+      if (ids.length) m.set(p.partyId, ids)
+    }
+    return m
+  }, [parties, pickedGr])
+
+  // A challan holds one kind. Selecting both is blocked in the UI (and 400s
+  // server-side) rather than silently splitting into two documents.
+  const mixedSources = selectedByParty.size > 0 && selectedGrByParty.size > 0
+  const totalPicked = picked.size + pickedGr.size
+  const partyGroupCount = new Set([...selectedByParty.keys(), ...selectedGrByParty.keys()]).size
+
   function togglePick(id: number) {
     setPicked(prev => {
       const next = new Set(prev)
@@ -223,9 +262,26 @@ export default function DeliveryChallanPage() {
       return next
     })
   }
+  function togglePickGr(id: number) {
+    setPickedGr(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function toggleAllInGr(gr: QueueGr) {
+    const ids = gr.rows.map(r => r.greyReturnLotId)
+    setPickedGr(prev => {
+      const next = new Set(prev)
+      const allIn = ids.every(id => next.has(id))
+      if (allIn) ids.forEach(id => next.delete(id))
+      else ids.forEach(id => next.add(id))
+      return next
+    })
+  }
 
   async function createChallans() {
-    if (selectedByParty.size === 0) return
+    if (selectedByParty.size === 0 && selectedGrByParty.size === 0) return
+    if (mixedSources) {
+      setError('A challan cannot hold both finished goods and grey returns — deselect one kind.')
+      return
+    }
     setCreating(true)
     setError(null)
     // Parse manual seed if provided
@@ -241,9 +297,15 @@ export default function DeliveryChallanPage() {
       seed = parsed
     }
     try {
+      // One POST per party, per source. mixedSources is blocked above, so only
+      // one of these two loops ever runs.
+      const jobs: Array<{ partyId: number; body: any }> = [
+        ...[...selectedByParty.entries()].map(([partyId, felIds]) => ({ partyId, body: { partyId, finishEntryLotIds: felIds } })),
+        ...[...selectedGrByParty.entries()].map(([partyId, grIds]) => ({ partyId, body: { partyId, greyReturnLotIds: grIds } })),
+      ]
       let offset = 0
-      for (const [partyId, felIds] of selectedByParty.entries()) {
-        const body: any = { partyId, finishEntryLotIds: felIds }
+      for (const job of jobs) {
+        const body: any = { ...job.body }
         if (seed != null) body.challanNo = seed + offset
         const res = await fetch('/api/delivery-challan', {
           method: 'POST',
@@ -257,6 +319,7 @@ export default function DeliveryChallanPage() {
         offset++
       }
       setPicked(new Set())
+      setPickedGr(new Set())
       setManualDcNo('')
       mutateQueue()
       mutateIssued()
@@ -317,7 +380,9 @@ export default function DeliveryChallanPage() {
         >
           Queue {parties.length > 0 && (
             <span className="ml-1 text-xs opacity-70">
-              ({parties.reduce((s, p) => s + p.finishPrograms.reduce((a, fp) => a + fp.rows.length, 0), 0)})
+              ({parties.reduce((s, p) =>
+                s + p.finishPrograms.reduce((a, fp) => a + fp.rows.length, 0)
+                  + (p.greyReturns ?? []).reduce((a, gr) => a + gr.rows.length, 0), 0)})
             </span>
           )}
         </button>
@@ -337,10 +402,18 @@ export default function DeliveryChallanPage() {
         <>
           <div className="sticky top-0 z-30 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur p-3 flex items-center justify-between gap-2 flex-wrap">
             <div className="text-xs">
-              <span className="text-gray-700 dark:text-gray-300 font-semibold">{picked.size}</span>
+              <span className="text-gray-700 dark:text-gray-300 font-semibold">{totalPicked}</span>
               <span className="text-gray-500 dark:text-gray-400"> lots selected across </span>
-              <span className="text-gray-700 dark:text-gray-300 font-semibold">{selectedByParty.size}</span>
+              <span className="text-gray-700 dark:text-gray-300 font-semibold">{partyGroupCount}</span>
               <span className="text-gray-500 dark:text-gray-400"> party group(s)</span>
+              {pickedGr.size > 0 && !mixedSources && (
+                <span className="ml-1 text-[10px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/30 rounded px-1.5 py-0.5">↩ grey return</span>
+              )}
+              {mixedSources && (
+                <p className="mt-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                  ⚠ Can’t put finished goods and grey returns on the same challan — deselect one kind.
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <label className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
@@ -354,10 +427,10 @@ export default function DeliveryChallanPage() {
               </label>
               <button
                 onClick={createChallans}
-                disabled={selectedByParty.size === 0 || creating}
+                disabled={partyGroupCount === 0 || mixedSources || creating}
                 className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white text-xs font-semibold disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:text-gray-500 dark:disabled:text-gray-400"
               >
-                {creating ? 'Creating…' : `Create ${selectedByParty.size} challan${selectedByParty.size === 1 ? '' : 's'}`}
+                {creating ? 'Creating…' : `Create ${partyGroupCount} challan${partyGroupCount === 1 ? '' : 's'}`}
               </button>
             </div>
           </div>
@@ -414,7 +487,9 @@ export default function DeliveryChallanPage() {
                     </span>
                   </label>
                   <div className="text-xs text-gray-600 dark:text-gray-300">
-                    {p.totalThan} than · {p.finishPrograms.length} finish program{p.finishPrograms.length === 1 ? '' : 's'}
+                    {p.totalThan} than
+                    {p.finishPrograms.length > 0 && <> · {p.finishPrograms.length} finish program{p.finishPrograms.length === 1 ? '' : 's'}</>}
+                    {(p.greyReturns?.length ?? 0) > 0 && <> · {p.greyReturns!.length} grey return{p.greyReturns!.length === 1 ? '' : 's'}</>}
                   </div>
                 </div>
                 {p.finishPrograms.map(fp => {
@@ -463,6 +538,64 @@ export default function DeliveryChallanPage() {
                                     <span className="text-gray-500 dark:text-gray-400 text-[11px]">{r.quality}</span>
                                     {r.shade && <span className="text-gray-500 dark:text-gray-400 text-[11px]">· {r.shade}</span>}
                                     <span className="ml-auto text-gray-700 dark:text-gray-300">{r.than} than</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* ── Grey returns for this party ── */}
+                {(p.greyReturns ?? []).map(gr => {
+                  const bySrc = new Map<string, QueueGrRow[]>()
+                  for (const r of gr.rows) {
+                    const k = r.source === 'fold' ? 'In fold' : 'Grey'
+                    if (!bySrc.has(k)) bySrc.set(k, [])
+                    bySrc.get(k)!.push(r)
+                  }
+                  return (
+                    <div key={`gr-${gr.greyReturnId}`} className="border-t border-gray-200 dark:border-gray-700 p-3">
+                      <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50/40 dark:bg-sky-900/10 overflow-hidden">
+                        <div className="px-3 py-2 bg-white dark:bg-gray-800 border-b border-sky-200 dark:border-sky-800 flex items-center justify-between gap-2">
+                          <label className="flex items-center gap-2 cursor-pointer min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={gr.rows.every(r => pickedGr.has(r.greyReturnLotId))}
+                              onChange={() => toggleAllInGr(gr)}
+                              className="accent-sky-600"
+                            />
+                            <span className="text-sm font-bold text-gray-900 dark:text-gray-100">{gr.slipNo}</span>
+                            <span className="text-[10px] font-bold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900/40 rounded px-1.5 py-0.5 whitespace-nowrap">↩ GREY RETURN</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">{new Date(gr.date).toLocaleDateString('en-IN')}</span>
+                          </label>
+                          <div className="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">{gr.totalThan} than</div>
+                        </div>
+                        {[...bySrc.keys()].sort().map(src => {
+                          const rows = bySrc.get(src)!
+                          return (
+                            <div key={src}>
+                              <div className="px-3 py-1 bg-sky-100/60 dark:bg-sky-900/25 text-[11px] font-semibold text-sky-800 dark:text-sky-200">
+                                {src} · {rows.reduce((s, r) => s + r.than, 0)} than
+                              </div>
+                              <div className="text-xs divide-y divide-sky-100 dark:divide-sky-900/40">
+                                {rows.map(r => (
+                                  <label key={r.greyReturnLotId} className="flex items-center gap-3 px-3 py-1.5 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={pickedGr.has(r.greyReturnLotId)}
+                                      onChange={() => togglePickGr(r.greyReturnLotId)}
+                                      className="accent-sky-600"
+                                    />
+                                    <span className="font-mono text-gray-800 dark:text-gray-200 w-40 truncate" title={r.lotNo}>{r.lotNo}</span>
+                                    <span className="text-gray-500 dark:text-gray-400 text-[11px]">{r.quality}</span>
+                                    {r.checkingSlipNo && <span className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-400">✓ {r.checkingSlipNo}</span>}
+                                    <span className="ml-auto text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                      {r.than} than{r.meter != null ? <span className="text-sky-600 dark:text-sky-400"> · {r.meter} mtr</span> : null}
+                                    </span>
                                   </label>
                                 ))}
                               </div>
