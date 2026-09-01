@@ -126,14 +126,14 @@ function PartyBlock({ party, contracts, onNew, onEdit, onChanged }: {
         </button>
       </div>
       <div className="divide-y divide-gray-100 dark:divide-gray-700">
-        {contracts.map(c => <ContractRow key={c.id} contract={c} onEdit={() => onEdit(c)} onChanged={onChanged} />)}
+        {contracts.map(c => <ContractRow key={c.id} contract={c} siblings={contracts} onEdit={() => onEdit(c)} onChanged={onChanged} />)}
       </div>
     </div>
   )
 }
 
 // ── Expandable contract row ─────────────────────────────────────────────────
-function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; onEdit: () => void; onChanged: () => void }) {
+function ContractRow({ contract: c, siblings, onEdit, onChanged }: { contract: Contract; siblings: Contract[]; onEdit: () => void; onChanged: () => void }) {
   const [open, setOpen] = useState(c.status === 'active')
   const [busy, setBusy] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
@@ -263,7 +263,7 @@ function ContractRow({ contract: c, onEdit, onChanged }: { contract: Contract; o
 
           {/* Rate rules — contract-defined billing adjustments, evaluated on
               the delivery-challan billing view */}
-          <RulesEditor contract={c} />
+          <RulesEditor contract={c} siblings={siblings} />
 
           {/* Linked lot cards */}
           <div>
@@ -317,12 +317,20 @@ interface RuleRow {
   amountPerThan: string
   label: string
 }
-function RulesEditor({ contract: c }: { contract: Contract }) {
+function RulesEditor({ contract: c, siblings }: { contract: Contract; siblings: Contract[] }) {
   const { data: saved = [], mutate } = useSWR<any[]>(`/api/process-rates/${c.id}/rules`, fetcher, { revalidateOnFocus: false })
+  const { mutate: globalMutate } = useSWRConfig()
   const [editing, setEditing] = useState(false)
   const [rows, setRows] = useState<RuleRow[]>([])
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
+  // Copy-to-version panel: pick rules, pick target versions, copy (append).
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copyRules, setCopyRules] = useState<Set<number>>(new Set())
+  const [copyTargets, setCopyTargets] = useState<Set<number>>(new Set())
+  const [copying, setCopying] = useState(false)
+  const [copyMsg, setCopyMsg] = useState('')
+  const otherVersions = siblings.filter(s => s.id !== c.id).sort((a, b) => b.version - a.version)
 
   function startEdit() {
     setRows(saved.map(r => ({
@@ -361,6 +369,38 @@ function RulesEditor({ contract: c }: { contract: Contract }) {
     } finally { setSaving(false) }
   }
 
+  function openCopy() {
+    // Default: all rules selected, no targets yet.
+    setCopyRules(new Set(saved.map(r => r.id)))
+    setCopyTargets(new Set())
+    setCopyMsg('')
+    setCopyOpen(true)
+  }
+  const toggleSet = (set: Set<number>, setFn: (s: Set<number>) => void, id: number) => {
+    const n = new Set(set); n.has(id) ? n.delete(id) : n.add(id); setFn(n)
+  }
+  async function doCopy() {
+    if (copyRules.size === 0 || copyTargets.size === 0) return
+    setCopying(true); setCopyMsg('')
+    try {
+      const res = await fetch(`/api/process-rates/${c.id}/rules/copy`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruleIds: [...copyRules], targetContractIds: [...copyTargets] }),
+      })
+      const d = await res.json().catch(() => ({} as any))
+      if (!res.ok) { setCopyMsg(d.message || d.error || `HTTP ${res.status}`); return }
+      const parts = (d.results ?? []).map((r: any) => {
+        const skips: string[] = []
+        if (r.skippedDuplicate) skips.push(`${r.skippedDuplicate} already there`)
+        if (r.skippedNoLine) skips.push(`${r.skippedNoLine} no matching rate line`)
+        return `v${r.version}: ${r.copied} copied${skips.length ? ` (${skips.join(', ')})` : ''}`
+      })
+      setCopyMsg(`✓ ${parts.join(' · ')}`)
+      // Refresh every version's rules list so the target cards update.
+      globalMutate((k: any) => typeof k === 'string' && k.includes('/process-rates'))
+    } finally { setCopying(false) }
+  }
+
   // Human-readable condition summary for the read view.
   const condText = (r: any) => {
     if (r.trigger === 'lr') return 'when line has a real LR'
@@ -380,10 +420,19 @@ function RulesEditor({ contract: c }: { contract: Contract }) {
       <div className="flex items-center justify-between mb-1.5 gap-2">
         <p className="text-[10px] uppercase tracking-wide text-gray-400">Rate rules ({saved.length})</p>
         {!editing && (
-          <button onClick={startEdit}
-            className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded px-1.5 py-0.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 whitespace-nowrap">
-            ⚙ {saved.length ? 'Edit rules' : 'Add rules'}
-          </button>
+          <span className="flex items-center gap-1">
+            {saved.length > 0 && otherVersions.length > 0 && (
+              <button onClick={() => copyOpen ? setCopyOpen(false) : openCopy()}
+                title="Copy selected rules to other versions of this party's contract"
+                className="text-[10px] font-semibold text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-700 rounded px-1.5 py-0.5 hover:bg-sky-50 dark:hover:bg-sky-900/20 whitespace-nowrap">
+                ⧉ Copy to…
+              </button>
+            )}
+            <button onClick={startEdit}
+              className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded px-1.5 py-0.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 whitespace-nowrap">
+              ⚙ {saved.length ? 'Edit rules' : 'Add rules'}
+            </button>
+          </span>
         )}
       </div>
 
@@ -394,6 +443,11 @@ function RulesEditor({ contract: c }: { contract: Contract }) {
         <div className="space-y-1">
           {saved.map(r => (
             <div key={r.id} className="flex items-center gap-2 text-[11px] border border-gray-100 dark:border-gray-700 rounded-lg px-2.5 py-1.5">
+              {copyOpen && (
+                <input type="checkbox" checked={copyRules.has(r.id)}
+                  onChange={() => toggleSet(copyRules, setCopyRules, r.id)}
+                  className="accent-sky-600 shrink-0" />
+              )}
               <span className="font-semibold text-gray-700 dark:text-gray-200 truncate">{r.label}</span>
               <span className="text-gray-400 truncate">{r.processType?.name ?? 'All lines'} · {condText(r)}</span>
               <span className={`ml-auto font-bold tabular-nums whitespace-nowrap ${Number(r.amountPerThan) < 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
@@ -401,6 +455,38 @@ function RulesEditor({ contract: c }: { contract: Contract }) {
               </span>
             </div>
           ))}
+
+          {/* Copy-to-versions panel: rules tick above, versions tick here.
+              Copies APPEND to the target; exact duplicates and rules whose
+              process type has no rate line there are skipped server-side. */}
+          {copyOpen && (
+            <div className="border border-sky-200 dark:border-sky-800 bg-sky-50/50 dark:bg-sky-900/10 rounded-lg px-3 py-2 space-y-2">
+              <p className="text-[10px] uppercase tracking-wide font-semibold text-sky-700 dark:text-sky-300">
+                Copy {copyRules.size} rule{copyRules.size === 1 ? '' : 's'} to:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {otherVersions.map(v => (
+                  <label key={v.id} className="flex items-center gap-1.5 text-[11px] text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 cursor-pointer bg-white dark:bg-gray-800">
+                    <input type="checkbox" checked={copyTargets.has(v.id)}
+                      onChange={() => toggleSet(copyTargets, setCopyTargets, v.id)}
+                      className="accent-sky-600" />
+                    <span className="font-bold">v{v.version}</span>
+                    <span className="text-gray-400">· {v.status} · {v.lines.length} line{v.lines.length === 1 ? '' : 's'}</span>
+                  </label>
+                ))}
+              </div>
+              {copyMsg && (
+                <p className={`text-[11px] ${copyMsg.startsWith('✓') ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>{copyMsg}</p>
+              )}
+              <div className="flex items-center gap-2">
+                <button onClick={doCopy} disabled={copying || copyRules.size === 0 || copyTargets.size === 0}
+                  className="text-[11px] font-bold text-white bg-sky-600 hover:bg-sky-700 rounded px-2.5 py-1 disabled:opacity-50">
+                  {copying ? 'Copying…' : `Copy to ${copyTargets.size} version${copyTargets.size === 1 ? '' : 's'}`}
+                </button>
+                <button onClick={() => setCopyOpen(false)} className="text-[11px] text-gray-500 dark:text-gray-400 hover:underline">Close</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
