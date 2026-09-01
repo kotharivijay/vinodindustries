@@ -39,6 +39,10 @@ type Club = {
   lotNo: string; marka: string | null; qualityName: string | null
   than: number
   rate: string | null; contractVersion: number | null
+  // Base rate chip — shown only when every slice in the club shares the same
+  // base AND rules changed it (mixed bases inside one club would make a
+  // single base chip a lie, so it is dropped in that rare case).
+  baseRate: string | null
   applied: SliceView['applied']
   amount: number | null         // null when any slice is unpriced
   issueLabel: string | null
@@ -70,11 +74,13 @@ export default function BillLines({ challanId, slices, manualRules, totalThan, t
         cur.than += s.than
         if (s.amount != null && cur.amount != null) cur.amount += s.amount
         else cur.amount = null
+        if (cur.baseRate !== (s.baseRate ?? null)) cur.baseRate = null
         cur.slices.push(s)
       } else {
         m.set(k, {
           key: k, lotNo: s.lotNo, marka: s.marka, qualityName: s.qualityName,
           than: s.than, rate: s.rate, contractVersion: s.contractVersion,
+          baseRate: s.baseRate ?? null,
           applied: s.applied, amount: s.amount, issueLabel: s.issueLabel,
           slices: [s],
         })
@@ -146,6 +152,14 @@ export default function BillLines({ challanId, slices, manualRules, totalThan, t
                       <span className="inline-flex items-center gap-1">
                         <span className="font-semibold text-gray-800 dark:text-gray-100">{Number(c.rate).toLocaleString('en-IN')}</span>
                         {c.contractVersion != null && <span className="text-[9px] text-indigo-500 dark:text-indigo-400">v{c.contractVersion}</span>}
+                        {/* Base rate first, then the adjustments that moved it —
+                            reads as the math story: base 380 · +10 · −25 → 365 */}
+                        {c.applied.length > 0 && c.baseRate != null && c.baseRate !== c.rate && (
+                          <span title={`Contract base rate ${Number(c.baseRate).toLocaleString('en-IN')}/than before rule adjustments`}
+                            className="text-[9px] font-bold rounded px-1 py-0.5 whitespace-nowrap bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                            base {Number(c.baseRate).toLocaleString('en-IN')}
+                          </span>
+                        )}
                         {c.applied.map(chip)}
                       </span>
                     ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
@@ -176,6 +190,12 @@ export default function BillLines({ challanId, slices, manualRules, totalThan, t
                               </span>
                             )}
                             <span className="flex items-center gap-1 flex-wrap">
+                              {/* Base first, then what moved it */}
+                              {s.baseRate && s.rate !== s.baseRate && (
+                                <span className="text-[9px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                                  base ₹{Number(s.baseRate).toLocaleString('en-IN')}
+                                </span>
+                              )}
                               {s.applied.map((a, i) => (
                                 <span key={i} className={`text-[9px] font-semibold rounded px-1.5 py-0.5 whitespace-nowrap ${a.amountPerThan < 0
                                   ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
@@ -184,9 +204,6 @@ export default function BillLines({ challanId, slices, manualRules, totalThan, t
                                 </span>
                               ))}
                             </span>
-                            {s.baseRate && s.rate !== s.baseRate && (
-                              <span className="ml-auto text-[10px] text-gray-400 whitespace-nowrap">base {Number(s.baseRate).toLocaleString('en-IN')}</span>
-                            )}
                           </div>
                         ))}
 
