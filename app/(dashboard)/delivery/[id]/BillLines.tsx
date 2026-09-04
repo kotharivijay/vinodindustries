@@ -25,6 +25,12 @@ export type SliceView = {
   applied: Array<{ ruleId: number; label: string; amountPerThan: number; trigger: string }>
   amount: number | null
   contractVersion: number | null
+  /** 'lot' = priced at the version the lot is linked to; 'fallback-active' =
+      the lot has NO contract link and priced at the party's current active
+      version. The row must show the difference — a fallback v2 chip that
+      looks like a real link sends accounts hunting for a link that
+      doesn't exist. */
+  rateSource: 'lot' | 'fallback-active' | null
   dyeSlipNo: number | null
   batchThan: number | null
   machineNumber: number | null
@@ -39,6 +45,7 @@ type Club = {
   lotNo: string; marka: string | null; qualityName: string | null
   than: number
   rate: string | null; contractVersion: number | null
+  rateSource: 'lot' | 'fallback-active' | null
   // Base rate chip — shown only when every slice in the club shares the same
   // base AND rules changed it (mixed bases inside one club would make a
   // single base chip a lie, so it is dropped in that rare case).
@@ -75,11 +82,14 @@ export default function BillLines({ challanId, slices, manualRules, totalThan, t
         if (s.amount != null && cur.amount != null) cur.amount += s.amount
         else cur.amount = null
         if (cur.baseRate !== (s.baseRate ?? null)) cur.baseRate = null
+        // If ANY slice in the club is unlinked, the whole row warns.
+        if ((s.rateSource ?? null) === 'fallback-active') cur.rateSource = 'fallback-active'
         cur.slices.push(s)
       } else {
         m.set(k, {
           key: k, lotNo: s.lotNo, marka: s.marka, qualityName: s.qualityName,
           than: s.than, rate: s.rate, contractVersion: s.contractVersion,
+          rateSource: s.rateSource ?? null,
           baseRate: s.baseRate ?? null,
           applied: s.applied, amount: s.amount, issueLabel: s.issueLabel,
           slices: [s],
@@ -151,7 +161,16 @@ export default function BillLines({ challanId, slices, manualRules, totalThan, t
                     {c.rate ? (
                       <span className="inline-flex items-center gap-1">
                         <span className="font-semibold text-gray-800 dark:text-gray-100">{Number(c.rate).toLocaleString('en-IN')}</span>
-                        {c.contractVersion != null && <span className="text-[9px] text-indigo-500 dark:text-indigo-400">v{c.contractVersion}</span>}
+                        {c.contractVersion != null && (
+                          c.rateSource === 'fallback-active' ? (
+                            <span title="This lot is NOT linked to any rate contract — priced at the party's current active version as a fallback. Link the lot on the rate register to pin its version."
+                              className="text-[9px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 rounded px-1 py-0.5 whitespace-nowrap">
+                              v{c.contractVersion} ⚠ not linked
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-indigo-500 dark:text-indigo-400">v{c.contractVersion}</span>
+                          )
+                        )}
                         {/* Base rate first, then the adjustments that moved it —
                             reads as the math story: base 380 · +10 · −25 → 365 */}
                         {c.applied.length > 0 && c.baseRate != null && c.baseRate !== c.rate && (

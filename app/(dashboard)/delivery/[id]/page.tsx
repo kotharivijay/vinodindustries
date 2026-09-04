@@ -129,6 +129,7 @@ export default async function DeliveryChallanViewPage({ params }: { params: Prom
             applied: r?.applied ?? [],
             amount: r?.amount ?? null,
             contractVersion: r?.contractVersion ?? null,
+            rateSource: r?.source ?? null,
             dyeSlipNo: r?.dyeSlipNo ?? null,
             batchThan: r?.batchThan ?? null,
             machineNumber: r?.machineNumber ?? null,
