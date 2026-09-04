@@ -261,3 +261,60 @@ export function downloadDeliveryChallanPdf(c: DeliveryChallanForPdf): void {
   const doc = buildDeliveryChallanPdf(c)
   doc.save(`challan-${c.challanNo}.pdf`)
 }
+
+// ── WhatsApp share ──────────────────────────────────────────────────────────
+// One PDF file per challan, pushed through the native share sheet so the user
+// picks the party's chat. WhatsApp caps attachments per send, so a large
+// selection goes out in batches of 6; browsers drop the user-activation grant
+// after each navigator.share resolves, so later batches re-confirm.
+// Desktop (no file share): download each PDF + open WhatsApp Web with a text
+// summary — wa.me links cannot carry attachments.
+const SHARE_FILES_PER_BATCH = 6
+
+function challanCaption(challans: DeliveryChallanForPdf[]): string {
+  const lines = challans.map(c => {
+    const than = c.lines.reduce((s, l) => s + l.than, 0)
+    return `Challan ${c.challanNo} · ${new Date(c.date).toLocaleDateString('en-IN')} · ${than} than`
+  })
+  const party = challans[0]?.party?.name ?? ''
+  return [`*KSI — Delivery Challan${challans.length > 1 ? 's' : ''}*`, party, ...lines].filter(Boolean).join('\n')
+}
+
+export async function shareDeliveryChallanPdfs(challans: DeliveryChallanForPdf[]): Promise<void> {
+  if (!challans.length) return
+  const files = challans.map(c => {
+    const blob = buildDeliveryChallanPdf(c).output('blob')
+    return new File([blob], `challan-${c.challanNo}.pdf`, { type: 'application/pdf' })
+  })
+
+  const nav = navigator as any
+  const canShare = typeof nav.share === 'function' && nav.canShare?.({ files: [files[0]] })
+
+  if (canShare) {
+    for (let i = 0; i < files.length; i += SHARE_FILES_PER_BATCH) {
+      const batch = files.slice(i, i + SHARE_FILES_PER_BATCH)
+      if (i > 0 && !confirm(`Share next ${batch.length} challan PDF(s)? (${i} of ${files.length} sent)`)) return
+      try {
+        await nav.share({ files: batch, title: 'KSI — Delivery Challan', text: challanCaption(challans.slice(i, i + SHARE_FILES_PER_BATCH)) })
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return          // user closed the sheet
+        // NotAllowedError etc — fall through to download for the rest
+        for (const f of files.slice(i)) downloadFile(f)
+        return
+      }
+    }
+    return
+  }
+
+  // Desktop fallback
+  for (const f of files) downloadFile(f)
+  window.open(`https://wa.me/?text=${encodeURIComponent(challanCaption(challans) + '\n(PDF attached)')}`, '_blank')
+}
+
+function downloadFile(f: File): void {
+  const url = URL.createObjectURL(f)
+  const a = document.createElement('a')
+  a.href = url; a.download = f.name
+  document.body.appendChild(a); a.click(); document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}

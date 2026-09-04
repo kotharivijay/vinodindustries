@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import BackButton from '../BackButton'
-import { downloadDeliveryChallanPdf } from '@/lib/delivery-challan-pdf'
+import { downloadDeliveryChallanPdf, shareDeliveryChallanPdfs } from '@/lib/delivery-challan-pdf'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
@@ -119,6 +119,11 @@ export default function DeliveryChallanPage() {
   // an already-issued challan. Off by default; opt-in and persisted so it's a
   // deliberate action, not something normal users trip over.
   const [editMode, setEditMode] = useState(false)
+  // WhatsApp share: single-challan button always available; shareMode adds
+  // checkboxes so several challans go to the party in one share.
+  const [shareMode, setShareMode] = useState(false)
+  const [sharePicked, setSharePicked] = useState<Set<number>>(new Set())
+  const [sharing, setSharing] = useState(false)
   useEffect(() => { try { setEditMode(localStorage.getItem('dc-edit-mode') === 'true') } catch {} }, [])
   const setEdit = (v: boolean) => { setEditMode(v); try { localStorage.setItem('dc-edit-mode', String(v)) } catch {} ; if (!v) { setAddPanelFor(null); setAddPick(new Set()) } }
   const [addPanelFor, setAddPanelFor] = useState<number | null>(null) // challanId with add-panel open
@@ -336,6 +341,19 @@ export default function DeliveryChallanPage() {
     const res = await fetch(`/api/delivery-challan/${c.id}`, { method: 'DELETE' })
     if (res.ok) { mutateQueue(); mutateIssued() }
     else alert((await res.json()).message ?? 'Cancel failed')
+  }
+
+  function toggleSharePick(id: number) {
+    setSharePicked(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  async function shareChallans(list: Challan[]) {
+    if (!list.length || sharing) return
+    setSharing(true)
+    try {
+      await shareDeliveryChallanPdfs([...list].sort((a, b) => a.challanNo - b.challanNo) as any)
+    } catch (e: any) {
+      alert('Share failed: ' + (e?.message ?? 'unknown error'))
+    } finally { setSharing(false) }
   }
 
   // Flip the per-challan "Show Extra Charges" switch. Optimistic update so
@@ -676,6 +694,17 @@ export default function DeliveryChallanPage() {
                     >
                       {editMode ? '⚙ Edit mode: ON' : '⚙ Edit challans'}
                     </button>
+                    <button
+                      onClick={() => { setShareMode(v => !v); setSharePicked(new Set()) }}
+                      title="Tick several challans and send their PDFs to the party in one WhatsApp share"
+                      className={`px-2.5 py-1.5 rounded font-semibold border whitespace-nowrap ${
+                        shareMode
+                          ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300 border-sky-400 dark:border-sky-700'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600'
+                      }`}
+                    >
+                      {shareMode ? '📤 Share mode: ON' : '📤 Share PDFs'}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -699,6 +728,11 @@ export default function DeliveryChallanPage() {
               <div className="flex items-start justify-between gap-3 p-4 border-b border-gray-100 dark:border-gray-700">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
+                    {shareMode && (
+                      <input type="checkbox" checked={sharePicked.has(c.id)}
+                        onChange={() => toggleSharePick(c.id)}
+                        className="accent-sky-600 w-4 h-4 shrink-0" />
+                    )}
                     <span className="text-base font-bold text-emerald-700 dark:text-emerald-400">Challan {c.challanNo}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${c.status === 'issued' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}`}>{c.status}</span>
                   </div>
@@ -859,6 +893,14 @@ export default function DeliveryChallanPage() {
                   View
                 </Link>
                 <button
+                  onClick={() => shareChallans([c])}
+                  disabled={sharing}
+                  title="Share this challan's PDF on WhatsApp"
+                  className="text-xs px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-700 dark:bg-sky-700 dark:hover:bg-sky-600 text-white font-semibold disabled:opacity-50"
+                >
+                  📤 WA
+                </button>
+                <button
                   onClick={() => downloadDeliveryChallanPdf(c)}
                   className="text-xs px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-semibold"
                 >
@@ -882,6 +924,30 @@ export default function DeliveryChallanPage() {
               </div>
             </div>
           ))}
+
+          {/* Multi-share bar — sends every ticked challan's PDF in one
+              WhatsApp share (batched by 6, WhatsApp's per-send cap). */}
+          {shareMode && sharePicked.size > 0 && (
+            <div className="sticky bottom-0 z-30 bg-sky-600 text-white rounded-xl shadow-lg px-4 py-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold">{sharePicked.size} challan{sharePicked.size === 1 ? '' : 's'} selected</p>
+                <p className="text-[11px] text-sky-100 truncate">
+                  {[...new Set((issued ?? []).filter(c => sharePicked.has(c.id)).map(c => c.party.name))].join(', ')}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => setSharePicked(new Set())}
+                  className="text-xs font-semibold text-sky-100 hover:text-white underline">Clear</button>
+                <button
+                  onClick={() => shareChallans((issued ?? []).filter(c => sharePicked.has(c.id)))}
+                  disabled={sharing}
+                  className="bg-white text-sky-700 font-bold text-sm px-4 py-2 rounded-lg disabled:opacity-60 whitespace-nowrap"
+                >
+                  {sharing ? 'Preparing…' : `📤 Share ${sharePicked.size} PDF${sharePicked.size === 1 ? '' : 's'}`}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
