@@ -322,7 +322,7 @@ function ContractRow({ contract: c, siblings, onEdit, onChanged }: { contract: C
           onLinked={() => { setLinkOpen(false); onChanged() }} />
       )}
       {unlinkOpen && (
-        <UnlinkLotsModal contract={c} onClose={() => setUnlinkOpen(false)}
+        <UnlinkLotsModal contract={c} siblings={siblings} onClose={() => setUnlinkOpen(false)}
           onUnlinked={() => { setUnlinkOpen(false); onChanged(); refreshAll() }} />
       )}
     </div>
@@ -569,27 +569,42 @@ function RulesEditor({ contract: c, siblings }: { contract: Contract; siblings: 
 }
 
 // ── Unlink linked lots from this contract (multi-select) ────────────────────
-function UnlinkLotsModal({ contract: c, onClose, onUnlinked }: { contract: Contract; onClose: () => void; onUnlinked: () => void }) {
+function UnlinkLotsModal({ contract: c, siblings, onClose, onUnlinked }: { contract: Contract; siblings: Contract[]; onClose: () => void; onUnlinked: () => void }) {
   const lots = c.greyEntries // already the contract's linked lots
   const [sel, setSel] = useState<Set<number>>(new Set())
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving] = useState<'unlink' | 'move' | null>(null)
+  // Other versions of the same party the ticked lots can be moved to directly,
+  // instead of unlink-here + link-there (which the Link picker may refuse when
+  // the lot predates the target's effective date).
+  const otherVersions = siblings.filter(s => s.id !== c.id).sort((a, b) => b.version - a.version)
+  const [targetId, setTargetId] = useState<number>(otherVersions[0]?.id ?? 0)
+  const target = otherVersions.find(v => v.id === targetId)
 
   const allChecked = lots.length > 0 && sel.size === lots.length
   const toggle = (id: number) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   const toggleAll = () => setSel(allChecked ? new Set() : new Set(lots.map(l => l.id)))
   const selThan = lots.reduce((s, l) => s + (sel.has(l.id) ? l.than : 0), 0)
   const totalThan = lots.reduce((s, l) => s + l.than, 0)
+  const earlyCount = target
+    ? lots.filter(l => sel.has(l.id) && new Date(l.date) < new Date(target.effectiveFrom)).length
+    : 0
 
-  async function unlink() {
+  async function submit(payload: object, kind: 'unlink' | 'move') {
     if (!sel.size) return
-    setSaving(true)
+    setSaving(kind)
     const res = await fetch(`/api/process-rates/${c.id}/lots`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ unlinkIds: [...sel] }),
+      body: JSON.stringify(payload),
     })
-    setSaving(false)
-    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Unlink failed'); return }
+    setSaving(null)
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error ?? (kind === 'move' ? 'Move failed' : 'Unlink failed')); return }
     onUnlinked()
+  }
+  const unlink = () => submit({ unlinkIds: [...sel] }, 'unlink')
+  const move = () => {
+    if (!target) return
+    if (earlyCount && !confirm(`${earlyCount} selected lot${earlyCount === 1 ? ' is' : 's are'} dated before v${target.version}'s effective date (${fmtDate(target.effectiveFrom)}). Move anyway?`)) return
+    submit({ moveIds: [...sel], targetContractId: target.id }, 'move')
   }
 
   return (
@@ -599,7 +614,7 @@ function UnlinkLotsModal({ contract: c, onClose, onUnlinked }: { contract: Contr
         className="relative w-full sm:max-w-md bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[88vh] flex flex-col">
         <div className="sm:hidden w-9 h-1 bg-slate-300 rounded-full mx-auto mt-2 mb-1" />
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-          <span className="text-sm font-bold text-gray-800 dark:text-gray-100">Unlink lots — {c.party.name} · v{c.version}</span>
+          <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{otherVersions.length ? 'Unlink / move lots' : 'Unlink lots'} — {c.party.name} · v{c.version}</span>
           {lots.length > 0 && (
             <button onClick={toggleAll} className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
               {allChecked ? 'Clear all' : 'Select all'}
@@ -637,10 +652,33 @@ function UnlinkLotsModal({ contract: c, onClose, onUnlinked }: { contract: Contr
           })}
         </div>
 
+        {otherVersions.length > 0 && lots.length > 0 && (
+          <div className="px-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 shrink-0">Move to</label>
+              <select value={targetId} onChange={e => setTargetId(Number(e.target.value))}
+                className="flex-1 min-w-0 text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                {otherVersions.map(v => (
+                  <option key={v.id} value={v.id}>v{v.version} · {v.status} · eff {fmtDate(v.effectiveFrom)}</option>
+                ))}
+              </select>
+              <button onClick={move} disabled={!!saving || sel.size === 0 || !target}
+                className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">
+                {saving === 'move' ? 'Moving…' : `Move ${sel.size || ''}`.trim()}
+              </button>
+            </div>
+            {earlyCount > 0 && (
+              <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+                ⚠ {earlyCount} selected lot{earlyCount === 1 ? '' : 's'} dated before v{target!.version}&apos;s effective date
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-2 p-3 border-t border-gray-100 dark:border-gray-700">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-xs font-bold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">Cancel</button>
-          <button onClick={unlink} disabled={saving || sel.size === 0} className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50">
-            {saving ? 'Unlinking…' : `Unlink ${sel.size || ''} lot${sel.size === 1 ? '' : 's'}`.trim()}
+          <button onClick={unlink} disabled={!!saving || sel.size === 0} className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50">
+            {saving === 'unlink' ? 'Unlinking…' : `Unlink ${sel.size || ''} lot${sel.size === 1 ? '' : 's'}`.trim()}
           </button>
         </div>
       </div>
