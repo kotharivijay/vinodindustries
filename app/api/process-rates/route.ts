@@ -17,7 +17,9 @@ export async function GET() {
       ...lineInclude,
       party: { select: { id: true, name: true } },
       greyEntries: {
-        select: { id: true, lotNo: true, than: true, date: true, qualityId: true },
+        // marka / challanNo / transportLrNo feed the linked-lots table on the
+        // shared contract PDF.
+        select: { id: true, lotNo: true, than: true, date: true, qualityId: true, marka: true, challanNo: true, transportLrNo: true },
         orderBy: { date: 'desc' },
       },
     },

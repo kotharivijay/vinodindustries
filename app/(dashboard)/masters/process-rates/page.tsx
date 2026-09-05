@@ -21,7 +21,10 @@ interface RateLine {
   rate: string | null; rateLight: string | null; rateMedium: string | null; rateDark: string | null
   processType: ProcessType
 }
-interface GreyLot { id: number; lotNo: string; than: number; date: string }
+interface GreyLot {
+  id: number; lotNo: string; than: number; date: string
+  marka: string | null; challanNo: number | null; transportLrNo: string | null
+}
 interface Contract {
   id: number; partyId: number; version: number; status: string; effectiveFrom: string
   validityQty: string | null; validityUnit: string | null; notes: string | null
@@ -145,30 +148,46 @@ function ContractRow({ contract: c, siblings, onEdit, onChanged }: { contract: C
   const refreshAll = () => globalMutate((key: any) => typeof key === 'string' && key.includes('/process-rates'))
 
   const [sharing, setSharing] = useState(false)
+  const [sharingPdf, setSharingPdf] = useState(false)
+  const shareContract = () => ({
+    partyName: c.party.name,
+    version: c.version,
+    status: c.status,
+    effectiveFrom: c.effectiveFrom,
+    validityQty: c.validityQty,
+    validityUnit: c.validityUnit,
+    notes: c.notes,
+    lines: c.lines.map(l => ({
+      processTypeName: l.processType.name,
+      rateMode: l.processType.rateMode,
+      unit: l.unit,
+      rate: l.rate, rateLight: l.rateLight, rateMedium: l.rateMedium, rateDark: l.rateDark,
+    })),
+    linkedLots: c.greyEntries.length,
+    linkedThan: c.greyEntries.reduce((s, g) => s + g.than, 0),
+  })
   async function share() {
     setSharing(true)
     try {
       const { shareProcessRateImage } = await import('@/lib/process-rate-share')
-      await shareProcessRateImage({
-        partyName: c.party.name,
-        version: c.version,
-        status: c.status,
-        effectiveFrom: c.effectiveFrom,
-        validityQty: c.validityQty,
-        validityUnit: c.validityUnit,
-        notes: c.notes,
-        lines: c.lines.map(l => ({
-          processTypeName: l.processType.name,
-          rateMode: l.processType.rateMode,
-          unit: l.unit,
-          rate: l.rate, rateLight: l.rateLight, rateMedium: l.rateMedium, rateDark: l.rateDark,
-        })),
-        linkedLots: c.greyEntries.length,
-        linkedThan: c.greyEntries.reduce((s, g) => s + g.than, 0),
-      })
+      await shareProcessRateImage(shareContract())
     } catch (e: any) {
       alert('Share failed: ' + (e?.message ?? 'unknown error'))
     } finally { setSharing(false) }
+  }
+  // PDF variant — carries the FULL linked-lots table (lot / date / challan /
+  // marka / than / LR row-wise), which the image deliberately caps.
+  async function sharePdf() {
+    setSharingPdf(true)
+    try {
+      const { shareProcessRatePdf } = await import('@/lib/process-rate-pdf')
+      await shareProcessRatePdf(shareContract(), c.greyEntries.map(g => ({
+        lotNo: g.lotNo, date: g.date, challanNo: g.challanNo ?? null,
+        marka: g.marka ?? null, than: g.than, lrNo: g.transportLrNo ?? null,
+      })))
+    } catch (e: any) {
+      alert('PDF share failed: ' + (e?.message ?? 'unknown error'))
+    } finally { setSharingPdf(false) }
   }
 
   async function del() {
@@ -209,6 +228,11 @@ function ContractRow({ contract: c, siblings, onEdit, onChanged }: { contract: C
             title="Share this rate card on WhatsApp as an image"
             className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline px-1 disabled:opacity-50 whitespace-nowrap">
             {sharing ? '…' : '📤 Share'}
+          </button>
+          <button onClick={sharePdf} disabled={sharingPdf}
+            title="Share as PDF — includes the full linked-lots table (lot, date, challan, marka, than, LR)"
+            className="text-[11px] text-sky-600 dark:text-sky-400 hover:underline px-1 disabled:opacity-50 whitespace-nowrap">
+            {sharingPdf ? '…' : 'PDF'}
           </button>
           <button onClick={onEdit} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline px-1">Edit</button>
           <button onClick={del} disabled={busy} className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline px-1 disabled:opacity-50">Delete</button>
