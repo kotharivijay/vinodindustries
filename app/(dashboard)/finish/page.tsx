@@ -31,6 +31,10 @@ interface StockLot {
   quality: string | null
   weight: string | null
   mtrPerThan: number | null
+  // Original lot coming back from a PC Pali rework (PC-RP-n). Must travel
+  // with the finish row so the PC-RP flips to 'merged' on save.
+  pcReprocessLotId?: number | null
+  reproNo?: string | null
 }
 
 interface StockEntry {
@@ -169,6 +173,17 @@ function ShadeCategoryBadge({ category }: { category?: string | null }) {
   )
 }
 
+// Marks an original lot that is coming back from a PC Pali rework cycle.
+function ReworkTag({ reproNo }: { reproNo?: string | null }) {
+  if (!reproNo) return null
+  return (
+    <span title={`Returned from PC rework ${reproNo}`}
+      className="inline-block align-middle text-[9px] px-1 py-px rounded bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 font-semibold">
+      ↺ {reproNo}
+    </span>
+  )
+}
+
 /* ── Stock Report grouping types ──────────────────────────────────── */
 
 interface SlipDetail {
@@ -222,6 +237,8 @@ interface SelectedLot {
   // to link back to — those continue to use the FIFO heuristic in the stock
   // route. Positive id → exact link is stored on the FinishEntryLot.
   dyeingEntryId: number | null
+  // PC-RP merge-back: id of the PcPaliReprocessLot this original lot returns from.
+  pcReprocessLotId: number | null
 }
 
 /* ── Packing stock types ──────────────────────────────────────────── */
@@ -927,6 +944,7 @@ export default function FinishStockPage() {
           shade: shadeDisplay(e.shadeName, e.shadeDescription) ?? '',
           slipNo: e.slipNo,
           dyeingEntryId: dyeId,
+          pcReprocessLotId: l.pcReprocessLotId ?? null,
         })
       }
     }
@@ -1000,6 +1018,7 @@ export default function FinishStockPage() {
       shade: shadeDisplay(entry.shadeName, entry.shadeDescription) ?? '',
       slipNo: entry.slipNo,
       dyeingEntryId: dyeId,
+      pcReprocessLotId: l.pcReprocessLotId ?? null,
     }))
     setSelectedLots(prev => {
       const next = new Map(prev)
@@ -1302,6 +1321,7 @@ export default function FinishStockPage() {
         than: overrideThan,
         meter: useMeter ? lotMeter : null,
         dyeingEntryId: l.dyeingEntryId,
+        pcReprocessLotId: l.pcReprocessLotId,
       }
     })
     const lots = marka
@@ -1373,6 +1393,7 @@ export default function FinishStockPage() {
       than: l.than,
       meter: null,
       dyeingEntryId: l.dyeingEntryId,
+      pcReprocessLotId: l.pcReprocessLotId,
     }))
     try {
       const res = await fetch('/api/finish', {
@@ -2902,7 +2923,7 @@ export default function FinishStockPage() {
                             {e.lots.map((lot, li) => (
                               <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`}
                                 className="inline-flex items-center gap-1 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30">
-                                {lot.lotNo} <span className="text-teal-400 dark:text-teal-500 font-normal">({lot.than})</span>
+                                {lot.lotNo} <span className="text-teal-400 dark:text-teal-500 font-normal">({lot.than})</span><ReworkTag reproNo={lot.reproNo} />
                               </Link>
                             ))}
                           </div>
@@ -2948,7 +2969,7 @@ export default function FinishStockPage() {
                                   {e.lots.map((lot, li) => (
                                     <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`}
                                       className="inline-flex items-center gap-1 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300 text-xs font-semibold px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30">
-                                      {lot.lotNo} <span className="text-teal-400 dark:text-teal-500 font-normal">({lot.than})</span>
+                                      {lot.lotNo} <span className="text-teal-400 dark:text-teal-500 font-normal">({lot.than})</span><ReworkTag reproNo={lot.reproNo} />
                                     </Link>
                                   ))}
                                 </div>
@@ -3176,6 +3197,7 @@ export default function FinishStockPage() {
                                                           shade: shade ?? '',
                                                           slipNo: slip.slipNo,
                                                           dyeingEntryId: slip.id > 0 ? slip.id : null,
+                                                          pcReprocessLotId: lot.pcReprocessLotId ?? null,
                                                         }
                                                         const isSelected = selectedLots.has(lotKey(lotData))
                                                         return (
@@ -3188,13 +3210,13 @@ export default function FinishStockPage() {
                                                             />
                                                             {selectedLots.size > 0 ? (
                                                               <span className={`inline-flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded-full ${isSelected ? 'bg-teal-200 dark:bg-teal-800/40 text-teal-800 dark:text-teal-200 font-bold' : 'bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300'}`}>
-                                                                {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span>
+                                                                {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span><ReworkTag reproNo={lot.reproNo} />
                                                               </span>
                                                             ) : (
                                                               <Link href={`/lot/${encodeURIComponent(lot.lotNo)}`}
                                                                 onClick={e => e.stopPropagation()}
                                                                 className={`inline-flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded-full hover:bg-teal-100 dark:hover:bg-teal-900/30 bg-teal-50 dark:bg-teal-900/20 text-teal-700 dark:text-teal-300`}>
-                                                                {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span>
+                                                                {lot.lotNo}<span className="text-teal-400 dark:text-teal-500">({lot.than})</span><ReworkTag reproNo={lot.reproNo} />
                                                               </Link>
                                                             )}
                                                           </label>
@@ -3247,6 +3269,7 @@ export default function FinishStockPage() {
                               shade: shadeDisplay(s.shadeName, s.shadeDescription) ?? '',
                               slipNo: s.slipNo,
                               dyeingEntryId: s.id > 0 ? s.id : null,
+                              pcReprocessLotId: l.pcReprocessLotId ?? null,
                             })
                           }
                           return next
@@ -3318,7 +3341,7 @@ export default function FinishStockPage() {
                                     <div className="mt-2 ml-7 flex flex-wrap gap-1.5">
                                       {s.lots.map(l => (
                                         <span key={l.lotNo} className="text-[10px] bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-2 py-0.5 rounded-full">
-                                          <span className="font-mono">{l.lotNo}</span>
+                                          <span className="font-mono">{l.lotNo}</span><ReworkTag reproNo={l.reproNo} />
                                           <span className="text-gray-400 mx-1">·</span>
                                           {l.than} than
                                           <span className="text-gray-400 mx-1">·</span>

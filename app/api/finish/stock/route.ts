@@ -13,7 +13,7 @@ export async function GET() {
   // Run dyeing entries + finish lots in parallel (independent queries)
   const { buildLotInfoMap } = await import('@/lib/lot-info')
 
-  const [doneSlips, finishLots, pcReclaims] = await Promise.all([
+  const [doneSlips, finishLots, pcReclaims, pcRpLots] = await Promise.all([
     db.dyeingEntry.findMany({
       where: { dyeingDoneAt: { not: null } },
       select: {
@@ -42,20 +42,47 @@ export async function GET() {
     db.finishEntryLot.findMany({
       select: { lotNo: true, than: true, dyeingEntryId: true },
     }),
-    // PC Pali rework reclaims (status not yet 'merged') — each row reduces
-    // the un-finished pool on its source dye slip. Without this, stock
-    // would show than that is physically already in the rework cycle.
+    // PC Pali rework reclaims — each row permanently reduces the un-finished
+    // pool on its SOURCE dye slip: that cloth physically left the slip for the
+    // rework cycle and comes back as finish stock on the REWORK dye slip (see
+    // pcRpLots below), so the deduction must hold even after the PC-RP is
+    // merged — otherwise the same pieces would show twice.
     db.pcPaliReprocessSource.findMany({
-      where: { pcReprocess: { status: { not: 'merged' } } },
       select: { sourceDyeingEntryId: true, originalLotNo: true, than: true },
+    }),
+    // PC-RP lots with their sources. A rework dye slip carries the lot code
+    // "PC-RP-n"; for finishing it is expanded back into the ORIGINAL lot
+    // numbers (each source's originalLotNo + than) so the merge-back finish
+    // program — and everything downstream (folding, packing, despatch) — runs
+    // under the customer's real lot numbers, not the rework code.
+    db.pcPaliReprocessLot.findMany({
+      select: { id: true, reproNo: true, sources: { select: { originalLotNo: true, than: true } } },
     }),
   ])
 
-  // Collect all lot numbers
+  const pcRpByCode = new Map<string, { id: number; reproNo: string; lots: { lotNo: string; than: number }[] }>()
+  for (const rp of pcRpLots) {
+    const byLot = new Map<string, { lotNo: string; than: number }>()
+    for (const s of rp.sources) {
+      const k = s.originalLotNo.toLowerCase().trim()
+      const cur = byLot.get(k)
+      if (cur) cur.than += s.than
+      else byLot.set(k, { lotNo: s.originalLotNo, than: s.than })
+    }
+    pcRpByCode.set(rp.reproNo.toLowerCase().trim(), { id: rp.id, reproNo: rp.reproNo, lots: [...byLot.values()] })
+  }
+  const pcRpFor = (lotNo: string) => pcRpByCode.get(lotNo.toLowerCase().trim()) ?? null
+
+  // Collect all lot numbers (original lots behind a PC-RP code included, so
+  // party / quality resolve for the expanded rows)
   const allLotNos = new Set<string>()
   for (const d of doneSlips) {
     const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo }]
-    for (const l of lots) allLotNos.add(l.lotNo)
+    for (const l of lots) {
+      const rp = pcRpFor(l.lotNo)
+      if (rp) rp.lots.forEach(s => allLotNos.add(s.lotNo))
+      else allLotNos.add(l.lotNo)
+    }
   }
 
   const lotInfoMap = await buildLotInfoMap(Array.from(allLotNos))
@@ -91,14 +118,25 @@ export async function GET() {
   // rows must be merged first — otherwise a direct deduction is applied once
   // per duplicate row and the last row's remaining overwrites the others,
   // hiding the slip from stock.
-  const mergedLots = (d: any): { lotNo: string; than: number }[] => {
+  //
+  // A "PC-RP-n" lot on a rework dye slip is expanded here into its original
+  // source lots, tagged with pcReprocessLotId. The merge-back FinishEntryLot
+  // stores (dyeingEntryId = rework slip, lotNo = original lot), so the same
+  // `${slipId}|${lotKey}` direct-deduction key works unchanged.
+  type SlipLot = { lotNo: string; than: number; pcReprocessLotId?: number; reproNo?: string }
+  const mergedLots = (d: any): SlipLot[] => {
     const lots = d.lots?.length ? d.lots : [{ lotNo: d.lotNo, than: d.than }]
-    const byKey = new Map<string, { lotNo: string; than: number }>()
-    for (const l of lots) {
+    const byKey = new Map<string, SlipLot>()
+    const add = (l: SlipLot) => {
       const key = l.lotNo.toLowerCase().trim()
       const existing = byKey.get(key)
       if (existing) existing.than += l.than
-      else byKey.set(key, { lotNo: l.lotNo, than: l.than })
+      else byKey.set(key, { ...l })
+    }
+    for (const l of lots) {
+      const rp = pcRpFor(l.lotNo)
+      if (rp) rp.lots.forEach(s => add({ lotNo: s.lotNo, than: s.than, pcReprocessLotId: rp.id, reproNo: rp.reproNo }))
+      else add({ lotNo: l.lotNo, than: l.than })
     }
     return Array.from(byKey.values())
   }
@@ -181,6 +219,10 @@ export async function GET() {
           quality: li?.quality || lotInfo?.quality || pcJobQuality || null,
           weight: li?.weight || lotInfo?.weight || null,
           mtrPerThan: li?.mtrPerThan || lotInfo?.mtrPerThan || null,
+          // Set when this row is an original lot coming back from PC rework;
+          // the finish form must store it so the PC-RP flips to 'merged'.
+          pcReprocessLotId: l.pcReprocessLotId ?? null,
+          reproNo: l.reproNo ?? null,
         })
       }
     }

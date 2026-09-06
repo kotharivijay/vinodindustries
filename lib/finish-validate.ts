@@ -49,11 +49,31 @@ export async function validateFinishLotThan(
     const matchingRows = source.lots.filter(
       (l: { lotNo: string; than: number }) => l.lotNo.toLowerCase().trim() === lotKey,
     )
-    const srcLot = matchingRows.length
+    let srcLot = matchingRows.length
       ? { lotNo: matchingRows[0].lotNo, than: matchingRows.reduce((s: number, l: { than: number }) => s + l.than, 0) }
       : (source.lotNo && source.lotNo.toLowerCase().trim() === lotKey
             ? { lotNo: source.lotNo, than: source.than }
             : null)
+    // A PC-rework dye slip carries the lot code "PC-RP-n"; the finish stock
+    // route expands it into the ORIGINAL lot numbers, so a merge-back finish
+    // row claims e.g. SAM-282-RAVI against that slip. Resolve the claim
+    // through the PC-RP's sources — the ceiling is what that original lot
+    // contributed to the rework.
+    if (!srcLot) {
+      const rpCodes = (source.lots.length ? source.lots.map((l: any) => l.lotNo) : [source.lotNo])
+        .filter((c: string | null) => c && /^PC-RP-\d+$/i.test(c.trim()))
+      if (rpCodes.length) {
+        const rps = await db.pcPaliReprocessLot.findMany({
+          where: { reproNo: { in: rpCodes.map((c: string) => c.trim().toUpperCase()), mode: 'insensitive' } },
+          select: { sources: { select: { originalLotNo: true, than: true } } },
+        })
+        let contributed = 0
+        for (const rp of rps) for (const s of rp.sources) {
+          if (s.originalLotNo.toLowerCase().trim() === lotKey) contributed += s.than
+        }
+        if (contributed > 0) srcLot = { lotNo: lotKey.toUpperCase(), than: contributed }
+      }
+    }
     if (!srcLot) {
       errors.push(`Dye slip ${source.slipNo} has no lot matching "${lotKey.toUpperCase()}".`)
       continue
@@ -69,13 +89,22 @@ export async function validateFinishLotThan(
       select: { than: true },
     })
     const existingSum = existing.reduce((s: number, f: { than: number }) => s + f.than, 0)
-    const total = existingSum + requestThan
+    // Pieces pulled off this slip into a PC Pali rework are gone for good —
+    // they come back as finish stock on the rework slip — so they count
+    // against the source exactly like finished than (same as the stock route).
+    const reclaimed = await db.pcPaliReprocessSource.aggregate({
+      where: { sourceDyeingEntryId: dyeId, originalLotNo: { equals: lotKey, mode: 'insensitive' } },
+      _sum: { than: true },
+    })
+    const reclaimedSum: number = reclaimed._sum.than ?? 0
+    const total = existingSum + reclaimedSum + requestThan
 
     if (total > srcLot.than) {
       errors.push(
         `Over-claim on dye slip ${source.slipNo} (${lotKey.toUpperCase()}): ` +
-        `source dyed ${srcLot.than}T, already finished ${existingSum}T elsewhere, ` +
-        `this request adds ${requestThan}T → total ${total}T exceeds source.`,
+        `source dyed ${srcLot.than}T, already finished ${existingSum}T elsewhere` +
+        (reclaimedSum ? `, ${reclaimedSum}T sent to PC rework` : '') +
+        `, this request adds ${requestThan}T → total ${total}T exceeds source.`,
       )
     }
   }
