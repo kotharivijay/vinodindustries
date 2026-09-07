@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import useSWR from 'swr'
 import BackButton from '../BackButton'
 
@@ -22,6 +22,17 @@ interface AttendanceRow {
   leaveName?: string | null
   holidayName?: string | null
   punches?: PunchInfo[]
+  punchProblem?: boolean
+}
+
+interface UploadMeta {
+  upload: {
+    id: number; fileName: string; fromDate: string; toDate: string
+    employeeCount: number; dayCount: number; problemCount: number; skippedRows: number
+    newEmployees?: number
+    uploadedBy: string | null; createdAt: string
+  } | null
+  dates: { date: string; rows: number; problems: number }[]
 }
 
 /** Pair punches into [in,out] sessions. Trailing IN with no OUT becomes [in,null]. */
@@ -70,6 +81,7 @@ interface DailyResponse {
   orgId: number
   groups: DeptGroup[]
   totalRows: number
+  hasData?: boolean
 }
 
 interface SharePage {
@@ -167,17 +179,50 @@ function statusColor(s: string): string {
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: '2-digit' })
 }
+function fmtShort(iso: string) {
+  return new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
 
 export default function AttendancePage() {
   const [date, setDate] = useState(todayISO())
   const [selectedDepts, setSelectedDepts] = useState<Set<string>>(new Set())
 
-  const { data: tokenInfo, mutate: refetchToken } = useSWR<{ present: boolean; expired?: boolean; daysLeft?: number; orgName?: string | null; expiresAt?: string }>(
-    '/api/attendance/save-token', fetcher,
-  )
+  // Data comes from the uploaded Petpooja "Daily Punch Report" xlsx — no
+  // live API / token any more.
+  const { data: meta, mutate: refetchMeta } = useSWR<UploadMeta>('/api/attendance/upload', fetcher)
+  const { data: daily, isLoading: dailyLoading, mutate: refetchDaily } = useSWR<DailyResponse>(`/api/attendance/daily?date=${date}`, fetcher)
+  const problemDates = useMemo(() => (meta?.dates ?? []).filter(d => d.problems > 0), [meta])
 
-  const dailyKey = tokenInfo?.present && !tokenInfo.expired ? `/api/attendance/daily?date=${date}` : null
-  const { data: daily, isLoading: dailyLoading, mutate: refetchDaily } = useSWR<DailyResponse>(dailyKey, fetcher)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  async function onFilePicked(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    setUploading(true)
+    try {
+      const body = new FormData()
+      body.append('file', f)
+      const res = await fetch('/api/attendance/upload', { method: 'POST', body })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(d.error ?? `Upload failed (${res.status})`); return }
+      // Jump to the sheet's last day if the selected date isn't covered.
+      if (date < d.fromDate || date > d.toDate) setDate(d.toDate)
+      await Promise.all([refetchMeta(), refetchDaily()])
+      const probs = d.problems?.length
+        ? `\n⚠ Odd punch counts on: ${d.problems.map((p: { date: string; n: number }) => `${fmtShort(p.date)} (${p.n})`).join(', ')}`
+        : ''
+      const skip = d.skipped?.length ? `\nSkipped ${d.skipped.length} row(s)/cell(s) — see upload details.` : ''
+      const fresh = d.newEmployees?.length
+        ? `\n🆕 ${d.newEmployees.length} new employee(s) added: ${d.newEmployees.map((n: { code: string; name: string }) => `${n.code} ${n.name}`).join(', ')}`
+        : ''
+      alert(`Loaded ${d.fileName}\n${d.employees} employees · ${d.dates.length} day(s) · ${fmtShort(d.fromDate)} → ${fmtShort(d.toDate)}${fresh}${probs}${skip}`)
+    } catch (err: any) {
+      alert('Upload failed: ' + (err?.message ?? err))
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const allDepts = daily?.groups?.map(g => g.department) || []
 
@@ -354,7 +399,7 @@ export default function AttendancePage() {
     }
   }
 
-  const disabled = !tokenInfo?.present || tokenInfo.expired
+  const disabled = uploading
 
   return (
     <div className="p-4 md:p-8 max-w-6xl">
@@ -363,7 +408,7 @@ export default function AttendancePage() {
           <BackButton />
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Attendance</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">Petpooja Payroll · {tokenInfo?.orgName || daily?.orgName || '—'}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">Petpooja daily punch sheet · {meta?.upload ? meta.upload.fileName : 'no sheet uploaded yet'}</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
@@ -371,31 +416,8 @@ export default function AttendancePage() {
             className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-sm">
             👥 Employees (tag left)
           </a>
-          <a href="/attendance/token"
-            className="inline-flex items-center gap-1.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-2 rounded-lg text-xs font-semibold">
-            🔑 Token
-          </a>
         </div>
       </div>
-
-      {!tokenInfo?.present && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-4">
-          <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">⚠️ Petpooja token not captured yet</p>
-          <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
-            Go to <a href="/attendance/token" className="underline">/attendance/token</a> to capture it.
-          </p>
-        </div>
-      )}
-      {tokenInfo?.present && tokenInfo.expired && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-4">
-          <p className="text-sm font-semibold text-red-800 dark:text-red-200">Token expired — re-capture at <a href="/attendance/token" className="underline">/attendance/token</a></p>
-        </div>
-      )}
-      {tokenInfo?.present && !tokenInfo.expired && tokenInfo.daysLeft != null && tokenInfo.daysLeft <= 7 && (
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-3 mb-4 text-xs text-yellow-700 dark:text-yellow-300">
-          Token expires in {tokenInfo.daysLeft} day(s). Re-capture at <a href="/attendance/token" className="underline">/attendance/token</a> to avoid disruption.
-        </div>
-      )}
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <button onClick={() => setDate(todayISO())}
@@ -408,7 +430,12 @@ export default function AttendancePage() {
         </button>
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
           className="px-3 py-1.5 rounded-lg text-xs border bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600" />
-        <button onClick={() => { refetchDaily(); refetchToken() }} disabled={disabled}
+        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFilePicked} />
+        <button onClick={() => fileRef.current?.click()} disabled={uploading}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+          {uploading ? 'Uploading…' : meta?.upload ? '📂 Re-upload xlsx' : '📂 Upload xlsx'}
+        </button>
+        <button onClick={() => { refetchDaily(); refetchMeta() }} disabled={disabled}
           className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50">
           🔄 Refresh
         </button>
@@ -432,6 +459,31 @@ export default function AttendancePage() {
         </div>
       </div>
 
+      {meta && (meta.upload ? (
+        <div className="mb-4 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-2.5 text-xs text-emerald-900 dark:text-emerald-200 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-semibold">📄 {meta.upload.fileName}</span>
+          <span>{fmtShort(meta.upload.fromDate)} – {fmtShort(meta.upload.toDate)}</span>
+          <span>
+            {meta.upload.employeeCount} employees · {meta.upload.dayCount} day{meta.upload.dayCount === 1 ? '' : 's'}
+            {meta.upload.newEmployees ? <span className="ml-1 px-1.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 font-semibold">🆕 {meta.upload.newEmployees} new</span> : null}
+          </span>
+          <span className="opacity-75">
+            uploaded {new Date(meta.upload.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            {meta.upload.uploadedBy ? ` by ${meta.upload.uploadedBy.split('@')[0]}` : ''}
+          </span>
+          {problemDates.length > 0 && (
+            <span title={problemDates.map(d => `${fmtShort(d.date)}: ${d.problems}`).join('\n')}
+              className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 font-semibold">
+              ⚠ {problemDates.length} date{problemDates.length === 1 ? '' : 's'} with odd punch counts
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="mb-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-4 py-2.5 text-xs text-gray-600 dark:text-gray-300">
+          No punch sheet uploaded yet — in Petpooja open Reports → Daily Punch Report → Export, then use <b>📂 Upload xlsx</b> above.
+        </div>
+      ))}
+
       {allDepts.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <span className="text-xs text-gray-500 dark:text-gray-400">Departments:</span>
@@ -451,7 +503,11 @@ export default function AttendancePage() {
         <div className="p-10 text-center text-gray-400">Loading…</div>
       ) : (
         <div id="attendance-print-root" className="space-y-4">
-          {visibleGroups.length === 0 && <div className="p-10 text-center text-gray-400">No departments selected.</div>}
+          {daily?.hasData === false ? (
+            <div className="p-10 text-center text-gray-400">
+              No data for <span className="font-semibold text-gray-600 dark:text-gray-300">{fmtDate(date)}</span> — upload the Petpooja daily punch sheet covering this date.
+            </div>
+          ) : visibleGroups.length === 0 && <div className="p-10 text-center text-gray-400">No departments selected.</div>}
           {visibleGroups.map(g => {
             const active = g.rows.filter(r => !r.isLeft)
             const leftCount = g.rows.length - active.length
@@ -500,6 +556,9 @@ export default function AttendancePage() {
                                   {p.kind} {p.time}
                                 </span>
                               ))}
+                              {r.punchProblem && (
+                                <span title="Odd number of punches — one IN or OUT is missing" className="self-center text-amber-600 dark:text-amber-400 text-[11px] font-bold">⚠</span>
+                              )}
                             </div>
                           ) : r.punchIn && r.punchIn !== '-' ? (
                             <span className="text-gray-500">{r.punchIn} → {r.punchOut !== '-' ? r.punchOut : '?'}</span>

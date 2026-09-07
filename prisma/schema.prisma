@@ -1197,7 +1197,10 @@ model PetpoojaToken {
 
 model AttendanceEmployee {
   id            Int       @id @default(autoincrement())
-  petpoojaEmpId Int       @unique // Petpooja's employee_id (stable across code changes)
+  // Petpooja's internal employee_id — only known for rows that came from the
+  // API sync. Rows added from an uploaded punch sheet have none (the sheet
+  // carries only the human "Employee ID" = `code`).
+  petpoojaEmpId Int?      @unique
   code          String? // human-readable ID like "27"
   name          String
   department    String?
@@ -1209,6 +1212,41 @@ model AttendanceEmployee {
 
   @@index([status])
   @@index([department])
+}
+
+// Attendance from the uploaded Petpooja "Daily Punch Report" xlsx. The report
+// reads these rows; the live Petpooja API is no longer involved.
+model AttendanceUpload {
+  id            Int      @id @default(autoincrement())
+  fileName      String
+  fromDate      String // YYYY-MM-DD — first date column in the sheet
+  toDate        String // YYYY-MM-DD — last date column in the sheet
+  employeeCount Int
+  dayCount      Int
+  problemCount  Int      @default(0) // (employee, date) cells with an odd punch count
+  skippedRows   Int      @default(0)
+  newEmployees  Int      @default(0) // AttendanceEmployee rows created by this upload
+  uploadedBy    String?
+  createdAt     DateTime @default(now())
+  days          AttendancePunchDay[]
+}
+
+model AttendancePunchDay {
+  id          Int               @id @default(autoincrement())
+  uploadId    Int?
+  upload      AttendanceUpload? @relation(fields: [uploadId], references: [id], onDelete: SetNull)
+  date        String // YYYY-MM-DD
+  code        String // sheet "Employee ID"
+  name        String
+  // Snapshotted from the sheet — the sheet is the source of truth for that day.
+  department  String?
+  designation String?
+  punches     Json // string[] of "HH:mm" (24h), ascending; hours/status computed at read time
+  problem     Boolean           @default(false) // odd punch count
+
+  @@unique([date, code])
+  @@index([date])
+  @@index([uploadId])
 }
 
 // ─── Tally Integration ──────────────────────────────────────────────────────

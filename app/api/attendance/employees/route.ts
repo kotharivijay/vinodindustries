@@ -14,8 +14,12 @@ import { getPetpoojaAuth, fetchAllEmployees } from '@/lib/petpooja'
  *    one branch.
  *  - Upserts each row into AttendanceEmployee, then returns all rows.
  *
- * POST /api/attendance/employees  { petpoojaEmpId, status, notes?, leftDate? }
- *  - Toggles an employee's status between 'active' and 'left'.
+ * POST /api/attendance/employees  { id | petpoojaEmpId, status, notes?, leftDate? }
+ *  - Toggles an employee's status between 'active' and 'left'. Rows added
+ *    from an uploaded punch sheet have no petpoojaEmpId, so `id` is the
+ *    primary key to send.
+ *
+ * New employees are also created by /api/attendance/upload from the sheet.
  */
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -66,8 +70,8 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { petpoojaEmpId, status, notes, leftDate } = await req.json()
-  if (!petpoojaEmpId) return NextResponse.json({ error: 'petpoojaEmpId required' }, { status: 400 })
+  const { id, petpoojaEmpId, status, notes, leftDate } = await req.json()
+  if (!id && !petpoojaEmpId) return NextResponse.json({ error: 'id or petpoojaEmpId required' }, { status: 400 })
   if (!['active', 'left'].includes(status)) return NextResponse.json({ error: 'status must be active|left' }, { status: 400 })
 
   const db = prisma as any
@@ -78,7 +82,7 @@ export async function POST(req: NextRequest) {
   else if (status === 'active') data.leftDate = null
 
   const updated = await db.attendanceEmployee.update({
-    where: { petpoojaEmpId: Number(petpoojaEmpId) },
+    where: id ? { id: Number(id) } : { petpoojaEmpId: Number(petpoojaEmpId) },
     data,
   })
   return NextResponse.json({ ok: true, employee: updated })

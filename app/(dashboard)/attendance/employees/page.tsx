@@ -8,7 +8,7 @@ const fetcher = (u: string) => fetch(u).then(r => r.json())
 
 interface Employee {
   id: number
-  petpoojaEmpId: number
+  petpoojaEmpId: number | null
   code: string | null
   name: string
   department: string | null
@@ -46,12 +46,12 @@ export default function AttendanceEmployeesPage() {
       ? `Mark "${emp.name}" as LEFT the job?\nThey'll stop appearing in the No Punch list.`
       : `Mark "${emp.name}" as ACTIVE again?`
     if (!confirm(confirmMsg)) return
-    setUpdating(emp.petpoojaEmpId)
+    setUpdating(emp.id)
     try {
       await fetch('/api/attendance/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ petpoojaEmpId: emp.petpoojaEmpId, status: next }),
+        body: JSON.stringify({ id: emp.id, status: next }),
       })
       mutate()
     } finally { setUpdating(null) }
@@ -98,7 +98,7 @@ export default function AttendanceEmployeesPage() {
 
       {data?.tokenError && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 mb-4 text-xs text-amber-700 dark:text-amber-300">
-          {data.tokenError} — showing stored rows only. New employees won&apos;t sync until token is captured.
+          Petpooja API sync unavailable ({data.tokenError}). New employees are added automatically when a punch sheet is uploaded on the Attendance page.
         </div>
       )}
 
@@ -135,7 +135,7 @@ export default function AttendanceEmployeesPage() {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {visible.map(e => (
                 <tr key={e.id} className={e.status === 'left' ? 'opacity-60' : ''}>
-                  <td className="px-3 py-2 text-gray-500">{e.code || e.petpoojaEmpId}</td>
+                  <td className="px-3 py-2 text-gray-500">{e.code || e.petpoojaEmpId || '—'}</td>
                   <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-100">{e.name}</td>
                   <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{e.department || '—'}</td>
                   <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{e.designation || '—'}</td>
@@ -146,11 +146,11 @@ export default function AttendanceEmployeesPage() {
                   </td>
                   <td className="px-3 py-2 text-gray-400">{e.leftDate ? new Date(e.leftDate).toLocaleDateString('en-IN') : '—'}</td>
                   <td className="px-3 py-2">
-                    <button onClick={() => toggleStatus(e)} disabled={updating === e.petpoojaEmpId}
+                    <button onClick={() => toggleStatus(e)} disabled={updating === e.id}
                       className={`text-[10px] px-2 py-1 rounded font-medium ${e.status === 'active'
                         ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800 hover:bg-red-100'
                         : 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-300 border border-green-200 dark:border-green-800 hover:bg-green-100'} disabled:opacity-50`}>
-                      {updating === e.petpoojaEmpId ? '…' : e.status === 'active' ? 'Mark Left' : 'Reactivate'}
+                      {updating === e.id ? '…' : e.status === 'active' ? 'Mark Left' : 'Reactivate'}
                     </button>
                   </td>
                 </tr>

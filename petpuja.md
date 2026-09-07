@@ -218,6 +218,13 @@ attendanceinfo endpoints use — TODO if branches list is ever needed.
 
 ## Existing app integration
 
+> **Sep 2026:** the daily report no longer calls the API. It reads the
+> "Daily Punch Report" xlsx exported from Petpooja and uploaded on
+> `/attendance` (📂 Upload xlsx) — parser `lib/attendance-xlsx.ts`, hours/
+> status math `lib/attendance-calc.ts`, storage `AttendanceUpload` /
+> `AttendancePunchDay`, routes `app/api/attendance/upload` + `daily`.
+> The token page and `lib/petpooja.ts` remain only for the employees sync.
+
 | Concern             | Where |
 |---------------------|-------|
 | Token capture page  | [app/(dashboard)/attendance/token/page.tsx](app/(dashboard)/attendance/token/page.tsx) |

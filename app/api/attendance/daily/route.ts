@@ -3,115 +3,86 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { fetchDailyPunches, getPetpoojaAuth, payrollHeaders, PETPOOJA_PAYROLL_BASE } from '@/lib/petpooja'
-
-export const maxDuration = 60
+import { computeDay, pairPunches } from '@/lib/attendance-calc'
 
 /**
  * GET /api/attendance/daily?date=YYYY-MM-DD
  *
- * Fetches the attendance_master report for the single branch bound to
- * the saved token. Groups rows by `department` so each department
- * appears as its own section (matching the Petpooja UI layout).
+ * Reads the uploaded Petpooja punch sheet (AttendancePunchDay) for one date
+ * and groups rows by department. The envelope is unchanged from the old
+ * live-API version so the page's table / WhatsApp / image code is untouched;
+ * `hasData` is the one addition (false → "upload a sheet for this date").
  */
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const date = req.nextUrl.searchParams.get('date') || new Date().toISOString().slice(0, 10)
-  const from = req.nextUrl.searchParams.get('from') || date
-  const to = req.nextUrl.searchParams.get('to') || date
-
-  let auth
-  try { auth = await getPetpoojaAuth() }
-  catch (e: any) { return NextResponse.json({ error: e.message }, { status: 400 }) }
-
-  const res = await fetch(`${PETPOOJA_PAYROLL_BASE}/reports/attendance_master`, {
-    method: 'POST',
-    headers: payrollHeaders(auth),
-    body: JSON.stringify({
-      filter_start_date: from,
-      filter_end_date: to,
-      filter_branch: null, // null = all branches; org filter happens via JWT scope
-    }),
-  })
-  const text = await res.text()
-  if (!res.ok) return NextResponse.json({ error: `Petpooja ${res.status}`, body: text.slice(0, 500) }, { status: res.status })
-
-  let payload: any
-  try { payload = JSON.parse(text) }
-  catch { return NextResponse.json({ error: 'Non-JSON response', body: text.slice(0, 500) }, { status: 502 })}
-
-  const rows: any[] = Array.isArray(payload?.data) ? payload.data : []
-
-  // Mark employees who have left the job (stored in AttendanceEmployee)
   const db = prisma as any
-  const left = await db.attendanceEmployee.findMany({ where: { status: 'left' }, select: { petpoojaEmpId: true } })
-  const leftSet = new Set(left.map((e: any) => Number(e.petpoojaEmpId)))
 
-  // Pull every employee's full punch list for the date in one call.
-  // Failure is non-fatal — rows fall back to first/last only.
-  let punchesByCode = new Map<string, { time: string; kind: 'IN' | 'OUT' }[]>()
-  let punchProblems = new Set<string>()
-  try {
-    const out = await fetchDailyPunches(auth, date)
-    punchesByCode = out.byCode
-    punchProblems = out.problems
-  } catch { /* leave rows with first/last only */ }
+  const [days, emps] = await Promise.all([
+    db.attendancePunchDay.findMany({ where: { date }, orderBy: [{ department: 'asc' }, { name: 'asc' }] }),
+    db.attendanceEmployee.findMany({ select: { code: true, petpoojaEmpId: true, status: true, department: true, designation: true } }),
+  ])
 
-  // Group by department (matches the "Vinod Industries" / "Vi Folding" sections)
-  const byDept = new Map<string, any[]>()
-  for (const r of rows) {
-    const key = (r.department || r.designation || 'Unassigned').toString().trim() || 'Unassigned'
-    if (!byDept.has(key)) byDept.set(key, [])
-    byDept.get(key)!.push(r)
+  // Sheet "Employee ID" vs AttendanceEmployee.code may differ by leading
+  // zeros / whitespace; codes are not unique there either — prefer 'active'.
+  const normCode = (c: unknown) => String(c ?? '').trim().replace(/^0+(?=\d)/, '')
+  const empByCode = new Map<string, any>()
+  for (const e of emps) {
+    const k = normCode(e.code)
+    if (!k) continue
+    const cur = empByCode.get(k)
+    if (!cur || (cur.status !== 'active' && e.status === 'active')) empByCode.set(k, e)
   }
 
-  const groups = Array.from(byDept.entries()).map(([dept, list]) => {
-    let fd = 0, hd = 0, absent = 0
-    for (const r of list) {
-      const s = (r.status || '').toLowerCase()
-      if (s === 'fd' || s.includes('present') || s === 'p') fd++
-      else if (s === 'hd' || s.includes('half')) hd++
-      else if (s.includes('absent') || s === 'a') absent++
+  const byDept = new Map<string, any[]>()
+  for (const d of days) {
+    const emp = empByCode.get(normCode(d.code))
+    const times: string[] = Array.isArray(d.punches) ? d.punches : []
+    const calc = computeDay(times)
+    const { punches } = pairPunches(times)
+    const row = {
+      id: d.code,
+      petpoojaEmpId: emp?.petpoojaEmpId ?? null,
+      name: d.name || '—',
+      designation: d.designation || emp?.designation || '—',
+      punchIn: times[0] ?? '-',
+      punchOut: times.length > 1 ? times[times.length - 1] : '-',
+      workingHrs: calc.workingHrs,
+      break: calc.breakHrs,
+      status: calc.status,
+      isLeft: emp?.status === 'left',
+      leaveName: null,
+      holidayName: null,
+      punches,
+      punchProblem: calc.problem,
     }
+    const key = (d.department || emp?.department || d.designation || 'Unassigned').toString().trim() || 'Unassigned'
+    if (!byDept.has(key)) byDept.set(key, [])
+    byDept.get(key)!.push(row)
+  }
+
+  const groups = Array.from(byDept.entries()).map(([dept, rows]) => {
+    const fd = rows.filter(r => r.status === 'FD').length
+    const hd = rows.filter(r => r.status === 'HD').length
+    const absent = rows.filter(r => r.status === 'ABSENT').length
     return {
       department: dept,
-      total: list.length,
-      present: fd,
-      halfDay: hd,
-      absent,
-      attendancePct: list.length ? Math.round((fd / list.length) * 100) : 0,
-      rows: list.map(r => {
-        const empId = Number(r.employee_id) || null
-        const code = String(r.code ?? '')
-        return {
-          id: r.code ?? r.employee_id ?? r.device_employee_id ?? '—',
-          petpoojaEmpId: empId,
-          name: r.name || '—',
-          designation: r.designation || '—',
-          punchIn: r.first_punch || '-',
-          punchOut: r.last_punch || '-',
-          workingHrs: r.working_hrs || '-',
-          break: r.break_hrs || '-',
-          status: r.status || '—',
-          isLeft: leftSet.has(Number(r.employee_id)),
-          leaveName: r.leave_name,
-          holidayName: r.holiday_name,
-          punches: punchesByCode.get(code) || [],
-          punchProblem: punchProblems.has(code),
-        }
-      }),
+      total: rows.length,
+      present: fd, halfDay: hd, absent,
+      attendancePct: rows.length ? Math.round((fd / rows.length) * 100) : 0,
+      rows,
     }
   })
-
   groups.sort((a, b) => a.department.localeCompare(b.department))
 
   return NextResponse.json({
     date,
-    orgName: auth.orgName,
-    orgId: auth.orgId,
+    orgName: 'Uploaded punch sheet',
+    orgId: 0,
     groups,
-    totalRows: rows.length,
+    totalRows: days.length,
+    hasData: days.length > 0,
   })
 }
