@@ -10,8 +10,24 @@ const fetcher = (url: string) => fetch(url).then(r => r.json())
 const fmtINR = (n: number) => '₹' + n.toLocaleString('en-IN')
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })
 
-type View = 'jet' | 'operator' | 'party' | 'quality' | 'daily' | 'entries'
+type View = 'jet' | 'operator' | 'party' | 'quality' | 'daily' | 'entries' | 'batch'
 type Period = 'today' | 'yesterday' | 'week' | 'month' | 'custom'
+// Sub-views of the Batch Production tab (Batch Maker slips, BM-n)
+type BatchView = 'slips' | 'daily' | 'maker' | 'jet'
+type DyeStatus = 'not-dyed' | 'in-dyeing' | 'dyed'
+
+// Tag for a batch on a BM slip: has it reached / finished dyeing yet?
+function DyeTag({ status, dyeSlipNo, dyeSlipId }: { status: DyeStatus; dyeSlipNo: number | null; dyeSlipId: number | null }) {
+  const cls = status === 'not-dyed'
+    ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+    : status === 'in-dyeing'
+      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+      : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+  const label = status === 'not-dyed' ? '⏳ Not dyed' : status === 'in-dyeing' ? '🧪 In dyeing' : '✓ Dyed'
+  const ref = dyeSlipNo != null ? ` (dye ${dyeSlipNo})` : ''
+  const inner = <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${cls}`}>{label}{ref}</span>
+  return dyeSlipId != null ? <Link href={`/dyeing/${dyeSlipId}`} onClick={e => e.stopPropagation()}>{inner}</Link> : inner
+}
 
 function getDateRange(period: Period, offset: number): { from: string; to: string; label: string } {
   const now = new Date()
@@ -72,6 +88,55 @@ export default function ProductionReportPage() {
     range.from && range.to ? `/api/dyeing/production-report?from=${range.from}&to=${range.to}` : null,
     fetcher, { revalidateOnFocus: false }
   )
+
+  // Batch Production tab — fetched only while that tab is open.
+  const [batchView, setBatchView] = useState<BatchView>('slips')
+  const [expandedBmSlips, setExpandedBmSlips] = useState<Set<number>>(new Set())
+  const { data: batchData, isLoading: batchLoading } = useSWR(
+    view === 'batch' && range.from && range.to ? `/api/dyeing/batch-production?from=${range.from}&to=${range.to}` : null,
+    fetcher, { revalidateOnFocus: false }
+  )
+  function toggleBmSlip(id: number) {
+    setExpandedBmSlips(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  }
+
+  // Batch Production Excel: slip×batch rows with dye status, plus maker-wise
+  // and daily sheets — the same numbers the tab shows.
+  async function handleExportBatchExcel() {
+    if (!batchData) return
+    setExporting(true)
+    try {
+      const XLSX = await import('xlsx')
+      const wb = XLSX.utils.book_new()
+      const statusLabel = (s: DyeStatus) => s === 'not-dyed' ? 'Not dyed' : s === 'in-dyeing' ? 'In dyeing' : 'Dyed'
+      const slipRows: any[][] = [[`KSI — Batch Production — ${range.label}`], [],
+        ['BM Slip', 'Date', 'Batch Maker', 'Fold', 'Batch', 'Shade', 'Marka', 'Jet', 'Party', 'Than', 'Weight', 'Dye status', 'Dye slip']]
+      for (const s of batchData.slips as any[]) {
+        for (const i of s.items) {
+          slipRows.push([s.slipNo, fmtDate(s.date), s.maker, i.foldNo, i.batchNo, i.shade ?? '', i.marka ?? '', i.jet ?? '', i.party ?? '', i.than, i.weight, statusLabel(i.dyeStatus), i.dyeSlipNo ?? ''])
+        }
+        slipRows.push(['', '', '', '', '', '', '', '', `Subtotal ${s.slipNo} (${s.batches} batches)`, s.than, Math.round(s.weight * 100) / 100, s.notDyed ? `${s.notDyed} not dyed` : '', ''])
+      }
+      slipRows.push([])
+      slipRows.push(['', '', '', '', '', '', '', '', `TOTAL (${batchData.summary.slips} slips, ${batchData.summary.batches} batches)`, batchData.summary.than, batchData.summary.weight, `${batchData.summary.notDyedBatches} not dyed (${batchData.summary.notDyedThan} than)`, ''])
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(slipRows), 'Slips')
+
+      const groupSheet = (title: string, rows: any[], nameHeader: string, nameOf: (g: any) => string) => XLSX.utils.aoa_to_sheet([
+        [title], [], [nameHeader, 'Slips', 'Batches', 'Than', 'Not dyed than', 'In dyeing than'],
+        ...rows.map(g => [nameOf(g), g.slips, g.batches, g.than, g.notDyedThan, g.inDyeingThan]),
+      ])
+      XLSX.utils.book_append_sheet(wb, groupSheet(`Batch Maker-wise — ${range.label}`, batchData.byMaker, 'Batch Maker', g => g.name), 'By Maker')
+      XLSX.utils.book_append_sheet(wb, groupSheet(`Daily — ${range.label}`, batchData.byDate, 'Date', g => fmtDate(g.date)), 'Daily')
+
+      const slug = range.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      XLSX.writeFile(wb, `batch-production-${slug || 'report'}.xlsx`)
+    } catch (err) {
+      console.error('Excel export failed:', err)
+      alert('Excel export failed — see console')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   function toggleEntry(id: number) {
     setExpandedEntries(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
@@ -216,21 +281,23 @@ export default function ProductionReportPage() {
         <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Dyeing Production Report</h1>
         <div className="ml-auto flex gap-2">
           <button
-            onClick={handleExportExcel}
-            disabled={exporting || !data}
+            onClick={view === 'batch' ? handleExportBatchExcel : handleExportExcel}
+            disabled={exporting || (view === 'batch' ? !batchData : !data)}
             className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-medium"
-            title="Export operator-wise breakdown to Excel"
+            title={view === 'batch' ? 'Export batch production (slips, maker-wise, daily) to Excel' : 'Export operator-wise breakdown to Excel'}
           >
             {exporting ? 'Exporting…' : '⬇ Excel'}
           </button>
-          <button
-            onClick={handleExportPdf}
-            disabled={exporting || !data}
-            className="text-xs bg-rose-600 hover:bg-rose-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-medium"
-            title="Export the current range to PDF"
-          >
-            {exporting ? 'Exporting…' : '⬇ PDF'}
-          </button>
+          {view !== 'batch' && (
+            <button
+              onClick={handleExportPdf}
+              disabled={exporting || !data}
+              className="text-xs bg-rose-600 hover:bg-rose-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-medium"
+              title="Export the current range to PDF"
+            >
+              {exporting ? 'Exporting…' : '⬇ PDF'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -265,7 +332,38 @@ export default function ProductionReportPage() {
 
       {data && !isLoading && (
         <>
-          {/* Summary cards */}
+          {/* Summary cards — Batch Production tab has its own set */}
+          {view === 'batch' && batchData && (
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-5">
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-3 text-center">
+                <p className="text-[10px] text-gray-500 uppercase">BM Slips</p>
+                <p className="text-xl font-bold text-gray-800 dark:text-gray-100">{batchData.summary.slips}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-3 text-center">
+                <p className="text-[10px] text-gray-500 uppercase">Batches</p>
+                <p className="text-xl font-bold text-gray-800 dark:text-gray-100">{batchData.summary.batches}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-3 text-center">
+                <p className="text-[10px] text-gray-500 uppercase">Than</p>
+                <p className="text-xl font-bold text-purple-600 dark:text-purple-400">{batchData.summary.than}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-3 text-center">
+                <p className="text-[10px] text-gray-500 uppercase">Weight kg</p>
+                <p className="text-xl font-bold text-gray-800 dark:text-gray-100">{batchData.summary.weight.toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-amber-200 dark:border-amber-800 shadow-sm p-3 text-center">
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 uppercase">Not dyed</p>
+                <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{batchData.summary.notDyedBatches}</p>
+                <p className="text-[10px] text-amber-600/80">{batchData.summary.notDyedThan} than</p>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-blue-800 shadow-sm p-3 text-center">
+                <p className="text-[10px] text-blue-600 dark:text-blue-400 uppercase">In dyeing</p>
+                <p className="text-xl font-bold text-blue-600 dark:text-blue-400">{batchData.summary.inDyeingBatches}</p>
+                <p className="text-[10px] text-blue-600/80">{batchData.summary.inDyeingThan} than</p>
+              </div>
+            </div>
+          )}
+          {view !== 'batch' && (
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-5">
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm p-3 text-center">
               <p className="text-[10px] text-gray-500 uppercase">Batches</p>
@@ -292,10 +390,11 @@ export default function ProductionReportPage() {
               <p className="text-xl font-bold text-amber-600 dark:text-amber-400">{data.summary.reDyeCount}</p>
             </div>
           </div>
+          )}
 
           {/* View tabs */}
           <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-            {([['entries', 'All Entries'], ['jet', 'Jet (Machine)'], ['operator', 'Operator'], ['party', 'Party'], ['quality', 'Quality'], ['daily', 'Daily']] as [View, string][]).map(([k, label]) => (
+            {([['entries', 'All Entries'], ['jet', 'Jet (Machine)'], ['operator', 'Operator'], ['party', 'Party'], ['quality', 'Quality'], ['daily', 'Daily'], ['batch', 'Batch Production']] as [View, string][]).map(([k, label]) => (
               <button key={k} onClick={() => setView(k)}
                 className={`px-4 py-2 text-xs font-medium border-b-2 transition -mb-px whitespace-nowrap ${view === k
                   ? 'border-purple-600 text-purple-600 dark:text-purple-400'
@@ -517,6 +616,89 @@ export default function ProductionReportPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Batch Production view — Batch Maker slips (BM-n), cancelled slips/batches excluded */}
+          {view === 'batch' && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {([['slips', 'Slips'], ['daily', 'Daily'], ['maker', 'Batch Maker'], ['jet', 'Jet']] as [BatchView, string][]).map(([k, label]) => (
+                  <button key={k} onClick={() => setBatchView(k)}
+                    className={`text-xs px-3 py-1.5 rounded-lg border font-medium ${batchView === k
+                      ? 'bg-purple-100 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300'
+                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                    {label}
+                  </button>
+                ))}
+                <span className="self-center text-[10px] text-gray-400">Cancelled slips and cancelled batches are excluded</span>
+              </div>
+
+              {batchLoading && <div className="p-12 text-center text-gray-400">Loading...</div>}
+
+              {batchData && !batchLoading && (batchData.slips.length === 0 ? (
+                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-8 text-center text-gray-400 text-sm">
+                  No batch slips in this period.
+                </div>
+              ) : (() => {
+                const groupRow = (key: string, label: string, g: any) => (
+                  <div key={key} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm px-4 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                    <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{label}</span>
+                    <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1 ml-auto">
+                      <span className="text-xs text-gray-500">{g.slips} slip{g.slips === 1 ? '' : 's'} · {g.batches} batches</span>
+                      <span className="text-sm font-bold text-purple-600 dark:text-purple-400">{g.than} than</span>
+                      {g.notDyedThan > 0 && <span className="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded whitespace-nowrap">⏳ {g.notDyedThan} not dyed</span>}
+                      {g.inDyeingThan > 0 && <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded whitespace-nowrap">🧪 {g.inDyeingThan} in dyeing</span>}
+                    </div>
+                  </div>
+                )
+                return (
+                  <div className="space-y-2">
+                    {batchView === 'daily' && batchData.byDate.map((g: any) => groupRow(g.date, fmtDate(g.date), g))}
+                    {batchView === 'maker' && batchData.byMaker.map((g: any) => groupRow(g.name, g.name, g))}
+                    {batchView === 'jet' && batchData.byJet.map((g: any) => groupRow(g.name, g.name, g))}
+                    {batchView === 'slips' && batchData.slips.map((s: any) => {
+                      const isOpen = expandedBmSlips.has(s.id)
+                      return (
+                        <div key={s.id} className={`bg-white dark:bg-gray-800 rounded-xl border shadow-sm overflow-hidden ${s.notDyed > 0 ? 'border-amber-200 dark:border-amber-800' : 'border-gray-100 dark:border-gray-700'}`}>
+                          <button onClick={() => toggleBmSlip(s.id)} className="w-full px-4 py-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition text-left">
+                            <div className="flex flex-wrap items-center gap-2 min-w-0">
+                              <span className={`text-gray-400 text-[10px] transition-transform ${isOpen ? 'rotate-90' : ''}`}>▶</span>
+                              <span className="text-sm font-bold text-purple-600 dark:text-purple-400 font-mono">{s.slipNo}</span>
+                              <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">{s.maker}</span>
+                              <span className="text-[10px] text-gray-400">{fmtDate(s.date)}</span>
+                              {s.notDyed > 0 && <span className="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded whitespace-nowrap">⏳ {s.notDyed} not dyed · {s.notDyedThan} than</span>}
+                              {s.inDyeing > 0 && <span className="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded whitespace-nowrap">🧪 {s.inDyeing} in dyeing</span>}
+                            </div>
+                            <div className="text-right whitespace-nowrap ml-auto">
+                              <span className="text-xs text-gray-500">{s.batches} batches · </span>
+                              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{s.than} than</span>
+                              {s.weight > 0 && <span className="text-[10px] text-gray-400 ml-2">{Math.round(s.weight)} kg</span>}
+                            </div>
+                          </button>
+                          {isOpen && (
+                            <div className="border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-900/30 px-4 py-2 divide-y divide-gray-100 dark:divide-gray-700">
+                              {s.items.map((i: any) => (
+                                <div key={i.id} className="py-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                                  <div className="flex flex-wrap items-center gap-2 min-w-0">
+                                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap">Fold {i.foldNo}-B{i.batchNo}</span>
+                                    {i.shade && <span className="text-[10px] text-purple-500 truncate max-w-[140px]">{i.shade}</span>}
+                                    {i.marka && <span className="text-[10px] text-gray-500 truncate max-w-[120px]">{i.marka}</span>}
+                                    {i.jet && <span className="text-[10px] bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-gray-500 whitespace-nowrap">{i.jet}</span>}
+                                    {i.party && <span className="text-[10px] text-gray-400 truncate max-w-[160px]">{i.party}</span>}
+                                    <DyeTag status={i.dyeStatus} dyeSlipNo={i.dyeSlipNo} dyeSlipId={i.dyeSlipId} />
+                                  </div>
+                                  <span className="text-xs font-bold text-gray-800 dark:text-gray-100 whitespace-nowrap ml-auto">{i.than} than</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })())}
             </div>
           )}
 
