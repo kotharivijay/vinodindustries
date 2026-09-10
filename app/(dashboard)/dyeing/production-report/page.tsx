@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import BackButton from '../../BackButton'
-import { makeProductionPdf, productionFileName, type ProductionPayload } from './pdf'
+import { makeProductionPdf, makeBatchProductionPdf, productionFileName, type ProductionPayload, type BatchProductionPayload } from './pdf'
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 const fmtINR = (n: number) => '₹' + n.toLocaleString('en-IN')
@@ -255,9 +255,15 @@ export default function ProductionReportPage() {
   }
 
   async function handleExportPdf() {
-    if (!data) return
+    if (view === 'batch' ? !batchData : !data) return
     setExporting(true)
     try {
+      if (view === 'batch') {
+        const doc = makeBatchProductionPdf(batchData as BatchProductionPayload, range.label)
+        const slug = range.label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+        doc.save(`batch-production-${slug || 'report'}.pdf`)
+        return
+      }
       const doc = makeProductionPdf(data as ProductionPayload, range.label, false)
       doc.save(productionFileName(range.label, false, 'pdf'))
     } catch (err) {
@@ -288,16 +294,14 @@ export default function ProductionReportPage() {
           >
             {exporting ? 'Exporting…' : '⬇ Excel'}
           </button>
-          {view !== 'batch' && (
-            <button
-              onClick={handleExportPdf}
-              disabled={exporting || !data}
-              className="text-xs bg-rose-600 hover:bg-rose-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-medium"
-              title="Export the current range to PDF"
-            >
-              {exporting ? 'Exporting…' : '⬇ PDF'}
-            </button>
-          )}
+          <button
+            onClick={handleExportPdf}
+            disabled={exporting || (view === 'batch' ? !batchData : !data)}
+            className="text-xs bg-rose-600 hover:bg-rose-500 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-1.5 rounded-lg font-medium"
+            title={view === 'batch' ? 'Export batch production (daily, maker, jet, slip detail) to PDF' : 'Export the current range to PDF'}
+          >
+            {exporting ? 'Exporting…' : '⬇ PDF'}
+          </button>
         </div>
       </div>
 
