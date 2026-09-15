@@ -103,8 +103,7 @@ const ksiNavGroups = [
   {
     label: 'Admin',
     links: [
-      { href: '/attendance', label: 'Attendance', icon: '🕒' },
-      { href: '/attendance/employees', label: 'Employees (tag left)', icon: '👥' },
+      // Attendance module disabled (Sep 2026) — see app/(dashboard)/attendance/layout.tsx
       { href: '/backup', label: 'DB Backup (Neon)', icon: '💾' },
       { href: '/delete-log', label: 'Delete Log', icon: '🗑️' },
     ],
