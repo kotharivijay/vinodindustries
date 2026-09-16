@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JWPCTT — Goods Received (member units) — mockup</title>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script type="text/tailwindcss">@custom-variant dark (&:where(.dark, .dark *));</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .phone { width: 390px; max-width: 100%; border: 12px solid #111827; border-radius: 34px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  .phone-notch { background:#111827; height:24px; display:flex; align-items:center; justify-content:center; }
+  .phone-notch::after { content:''; width:100px; height:6px; background:#000; border-radius:4px; }
+  .desk { border: 1px solid #374151; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.4); background:#111827; }
+  .desk-bar { background:#1f2937; height:28px; display:flex; align-items:center; gap:6px; padding:0 12px; }
+  .desk-bar i { width:10px; height:10px; border-radius:50%; display:inline-block; }
+  .field { background:#1f2937; border:1px solid #374151; border-radius:10px; padding:8px 10px; font-size:12px; color:#e5e7eb; }
+  .field.ph { color:#6b7280; }
+  .lbl { font-size:11px; color:#9ca3af; }
+  .btn-p { background:#4f46e5; color:#fff; border-radius:10px; padding:10px 14px; font-size:13px; font-weight:600; text-align:center; }
+  .btn-s { background:#1f2937; border:1px solid #374151; color:#d1d5db; border-radius:10px; padding:8px 12px; font-size:12px; font-weight:500; text-align:center; }
+  .chip { font-size:10px; padding:2px 6px; border-radius:9999px; font-weight:600; white-space:nowrap; }
+  .chip-g { background:rgba(20,83,45,.4); color:#4ade80; border:1px solid #166534; }
+  .chip-a { background:rgba(120,53,15,.4); color:#fbbf24; border:1px solid #92400e; }
+  .chip-r { background:rgba(127,29,29,.4); color:#f87171; border:1px solid #991b1b; }
+  .chip-b { background:rgba(49,46,129,.5); color:#a5b4fc; border:1px solid #4338ca; }
+  .chip-n { background:#1f2937; color:#9ca3af; border:1px solid #374151; }
+  table.t { width:100%; border-collapse:collapse; font-size:11px; }
+  table.t th { text-align:left; color:#9ca3af; font-weight:600; font-size:10px; text-transform:uppercase; letter-spacing:.04em; padding:8px 10px; border-bottom:1px solid #374151; background:#111827; }
+  table.t td { padding:8px 10px; border-bottom:1px solid #1f2937; color:#e5e7eb; vertical-align:top; }
+  table.t tr:hover td { background:#1a2333; }
+  .num { text-align:right; font-variant-numeric: tabular-nums; }
+  .pulse { animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .bar { border-radius:4px 4px 0 0; }
+  .bar:not([class*="bg-"]) { background:#4f46e5; }
+  .hidden-tab { display:none; }
+  .seg button { flex:1; font-size:11px; padding:6px 0; color:#9ca3af; border-radius:8px; }
+  .seg button.on { background:#4f46e5; color:#fff; font-weight:600; }
+</style>
+</head>
+<body class="dark bg-gray-950 text-gray-100 p-6">
+<div class="max-w-5xl mx-auto space-y-10">
+
+  <header class="space-y-2">
+    <h1 class="text-xl font-bold">JWPCTT — Goods Received by member units <span class="chip chip-b align-middle ml-1">mockup</span></h1>
+    <p class="text-xs text-gray-400 max-w-3xl">
+      <b>Jasol Water Pollution Control And Treatment Trust</b> has <b>74 connected units</b>. Each unit signs up with its
+      firm name, a login ID and a password; a JWPCTT <b>authoriser approves</b> the request. Approved units then record
+      every consignment of goods received at their factory (<b>Date · Transport · LR No · Bales</b>) — from mobile, desktop
+      or by uploading the Excel template. The entry form <b>auto-saves a draft</b> so nothing is lost before Save. Each unit
+      sees its own weekly / monthly / yearly dashboard; the admin sees every unit and builds a <b>combined report</b>.
+    </p>
+    <nav class="flex flex-wrap gap-2 text-[11px] pt-1">
+      <a href="#flow" class="btn-s">Flow</a>
+      <a href="#signup" class="btn-s">1 · Sign up</a>
+      <a href="#login" class="btn-s">2 · Login</a>
+      <a href="#approve" class="btn-s">3 · Authoriser approval</a>
+      <a href="#entry" class="btn-s">4 · Entry (mobile)</a>
+      <a href="#entry-desk" class="btn-s">4b · Entry (desktop)</a>
+      <a href="#upload" class="btn-s">4c · Excel upload</a>
+      <a href="#unit-dash" class="btn-s">5 · Unit dashboard</a>
+      <a href="#admin" class="btn-s">6 · Admin overview</a>
+      <a href="#report" class="btn-s">7 · Combined report</a>
+      <a href="#notes" class="btn-s">Notes</a>
+    </nav>
+  </header>
+
+  <!-- ───────────────── FLOW ───────────────── -->
+  <section id="flow" class="space-y-2">
+    <h2 class="text-sm font-bold text-gray-200">The flow</h2>
+    <div class="flex flex-wrap items-center gap-3 text-xs">
+      <div class="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
+        <p class="text-[10px] text-gray-500 uppercase">Unit</p>
+        <p class="font-bold text-gray-200">Signs up</p>
+        <p class="text-[10px] text-gray-500">firm name · login ID · password</p>
+      </div>
+      <span class="text-gray-500 text-lg">→</span>
+      <div class="bg-amber-950/40 border border-amber-800 rounded-xl px-4 py-3">
+        <p class="text-[10px] text-amber-500 uppercase">Authoriser</p>
+        <p class="font-bold text-amber-300">Approves / rejects</p>
+        <p class="text-[10px] text-gray-500">login blocked until approved</p>
+      </div>
+      <span class="text-gray-500 text-lg">→</span>
+      <div class="bg-indigo-950/40 border border-indigo-800 rounded-xl px-4 py-3">
+        <p class="text-[10px] text-indigo-400 uppercase">Unit</p>
+        <p class="font-bold text-indigo-200">Records goods received</p>
+        <p class="text-[10px] text-gray-500">mobile · desktop · Excel upload · auto-draft</p>
+      </div>
+      <span class="text-gray-500 text-lg">→</span>
+      <div class="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
+        <p class="text-[10px] text-gray-500 uppercase">Unit</p>
+        <p class="font-bold text-gray-200">Own dashboard</p>
+        <p class="text-[10px] text-gray-500">week · month · year</p>
+      </div>
+      <span class="text-gray-500 text-lg">→</span>
+      <div class="bg-teal-950/40 border border-teal-800 rounded-xl px-4 py-3">
+        <p class="text-[10px] text-teal-500 uppercase">Admin (JWPCTT)</p>
+        <p class="font-bold text-teal-300">All units + combined report</p>
+        <p class="text-[10px] text-gray-500">PDF · Excel · WhatsApp</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── 1 · SIGN UP ───────────────── -->
+  <section id="signup" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">1 · Sign up — a member unit requests access</h2>
+    <div class="flex flex-wrap gap-10 items-start">
+
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Sign-up form</div>
+        <div class="phone bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="bg-gray-900 h-[720px] flex flex-col">
+            <div class="px-5 pt-6 pb-3 text-center">
+              <div class="w-12 h-12 mx-auto rounded-2xl bg-indigo-600 flex items-center justify-center text-xl">💧</div>
+              <h3 class="text-sm font-bold mt-2">JWPCTT Goods Received</h3>
+              <p class="text-[11px] text-gray-400">Register your unit</p>
+            </div>
+            <div class="flex-1 overflow-y-auto px-5 space-y-3">
+              <div><label class="lbl">Firm / Unit name *</label><div class="field mt-1">Shree Balaji Textiles</div></div>
+              <div><label class="lbl">Login ID (unit code) *</label><div class="field mt-1">sbt-jasol</div><p class="text-[10px] text-gray-500 mt-1">Letters, numbers, dash. Used to sign in.</p></div>
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="lbl">Password *</label><div class="field mt-1">••••••••</div></div>
+                <div><label class="lbl">Confirm *</label><div class="field mt-1">••••••••</div></div>
+              </div>
+              <div><label class="lbl">Contact person *</label><div class="field mt-1">Mahendra Jain</div></div>
+              <div><label class="lbl">Mobile (WhatsApp) *</label><div class="field mt-1">98290 12345</div></div>
+              <div><label class="lbl">JWPCTT member no.</label><div class="field ph mt-1">optional</div></div>
+              <p class="text-[10px] text-gray-500">Your request goes to the JWPCTT authoriser. You can sign in only after approval.</p>
+            </div>
+            <div class="p-4 border-t border-gray-800 space-y-2">
+              <div class="btn-p">Request access</div>
+              <p class="text-[11px] text-center text-gray-400">Already approved? <span class="text-indigo-400 font-semibold">Sign in</span></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">After submit — waiting for approval</div>
+        <div class="phone bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="bg-gray-900 h-[720px] flex flex-col items-center justify-center px-6 text-center space-y-3">
+            <div class="w-16 h-16 rounded-full bg-amber-950/50 border border-amber-800 flex items-center justify-center text-2xl">⏳</div>
+            <h3 class="text-sm font-bold">Request sent</h3>
+            <span class="chip chip-a">Pending approval</span>
+            <p class="text-[11px] text-gray-400">
+              <b class="text-gray-200">Shree Balaji Textiles</b> (sbt-jasol) is waiting for the JWPCTT authoriser.
+              You will get a WhatsApp message on <b class="text-gray-200">98290 12345</b> once approved.
+            </p>
+            <div class="w-full pt-4 space-y-2">
+              <div class="btn-s">Check status</div>
+              <div class="text-[11px] text-indigo-400 font-semibold">Back to login</div>
+            </div>
+            <p class="text-[10px] text-gray-500 pt-6">Requested 16 Sep 2026, 10:42</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── 2 · LOGIN ───────────────── -->
+  <section id="login" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">2 · Login — ID + password, gated by approval status</h2>
+    <div class="flex flex-wrap gap-10 items-start">
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Login screen</div>
+        <div class="phone bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="bg-gray-900 h-[600px] flex flex-col">
+            <div class="px-5 pt-10 pb-4 text-center">
+              <div class="w-12 h-12 mx-auto rounded-2xl bg-indigo-600 flex items-center justify-center text-xl">💧</div>
+              <h3 class="text-sm font-bold mt-2">JWPCTT Goods Received</h3>
+              <p class="text-[11px] text-gray-400">Member unit sign in</p>
+            </div>
+            <div class="px-5 space-y-3">
+              <div><label class="lbl">Login ID</label><div class="field mt-1">sbt-jasol</div></div>
+              <div><label class="lbl">Password</label><div class="field mt-1 flex justify-between"><span>••••••••</span><span class="text-gray-500">👁</span></div></div>
+              <div class="btn-p mt-2">Sign in</div>
+              <p class="text-[11px] text-center text-gray-400">New unit? <span class="text-indigo-400 font-semibold">Sign up</span> · <span class="text-gray-500">Forgot password</span></p>
+            </div>
+            <div class="mt-auto p-4 text-[10px] text-gray-500 text-center">Jasol Water Pollution Control &amp; Treatment Trust</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-3 max-w-sm">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">What the unit sees after "Sign in"</div>
+        <div class="rounded-xl border border-amber-800 bg-amber-950/30 p-3 space-y-1">
+          <div class="flex items-center gap-2"><span class="chip chip-a">Pending approval</span><span class="text-[11px] text-gray-300 font-semibold">Sign-in blocked</span></div>
+          <p class="text-[11px] text-gray-400">"Your request is still with the JWPCTT authoriser. Requested 16 Sep, 10:42." Button: <b>Check status</b>.</p>
+        </div>
+        <div class="rounded-xl border border-red-800 bg-red-950/30 p-3 space-y-1">
+          <div class="flex items-center gap-2"><span class="chip chip-r">Rejected</span><span class="text-[11px] text-gray-300 font-semibold">Sign-in blocked</span></div>
+          <p class="text-[11px] text-gray-400">"Rejected by authoriser — <i>Unit not in JWPCTT member list. Contact office.</i>" Button: <b>Re-submit request</b>.</p>
+        </div>
+        <div class="rounded-xl border border-green-800 bg-green-950/30 p-3 space-y-1">
+          <div class="flex items-center gap-2"><span class="chip chip-g">Approved</span><span class="text-[11px] text-gray-300 font-semibold">Goes straight to Goods Received entry</span></div>
+          <p class="text-[11px] text-gray-400">Session remembered on the device (30 days). Unit name shown in the top bar everywhere.</p>
+        </div>
+        <div class="rounded-xl border border-gray-700 bg-gray-900 p-3 space-y-1">
+          <div class="flex items-center gap-2"><span class="chip chip-n">Deactivated</span></div>
+          <p class="text-[11px] text-gray-400">Admin can deactivate a unit later; data stays, login stops.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── 3 · AUTHORISER APPROVAL ───────────────── -->
+  <section id="approve" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">3 · Authoriser — approval queue (desktop)</h2>
+    <div class="desk">
+      <div class="desk-bar"><i style="background:#ef4444"></i><i style="background:#f59e0b"></i><i style="background:#22c55e"></i><span class="text-[10px] text-gray-400 ml-3">jwpctt.app / admin / units</span></div>
+      <div class="p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold">Member units</h3>
+            <p class="text-[11px] text-gray-400">Sign-up requests need your approval before the unit can log in.</p>
+          </div>
+          <div class="flex gap-2 text-[11px]">
+            <span class="chip chip-n">74 connected</span>
+            <span class="chip chip-g">71 approved</span>
+            <span class="chip chip-a">2 pending</span>
+            <span class="chip chip-r">1 rejected</span>
+          </div>
+        </div>
+
+        <div class="flex gap-2 text-[11px]">
+          <span class="px-3 py-1 rounded-full bg-indigo-600 text-white font-semibold">Pending (2)</span>
+          <span class="px-3 py-1 rounded-full bg-gray-800 text-gray-400">Approved (71)</span>
+          <span class="px-3 py-1 rounded-full bg-gray-800 text-gray-400">Rejected (1)</span>
+          <div class="field ph ml-auto w-56">Search unit / login ID…</div>
+        </div>
+
+        <div class="rounded-xl border border-gray-700 overflow-hidden">
+          <table class="t">
+            <thead><tr><th>Unit</th><th>Login ID</th><th>Contact</th><th>Mobile</th><th>Requested</th><th>Status</th><th class="text-right">Action</th></tr></thead>
+            <tbody>
+              <tr>
+                <td class="font-semibold">Shree Balaji Textiles</td><td class="text-gray-400">sbt-jasol</td><td>Mahendra Jain</td><td>98290 12345</td><td>16 Sep, 10:42</td>
+                <td><span class="chip chip-a">Pending</span></td>
+                <td class="text-right whitespace-nowrap"><span class="chip chip-g cursor-pointer">✓ Approve</span> <span class="chip chip-r cursor-pointer ml-1">✕ Reject</span></td>
+              </tr>
+              <tr>
+                <td class="font-semibold">Om Textile Mills</td><td class="text-gray-400">omtm</td><td>Suresh Prajapat</td><td>94141 55667</td><td>15 Sep, 17:05</td>
+                <td><span class="chip chip-a">Pending</span></td>
+                <td class="text-right whitespace-nowrap"><span class="chip chip-g cursor-pointer">✓ Approve</span> <span class="chip chip-r cursor-pointer ml-1">✕ Reject</span></td>
+              </tr>
+              <tr>
+                <td colspan="7" class="bg-red-950/20">
+                  <div class="flex items-start gap-3 py-1">
+                    <span class="text-red-400 text-[11px] font-semibold pt-2">Reject "Om Textile Mills"?</span>
+                    <div class="field flex-1">Reason (sent to unit on WhatsApp): <span class="text-gray-400">Duplicate — unit already registered as "OM Textiles" (omtex)</span></div>
+                    <div class="btn-p !bg-red-600 !py-2">Confirm reject</div>
+                    <div class="btn-s !py-2">Cancel</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400 pt-2">Approved units (lifecycle)</div>
+        <div class="rounded-xl border border-gray-700 overflow-hidden">
+          <table class="t">
+            <thead><tr><th>Unit</th><th>Login ID</th><th>Approved by</th><th>Approved on</th><th>Last entry</th><th>Status</th><th class="text-right">Action</th></tr></thead>
+            <tbody>
+              <tr><td class="font-semibold">Kothari Synthetic Industries</td><td class="text-gray-400">ksi</td><td>Vijay K.</td><td>02 Sep 2026</td><td>Today, 09:10</td><td><span class="chip chip-g">Active</span></td><td class="text-right"><span class="chip chip-n cursor-pointer">Reset password</span> <span class="chip chip-n cursor-pointer ml-1">Deactivate</span></td></tr>
+              <tr><td class="font-semibold">Maruti Processors</td><td class="text-gray-400">maruti-p</td><td>Vijay K.</td><td>02 Sep 2026</td><td>14 Sep</td><td><span class="chip chip-g">Active</span></td><td class="text-right"><span class="chip chip-n cursor-pointer">Reset password</span> <span class="chip chip-n cursor-pointer ml-1">Deactivate</span></td></tr>
+              <tr><td class="font-semibold">Jasol Dyeing Mills</td><td class="text-gray-400">jdm</td><td>Office</td><td>03 Sep 2026</td><td class="text-red-400">— no entry yet</td><td><span class="chip chip-n">Deactivated</span></td><td class="text-right"><span class="chip chip-g cursor-pointer">Re-activate</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── 4 · ENTRY (MOBILE) ───────────────── -->
+  <section id="entry" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">4 · Goods Received entry (mobile) — with auto-draft</h2>
+    <p class="text-xs text-gray-400 max-w-3xl">Every keystroke is kept in a draft on the device (and synced to the server on field blur). Closing the app or losing network never loses the entry. <b>Save entry</b> turns the draft into a real record.</p>
+    <div class="flex flex-wrap gap-10 items-start">
+
+      <!-- Phone A: entry form -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">A · Entry form — draft ticker in header</div>
+        <div class="phone bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="bg-gray-900 h-[760px] flex flex-col">
+            <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-bold">Goods Received</h3>
+                <p class="text-[11px] text-gray-400">Shree Balaji Textiles</p>
+              </div>
+              <div class="text-[10px] text-gray-400 flex items-center gap-1"><span id="draftDot" class="w-1.5 h-1.5 rounded-full bg-gray-500 pulse"></span><span id="draftTxt">Draft saved just now</span></div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-3">
+              <div><label class="lbl">Date *</label><div class="field mt-1 flex justify-between"><span>16 Sep 2026 (today)</span><span class="text-gray-500">📅</span></div></div>
+              <div class="relative">
+                <label class="lbl">Transport name *</label>
+                <div class="field mt-1 !border-indigo-500 flex justify-between"><span>Jasol Ro<span class="border-l border-gray-300 ml-px"></span></span><span class="text-gray-500">▾</span></div>
+                <div class="absolute left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10 text-[12px] overflow-hidden">
+                  <div class="px-3 py-2 bg-indigo-950/60 text-indigo-200 flex justify-between"><span><b>Jasol Ro</b>adways</span><span class="text-[10px] text-gray-400">used 42×</span></div>
+                  <div class="px-3 py-2 text-gray-300 flex justify-between"><span><b>Jasol Ro</b>ad Carriers</span><span class="text-[10px] text-gray-400">used 3×</span></div>
+                  <div class="px-3 py-2 text-indigo-400 border-t border-gray-700">+ Add "Jasol Ro" as new transport</div>
+                </div>
+              </div>
+              <div class="pt-24"></div>
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="lbl">LR No *</label><div class="field mt-1">4471</div></div>
+                <div><label class="lbl">No of Bales *</label><div class="field mt-1">12</div><p class="text-[10px] text-gray-500 mt-1">numeric keypad</p></div>
+              </div>
+              <div><label class="lbl">Vehicle No <span class="text-gray-600">(optional — own vehicle / no LR)</span></label><div class="field ph mt-1">RJ 04 GA 1234</div></div>
+              <div><label class="lbl">Remarks</label><div class="field ph mt-1">e.g. 2 bales damaged</div></div>
+              <div class="rounded-lg bg-gray-800/60 border border-gray-700 p-2 text-[10px] text-gray-400">
+                ⚠ Same LR <b>4471</b> from <b>Jasol Roadways</b> was already entered on <b>02 Sep</b> (8 bales). Save anyway?
+                <span class="text-indigo-400 font-semibold ml-1">View</span>
+              </div>
+            </div>
+            <div class="p-4 border-t border-gray-800 space-y-2">
+              <div class="btn-p">Save entry</div>
+              <div class="text-[10px] text-center text-gray-500">Saves and clears the form · draft removed</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone B: restore draft banner -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">B · Re-open after app closed — draft restored</div>
+        <div class="phone bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="bg-gray-900 h-[760px] flex flex-col">
+            <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-bold">Goods Received</h3>
+                <p class="text-[11px] text-gray-400">Shree Balaji Textiles</p>
+              </div>
+              <div class="text-[10px] text-amber-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Draft from 12:41</div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-3">
+              <div class="rounded-xl border border-amber-700 bg-amber-950/40 p-3 space-y-1">
+                <p class="text-xs font-semibold text-amber-300">Unsaved draft restored</p>
+                <p class="text-[11px] text-gray-300">Jasol Roadways · LR 4471 · 12 bales · 16 Sep</p>
+                <p class="text-[10px] text-gray-500">You left without saving at 12:41. Continue or discard.</p>
+                <div class="flex gap-2 pt-1"><span class="chip chip-g cursor-pointer">Continue editing</span><span class="chip chip-r cursor-pointer">Discard draft</span></div>
+              </div>
+              <div><label class="lbl">Date *</label><div class="field mt-1">16 Sep 2026</div></div>
+              <div><label class="lbl">Transport name *</label><div class="field mt-1">Jasol Roadways</div></div>
+              <div class="grid grid-cols-2 gap-2">
+                <div><label class="lbl">LR No *</label><div class="field mt-1">4471</div></div>
+                <div><label class="lbl">No of Bales *</label><div class="field mt-1">12</div></div>
+              </div>
+              <div><label class="lbl">Vehicle No</label><div class="field ph mt-1">optional</div></div>
+              <div><label class="lbl">Remarks</label><div class="field ph mt-1">optional</div></div>
+
+              <div class="pt-2">
+                <div class="text-[11px] font-semibold text-gray-300 mb-1">Today's receipts <span class="text-gray-500 font-normal">· 3 · 31 bales</span></div>
+                <div class="space-y-1 text-[11px]">
+                  <div class="flex justify-between bg-gray-800 rounded-lg px-3 py-2"><span>Balotra Transport Co. · <span class="text-gray-400">LR 9921</span></span><span class="font-semibold">10 bales</span></div>
+                  <div class="flex justify-between bg-gray-800 rounded-lg px-3 py-2"><span>Shree Mahaveer Carriers · <span class="text-gray-400">LR 3310</span></span><span class="font-semibold">15 bales</span></div>
+                  <div class="flex justify-between bg-gray-800 rounded-lg px-3 py-2"><span>Own vehicle · <span class="text-gray-400">RJ 04 GA 1234</span></span><span class="font-semibold">6 bales</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="p-4 border-t border-gray-800">
+              <div class="btn-p">Save entry</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phone C: my entries -->
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">C · My entries — list, edit, delete</div>
+        <div class="phone bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="bg-gray-900 h-[760px] flex flex-col">
+            <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-bold">My entries</h3>
+                <p class="text-[11px] text-gray-400">Sep 2026 · 27 receipts · 318 bales</p>
+              </div>
+              <span class="chip chip-n">📅 Sep ▾</span>
+            </div>
+            <div class="px-4 py-2 flex gap-2 text-[11px]">
+              <div class="field ph flex-1 !py-1.5">Search LR / transport…</div>
+              <span class="btn-s !py-1.5">Filter</span>
+            </div>
+            <div class="flex-1 overflow-y-auto px-4 pb-4 space-y-3">
+              <div>
+                <div class="text-[10px] uppercase text-gray-500 font-semibold mb-1">Today · 16 Sep <span class="float-right normal-case">31 bales</span></div>
+                <div class="space-y-1 text-[11px]">
+                  <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2"><div class="flex-1"><div class="font-semibold">Balotra Transport Co.</div><div class="text-gray-400">LR 9921</div></div><span class="font-bold">10</span><span class="text-gray-500 ml-1">✎</span><span class="text-red-500">🗑</span></div>
+                  <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2"><div class="flex-1"><div class="font-semibold">Shree Mahaveer Carriers</div><div class="text-gray-400">LR 3310</div></div><span class="font-bold">15</span><span class="text-gray-500 ml-1">✎</span><span class="text-red-500">🗑</span></div>
+                  <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2"><div class="flex-1"><div class="font-semibold">Own vehicle</div><div class="text-gray-400">RJ 04 GA 1234 · no LR</div></div><span class="font-bold">6</span><span class="text-gray-500 ml-1">✎</span><span class="text-red-500">🗑</span></div>
+                </div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase text-gray-500 font-semibold mb-1">Mon · 15 Sep <span class="float-right normal-case">22 bales</span></div>
+                <div class="space-y-1 text-[11px]">
+                  <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2"><div class="flex-1"><div class="font-semibold">Jasol Roadways</div><div class="text-gray-400">LR 4468</div></div><span class="font-bold">14</span><span class="text-gray-500 ml-1">✎</span><span class="text-red-500">🗑</span></div>
+                  <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2"><div class="flex-1"><div class="font-semibold">Rajdhani Goods Carrier</div><div class="text-gray-400">LR 20871 <span class="chip chip-b ml-1">from Excel</span></div></div><span class="font-bold">8</span><span class="text-gray-500 ml-1">✎</span><span class="text-red-500">🗑</span></div>
+                </div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase text-gray-500 font-semibold mb-1">Sat · 13 Sep <span class="float-right normal-case">18 bales</span></div>
+                <div class="space-y-1 text-[11px]">
+                  <div class="flex items-center gap-2 bg-gray-800 rounded-lg px-3 py-2"><div class="flex-1"><div class="font-semibold">Jasol Roadways</div><div class="text-gray-400">LR 4462</div></div><span class="font-bold">18</span><span class="text-gray-500 ml-1">✎</span><span class="text-red-500">🗑</span></div>
+                </div>
+              </div>
+              <div class="text-[10px] text-gray-500 text-center pt-2">Edit / delete allowed for 7 days · after that ask admin</div>
+            </div>
+            <div class="p-3 border-t border-gray-800 grid grid-cols-3 gap-1 text-[10px] text-center">
+              <div class="text-gray-500">📊<br>Dashboard</div>
+              <div class="text-indigo-400 font-semibold">＋<br>New entry</div>
+              <div class="text-gray-500">📤<br>Excel upload</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ───────────────── 4b · ENTRY (DESKTOP) ───────────────── -->
+  <section id="entry-desk" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">4b · Goods Received entry (desktop) — fast punching</h2>
+    <div class="desk">
+      <div class="desk-bar"><i style="background:#ef4444"></i><i style="background:#f59e0b"></i><i style="background:#22c55e"></i><span class="text-[10px] text-gray-400 ml-3">jwpctt.app / entry</span></div>
+      <div class="p-5 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold">Goods Received — Shree Balaji Textiles</h3>
+            <p class="text-[11px] text-gray-400">Enter one receipt per row. <kbd class="bg-gray-800 border border-gray-700 rounded px-1">Enter</kbd> saves and moves focus back to Transport.</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="text-[10px] text-gray-400 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-gray-500 pulse"></span>Draft saved 3s ago</div>
+            <span class="btn-s">📤 Upload Excel</span>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-indigo-700 bg-indigo-950/20 p-3">
+          <div class="grid grid-cols-12 gap-2 items-end">
+            <div class="col-span-2"><label class="lbl">Date *</label><div class="field mt-1">16-09-2026</div></div>
+            <div class="col-span-3"><label class="lbl">Transport name *</label><div class="field mt-1 !border-indigo-500">Jasol Roadways</div></div>
+            <div class="col-span-1"><label class="lbl">LR No *</label><div class="field mt-1">4471</div></div>
+            <div class="col-span-1"><label class="lbl">Bales *</label><div class="field mt-1 num">12</div></div>
+            <div class="col-span-2"><label class="lbl">Vehicle No</label><div class="field ph mt-1">optional</div></div>
+            <div class="col-span-2"><label class="lbl">Remarks</label><div class="field ph mt-1">optional</div></div>
+            <div class="col-span-1"><div class="btn-p !py-2">Save</div></div>
+          </div>
+          <p class="text-[10px] text-amber-400 mt-2">⚠ LR 4471 from Jasol Roadways already exists (02 Sep, 8 bales). Press Enter again to save anyway, or Esc to change.</p>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div class="text-[11px] font-semibold text-gray-300">Today's receipts <span class="text-gray-500 font-normal">· 3 · 31 bales</span></div>
+          <div class="flex gap-2 text-[11px]"><span class="btn-s !py-1">📅 16 Sep ▾</span><span class="btn-s !py-1">Export</span></div>
+        </div>
+        <div class="rounded-xl border border-gray-700 overflow-hidden">
+          <table class="t">
+            <thead><tr><th>#</th><th>Date</th><th>Transport</th><th>LR No</th><th class="num">Bales</th><th>Vehicle</th><th>Remarks</th><th>Source</th><th class="text-right"></th></tr></thead>
+            <tbody>
+              <tr><td class="text-gray-500">3</td><td>16-09-2026</td><td>Own vehicle</td><td class="text-gray-500">—</td><td class="num">6</td><td>RJ 04 GA 1234</td><td class="text-gray-400">—</td><td><span class="chip chip-n">manual</span></td><td class="text-right"><span class="text-gray-500">✎</span> <span class="text-red-500">🗑</span></td></tr>
+              <tr><td class="text-gray-500">2</td><td>16-09-2026</td><td>Shree Mahaveer Carriers</td><td>3310</td><td class="num">15</td><td class="text-gray-500">—</td><td class="text-gray-400">—</td><td><span class="chip chip-n">manual</span></td><td class="text-right"><span class="text-gray-500">✎</span> <span class="text-red-500">🗑</span></td></tr>
+              <tr><td class="text-gray-500">1</td><td>16-09-2026</td><td>Balotra Transport Co.</td><td>9921</td><td class="num">10</td><td class="text-gray-500">—</td><td class="text-gray-400">2 bales wet</td><td><span class="chip chip-n">manual</span></td><td class="text-right"><span class="text-gray-500">✎</span> <span class="text-red-500">🗑</span></td></tr>
+            </tbody>
+            <tfoot><tr><td colspan="4" class="text-right text-gray-400 font-semibold">Total</td><td class="num font-bold">31</td><td colspan="4"></td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── 4c · EXCEL UPLOAD ───────────────── -->
+  <section id="upload" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">4c · Excel template + smart upload — duplicate LRs filtered with prompts</h2>
+    <p class="text-xs text-gray-400 max-w-3xl">Units that keep a register in Excel download the app's template, fill it, and upload. Nothing is saved until the unit reviews the validation preview. <b>Duplicate rule:</b> same <b>LR No + Transport name</b> (case / space insensitive) within the same unit. The same LR number under a different transport is allowed.</p>
+
+    <div class="desk relative">
+      <div class="desk-bar"><i style="background:#ef4444"></i><i style="background:#f59e0b"></i><i style="background:#22c55e"></i><span class="text-[10px] text-gray-400 ml-3">jwpctt.app / entry / upload</span></div>
+      <div class="p-5 space-y-5">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-bold">Bulk upload from Excel</h3>
+            <p class="text-[11px] text-gray-400">Shree Balaji Textiles</p>
+          </div>
+          <div class="flex gap-2 text-[10px]">
+            <span class="chip chip-g">1 Template</span><span class="text-gray-600">›</span>
+            <span class="chip chip-g">2 Upload</span><span class="text-gray-600">›</span>
+            <span class="chip chip-b">3 Review</span><span class="text-gray-600">›</span>
+            <span class="chip chip-n">4 Done</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <!-- Step 1 -->
+          <div class="rounded-xl border border-gray-700 bg-gray-900 p-4 space-y-2">
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-semibold">Step 1 · Download the template</p>
+              <span class="btn-s !py-1">⬇ goods-received-template.xlsx</span>
+            </div>
+            <p class="text-[10px] text-gray-500">One row per receipt. Dates as DD-MM-YYYY. Don't rename the header row.</p>
+            <div class="rounded-lg border border-gray-700 overflow-hidden">
+              <table class="t">
+                <thead><tr><th>Date</th><th>Transport Name</th><th>LR No</th><th>No of Bales</th><th>Vehicle No</th><th>Remarks</th></tr></thead>
+                <tbody>
+                  <tr><td>01-09-2026</td><td>Jasol Roadways</td><td>4402</td><td class="num">10</td><td class="text-gray-500">—</td><td class="text-gray-500">—</td></tr>
+                  <tr><td>01-09-2026</td><td>Own vehicle</td><td class="text-gray-500">—</td><td class="num">4</td><td>RJ 04 GA 1234</td><td class="text-gray-500">—</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-[10px] text-gray-500">Vehicle No / Remarks optional. LR No optional only when Vehicle No is filled.</p>
+          </div>
+          <!-- Step 2 -->
+          <div class="rounded-xl border border-gray-700 bg-gray-900 p-4 space-y-3">
+            <p class="text-xs font-semibold">Step 2 · Upload the filled file</p>
+            <div class="rounded-xl border-2 border-dashed border-gray-600 bg-gray-800/40 p-6 text-center">
+              <div class="text-2xl">📄</div>
+              <p class="text-[11px] text-gray-300 mt-1">Drop filled template here</p>
+              <p class="text-[10px] text-gray-500">or <span class="text-indigo-400 font-semibold">choose file</span> · .xlsx / .csv · max 2,000 rows</p>
+            </div>
+            <div class="flex items-center gap-2 text-[11px]">
+              <span class="chip chip-b">📎 Sep-2026-receipts.xlsx</span>
+              <span class="text-gray-400">38 rows read · checking duplicates…</span>
+              <span class="text-green-400 ml-auto">✓ checked</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="rounded-xl border border-gray-700 bg-gray-900 p-4 space-y-3">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <p class="text-xs font-semibold">Step 3 · Review before saving</p>
+            <div class="flex gap-2 text-[10px]">
+              <span class="chip chip-n">38 rows</span>
+              <span class="chip chip-g">31 ready</span>
+              <span class="chip chip-r">4 duplicate (already saved)</span>
+              <span class="chip chip-a">2 duplicate (in this file)</span>
+              <span class="chip chip-r">1 invalid</span>
+            </div>
+          </div>
+          <div class="flex gap-2 text-[11px]">
+            <span class="px-3 py-1 rounded-full bg-indigo-600 text-white font-semibold">Problems only (7)</span>
+            <span class="px-3 py-1 rounded-full bg-gray-800 text-gray-400">All rows (38)</span>
+          </div>
+          <div class="rounded-lg border border-gray-700 overflow-hidden">
+            <table class="t">
+              <thead><tr><th>Row</th><th>Date</th><th>Transport</th><th>LR No</th><th class="num">Bales</th><th>Status</th><th>Detail</th><th class="text-right">Choose</th></tr></thead>
+              <tbody>
+                <tr><td class="text-gray-500">3</td><td>02-09-2026</td><td>Jasol Roadways</td><td>4402</td><td class="num">10</td><td><span class="chip chip-r">Duplicate · saved</span></td><td class="text-gray-400">Already entered <b class="text-gray-200">02 Sep · 10 bales</b> (manual)</td><td class="text-right whitespace-nowrap"><span class="chip chip-b">Skip</span> <span class="chip chip-n">Overwrite</span> <span class="chip chip-n">Keep both</span></td></tr>
+                <tr><td class="text-gray-500">7</td><td>04-09-2026</td><td>jasol roadways</td><td>4409</td><td class="num">12</td><td><span class="chip chip-r">Duplicate · saved</span></td><td class="text-gray-400">Matches "Jasol Roadways · 4409" entered <b class="text-gray-200">04 Sep · 12 bales</b></td><td class="text-right whitespace-nowrap"><span class="chip chip-b">Skip</span> <span class="chip chip-n">Overwrite</span> <span class="chip chip-n">Keep both</span></td></tr>
+                <tr><td class="text-gray-500">12</td><td>08-09-2026</td><td>Balotra Transport Co.</td><td>9902</td><td class="num">9</td><td><span class="chip chip-r">Duplicate · saved</span></td><td class="text-gray-400">Entered <b class="text-gray-200">08 Sep · <span class="text-amber-400">8 bales</span></b> — bales differ!</td><td class="text-right whitespace-nowrap"><span class="chip chip-n">Skip</span> <span class="chip chip-b">Overwrite</span> <span class="chip chip-n">Keep both</span></td></tr>
+                <tr><td class="text-gray-500">19</td><td>10-09-2026</td><td>Rajdhani Goods Carrier</td><td>20871</td><td class="num">8</td><td><span class="chip chip-r">Duplicate · saved</span></td><td class="text-gray-400">Entered <b class="text-gray-200">15 Sep · 8 bales</b> (from Excel, 14 Sep upload)</td><td class="text-right whitespace-nowrap"><span class="chip chip-b">Skip</span> <span class="chip chip-n">Overwrite</span> <span class="chip chip-n">Keep both</span></td></tr>
+                <tr class="bg-amber-950/10"><td class="text-gray-500">22</td><td>11-09-2026</td><td>Shree Mahaveer Carriers</td><td>3301</td><td class="num">15</td><td><span class="chip chip-a">Duplicate · in file</span></td><td class="text-gray-400">Same as row <b class="text-gray-200">29</b> — first one kept</td><td class="text-right whitespace-nowrap"><span class="chip chip-g">Keep (1st)</span></td></tr>
+                <tr class="bg-amber-950/10"><td class="text-gray-500">29</td><td>11-09-2026</td><td>Shree Mahaveer Carriers</td><td>3301</td><td class="num">15</td><td><span class="chip chip-a">Duplicate · in file</span></td><td class="text-gray-400">Repeat of row <b class="text-gray-200">22</b></td><td class="text-right whitespace-nowrap"><span class="chip chip-b">Skip</span> <span class="chip chip-n">Keep both</span></td></tr>
+                <tr class="bg-red-950/10"><td class="text-gray-500">34</td><td class="text-red-400">31-09-2026</td><td>Jasol Roadways</td><td>4470</td><td class="num text-red-400">—</td><td><span class="chip chip-r">Invalid</span></td><td class="text-red-400">Date does not exist · Bales blank</td><td class="text-right"><span class="chip chip-n">Fix in Excel</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="text-[11px] text-gray-400">
+              <span class="text-indigo-400 font-semibold cursor-pointer">⬇ Download rows with problems</span> · fix and re-upload only those
+            </div>
+            <div class="flex gap-2">
+              <span class="btn-s">Skip all duplicates</span>
+              <span class="btn-s">Cancel upload</span>
+              <span id="openPrompt" class="btn-p cursor-pointer">Save 31 ready rows →</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="rounded-xl border border-green-800 bg-green-950/30 p-4 flex items-start gap-4">
+          <div class="text-2xl">✅</div>
+          <div class="flex-1 space-y-1">
+            <p class="text-xs font-semibold text-green-300">Step 4 · Upload complete — Sep-2026-receipts.xlsx</p>
+            <p class="text-[11px] text-gray-300"><b>31 receipts saved</b> · 4 skipped (already existed) · 1 overwritten (LR 9902: 8 → 9 bales) · 1 in-file repeat dropped · 1 invalid row not saved.</p>
+            <p class="text-[10px] text-gray-500">Saved rows are tagged <span class="chip chip-b">from Excel</span> in your entries list and carry the file name for audit.</p>
+          </div>
+          <div class="flex flex-col gap-2">
+            <span class="btn-s">View entries</span>
+            <span class="btn-s !text-red-400">↶ Undo this upload (9:48 left)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Prompt modal (overlay inside panel) -->
+      <div id="promptModal" class="absolute inset-0 bg-black/70 hidden items-center justify-center p-6">
+        <div class="bg-gray-900 border border-gray-600 rounded-2xl w-full max-w-lg p-5 space-y-3 shadow-2xl">
+          <div class="flex items-start gap-3">
+            <div class="text-2xl">⚠️</div>
+            <div>
+              <h4 class="text-sm font-bold">4 LR numbers already exist for your unit</h4>
+              <p class="text-[11px] text-gray-400">These were entered earlier (manually or from a previous upload). Choose what to do so the report doesn't count bales twice.</p>
+            </div>
+          </div>
+          <div class="rounded-lg border border-gray-700 divide-y divide-gray-800 text-[11px]">
+            <div class="flex items-center gap-2 px-3 py-2"><span class="flex-1">Jasol Roadways · LR 4402 · 10 bales</span><span class="text-gray-500">same as saved</span><span class="chip chip-b">Skip</span></div>
+            <div class="flex items-center gap-2 px-3 py-2"><span class="flex-1">Jasol Roadways · LR 4409 · 12 bales</span><span class="text-gray-500">same as saved</span><span class="chip chip-b">Skip</span></div>
+            <div class="flex items-center gap-2 px-3 py-2"><span class="flex-1">Balotra Transport · LR 9902 · <b class="text-amber-400">9</b> bales</span><span class="text-amber-400">saved has 8</span><span class="chip chip-a">Overwrite</span></div>
+            <div class="flex items-center gap-2 px-3 py-2"><span class="flex-1">Rajdhani Goods · LR 20871 · 8 bales</span><span class="text-gray-500">same as saved</span><span class="chip chip-b">Skip</span></div>
+          </div>
+          <div class="text-[10px] text-gray-500">"Keep both" saves a second entry flagged <span class="chip chip-a">re-check</span> — visible to admin.</div>
+          <div class="flex justify-between items-center pt-1">
+            <span class="text-[11px] text-indigo-400 font-semibold cursor-pointer">Skip all 4</span>
+            <div class="flex gap-2">
+              <span id="closePrompt" class="btn-s cursor-pointer">Back to review</span>
+              <span id="confirmPrompt" class="btn-p cursor-pointer">Confirm &amp; save 32 rows</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-10 items-start pt-2">
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Same flow on a phone — pick file, review, confirm</div>
+        <div class="phone bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="bg-gray-900 h-[640px] flex flex-col">
+            <div class="px-4 py-3 border-b border-gray-800">
+              <h3 class="text-sm font-bold">Excel upload</h3>
+              <p class="text-[11px] text-gray-400">Sep-2026-receipts.xlsx · 38 rows</p>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-3">
+              <div class="grid grid-cols-2 gap-2 text-center text-[11px]">
+                <div class="rounded-lg bg-green-950/40 border border-green-800 p-2"><div class="text-lg font-bold text-green-400">31</div><div class="text-gray-400">ready</div></div>
+                <div class="rounded-lg bg-red-950/40 border border-red-800 p-2"><div class="text-lg font-bold text-red-400">4</div><div class="text-gray-400">already saved</div></div>
+                <div class="rounded-lg bg-amber-950/40 border border-amber-800 p-2"><div class="text-lg font-bold text-amber-400">2</div><div class="text-gray-400">repeat in file</div></div>
+                <div class="rounded-lg bg-red-950/40 border border-red-800 p-2"><div class="text-lg font-bold text-red-400">1</div><div class="text-gray-400">invalid</div></div>
+              </div>
+              <div class="text-[11px] font-semibold text-gray-300">Needs your decision</div>
+              <div class="space-y-2 text-[11px]">
+                <div class="rounded-lg bg-gray-800 p-3 space-y-1">
+                  <div class="flex justify-between"><span class="font-semibold">Jasol Roadways · LR 4402</span><span class="chip chip-r">saved</span></div>
+                  <div class="text-gray-400">File: 10 bales · Saved: 10 bales (02 Sep)</div>
+                  <div class="flex gap-1 pt-1"><span class="chip chip-b">Skip</span><span class="chip chip-n">Overwrite</span><span class="chip chip-n">Keep both</span></div>
+                </div>
+                <div class="rounded-lg bg-gray-800 p-3 space-y-1">
+                  <div class="flex justify-between"><span class="font-semibold">Balotra Transport · LR 9902</span><span class="chip chip-r">saved</span></div>
+                  <div class="text-gray-400">File: <b class="text-amber-400">9</b> bales · Saved: 8 bales (08 Sep)</div>
+                  <div class="flex gap-1 pt-1"><span class="chip chip-n">Skip</span><span class="chip chip-a">Overwrite</span><span class="chip chip-n">Keep both</span></div>
+                </div>
+                <div class="rounded-lg bg-gray-800 p-3 space-y-1">
+                  <div class="flex justify-between"><span class="font-semibold">Row 34 · Jasol Roadways</span><span class="chip chip-r">invalid</span></div>
+                  <div class="text-red-400">Date 31-09-2026 doesn't exist · bales blank</div>
+                  <div class="text-[10px] text-gray-500">Will be skipped — fix in Excel and re-upload</div>
+                </div>
+                <div class="text-[10px] text-gray-500 text-center">+ 3 more</div>
+              </div>
+            </div>
+            <div class="p-4 border-t border-gray-800 space-y-2">
+              <div class="btn-p">Save 32 rows</div>
+              <div class="text-[11px] text-center text-gray-400">Skip all duplicates · Cancel</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="max-w-sm space-y-2 text-[11px] text-gray-400">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Smart-upload rules</div>
+        <ul class="list-disc pl-4 space-y-1">
+          <li><b class="text-gray-200">Header check first</b> — wrong / renamed columns stop the upload with "Download the template again".</li>
+          <li><b class="text-gray-200">Normalise before comparing</b> — LR "LR-4402", " 4402 ", "4402/A" are shown as <i>possible</i> matches (amber), exact matches as duplicates (red).</li>
+          <li><b class="text-gray-200">Transport names</b> fuzzy-matched to the unit's existing transports ("jasol roadways" → "Jasol Roadways"); new names are created and listed in the summary.</li>
+          <li><b class="text-gray-200">Nothing partial</b> — the file is saved in one go after confirm; Undo removes exactly that batch (10-minute window).</li>
+          <li><b class="text-gray-200">Every saved row</b> stores file name + upload time for audit; admin can see "from Excel" vs manual.</li>
+          <li><b class="text-gray-200">Same check on manual entry</b> — typing an existing LR shows the inline warning (see 4 · A).</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── 5 · UNIT DASHBOARD ───────────────── -->
+  <section id="unit-dash" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">5 · Unit dashboard — week / month / year (click the toggle)</h2>
+    <div class="flex flex-wrap gap-10 items-start">
+      <div class="space-y-2">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Unit sees only its own data</div>
+        <div class="phone bg-gray-900">
+          <div class="phone-notch"></div>
+          <div class="bg-gray-900 h-[760px] flex flex-col">
+            <div class="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-bold">My dashboard</h3>
+                <p class="text-[11px] text-gray-400">Shree Balaji Textiles</p>
+              </div>
+              <span class="text-gray-500">☰</span>
+            </div>
+            <div class="px-4 pt-3">
+              <div class="seg flex bg-gray-800 rounded-lg p-1 gap-1" id="segUnit">
+                <button data-tab="w" class="on">Week</button>
+                <button data-tab="m">Month</button>
+                <button data-tab="y">Year</button>
+              </div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-3">
+
+              <!-- WEEK -->
+              <div data-panel="w" class="space-y-3">
+                <div class="text-[11px] text-gray-400">This week · 15 – 21 Sep 2026 <span class="text-indigo-400 float-right">‹ prev · next ›</span></div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="rounded-xl bg-gray-800 p-3"><div class="text-[10px] text-gray-500 uppercase">Receipts</div><div class="text-xl font-bold">7</div><div class="text-[10px] text-green-400">+2 vs last week</div></div>
+                  <div class="rounded-xl bg-gray-800 p-3"><div class="text-[10px] text-gray-500 uppercase">Bales</div><div class="text-xl font-bold">83</div><div class="text-[10px] text-green-400">+18 vs last week</div></div>
+                </div>
+                <div class="rounded-xl bg-gray-800 p-3">
+                  <div class="text-[10px] text-gray-500 uppercase mb-2">Bales per day</div>
+                  <div class="flex items-end gap-2 h-24">
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:55%"></div><span class="text-[9px] text-gray-500">Mon<br>22</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:75%"></div><span class="text-[9px] text-gray-500">Tue<br>31</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:0%"></div><span class="text-[9px] text-gray-500">Wed<br>0</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:40%"></div><span class="text-[9px] text-gray-500">Thu<br>16</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:35%"></div><span class="text-[9px] text-gray-500">Fri<br>14</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-gray-600" style="height:0%"></div><span class="text-[9px] text-gray-600">Sat<br>–</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-gray-600" style="height:0%"></div><span class="text-[9px] text-gray-600">Sun<br>–</span></div>
+                  </div>
+                </div>
+                <div class="rounded-xl bg-gray-800 p-3 text-[11px] space-y-1">
+                  <div class="text-[10px] text-gray-500 uppercase mb-1">By transport</div>
+                  <div class="flex justify-between"><span>Jasol Roadways</span><span class="font-semibold">3 · 42</span></div>
+                  <div class="flex justify-between"><span>Shree Mahaveer Carriers</span><span class="font-semibold">2 · 25</span></div>
+                  <div class="flex justify-between"><span>Balotra Transport Co.</span><span class="font-semibold">1 · 10</span></div>
+                  <div class="flex justify-between"><span>Own vehicle</span><span class="font-semibold">1 · 6</span></div>
+                </div>
+              </div>
+
+              <!-- MONTH -->
+              <div data-panel="m" class="space-y-3 hidden-tab">
+                <div class="text-[11px] text-gray-400">September 2026 <span class="text-indigo-400 float-right">‹ Aug · Oct ›</span></div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="rounded-xl bg-gray-800 p-3"><div class="text-[10px] text-gray-500 uppercase">Receipts</div><div class="text-xl font-bold">27</div><div class="text-[10px] text-gray-500">Aug: 34</div></div>
+                  <div class="rounded-xl bg-gray-800 p-3"><div class="text-[10px] text-gray-500 uppercase">Bales</div><div class="text-xl font-bold">318</div><div class="text-[10px] text-red-400">−41 vs Aug (359)</div></div>
+                </div>
+                <div class="rounded-xl bg-gray-800 p-3">
+                  <div class="text-[10px] text-gray-500 uppercase mb-2">Bales per week</div>
+                  <div class="flex items-end gap-2 h-24">
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:80%"></div><span class="text-[9px] text-gray-500">1–7<br>96</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:60%"></div><span class="text-[9px] text-gray-500">8–14<br>72</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:70%"></div><span class="text-[9px] text-gray-500">15–21<br>83</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-indigo-900" style="height:55%"></div><span class="text-[9px] text-gray-500">22–28<br>67</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-gray-600" style="height:0%"></div><span class="text-[9px] text-gray-600">29–30<br>–</span></div>
+                  </div>
+                </div>
+                <div class="rounded-xl bg-gray-800 p-3 text-[11px] space-y-1">
+                  <div class="text-[10px] text-gray-500 uppercase mb-1">By transport</div>
+                  <div class="flex justify-between"><span>Jasol Roadways</span><span class="font-semibold">14 · 171</span></div>
+                  <div class="flex justify-between"><span>Balotra Transport Co.</span><span class="font-semibold">6 · 64</span></div>
+                  <div class="flex justify-between"><span>Shree Mahaveer Carriers</span><span class="font-semibold">4 · 55</span></div>
+                  <div class="flex justify-between"><span>Rajdhani Goods Carrier</span><span class="font-semibold">2 · 16</span></div>
+                  <div class="flex justify-between"><span>Own vehicle</span><span class="font-semibold">1 · 12</span></div>
+                </div>
+                <div class="text-[10px] text-gray-500">Source: 19 manual · 8 from Excel</div>
+              </div>
+
+              <!-- YEAR -->
+              <div data-panel="y" class="space-y-3 hidden-tab">
+                <div class="text-[11px] text-gray-400">FY 2026-27 (Apr – Mar) <span class="text-indigo-400 float-right">‹ FY 25-26</span></div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="rounded-xl bg-gray-800 p-3"><div class="text-[10px] text-gray-500 uppercase">Receipts</div><div class="text-xl font-bold">176</div><div class="text-[10px] text-gray-500">Apr – Sep (6 mo)</div></div>
+                  <div class="rounded-xl bg-gray-800 p-3"><div class="text-[10px] text-gray-500 uppercase">Bales</div><div class="text-xl font-bold">2,014</div><div class="text-[10px] text-gray-500">avg 336 / month</div></div>
+                </div>
+                <div class="rounded-xl bg-gray-800 p-3">
+                  <div class="text-[10px] text-gray-500 uppercase mb-2">Bales per month</div>
+                  <div class="flex items-end gap-1 h-24">
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:70%"></div><span class="text-[9px] text-gray-500">Apr</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:78%"></div><span class="text-[9px] text-gray-500">May</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:62%"></div><span class="text-[9px] text-gray-500">Jun</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:66%"></div><span class="text-[9px] text-gray-500">Jul</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full" style="height:82%"></div><span class="text-[9px] text-gray-500">Aug</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-indigo-900" style="height:72%"></div><span class="text-[9px] text-gray-500">Sep</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-gray-600" style="height:0%"></div><span class="text-[9px] text-gray-600">Oct</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-gray-600" style="height:0%"></div><span class="text-[9px] text-gray-600">Nov</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-gray-600" style="height:0%"></div><span class="text-[9px] text-gray-600">Dec</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-gray-600" style="height:0%"></div><span class="text-[9px] text-gray-600">Jan</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-gray-600" style="height:0%"></div><span class="text-[9px] text-gray-600">Feb</span></div>
+                    <div class="flex-1 h-full flex flex-col items-center justify-end gap-1"><div class="bar w-full bg-gray-600" style="height:0%"></div><span class="text-[9px] text-gray-600">Mar</span></div>
+                  </div>
+                </div>
+                <div class="rounded-xl bg-gray-800 p-3 text-[11px]">
+                  <div class="text-[10px] text-gray-500 uppercase mb-1">Month-wise</div>
+                  <div class="grid grid-cols-3 gap-x-3 gap-y-1">
+                    <span class="text-gray-400">Apr</span><span class="num">29</span><span class="num font-semibold">341</span>
+                    <span class="text-gray-400">May</span><span class="num">32</span><span class="num font-semibold">378</span>
+                    <span class="text-gray-400">Jun</span><span class="num">26</span><span class="num font-semibold">301</span>
+                    <span class="text-gray-400">Jul</span><span class="num">28</span><span class="num font-semibold">317</span>
+                    <span class="text-gray-400">Aug</span><span class="num">34</span><span class="num font-semibold">359</span>
+                    <span class="text-gray-400">Sep</span><span class="num">27</span><span class="num font-semibold">318</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+            <div class="p-3 border-t border-gray-800 grid grid-cols-3 gap-2 text-[11px]">
+              <div class="btn-s !py-1.5">📄 PDF</div>
+              <div class="btn-s !py-1.5">📊 Excel</div>
+              <div class="btn-s !py-1.5">💬 WhatsApp</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="max-w-sm space-y-2 text-[11px] text-gray-400">
+        <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Notes</div>
+        <ul class="list-disc pl-4 space-y-1">
+          <li>Every number taps through to the underlying entries (filtered list from 4 · C).</li>
+          <li>Year = financial year Apr–Mar by default; calendar year toggle in settings.</li>
+          <li>PDF / Excel / WhatsApp export the same period the toggle shows.</li>
+          <li>Same dashboard on desktop, side-by-side tiles instead of stacked.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── 6 · ADMIN OVERVIEW ───────────────── -->
+  <section id="admin" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">6 · Admin — all 74 connected units (desktop)</h2>
+    <div class="desk">
+      <div class="desk-bar"><i style="background:#ef4444"></i><i style="background:#f59e0b"></i><i style="background:#22c55e"></i><span class="text-[10px] text-gray-400 ml-3">jwpctt.app / admin / dashboard</span></div>
+      <div class="p-5 space-y-4">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <h3 class="text-sm font-bold">JWPCTT — Goods received across member units</h3>
+            <p class="text-[11px] text-gray-400">Admin sees every unit's entries; each unit sees only its own.</p>
+          </div>
+          <div class="flex gap-2 text-[11px] items-center">
+            <span class="btn-s">Period: <b>Sep 2026</b> ▾</span>
+            <span class="btn-s">Custom range</span>
+            <div class="field ph w-48 !py-1.5">Unit: All 74 ▾</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-4 gap-3">
+          <div class="rounded-xl bg-gray-800 p-3"><div class="text-[10px] text-gray-500 uppercase">Units reporting</div><div class="text-xl font-bold">68 <span class="text-xs text-gray-500 font-normal">/ 74</span></div><div class="text-[10px] text-gray-500">71 approved · 3 not yet approved</div></div>
+          <div class="rounded-xl bg-gray-800 p-3"><div class="text-[10px] text-gray-500 uppercase">Total receipts</div><div class="text-xl font-bold">1,842</div><div class="text-[10px] text-green-400">+6% vs Aug</div></div>
+          <div class="rounded-xl bg-gray-800 p-3"><div class="text-[10px] text-gray-500 uppercase">Total bales</div><div class="text-xl font-bold">21,376</div><div class="text-[10px] text-green-400">+4% vs Aug</div></div>
+          <div class="rounded-xl bg-red-950/40 border border-red-800 p-3"><div class="text-[10px] text-red-400 uppercase">No entry this month</div><div class="text-xl font-bold text-red-300">3</div><div class="text-[10px] text-red-400 cursor-pointer">Send WhatsApp reminder →</div></div>
+        </div>
+
+        <div class="rounded-xl bg-gray-800 p-3">
+          <div class="text-[10px] text-gray-500 uppercase mb-2">Bales per day — all units · Sep 2026</div>
+          <div class="flex items-end gap-[3px] h-20">
+            <div class="bar flex-1" style="height:60%"></div><div class="bar flex-1" style="height:72%"></div><div class="bar flex-1" style="height:55%"></div><div class="bar flex-1" style="height:80%"></div><div class="bar flex-1" style="height:66%"></div><div class="bar flex-1 bg-gray-600" style="height:12%"></div><div class="bar flex-1 bg-gray-600" style="height:5%"></div>
+            <div class="bar flex-1" style="height:70%"></div><div class="bar flex-1" style="height:77%"></div><div class="bar flex-1" style="height:63%"></div><div class="bar flex-1" style="height:85%"></div><div class="bar flex-1" style="height:74%"></div><div class="bar flex-1 bg-gray-600" style="height:10%"></div><div class="bar flex-1 bg-gray-600" style="height:4%"></div>
+            <div class="bar flex-1" style="height:68%"></div><div class="bar flex-1 bg-indigo-400" style="height:52%"></div>
+            <div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div><div class="bar flex-1 bg-gray-700/40" style="height:100%"></div>
+          </div>
+          <div class="flex justify-between text-[9px] text-gray-500 mt-1"><span>1 Sep</span><span>today (16)</span><span>30 Sep</span></div>
+        </div>
+
+        <div class="flex items-center justify-between">
+          <div class="flex gap-2 text-[11px]">
+            <span class="px-3 py-1 rounded-full bg-indigo-600 text-white font-semibold">All units (74)</span>
+            <span class="px-3 py-1 rounded-full bg-gray-800 text-gray-400">No entry (3)</span>
+            <span class="px-3 py-1 rounded-full bg-gray-800 text-gray-400">Re-check flagged (2)</span>
+          </div>
+          <div class="text-[10px] text-gray-500">Click a row → that unit's dashboard (section 5) · click header to sort</div>
+        </div>
+        <div class="rounded-xl border border-gray-700 overflow-hidden">
+          <table class="t">
+            <thead><tr><th>#</th><th>Unit</th><th>Login ID</th><th class="num">Receipts</th><th class="num">Bales ▾</th><th class="num">% of total</th><th>Last entry</th><th>Source</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr class="cursor-pointer"><td class="text-gray-500">1</td><td class="font-semibold">Kothari Synthetic Industries</td><td class="text-gray-400">ksi</td><td class="num">61</td><td class="num font-semibold">742</td><td class="num text-gray-400">3.5%</td><td>Today, 09:10</td><td class="text-gray-400">manual</td><td><span class="chip chip-g">Active</span></td></tr>
+              <tr class="cursor-pointer"><td class="text-gray-500">2</td><td class="font-semibold">Vinod Industries</td><td class="text-gray-400">vi</td><td class="num">55</td><td class="num font-semibold">688</td><td class="num text-gray-400">3.2%</td><td>Today, 08:45</td><td class="text-gray-400">Excel + manual</td><td><span class="chip chip-g">Active</span></td></tr>
+              <tr class="cursor-pointer"><td class="text-gray-500">3</td><td class="font-semibold">Maruti Processors</td><td class="text-gray-400">maruti-p</td><td class="num">48</td><td class="num font-semibold">571</td><td class="num text-gray-400">2.7%</td><td>15 Sep</td><td class="text-gray-400">manual</td><td><span class="chip chip-g">Active</span></td></tr>
+              <tr class="cursor-pointer"><td class="text-gray-500">4</td><td class="font-semibold">Shree Balaji Textiles</td><td class="text-gray-400">sbt-jasol</td><td class="num">27</td><td class="num font-semibold">318</td><td class="num text-gray-400">1.5%</td><td>Today, 12:41</td><td class="text-gray-400">Excel + manual</td><td><span class="chip chip-a">2 re-check</span></td></tr>
+              <tr class="cursor-pointer"><td class="text-gray-500">5</td><td class="font-semibold">Rajasthan Fabrics</td><td class="text-gray-400">rajfab</td><td class="num">24</td><td class="num font-semibold">296</td><td class="num text-gray-400">1.4%</td><td>14 Sep</td><td class="text-gray-400">manual</td><td><span class="chip chip-g">Active</span></td></tr>
+              <tr><td colspan="9" class="text-center text-gray-500 text-[10px]">… 66 more units …</td></tr>
+              <tr class="cursor-pointer bg-red-950/10"><td class="text-gray-500">72</td><td class="font-semibold">Jasol Dyeing Mills</td><td class="text-gray-400">jdm</td><td class="num">0</td><td class="num font-semibold">0</td><td class="num text-gray-400">0%</td><td class="text-red-400">— none in Sep</td><td class="text-gray-500">—</td><td><span class="chip chip-r">No entry</span></td></tr>
+              <tr class="cursor-pointer bg-red-950/10"><td class="text-gray-500">73</td><td class="font-semibold">Om Textile Mills</td><td class="text-gray-400">omtm</td><td class="num">0</td><td class="num font-semibold">0</td><td class="num text-gray-400">0%</td><td class="text-gray-500">—</td><td class="text-gray-500">—</td><td><span class="chip chip-a">Pending approval</span></td></tr>
+            </tbody>
+            <tfoot><tr><td colspan="3" class="text-right text-gray-400 font-semibold">Total · 74 units</td><td class="num font-bold">1,842</td><td class="num font-bold">21,376</td><td class="num text-gray-400">100%</td><td colspan="3"></td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── 7 · COMBINED REPORT ───────────────── -->
+  <section id="report" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">7 · Admin — combined report of goods received by connected industries</h2>
+    <div class="desk">
+      <div class="desk-bar"><i style="background:#ef4444"></i><i style="background:#f59e0b"></i><i style="background:#22c55e"></i><span class="text-[10px] text-gray-400 ml-3">jwpctt.app / admin / reports / combined</span></div>
+      <div class="p-5 space-y-4">
+        <div class="grid grid-cols-12 gap-3 items-end rounded-xl border border-gray-700 bg-gray-900 p-3">
+          <div class="col-span-3"><label class="lbl">Period</label>
+            <div class="flex gap-1 mt-1 text-[11px]"><span class="px-2 py-1 rounded-lg bg-indigo-600 text-white font-semibold">Month</span><span class="px-2 py-1 rounded-lg bg-gray-800 text-gray-400">Quarter</span><span class="px-2 py-1 rounded-lg bg-gray-800 text-gray-400">Year</span><span class="px-2 py-1 rounded-lg bg-gray-800 text-gray-400">Custom</span></div>
+          </div>
+          <div class="col-span-2"><label class="lbl">Month</label><div class="field mt-1">Sep 2026 ▾</div></div>
+          <div class="col-span-3"><label class="lbl">Group by</label>
+            <div class="flex gap-1 mt-1 text-[11px]"><span class="px-2 py-1 rounded-lg bg-indigo-600 text-white font-semibold">Unit</span><span class="px-2 py-1 rounded-lg bg-gray-800 text-gray-400">Transport</span><span class="px-2 py-1 rounded-lg bg-gray-800 text-gray-400">Date</span><span class="px-2 py-1 rounded-lg bg-gray-800 text-gray-400">Unit × Month</span></div>
+          </div>
+          <div class="col-span-2"><label class="lbl">Include units</label><div class="field mt-1">All 74 ▾</div></div>
+          <div class="col-span-2"><div class="btn-p !py-2">Generate</div></div>
+        </div>
+
+        <!-- Report preview -->
+        <div class="rounded-xl border border-gray-600 bg-white text-gray-900 p-6 space-y-3">
+          <div class="flex items-start justify-between border-b border-gray-300 pb-3">
+            <div>
+              <div class="text-[10px] uppercase tracking-wide text-gray-500">Jasol Water Pollution Control And Treatment Trust</div>
+              <h3 class="text-base font-bold">Goods received by connected industries — September 2026</h3>
+              <div class="text-[11px] text-gray-500">74 member units · 68 reported · generated 16 Sep 2026, 14:02 by Admin</div>
+            </div>
+            <div class="text-right text-[11px]">
+              <div class="text-2xl font-bold">21,376</div>
+              <div class="text-gray-500">bales · 1,842 receipts</div>
+            </div>
+          </div>
+          <table class="w-full text-[11px]" style="border-collapse:collapse">
+            <thead><tr class="text-[10px] uppercase text-gray-500 border-b border-gray-300">
+              <th class="text-left py-1.5">#</th><th class="text-left">Unit</th><th class="text-right">Receipts</th><th class="text-right">Bales</th><th class="text-right">% of total</th><th class="text-right">Avg / receipt</th><th class="text-left pl-4">Top transport</th>
+            </tr></thead>
+            <tbody class="[&_td]:py-1.5 [&_td]:border-b [&_td]:border-gray-100">
+              <tr><td>1</td><td class="font-semibold">Kothari Synthetic Industries</td><td class="num">61</td><td class="num font-semibold">742</td><td class="num">3.5%</td><td class="num">12.2</td><td class="pl-4 text-gray-600">Jasol Roadways</td></tr>
+              <tr><td>2</td><td class="font-semibold">Vinod Industries</td><td class="num">55</td><td class="num font-semibold">688</td><td class="num">3.2%</td><td class="num">12.5</td><td class="pl-4 text-gray-600">Balotra Transport Co.</td></tr>
+              <tr><td>3</td><td class="font-semibold">Maruti Processors</td><td class="num">48</td><td class="num font-semibold">571</td><td class="num">2.7%</td><td class="num">11.9</td><td class="pl-4 text-gray-600">Jasol Roadways</td></tr>
+              <tr><td>4</td><td class="font-semibold">Shree Balaji Textiles</td><td class="num">27</td><td class="num font-semibold">318</td><td class="num">1.5%</td><td class="num">11.8</td><td class="pl-4 text-gray-600">Jasol Roadways</td></tr>
+              <tr><td>5</td><td class="font-semibold">Rajasthan Fabrics</td><td class="num">24</td><td class="num font-semibold">296</td><td class="num">1.4%</td><td class="num">12.3</td><td class="pl-4 text-gray-600">Shree Mahaveer Carriers</td></tr>
+              <tr><td colspan="7" class="text-center text-gray-400 text-[10px]">… 63 more units …</td></tr>
+              <tr class="text-gray-400"><td>72</td><td>Jasol Dyeing Mills</td><td class="num">0</td><td class="num">0</td><td class="num">0%</td><td class="num">—</td><td class="pl-4 italic">no entry</td></tr>
+            </tbody>
+            <tfoot>
+              <tr class="bg-gray-100 font-bold border-t-2 border-gray-400"><td colspan="2" class="py-2">Grand total · 74 units</td><td class="num">1,842</td><td class="num">21,376</td><td class="num">100%</td><td class="num">11.6</td><td class="pl-4 font-normal text-gray-600">Jasol Roadways (38%)</td></tr>
+            </tfoot>
+          </table>
+          <div class="grid grid-cols-3 gap-4 text-[11px] pt-2">
+            <div><div class="text-[10px] uppercase text-gray-500">By transport (top 5)</div>
+              <div class="flex justify-between"><span>Jasol Roadways</span><b>8,122</b></div>
+              <div class="flex justify-between"><span>Balotra Transport Co.</span><b>4,690</b></div>
+              <div class="flex justify-between"><span>Shree Mahaveer Carriers</span><b>3,215</b></div>
+              <div class="flex justify-between"><span>Rajdhani Goods Carrier</span><b>2,004</b></div>
+              <div class="flex justify-between"><span>Own vehicles</span><b>1,538</b></div>
+            </div>
+            <div><div class="text-[10px] uppercase text-gray-500">By source</div>
+              <div class="flex justify-between"><span>Manual entry</span><b>1,301</b></div>
+              <div class="flex justify-between"><span>Excel upload</span><b>541</b></div>
+              <div class="flex justify-between text-amber-600"><span>Flagged re-check</span><b>2</b></div>
+            </div>
+            <div><div class="text-[10px] uppercase text-gray-500">Comparison</div>
+              <div class="flex justify-between"><span>Aug 2026</span><b>20,551</b></div>
+              <div class="flex justify-between"><span>Sep 2025</span><b>19,780</b></div>
+              <div class="flex justify-between text-green-700"><span>YoY</span><b>+8.1%</b></div>
+            </div>
+          </div>
+          <div class="text-[10px] text-gray-400 border-t border-gray-200 pt-2">Page 1 of 3 · JWPCTT · Goods received report · Sep 2026</div>
+        </div>
+
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div class="text-[11px] text-gray-400">Report is saved in history — re-open, compare, or share any earlier month.</div>
+          <div class="flex gap-2">
+            <span class="btn-s">📄 Generate PDF</span>
+            <span class="btn-s">📊 Export Excel</span>
+            <span class="btn-p">💬 Share on WhatsApp</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────────── NOTES ───────────────── -->
+  <section id="notes" class="space-y-3">
+    <h2 class="text-sm font-bold text-gray-200">Notes / decisions to take before building</h2>
+    <div class="grid md:grid-cols-2 gap-4 text-[11px]">
+      <div class="rounded-xl border border-gray-700 bg-gray-900 p-4 space-y-2">
+        <p class="font-semibold text-gray-200">1 · Where does it live?</p>
+        <p class="text-gray-400">Units need <b>ID + password + approval</b>. The existing Vinod Industries app is Google-login only with an env-var allowlist and has no user table. Two options:</p>
+        <ul class="list-disc pl-4 text-gray-400 space-y-1">
+          <li><b class="text-gray-200">Standalone app</b> (own Vercel project + DB, like rahul_shades) — cleanest; JWPCTT admin logs in there.</li>
+          <li><b class="text-gray-200">Module inside this repo</b> under <code>/jwpctt</code> — reuses Drive / WhatsApp helpers but needs a credentials provider + <code>JwpcttUnit</code> table added.</li>
+        </ul>
+        <p class="text-indigo-300">Recommend: standalone.</p>
+      </div>
+      <div class="rounded-xl border border-gray-700 bg-gray-900 p-4 space-y-2">
+        <p class="font-semibold text-gray-200">2 · Draft autosave</p>
+        <p class="text-gray-400">Keystroke-level save to the device (localStorage / IndexedDB, keyed by unit) — instant and works offline. Sync to a server draft row on field blur so a unit can continue from another device. Draft removed on Save.</p>
+        <p class="font-semibold text-gray-200 pt-2">3 · Duplicate key</p>
+        <p class="text-gray-400">LR No + Transport within a unit. Also warn (not block) if the same LR appears at <i>another</i> unit — useful for JWPCTT audit.</p>
+      </div>
+      <div class="rounded-xl border border-gray-700 bg-gray-900 p-4 space-y-2">
+        <p class="font-semibold text-gray-200">4 · Fields to confirm</p>
+        <ul class="list-disc pl-4 text-gray-400 space-y-1">
+          <li>Is <b>No of Bales</b> enough, or also weight (kg) / goods type (grey / yarn / chemicals)?</li>
+          <li><b>Vehicle No</b> optional for own-vehicle receipts with no LR — OK?</li>
+          <li>Edit / delete window for units (mockup says 7 days) — or admin-only?</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-gray-700 bg-gray-900 p-4 space-y-2">
+        <p class="font-semibold text-gray-200">5 · Roles</p>
+        <ul class="list-disc pl-4 text-gray-400 space-y-1">
+          <li><b class="text-gray-200">Unit</b> — own entries + own dashboard.</li>
+          <li><b class="text-gray-200">Authoriser</b> — approve / reject / deactivate units (may be same person as admin).</li>
+          <li><b class="text-gray-200">Admin</b> — everything + combined reports + WhatsApp reminders to units with no entry.</li>
+        </ul>
+        <p class="text-gray-400 pt-1">Sign-up notifications: WhatsApp to authoriser on new request; WhatsApp to unit on approve / reject.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  // Draft-saved ticker (section 4 · A)
+  (function(){
+    var txt = document.getElementById('draftTxt'), dot = document.getElementById('draftDot');
+    if(!txt) return;
+    var states = ['Saving…','Draft saved just now','Draft saved 3s ago','Draft saved 6s ago'];
+    var i = 1;
+    setInterval(function(){
+      i = (i + 1) % states.length;
+      txt.textContent = states[i];
+      dot.className = 'w-1.5 h-1.5 rounded-full ' + (i === 0 ? 'bg-amber-400 pulse' : 'bg-gray-500 pulse');
+    }, 2500);
+  })();
+
+  // Week / Month / Year toggle (section 5)
+  (function(){
+    var seg = document.getElementById('segUnit'); if(!seg) return;
+    seg.querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        seg.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+        b.classList.add('on');
+        document.querySelectorAll('[data-panel]').forEach(function(p){
+          p.classList.toggle('hidden-tab', p.getAttribute('data-panel') !== b.getAttribute('data-tab'));
+        });
+      });
+    });
+  })();
+
+  // Duplicate prompt modal (section 4c)
+  (function(){
+    var m = document.getElementById('promptModal'); if(!m) return;
+    function open(){ m.classList.remove('hidden'); m.classList.add('flex'); }
+    function close(){ m.classList.add('hidden'); m.classList.remove('flex'); }
+    document.getElementById('openPrompt').addEventListener('click', open);
+    document.getElementById('closePrompt').addEventListener('click', close);
+    document.getElementById('confirmPrompt').addEventListener('click', close);
+    m.addEventListener('click', function(e){ if(e.target === m) close(); });
+  })();
+</script>
+</body>
+</html>
