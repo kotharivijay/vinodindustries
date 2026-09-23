@@ -96,6 +96,17 @@ const xmlAll = (s: string, tag: string): string[] => {
 const cleanTallyText = (s: string | null | undefined): string =>
   (s ?? '').replace(/&#4;/g, '').replace(/&amp;/g, '&').trim()
 
+/** Map Tally's registration-type text onto the three values the app uses.
+ *  A ledger with no GSTIN is treated as Unregistered whatever Tally says —
+ *  a Regular/Composition registration always carries a GSTIN. */
+export function normaliseGstType(raw: string | null | undefined, gstin: string | null | undefined): string {
+  const t = (raw ?? '').trim().toLowerCase()
+  if (!gstin || !gstin.trim()) return 'Unregistered'
+  if (t.startsWith('composition')) return 'Composition'
+  if (t.startsWith('unregistered') || t.startsWith('consumer')) return 'Unregistered'
+  return 'Regular'
+}
+
 export interface FetchedParty {
   tallyLedger: string
   tallyGuid: string | null
@@ -136,7 +147,9 @@ export async function fetchPartiesFromTally(): Promise<FetchedParty[]> {
       parentGroup: parent || null,
       state: state || null,
       gstin: gstin || null,
-      gstRegistrationType: ['Regular', 'Composition', 'Unregistered'].includes(gstType) ? gstType : 'Regular',
+      // Tally Prime reports URP ledgers as "Unregistered/Consumer" (and older
+      // data as "Unregistered"); anything without a GSTIN cannot be Regular.
+      gstRegistrationType: normaliseGstType(gstType, gstin),
       whatsapp: phone || null,
       email: email || null,
       city: null as string | null,

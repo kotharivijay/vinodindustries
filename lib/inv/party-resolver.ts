@@ -25,7 +25,7 @@ export async function resolvePartyIdByLedger(tallyLedger: string): Promise<numbe
       gstin: led?.gstNo ?? null,
       state: led?.state ?? null,
       whatsapp: led?.mobileNos ?? null,
-      gstRegistrationType: 'Regular',
+      gstRegistrationType: led?.gstNo ? 'Regular' : 'Unregistered',
       active: true,
       lastSyncedAt: new Date(),
     },
