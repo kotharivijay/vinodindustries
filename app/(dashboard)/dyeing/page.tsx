@@ -8,6 +8,11 @@ import BackButton from '../BackButton'
 import { generateMultiSlipPDF, sharePDF, type SlipData } from '@/lib/pdf-share'
 import { effectiveShade } from '@/lib/effective-shade'
 import { useRole } from '../RoleContext'
+import { readViewState, persistViewState, saveLotClick, useLotBackHighlight, LotLink } from '@/lib/viewStatePersist'
+
+// Filters / sort / tab survive a trip to a slip and back (sessionStorage),
+// same pattern as grey/finish/stock — see lib/viewStatePersist.tsx.
+const DYEING_VIEW_KEY = 'dyeing-view-state'
 
 // Effective shade name for a list entry: a later addition round may have
 // changed the colour (e.g. K-cream → T-186). Falls back to fold-batch shade.
@@ -17,8 +22,10 @@ function effShadeName(e: { shadeName?: string | null; foldBatch?: { shade?: { na
 
 const fetcher = (url: string) => fetch(url).then(r => r.json())
 
-function useDebounce(delay = 200) {
-  const [debounced, setDebounced] = useState('')
+// `value` seeds the debounced mirror so a filter restored from the view
+// snapshot filters the list immediately instead of starting blank.
+function useDebounce(value = '', delay = 200) {
+  const [debounced, setDebounced] = useState(value)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const set = (v: string) => {
     if (timer.current) clearTimeout(timer.current)
@@ -162,21 +169,32 @@ export default function DyeingListPage() {
     dedupingInterval: 30_000,
   })
 
-  const [tab, setTab] = useState<Tab>('entries')
+  // Snapshot from the last visit (empty on a fresh tab) — read once, used as
+  // lazy initialisers so the first render already shows the restored view.
+  const initial = typeof window !== 'undefined' ? readViewState(DYEING_VIEW_KEY) : {}
+  const [tab, setTab] = useState<Tab>(() => initial.tab ?? 'entries')
   const [search, setSearchRaw] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useDebounce()
-  const [lotSearch, setLotSearchRaw] = useState('')
-  const [debouncedLotSearch, setDebouncedLotSearch] = useDebounce()
-  const [sortField, setSortField] = useState<SortField>('date')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [lotSearch, setLotSearchRaw] = useState<string>(() => initial.lotSearch ?? '')
+  const [debouncedLotSearch, setDebouncedLotSearch] = useDebounce(initial.lotSearch ?? '')
+  const [sortField, setSortField] = useState<SortField>(() => initial.sortField ?? 'date')
+  const [sortDir, setSortDir] = useState<SortDir>(() => initial.sortDir ?? 'desc')
   const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [filterLotNo, setFilterLotNo] = useState('')
-  const [debouncedFilterLot, setDebouncedFilterLot] = useDebounce()
-  const [filterSlipNo, setFilterSlipNo] = useState('')
-  const [debouncedFilterSlip, setDebouncedFilterSlip] = useDebounce()
-  const [filterParty, setFilterParty] = useState('')
-  const [debouncedFilterParty, setDebouncedFilterParty] = useDebounce()
+  const [filterLotNo, setFilterLotNo] = useState<string>(() => initial.filterLotNo ?? '')
+  const [debouncedFilterLot, setDebouncedFilterLot] = useDebounce(initial.filterLotNo ?? '')
+  const [filterSlipNo, setFilterSlipNo] = useState<string>(() => initial.filterSlipNo ?? '')
+  const [debouncedFilterSlip, setDebouncedFilterSlip] = useDebounce(initial.filterSlipNo ?? '')
+  const [filterParty, setFilterParty] = useState<string>(() => initial.filterParty ?? '')
+  const [debouncedFilterParty, setDebouncedFilterParty] = useDebounce(initial.filterParty ?? '')
   const [hideDone, setHideDone] = useState(true)
+  const hasFilters = !!(filterSlipNo || filterLotNo || filterParty)
+  function clearFilters() {
+    setFilterSlipNo(''); setDebouncedFilterSlip('')
+    setFilterLotNo(''); setDebouncedFilterLot('')
+    setFilterParty(''); setDebouncedFilterParty('')
+  }
+  // Back from a slip: restore scroll and ring the row that was opened.
+  useLotBackHighlight(DYEING_VIEW_KEY, tab === 'entries')
 
   useEffect(() => {
     try {
@@ -297,11 +315,18 @@ export default function DyeingListPage() {
   // Production tab state
   const [prodData, setProdData] = useState<ProductionData | null>(null)
   const [prodLoading, setProdLoading] = useState(false)
-  const [prodPeriod, setProdPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('month')
-  const [prodFrom, setProdFrom] = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0,10) })
-  const [prodTo, setProdTo] = useState(() => new Date().toISOString().slice(0,10))
-  const [prodView, setProdView] = useState<'status' | 'machine' | 'operator'>('status')
-  const [prodStatusFilter, setProdStatusFilter] = useState<string | null>(null)
+  const [prodPeriod, setProdPeriod] = useState<'today' | 'week' | 'month' | 'custom'>(() => initial.prodPeriod ?? 'month')
+  const [prodFrom, setProdFrom] = useState<string>(() => initial.prodFrom ?? (() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0,10) })())
+  const [prodTo, setProdTo] = useState<string>(() => initial.prodTo ?? new Date().toISOString().slice(0,10))
+  const [prodView, setProdView] = useState<'status' | 'machine' | 'operator'>(() => initial.prodView ?? 'status')
+  const [prodStatusFilter, setProdStatusFilter] = useState<string | null>(() => initial.prodStatusFilter ?? null)
+
+  useEffect(() => {
+    persistViewState(DYEING_VIEW_KEY, {
+      tab, filterSlipNo, filterLotNo, filterParty, sortField, sortDir, lotSearch,
+      prodPeriod, prodFrom, prodTo, prodView, prodStatusFilter,
+    })
+  }, [tab, filterSlipNo, filterLotNo, filterParty, sortField, sortDir, lotSearch, prodPeriod, prodFrom, prodTo, prodView, prodStatusFilter])
   const [expandedMachine, setExpandedMachine] = useState<number | null>(null)
   const [expandedOperator, setExpandedOperator] = useState<number | null>(null)
 
@@ -809,7 +834,7 @@ export default function DyeingListPage() {
                       {filteredLot.map(r => (
                         <tr key={r.lotNo} className="hover:bg-gray-700/40 transition">
                           <td className="px-4 py-3 font-semibold text-purple-400">
-                            <Link href={`/lot/${encodeURIComponent(r.lotNo)}`} className="hover:underline">{r.lotNo}</Link>
+                            <LotLink lotNo={r.lotNo} storageKey={DYEING_VIEW_KEY} className="hover:underline">{r.lotNo}</LotLink>
                           </td>
                           <td className="px-4 py-3 text-gray-400 text-xs">{new Date(r.lastDate).toLocaleDateString('en-IN')}</td>
                           <td className="px-4 py-3 text-gray-400 text-xs">{r.slips}</td>
@@ -858,6 +883,14 @@ export default function DyeingListPage() {
                   value={filterParty}
                   onChange={e => { setFilterParty(e.target.value); setDebouncedFilterParty(e.target.value) }} />
               </div>
+              {hasFilters && (
+                <div className="flex items-end">
+                  <button onClick={clearFilters} title="Clear slip / lot / party filters"
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-600 text-gray-300 hover:bg-gray-700 whitespace-nowrap">
+                    ✕ Clear filters
+                  </button>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <button
@@ -917,13 +950,13 @@ export default function DyeingListPage() {
                       const lotsArr = e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than }]
                       const slipTotalThan = lotsArr.reduce((s, l) => s + l.than, 0)
                       return (
-                        <div key={e.id} className="p-4">
+                        <div key={e.id} data-lot-card={String(e.id)} className="p-4">
                           <div className="flex items-start justify-between mb-1.5">
                             <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-400">
                               <input type="checkbox" checked={selectedIds.has(e.id)} onChange={() => toggleSelect(e.id)} className="accent-green-500 mr-1" />
                               <span>{new Date(e.date).toLocaleDateString('en-IN')}</span>
                               <span className="text-gray-600">&middot;</span>
-                              <Link href={`/dyeing/${e.id}`} className="text-purple-400 font-medium hover:underline">Slip {e.slipNo}</Link>
+                              <Link href={`/dyeing/${e.id}`} onClick={() => saveLotClick(DYEING_VIEW_KEY, String(e.id))} className="text-purple-400 font-medium hover:underline">Slip {e.slipNo}</Link>
                             </div>
                             <div className="flex gap-2 shrink-0">
                               <button onClick={() => router.push(`/dyeing/${e.id}/edit`)} className="text-indigo-400 text-xs font-medium border border-indigo-700 rounded px-2 py-0.5">Edit</button>
@@ -934,9 +967,9 @@ export default function DyeingListPage() {
                           </div>
                           <div className="flex flex-wrap items-center gap-2 mb-1">
                             {lotsArr.map((lot, li) => (
-                              <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-900/40 text-purple-300 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-purple-900/60">
+                              <LotLink key={li} lotNo={lot.lotNo} storageKey={DYEING_VIEW_KEY} className="inline-flex items-center gap-1 bg-purple-900/40 text-purple-300 text-xs font-semibold px-2.5 py-1 rounded-full hover:bg-purple-900/60">
                                 {lot.lotNo} <span className="text-purple-500 font-normal">({lot.than})</span>
-                              </Link>
+                              </LotLink>
                             ))}
                             {lotsArr.length > 1 && <span className="text-xs text-gray-400">Total: <strong className="text-gray-200">{slipTotalThan}</strong></span>}
                           </div>
@@ -1062,20 +1095,20 @@ export default function DyeingListPage() {
                           const dLots = e.lots?.length ? e.lots : [{ id: 0, lotNo: e.lotNo, than: e.than }]
                           const dTotalThan = dLots.reduce((s, l) => s + l.than, 0)
                           return (
-                          <tr key={e.id} className="hover:bg-gray-700/40 transition text-gray-300">
+                          <tr key={e.id} data-lot-card={String(e.id)} className="hover:bg-gray-700/40 transition text-gray-300">
                             <td className="px-2 py-2.5 text-center">
                               <input type="checkbox" checked={selectedIds.has(e.id)} onChange={() => toggleSelect(e.id)} className="accent-green-500" />
                             </td>
                             <td className="px-3 py-2.5 whitespace-nowrap text-gray-400">{new Date(e.date).toLocaleDateString('en-IN')}</td>
                             <td className="px-3 py-2.5 font-medium">
-                              <Link href={`/dyeing/${e.id}`} className="text-purple-400 hover:underline">{e.slipNo}</Link>
+                              <Link href={`/dyeing/${e.id}`} onClick={() => saveLotClick(DYEING_VIEW_KEY, String(e.id))} className="text-purple-400 hover:underline">{e.slipNo}</Link>
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="flex flex-wrap gap-1">
                                 {dLots.map((lot, li) => (
-                                  <Link key={li} href={`/lot/${encodeURIComponent(lot.lotNo)}`} className="inline-flex items-center gap-1 bg-purple-900/40 text-purple-300 text-xs font-semibold px-2 py-0.5 rounded-full hover:bg-purple-900/60">
+                                  <LotLink key={li} lotNo={lot.lotNo} storageKey={DYEING_VIEW_KEY} className="inline-flex items-center gap-1 bg-purple-900/40 text-purple-300 text-xs font-semibold px-2 py-0.5 rounded-full hover:bg-purple-900/60">
                                     {lot.lotNo} <span className="text-purple-500 font-normal">({lot.than})</span>
-                                  </Link>
+                                  </LotLink>
                                 ))}
                               </div>
                             </td>
