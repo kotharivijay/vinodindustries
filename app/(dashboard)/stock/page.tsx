@@ -466,6 +466,77 @@ export default function StockPage() {
     doc.save('balance-stock.pdf')
   }
 
+  // Stage-wise PDF — every party on one page (Grey · Fold · Dyed · Finished ·
+  // Folding · Packing · Re-Pro · Balance), then a per-lot appendix. Uses the
+  // same `stages` split the on-screen chips show, honouring the current
+  // search / sort.
+  async function exportStagePDF() {
+    const { default: jsPDF } = await import('jspdf')
+    const { default: autoTable } = await import('jspdf-autotable')
+    const doc = new jsPDF({ orientation: 'landscape' })
+    const w = doc.internal.pageSize.getWidth()
+    const KEYS = ['grey', 'fold', 'dye', 'finish', 'folding', 'pack', 'repro'] as const
+    const zero = () => ({ grey: 0, fold: 0, dye: 0, finish: 0, folding: 0, pack: 0, repro: 0 })
+    const add = (t: Record<string, number>, s?: Partial<Record<string, number>>) => { for (const k of KEYS) t[k] += s?.[k] || 0 }
+    const partyRows = filtered.map(p => {
+      const t: Record<string, number> = zero()
+      for (const l of p.lots) add(t, l.stages)
+      return { party: p.party + (p.partyTag ? ` (${p.partyTag})` : ''), lots: p.lots.length, st: t, stock: p.totalStock }
+    })
+    const grand: Record<string, number> = zero()
+    for (const r of partyRows) add(grand, r.st)
+    const totalLots = partyRows.reduce((s, r) => s + r.lots, 0)
+    const totalStock = partyRows.reduce((s, r) => s + r.stock, 0)
+    const n = (v: number) => (v ? v.toLocaleString('en-IN') : '-')
+
+    doc.setFillColor(30, 41, 59); doc.rect(0, 0, w, 20, 'F')
+    doc.setTextColor(255, 255, 255).setFont('helvetica', 'bold').setFontSize(14)
+    doc.text('KSI — Stage-wise Stock (all parties)', 12, 9)
+    doc.setFont('helvetica', 'normal').setFontSize(9)
+    doc.text(`${totalStock.toLocaleString('en-IN')} than · ${totalLots} lots · ${partyRows.length} parties${search ? ` · Search: "${search}"` : ''}`, 12, 15.5)
+    doc.text(`As on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`, w - 12, 15.5, { align: 'right' })
+    doc.setTextColor(0, 0, 0)
+
+    const numCols: Record<number, any> = {}
+    for (let i = 1; i <= 9; i++) numCols[i] = { halign: 'right' }
+    numCols[9] = { halign: 'right', fontStyle: 'bold', textColor: [79, 70, 229] }
+    autoTable(doc, {
+      startY: 25,
+      head: [['Party', 'Lots', 'Grey', 'Fold', 'Dyed', 'Finished', 'Folding', 'Packing', 'Re-Pro', 'Balance']],
+      body: partyRows.map(r => [r.party, String(r.lots), ...KEYS.map(k => n(r.st[k])), r.stock.toLocaleString('en-IN')]),
+      foot: [['TOTAL', String(totalLots), ...KEYS.map(k => n(grand[k])), totalStock.toLocaleString('en-IN')]],
+      showFoot: 'lastPage',
+      styles: { fontSize: 8, cellPadding: 1.6 },
+      headStyles: { fillColor: [79, 70, 229], halign: 'center' },
+      footStyles: { fillColor: [241, 245, 249], textColor: 30, fontStyle: 'bold', halign: 'right' },
+      columnStyles: { 0: { cellWidth: 70, fontStyle: 'bold' }, ...numCols },
+      margin: { left: 12, right: 12 },
+    })
+
+    // Per-lot appendix — one block per party, same stage columns.
+    doc.addPage()
+    doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(30, 41, 59)
+    doc.text('Lot-wise detail', 12, 12)
+    const body: any[] = []
+    filtered.forEach((p, idx) => {
+      const t = partyRows[idx]
+      body.push([{ content: `${p.party}${p.partyTag ? ' (' + p.partyTag + ')' : ''}   —   ${p.lots.length} lots · ${p.totalStock.toLocaleString('en-IN')} than`, colSpan: 10, styles: { fontStyle: 'bold', fillColor: [241, 245, 249], textColor: [30, 41, 59] } }])
+      for (const l of [...p.lots].sort((a, b) => b.stock - a.stock)) {
+        body.push([l.lotNo, l.quality || '-', ...KEYS.map(k => n(l.stages?.[k] || 0)), l.stock.toLocaleString('en-IN')])
+      }
+      body.push(['', 'Subtotal', ...KEYS.map(k => n(t.st[k])), t.stock.toLocaleString('en-IN')].map((c, i) => i >= 1 ? { content: c, styles: { fontStyle: 'bold' } } : c))
+    })
+    autoTable(doc, {
+      startY: 16,
+      head: [['Lot No', 'Quality', 'Grey', 'Fold', 'Dyed', 'Finished', 'Folding', 'Packing', 'Re-Pro', 'Balance']],
+      body,
+      styles: { fontSize: 7.5, cellPadding: 1.2 },
+      headStyles: { fillColor: [30, 41, 59], halign: 'center' },
+      columnStyles: { 0: { cellWidth: 46, fontStyle: 'bold' }, 1: { cellWidth: 40 }, ...Object.fromEntries([2, 3, 4, 5, 6, 7, 8].map(i => [i, { halign: 'right' }])), 9: { halign: 'right', fontStyle: 'bold', textColor: [79, 70, 229] } },
+      margin: { left: 12, right: 12 },
+    })
+    doc.save(`stage-wise-stock-${new Date().toISOString().slice(0, 10)}.pdf`)
+  }
   // ── Share Party Stock as image(s) — same UX as attendance ──
   const SHARE_LOTS_PER_IMAGE = 5
   const SHARE_FILES_PER_BATCH = 6
@@ -711,6 +782,9 @@ export default function StockPage() {
               </button>
               <button onClick={exportPDF} className="flex items-center gap-1.5 bg-red-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-red-700">
                 ⬇ PDF
+              </button>
+              <button onClick={exportStagePDF} title="All parties, stage-wise (Grey · Fold · Dyed · Finished · Folding · Packing) + lot-wise appendix" className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-medium hover:bg-indigo-700">
+                ⬇ Stage PDF
               </button>
             </>
           )}
