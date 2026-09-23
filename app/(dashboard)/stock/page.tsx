@@ -395,6 +395,10 @@ export default function StockPage() {
     if (tagFilter !== null) {
       if (tagFilter === '__untagged__') {
         list = list.filter(p => !p.partyTag)
+      } else if (tagFilter.startsWith('!')) {
+        // "!<tag>" = every party EXCEPT that tag (e.g. all non-Pali-job work)
+        const ex = tagFilter.slice(1)
+        list = list.filter(p => p.partyTag !== ex)
       } else {
         list = list.filter(p => p.partyTag === tagFilter)
       }
@@ -493,7 +497,8 @@ export default function StockPage() {
     doc.setTextColor(255, 255, 255).setFont('helvetica', 'bold').setFontSize(14)
     doc.text('KSI — Stage-wise Stock (all parties)', 12, 9)
     doc.setFont('helvetica', 'normal').setFontSize(9)
-    doc.text(`${totalStock.toLocaleString('en-IN')} than · ${totalLots} lots · ${partyRows.length} parties${search ? ` · Search: "${search}"` : ''}`, 12, 15.5)
+    const tagLabel = tagFilter === null ? '' : tagFilter === '__untagged__' ? ' · Untagged parties only' : tagFilter.startsWith('!') ? ` · Excluding ${tagFilter.slice(1)}` : ` · ${tagFilter} only`
+    doc.text(`${totalStock.toLocaleString('en-IN')} than · ${totalLots} lots · ${partyRows.length} parties${tagLabel}${search ? ` · Search: "${search}"` : ''}`, 12, 15.5)
     doc.text(`As on ${new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`, w - 12, 15.5, { align: 'right' })
     doc.setTextColor(0, 0, 0)
 
@@ -869,6 +874,21 @@ export default function StockPage() {
             >
               Untagged
             </button>
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-2">Exclude:</span>
+            {uniqueStockTags.map(tag => (
+              <button
+                key={'!' + tag}
+                onClick={() => setTagFilter(tagFilter === '!' + tag ? null : '!' + tag)}
+                title={`All parties except ${tag}`}
+                className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                  tagFilter === '!' + tag
+                    ? 'bg-rose-600 text-white border-rose-600'
+                    : 'bg-white dark:bg-gray-800 border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20'
+                }`}
+              >
+                ✕ {tag}
+              </button>
+            ))}
           </div>
         )}
 
