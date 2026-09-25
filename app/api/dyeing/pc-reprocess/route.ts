@@ -139,17 +139,20 @@ export async function POST(req: NextRequest) {
   const [greyForLot, obForLot] = await Promise.all([
     prisma.greyEntry.findMany({
       where: { lotNo: lotNoIn },
-      select: { lotNo: true, partyId: true, qualityId: true, weight: true, marka: true, grayMtr: true },
+      select: { lotNo: true, partyId: true, qualityId: true, weight: true, marka: true, grayMtr: true, than: true },
     }),
     db.lotOpeningBalance.findMany({
       where: { lotNo: lotNoIn },
-      select: { lotNo: true, party: true, quality: true, weight: true, marka: true, grayMtr: true },
+      select: { lotNo: true, party: true, quality: true, weight: true, marka: true, grayMtr: true, greyThan: true },
     }),
   ])
   const partyByLot = new Map<string, number | null>()
   const qualityByLot = new Map<string, number | null>()
   const weightByLot = new Map<string, string | null>()
   const markaByLot = new Map<string, string | null>()
+  // Metres PER THAN of the lot (lot metres ÷ lot grey than), so the PC-RP's
+  // metres = per-than × reclaimed than. Dividing the lot's metres by the
+  // slip's than instead put whole-lot metres on a few reclaimed pieces.
   const mtrByLot = new Map<string, number | null>()
   for (const g of greyForLot) {
     const k = g.lotNo.toLowerCase().trim()
@@ -157,7 +160,7 @@ export async function POST(req: NextRequest) {
     if (!qualityByLot.has(k)) qualityByLot.set(k, g.qualityId)
     if (!weightByLot.has(k)) weightByLot.set(k, g.weight)
     if (!markaByLot.has(k) && g.marka) markaByLot.set(k, g.marka)
-    if (!mtrByLot.has(k)) mtrByLot.set(k, g.grayMtr)
+    if (!mtrByLot.has(k)) mtrByLot.set(k, g.grayMtr && g.than ? g.grayMtr / g.than : null)
   }
   // OB rows carry party/quality as NAMES not ids — need name→id lookup for those
   const obPartyNames = new Set<string>()
@@ -180,7 +183,7 @@ export async function POST(req: NextRequest) {
     if (!qualityByLot.has(k) && o.quality) qualityByLot.set(k, qualityNameToId.get(o.quality) ?? null)
     if (!weightByLot.has(k) && o.weight) weightByLot.set(k, o.weight)
     if (!markaByLot.has(k) && o.marka) markaByLot.set(k, o.marka)
-    if (!mtrByLot.has(k) && o.grayMtr) mtrByLot.set(k, o.grayMtr)
+    if (!mtrByLot.has(k) && o.grayMtr && o.greyThan) mtrByLot.set(k, o.grayMtr / o.greyThan)
   }
 
   // Now validate each parsed source row
@@ -242,7 +245,7 @@ export async function POST(req: NextRequest) {
     if (slipMarka) inheritedMarkas.add(slipMarka)
 
     const m = mtrByLot.get(ps.lotKey)
-    if (m && slipLot.than > 0) totalMtr += (m / (slipLot.than || 1)) * ps.than
+    if (m) totalMtr += m * ps.than
   }
 
   if (errors.length) return NextResponse.json({ error: 'INVALID_INPUT', messages: errors }, { status: 400 })
